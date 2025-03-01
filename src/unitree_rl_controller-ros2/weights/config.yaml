@@ -1,0 +1,40 @@
+go1:
+  model_name: "model.pt"
+  num_observations: 42  3+3++12+12+12
+  clip_obs: 100.0
+  clip_actions: 100.0
+  # damping: 0.5
+  # stiffness: 20.0
+  rl_kp: [20, 20, 20, # FL
+            20, 20, 20, # FR
+            20, 20, 20, # RL
+            20, 20, 20] # RR
+  rl_kd: [0.5, 0.5, 0.5, # FL
+            0.5, 0.5, 0.5, # FR
+            0.5, 0.5, 0.5, # RL
+            0.5, 0.5, 0.5] # RR
+  action_scale: 0.25
+  hip_scale_reduction: 0.5
+  hip_scale_reduction_indices: [0, 3, 6, 9]
+  num_of_dofs: 12
+  ang_vel_scale: 0.25
+  dof_pos_scale: 1.0
+  dof_vel_scale: 0.05
+  #commands_scale: [2.0, 2.0, 0.25]
+  torque_limits: [24.0, 24.0, 24.0, # FL 
+                  24.0, 24.0, 24.0, # FR
+                  24.0, 24.0, 24.0, # RL
+                  24.0, 24.0, 24.0] # RR
+  default_dof_pos: [ 0.0000, 0.8000, -1.3000, # FL
+                    -0.0000, 0.8000, -1.3000, # FR
+                     0.0000, 1.0000, -1.3000, # RL
+                    -0.0000, 1.0000, -1.3000] # RR
+  default_joint_angles: [-0., 0.8, -1.3,
+                          0., 0.8, -1.3,
+                         -0.0, 0.8, -1.3,
+                          0.0, 0.8, -1.3]
+  joint_names: ["FL_hip", "FL_thigh", "FL_calf",
+                "FR_hip", "FR_thigh", "FR_calf",
+                "RL_hip", "RL_thigh", "RL_calf",
+                "RR_hip", "RR_thigh", "RR_calf"]
+
