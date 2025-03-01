@@ -41,24 +41,27 @@ enum ROBOT_STATE
     STATE_FALLEN
 };
 
-const std::vector<std::string> joint_names = {
-    "FR_hip", "FR_thigh", "FR_calf",
-    "FL_hip", "FL_thigh", "FL_calf",
-    "RR_hip", "RR_thigh", "RR_calf",
-    "RL_hip", "RL_thigh", "RL_calf"};
+Agent agent;
 
-const std::vector<double> default_joint_angles = {
-    -0., 0.8, -1.3,
-    0., 0.8, -1.3,
-    -0.0, 0.8, -1.3,
-    0.0, 0.8, -1.3};
+// const std::vector<std::string> joint_names = {
+//     "FR_hip", "FR_thigh", "FR_calf",
+//     "FL_hip", "FL_thigh", "FL_calf",
+//     "RR_hip", "RR_thigh", "RR_calf",
+//     "RL_hip", "RL_thigh", "RL_calf"};
+const std::vector<std::string> joint_names = agent.params.joint_names;
+
+const std::vector<float> default_joint_angles = agent.params.default_joint_angles;
+    // -0., 0.8, -1.3,
+    // 0., 0.8, -1.3,
+    // -0.0, 0.8, -1.3,
+    // 0.0, 0.8, -1.3};
 
 const std::vector<int> net2joint_indexes = {
     3, 4, 5,
     0, 1, 2,
     9, 10, 11,
     6, 7, 8};
-
+// Я бы убрал это 
 const std::vector<double> stiffness = {
     20., 20., 20.,
     20., 20., 20.,
@@ -71,15 +74,16 @@ const std::vector<double> damping = {
     0.5, 0.5, 0.5,
     0.5, 0.5, 0.5};
 
+//
+
 const std::vector<std::string> urdf_feet_names = {"FR_foot", "FL_foot", "RR_foot", "RL_foot"};
 
-Agent agent;
 
 
 std::map<std::string, std::string> model_paths = {
             { "trotting", "/home/a/ros2_ws/src/unitree_rl_controller/weights/noise_batchsize_feetContact_go1.pt"},
             { "gallop", "/home/a/ros2_ws/src/unitree_rl_controller/weights/policy_gallop_v21_10.pt"}
-        };
+        }; // add my learn model
 
 double jointLinearInterpolation(double initPos, double targetPos, double rate)
 {
@@ -98,7 +102,7 @@ void update_dof_state(const ros2_unitree_legged_msgs::msg::LowState &state, Agen
     }
 }
 
-void update_commands(const geometry_msgs::msg::Twist commands)
+void update_commands(const geometry_msgs::msg::Twist commands) // В новом коде это не будет использоваться 
     {
         agent.commands.index({0}) = commands.linear.x;
         agent.commands.index({1}) = commands.linear.y;
@@ -246,17 +250,17 @@ int main(int argc, char **argv)
             imu_state_filter.angular_velocity.z = low_state_ros.imu.gyroscope[2];
             pub_imu_filter->publish(imu_state_filter);
 
-            agent.base_linear_acceleration.index({0}) = acc_filter[0];
-            agent.base_linear_acceleration.index({1}) = acc_filter[1];
-            agent.base_linear_acceleration.index({2}) = acc_filter[2];
+            agent.lin_vel.index({0}) = acc_filter[0];
+            agent.lin_vel.index({1}) = acc_filter[1];
+            agent.lin_vel.index({2}) = acc_filter[2];
 
-            agent.base_angular_velocity.index({0}) = low_state_ros.imu.gyroscope[0];
-            agent.base_angular_velocity.index({1}) = low_state_ros.imu.gyroscope[1];
-            agent.base_angular_velocity.index({2}) = low_state_ros.imu.gyroscope[2];
-            agent.orientation.index({0}) = low_state_ros.imu.quaternion[1];
-            agent.orientation.index({1}) = low_state_ros.imu.quaternion[2];
-            agent.orientation.index({2}) = low_state_ros.imu.quaternion[3];
-            agent.orientation.index({3}) = low_state_ros.imu.quaternion[0];
+            agent.ang_vel.index({0}) = low_state_ros.imu.gyroscope[0];
+            agent.ang_vel.index({1}) = low_state_ros.imu.gyroscope[1];
+            agent.ang_vel.index({2}) = low_state_ros.imu.gyroscope[2];
+            agent.base_quat.index({0}) = low_state_ros.imu.quaternion[1];
+            agent.base_quat.index({1}) = low_state_ros.imu.quaternion[2];
+            agent.base_quat.index({2}) = low_state_ros.imu.quaternion[3];
+            agent.base_quat.index({3}) = low_state_ros.imu.quaternion[0];
 
             std::vector<geometry_msgs::msg::WrenchStamped> feet_forces;
             for (size_t k = 0; k < 4; k++)
@@ -333,7 +337,7 @@ int main(int argc, char **argv)
                     if (motiontime % (rate_value / net_rate_value) == 0)
                     {
                         auto actions = agent.act();
-                        if (agent.projected_gravity.index({2}).item().to<double>() >= -0.7)
+                        if (agent.gravity_vec.index({2}).item().to<double>() >= -0.7)
                             robot_state = STATE_FALLEN;
                         else if (robot_state == STATE_FALLEN)
                             robot_state = STATE_WAITING;
