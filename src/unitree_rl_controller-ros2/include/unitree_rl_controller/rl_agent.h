@@ -72,9 +72,9 @@ class Agent
 {
 
     private:
-        torch::Tensor _previous_actions = torch::zeros({12});
+       // torch::Tensor _previous_actions = torch::zeros({12});
         torch::jit::script::Module module;
-        std::map<std::string, torch::jit::script::Module> module_dict;
+      //  std::map<std::string, torch::jit::script::Module> module_dict;
         torch::Tensor get_observations();
         //Scales scales = Scales();
 
@@ -84,10 +84,10 @@ class Agent
         Observations obs;
         //Agent();
         bool load_model(std::string model_path);
-        bool load_model_dict(std::map<std::string, std::string> model_paths);
+       // bool load_model_dict(std::map<std::string, std::string> model_paths);
         torch::Tensor act();
         //void set_scales();
-        std::string mode; 
+       // std::string mode; 
         //std::map<std::string, Actuator> joints;
         // torch::Tensor dof_pos;
         // torch::Tensor dof_vel;
@@ -103,7 +103,7 @@ class Agent
         // yaml params
 
         // rl module
-        torch::jit::script::Module model;
+        //torch::jit::script::Module model;
         // observation buffer
         torch::Tensor lin_vel;           
         torch::Tensor ang_vel;      

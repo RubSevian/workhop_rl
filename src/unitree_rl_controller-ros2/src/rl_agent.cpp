@@ -37,18 +37,18 @@ bool Agent::load_model(std::string model_path)
     return true;
 }
 
-bool Agent::load_model_dict(std::map<std::string, std::string> model_paths)
-{
-    try {
-        for (const auto& [k, v] : model_paths) {
-            module_dict[k] = torch::jit::load(v);
-        }
-    }
-    catch (const c10::Error& e) {
-        return false;
-    }
-    return true;
-}
+// bool Agent::load_model_dict(std::map<std::string, std::string> model_paths)
+// {
+//     try {
+//         for (const auto& [k, v] : model_paths) {
+//             module_dict[k] = torch::jit::load(v);
+//         }
+//     }
+//     catch (const c10::Error& e) {
+//         return false;
+//     }
+//     return true;
+// }
 
 // torch::Tensor Agent::get_observations()
 // {
@@ -69,18 +69,17 @@ bool Agent::load_model_dict(std::map<std::string, std::string> model_paths)
 
 torch::Tensor Agent::act()
 {
-    torch::Tensor observations = ComputeObservation();
-    // std::cout << "GRAVITY: " << projected_gravity << std::endl;
-    // Create a vector of inputs.
-    // 2. Создаём входной вектор для модели
-    std::vector<torch::jit::IValue> inputs;
-    inputs.push_back(observations);
+    // torch::Tensor observations = ComputeObservation();
+    // // std::cout << "GRAVITY: " << projected_gravity << std::endl;
+    // // Create a vector of inputs.
+    // // 2. Создаём входной вектор для модели
+    // std::vector<torch::jit::IValue> inputs;
+    // inputs.push_back(observations);
 
-    // 3. Запускаем модель и получаем выходной тензор
-    torch::Tensor actions = model.forward(inputs).toTensor();
+    torch::Tensor actions = this->Forward();
 
-    // 4. Сохраняем действия для последующего использования
-    _previous_actions = actions;
+    // // 4. Сохраняем действия для последующего использования
+    // _previous_actions = actions;
 
     // 5. Масштабируем выходные действия
     actions *= this->params.action_scale;
@@ -92,10 +91,10 @@ torch::Tensor Agent::act()
     }
 
     // 7. Вычисляем крутящие моменты и  позиции суставов
-    output_torques = this->ComputeTorques(actions);
+    //output_torques = this->ComputeTorques(actions);
     output_dof_pos = this->ComputePosition(actions);
 
-    return actions;
+    return output_dof_pos;
 
     // Execute the model and turn its output into a tensor.
     // std::cout << "mode " << mode << std::endl;
@@ -226,7 +225,8 @@ torch::Tensor Agent::Forward()
 
     torch::Tensor actor_input = torch::cat({obs}, 1);
 
-    torch::Tensor action = this->model.forward({actor_input}).toTensor();
+    //torch::Tensor action = this->model.forward({actor_input}).toTensor();
+    torch::Tensor action = this->module.forward({actor_input}).toTensor();
 
     this->obs.actions = action;
     torch::Tensor clamped = torch::clamp(action, -this->params.clip_actions, this->params.clip_actions);

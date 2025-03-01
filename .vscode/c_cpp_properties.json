@@ -1,0 +1,24 @@
+{
+  "configurations": [
+    {
+      "browse": {
+        "databaseFilename": "${default}",
+        "limitSymbolsToIncludedHeaders": false
+      },
+      "includePath": [
+        "/home/ruben/workhop_rl/install/unitree_rl_controller/include/**",
+        "/home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/include/**",
+        "/opt/ros/humble/include/**",
+        "/home/ruben/workhop_rl/src/unitree_rl_controller-ros2/include/**",
+        "/home/ruben/workhop_rl/src/unitree_ros2_to_real/include/**",
+        "/usr/include/**"
+      ],
+      "name": "ROS",
+      "intelliSenseMode": "gcc-x64",
+      "compilerPath": "/usr/bin/gcc",
+      "cStandard": "gnu11",
+      "cppStandard": "c++14"
+    }
+  ],
+  "version": 4
+}

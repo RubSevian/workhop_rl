@@ -80,10 +80,7 @@ const std::vector<std::string> urdf_feet_names = {"FR_foot", "FL_foot", "RR_foot
 
 
 
-std::map<std::string, std::string> model_paths = {
-            { "trotting", "/home/a/ros2_ws/src/unitree_rl_controller/weights/noise_batchsize_feetContact_go1.pt"},
-            { "gallop", "/home/a/ros2_ws/src/unitree_rl_controller/weights/policy_gallop_v21_10.pt"}
-        }; // add my learn model
+std::string model_path = {"/home/a/ros2_ws/src/unitree_rl_controller/weights/policy_gallop_v21_10.pt"}; // add my learn model
 
 double jointLinearInterpolation(double initPos, double targetPos, double rate)
 {
@@ -165,7 +162,7 @@ int main(int argc, char **argv)
 
     auto pub = node->create_publisher<ros2_unitree_legged_msgs::msg::LowCmd>("low_cmd", 1000);
 
-    if (!agent.load_model_dict(model_paths))
+    if (!agent.load_model(model_path))
         RCLCPP_ERROR(node->get_logger(), "Error loading the model\n");
     else
         RCLCPP_INFO(node->get_logger(), "Model loaded successfully\n");
@@ -364,7 +361,7 @@ int main(int argc, char **argv)
                     
                         for (size_t k = 0; k < 12; k++)
                         {
-                            qDes[k] = default_joint_angles[k] + actions.index({net2joint_indexes[k]}).item().to<double>();
+                            qDes[k] = default_joint_angles[k] + actions.index({net2joint_indexes[k]}).item().to<double>(); // Подправить под output_dof_pose
                             // qDes[k] = default_joint_angles[k];
                       
                         }
