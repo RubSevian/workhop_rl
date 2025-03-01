@@ -1,0 +1,6 @@
+[submodule "unitree_legged_sdk"]
+	path = unitree_legged_sdk
+	url = https://wavegit.mipt.ru/litvinenkov/unitree_legged_sdk.git
+
+
+
