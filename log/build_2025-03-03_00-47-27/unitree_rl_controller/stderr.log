@@ -1,0 +1,21 @@
+In file included from [01m[K/home/ruben/workhop_rl/src/unitree_rl_controller-ros2/src/rl_agent.cpp:2[m[K:
+[01m[K/home/ruben/workhop_rl/src/unitree_rl_controller-ros2/include/unitree_rl_controller/rl_agent.h:50:29:[m[K [01;31m[Kerror: [m[Kinvalid declarator before ‘[01m[Khip_scale_reduction_indices[m[K’
+   50 |     double std::vector<int> [01;31m[Khip_scale_reduction_indices[m[K;
+      |                             [01;31m[K^~~~~~~~~~~~~~~~~~~~~~~~~~~[m[K
+[01m[K/home/ruben/workhop_rl/src/unitree_rl_controller-ros2/src/rl_agent.cpp:[m[K In member function ‘[01m[Kat::Tensor Agent::act()[m[K’:
+[01m[K/home/ruben/workhop_rl/src/unitree_rl_controller-ros2/src/rl_agent.cpp:88:31:[m[K [01;31m[Kerror: [m[K‘[01m[Kstruct ModelParams[m[K’ has no member named ‘[01m[Khip_scale_reduction_indices[m[K’
+   88 |     for (int i : this->params.[01;31m[Khip_scale_reduction_indices[m[K)
+      |                               [01;31m[K^~~~~~~~~~~~~~~~~~~~~~~~~~~[m[K
+[01m[K/home/ruben/workhop_rl/src/unitree_rl_controller-ros2/src/rl_agent.cpp:90:39:[m[K [01;31m[Kerror: [m[K‘[01m[Kstruct ModelParams[m[K’ has no member named ‘[01m[Khip_scale_reduction[m[K’
+   90 |         actions[0][i] *= this->params.[01;31m[Khip_scale_reduction[m[K;
+      |                                       [01;31m[K^~~~~~~~~~~~~~~~~~~[m[K
+[01m[K/home/ruben/workhop_rl/src/unitree_rl_controller-ros2/src/rl_agent.cpp:[m[K In member function ‘[01m[Kvoid Agent::ReadYaml(std::string)[m[K’:
+[01m[K/home/ruben/workhop_rl/src/unitree_rl_controller-ros2/src/rl_agent.cpp:287:18:[m[K [01;31m[Kerror: [m[K‘[01m[Kstruct ModelParams[m[K’ has no member named ‘[01m[Khip_scale_reduction[m[K’
+  287 |     this->params.[01;31m[Khip_scale_reduction[m[K = config["hip_scale_reduction"].as<double>();
+      |                  [01;31m[K^~~~~~~~~~~~~~~~~~~[m[K
+[01m[K/home/ruben/workhop_rl/src/unitree_rl_controller-ros2/src/rl_agent.cpp:288:18:[m[K [01;31m[Kerror: [m[K‘[01m[Kstruct ModelParams[m[K’ has no member named ‘[01m[Khip_scale_reduction_indices[m[K’
+  288 |     this->params.[01;31m[Khip_scale_reduction_indices[m[K = ReadVectorFromYaml<int>(config["hip_scale_reduction_indices"]);
+      |                  [01;31m[K^~~~~~~~~~~~~~~~~~~~~~~~~~~[m[K
+gmake[2]: *** [CMakeFiles/unitree_rl_controller.dir/build.make:76: CMakeFiles/unitree_rl_controller.dir/src/rl_agent.cpp.o] Error 1
+gmake[1]: *** [CMakeFiles/Makefile2:137: CMakeFiles/unitree_rl_controller.dir/all] Error 2
+gmake: *** [Makefile:146: all] Error 2

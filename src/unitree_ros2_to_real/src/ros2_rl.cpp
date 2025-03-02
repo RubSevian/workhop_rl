@@ -23,6 +23,7 @@
 
 #define DIMENSION 3
 
+#define ROBOT_NAME "go1"
 
 using namespace UNITREE_LEGGED_SDK;
 
@@ -41,21 +42,21 @@ enum ROBOT_STATE
     STATE_FALLEN
 };
 
-Agent agent;
-
 // const std::vector<std::string> joint_names = {
 //     "FR_hip", "FR_thigh", "FR_calf",
 //     "FL_hip", "FL_thigh", "FL_calf",
 //     "RR_hip", "RR_thigh", "RR_calf",
 //     "RL_hip", "RL_thigh", "RL_calf"};
-const std::vector<std::string> joint_names = agent.params.joint_names;
+// const std::vector<std::string> joint_names = agent.params.joint_names;
 
-const std::vector<float> default_joint_angles = agent.params.default_joint_angles;
+// const std::vector<float> default_joint_angles = this->params.default_joint_angles;
     // -0., 0.8, -1.3,
     // 0., 0.8, -1.3,
     // -0.0, 0.8, -1.3,
     // 0.0, 0.8, -1.3};
-
+// Глобальные константы (теперь инициализируются позже)
+std::vector<std::string> joint_names;
+std::vector<double> default_joint_angles;
 const std::vector<int> net2joint_indexes = {
     3, 4, 5,
     0, 1, 2,
@@ -99,15 +100,19 @@ void update_dof_state(const ros2_unitree_legged_msgs::msg::LowState &state, Agen
     }
 }
 
-void update_commands(const geometry_msgs::msg::Twist commands) // В новом коде это не будет использоваться 
-    {
-        agent.commands.index({0}) = commands.linear.x;
-        agent.commands.index({1}) = commands.linear.y;
-        agent.commands.index({2}) = commands.angular.z;
-    }
+void update_commands(const geometry_msgs::msg::Twist& commands, Agent& agent) {
+    agent.commands.index({0}) = commands.linear.x;
+    agent.commands.index({1}) = commands.linear.y;
+    agent.commands.index({2}) = commands.angular.z;
+}
 
 int main(int argc, char **argv)
 {
+    Agent agent;
+    agent.ReadYaml(ROBOT_NAME);
+    joint_names = agent.params.joint_names;
+    default_joint_angles = agent.params.default_joint_angles;
+
     rclcpp::init(argc, argv);
 
     std::cout << "Communication level is set to LOW-level." << std::endl
@@ -133,6 +138,8 @@ int main(int argc, char **argv)
     float qDes[12] = {0};
     float Kp[12] = {0};
     float Kd[12] = {0};
+
+    void update_commands(const geometry_msgs::msg::Twist& commands, Agent& agent);
 
     ros2_unitree_legged_msgs::msg::LowCmd low_cmd_ros;
     ros2_unitree_legged_msgs::msg::LowState low_state_ros;
@@ -169,7 +176,14 @@ int main(int argc, char **argv)
 
 
     rclcpp::Subscription<geometry_msgs::msg::Twist>::SharedPtr commands_sub;
-    commands_sub = node->create_subscription<geometry_msgs::msg::Twist>("/cmd_vel", 10, std::bind(update_commands, std::placeholders::_1));
+    //commands_sub = node->create_subscription<geometry_msgs::msg::Twist>("/cmd_vel", 10, std::bind(update_commands, std::placeholders::_1 , std::ref(agent)));
+
+    commands_sub = node->create_subscription<geometry_msgs::msg::Twist>(
+        "/cmd_vel", 10,
+        [ &agent](const geometry_msgs::msg::Twist::SharedPtr msg) {
+            update_commands(*msg, agent);
+        });
+
 
     bool initiated_flag = false; // initiate need time
     int count = 0;
@@ -339,24 +353,19 @@ int main(int argc, char **argv)
                         else if (robot_state == STATE_FALLEN)
                             robot_state = STATE_WAITING;
                         fallen_pause_time = motiontime;
-
+                
                         if (robot_state == STATE_WAITING && (motiontime - fallen_pause_time > 1000))
                             robot_state = STATE_READY;
-
-                        if (robot_state == STATE_FALLEN)
-                            actions = torch::tensor({0.,
-                                                     0.,
-                                                     0.,
-                                                     0.,
-                                                     0.,
-                                                     0.,
-                                                     0.,
-                                                     0.,
-                                                     0.,
-                                                     0.,
-                                                     0.,
-                                                     -0.});
-
+                
+                        if (robot_state == STATE_FALLEN) {
+                            actions = torch::zeros({1, 12});
+                
+                            // Заполняем значениями, если нужно
+                            // for (int i = 0; i < 12; ++i) {
+                            //     actions[0][i] = 0.0; // Или любое другое значение
+                            // }
+                        }
+                
                         std::cout << "actions " << actions << std::endl;
                     
                         for (size_t k = 0; k < 12; k++)

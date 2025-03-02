@@ -1,0 +1,41 @@
+[0.007s] Invoking command in '/home/ruben/workhop_rl/build/unitree_legged_real': CMAKE_PREFIX_PATH=/home/ruben/workhop_rl/install/unitree_rl_controller:/home/ruben/workhop_rl/install/ros2_unitree_legged_msgs:/home/ruben/workhop_rl/install/unitree_legged_real:/opt/ros/humble LD_LIBRARY_PATH=/home/ruben/workhop_rl/install/unitree_rl_controller/lib:/home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/lib:/home/ruben/workhop_rl/install/unitree_legged_real/lib:/usr/lib/x86_64-linux-gnu/gazebo-11/plugins:/opt/ros/humble/opt/rviz_ogre_vendor/lib:/opt/ros/humble/lib/x86_64-linux-gnu:/opt/ros/humble/lib:/usr/local/cuda-12.6/lib64:/home/ruben/workhop_rl/src/libtorch/lib/ /usr/bin/cmake --build /home/ruben/workhop_rl/build/unitree_legged_real -- -j20 -l20
+[0.030s] [35m[1mConsolidate compiler generated dependencies of target ros2_walk_example[0m
+[0.030s] [35m[1mConsolidate compiler generated dependencies of target lcm_server[0m
+[0.032s] [35m[1mConsolidate compiler generated dependencies of target ros2_position_example[0m
+[0.032s] [35m[1mConsolidate compiler generated dependencies of target ros2_test[0m
+[0.033s] [35m[1mConsolidate compiler generated dependencies of target ros2_rl[0m
+[0.038s] [ 20%] Built target lcm_server
+[0.042s] [ 40%] Built target ros2_walk_example
+[0.042s] [ 60%] Built target ros2_test
+[0.046s] [ 80%] Built target ros2_position_example
+[0.069s] [ 90%] [32mBuilding CXX object CMakeFiles/ros2_rl.dir/src/ros2_rl.cpp.o[0m
+[13.692s] [100%] [32m[1mLinking CXX executable ros2_rl[0m
+[14.101s] [100%] Built target ros2_rl
+[14.108s] Invoked command in '/home/ruben/workhop_rl/build/unitree_legged_real' returned '0': CMAKE_PREFIX_PATH=/home/ruben/workhop_rl/install/unitree_rl_controller:/home/ruben/workhop_rl/install/ros2_unitree_legged_msgs:/home/ruben/workhop_rl/install/unitree_legged_real:/opt/ros/humble LD_LIBRARY_PATH=/home/ruben/workhop_rl/install/unitree_rl_controller/lib:/home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/lib:/home/ruben/workhop_rl/install/unitree_legged_real/lib:/usr/lib/x86_64-linux-gnu/gazebo-11/plugins:/opt/ros/humble/opt/rviz_ogre_vendor/lib:/opt/ros/humble/lib/x86_64-linux-gnu:/opt/ros/humble/lib:/usr/local/cuda-12.6/lib64:/home/ruben/workhop_rl/src/libtorch/lib/ /usr/bin/cmake --build /home/ruben/workhop_rl/build/unitree_legged_real -- -j20 -l20
+[14.109s] Invoking command in '/home/ruben/workhop_rl/build/unitree_legged_real': CMAKE_PREFIX_PATH=/home/ruben/workhop_rl/install/unitree_rl_controller:/home/ruben/workhop_rl/install/ros2_unitree_legged_msgs:/home/ruben/workhop_rl/install/unitree_legged_real:/opt/ros/humble LD_LIBRARY_PATH=/home/ruben/workhop_rl/install/unitree_rl_controller/lib:/home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/lib:/home/ruben/workhop_rl/install/unitree_legged_real/lib:/usr/lib/x86_64-linux-gnu/gazebo-11/plugins:/opt/ros/humble/opt/rviz_ogre_vendor/lib:/opt/ros/humble/lib/x86_64-linux-gnu:/opt/ros/humble/lib:/usr/local/cuda-12.6/lib64:/home/ruben/workhop_rl/src/libtorch/lib/ /usr/bin/cmake --install /home/ruben/workhop_rl/build/unitree_legged_real
+[14.114s] -- Install configuration: ""
+[14.114s] -- Up-to-date: /home/ruben/workhop_rl/install/unitree_legged_real/lib
+[14.114s] -- Up-to-date: /home/ruben/workhop_rl/install/unitree_legged_real/lib/libunitree_legged_sdk_arm64.so
+[14.114s] -- Up-to-date: /home/ruben/workhop_rl/install/unitree_legged_real/lib/libunitree_legged_sdk_amd64.so
+[14.114s] -- Up-to-date: /home/ruben/workhop_rl/install/unitree_legged_real/lib/unitree_legged_real/ros2_walk_example
+[14.114s] -- Up-to-date: /home/ruben/workhop_rl/install/unitree_legged_real/lib/unitree_legged_real/ros2_position_example
+[14.115s] -- Installing: /home/ruben/workhop_rl/install/unitree_legged_real/lib/unitree_legged_real/ros2_rl
+[14.115s] -- Set runtime path of "/home/ruben/workhop_rl/install/unitree_legged_real/lib/unitree_legged_real/ros2_rl" to ""
+[14.115s] -- Up-to-date: /home/ruben/workhop_rl/install/unitree_legged_real/lib/unitree_legged_real/ros2_test
+[14.116s] -- Up-to-date: /home/ruben/workhop_rl/install/unitree_legged_real/lib/unitree_legged_real/lcm_server
+[14.116s] -- Up-to-date: /home/ruben/workhop_rl/install/unitree_legged_real/share/ament_index/resource_index/package_run_dependencies/unitree_legged_real
+[14.116s] -- Up-to-date: /home/ruben/workhop_rl/install/unitree_legged_real/share/ament_index/resource_index/parent_prefix_path/unitree_legged_real
+[14.116s] -- Up-to-date: /home/ruben/workhop_rl/install/unitree_legged_real/share/unitree_legged_real/environment/ament_prefix_path.sh
+[14.116s] -- Up-to-date: /home/ruben/workhop_rl/install/unitree_legged_real/share/unitree_legged_real/environment/ament_prefix_path.dsv
+[14.116s] -- Up-to-date: /home/ruben/workhop_rl/install/unitree_legged_real/share/unitree_legged_real/environment/path.sh
+[14.116s] -- Up-to-date: /home/ruben/workhop_rl/install/unitree_legged_real/share/unitree_legged_real/environment/path.dsv
+[14.116s] -- Up-to-date: /home/ruben/workhop_rl/install/unitree_legged_real/share/unitree_legged_real/local_setup.bash
+[14.116s] -- Up-to-date: /home/ruben/workhop_rl/install/unitree_legged_real/share/unitree_legged_real/local_setup.sh
+[14.116s] -- Up-to-date: /home/ruben/workhop_rl/install/unitree_legged_real/share/unitree_legged_real/local_setup.zsh
+[14.116s] -- Up-to-date: /home/ruben/workhop_rl/install/unitree_legged_real/share/unitree_legged_real/local_setup.dsv
+[14.116s] -- Installing: /home/ruben/workhop_rl/install/unitree_legged_real/share/unitree_legged_real/package.dsv
+[14.116s] -- Up-to-date: /home/ruben/workhop_rl/install/unitree_legged_real/share/ament_index/resource_index/packages/unitree_legged_real
+[14.116s] -- Up-to-date: /home/ruben/workhop_rl/install/unitree_legged_real/share/unitree_legged_real/cmake/unitree_legged_realConfig.cmake
+[14.116s] -- Up-to-date: /home/ruben/workhop_rl/install/unitree_legged_real/share/unitree_legged_real/cmake/unitree_legged_realConfig-version.cmake
+[14.116s] -- Up-to-date: /home/ruben/workhop_rl/install/unitree_legged_real/share/unitree_legged_real/package.xml
+[14.117s] Invoked command in '/home/ruben/workhop_rl/build/unitree_legged_real' returned '0': CMAKE_PREFIX_PATH=/home/ruben/workhop_rl/install/unitree_rl_controller:/home/ruben/workhop_rl/install/ros2_unitree_legged_msgs:/home/ruben/workhop_rl/install/unitree_legged_real:/opt/ros/humble LD_LIBRARY_PATH=/home/ruben/workhop_rl/install/unitree_rl_controller/lib:/home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/lib:/home/ruben/workhop_rl/install/unitree_legged_real/lib:/usr/lib/x86_64-linux-gnu/gazebo-11/plugins:/opt/ros/humble/opt/rviz_ogre_vendor/lib:/opt/ros/humble/lib/x86_64-linux-gnu:/opt/ros/humble/lib:/usr/local/cuda-12.6/lib64:/home/ruben/workhop_rl/src/libtorch/lib/ /usr/bin/cmake --install /home/ruben/workhop_rl/build/unitree_legged_real

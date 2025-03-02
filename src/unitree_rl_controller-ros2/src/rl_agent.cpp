@@ -152,9 +152,15 @@ template<typename T>
 std::vector<T> ReadVectorFromYaml(const YAML::Node& node)
 {
     std::vector<T> values;
-    for(const auto& val : node)
-    {
-        values.push_back(val.as<T>());
+    if (node.IsSequence()) { // Проверяем, что это список
+        for(const auto& val : node)
+        {
+            values.push_back(val.as<T>());
+        }
+    } else {
+        std::cout << "Expected a sequence (list) in YAML, but got something else." << std::endl;
+        // Можно выбросить исключение, чтобы сообщить об ошибке выше
+        // throw YAML::Exception(YAML::Mark(), "Expected a sequence (list).");
     }
     return values;
 }
@@ -163,40 +169,137 @@ void Agent::ReadYaml(std::string robot_name)
 {
     // The config file is located at "rl_sar/src/rl_sar/models/<robot_name>/config.yaml"
    // std::string config_path = std::string(CMAKE_CURRENT_SOURCE_DIR) + "/models/" + robot_name + "/config.yaml";
-   std::string config_path = std::string("/home/ruben/Desktop/ros2_ws/src/unitree_rl_controller-ros2/weights/config.yaml");
-    YAML::Node config;
-    try
-    {
-        config = YAML::LoadFile(config_path)[robot_name];
-    }
-    catch (YAML::BadFile &e)
-    {
-        std::cout << "The file '" << config_path << "' does not exist" << std::endl;
-        return;
-    }
+    //std::string config_path = std::string("/home/ruben/Desktop/ros2_ws/src/unitree_rl_controller-ros2/weights/config.yaml");
+	YAML::Node config;
+	try
+	{
+		config = YAML::LoadFile(CONFIG_PATH)[robot_name];
+	} catch(YAML::BadFile &e)
+	{
 
+		std::cout << "The file '" << CONFIG_PATH << "' does not exist" << std::endl;
+		return;
+	}
+    // try {
+    //     this->params.model_name = config["model_name"].as<std::string>();
+    // } catch (YAML::TypedBadConversion<std::string> &e) {
+    //     std::cout << "Error converting model_name to string: " << e.what() << std::endl;
+    //     throw;
+    // }
+
+    // try {
+    //     this->params.num_observations = config["num_observations"].as<int>();
+    // } catch (YAML::TypedBadConversion<int> &e) {
+    //     std::cout << "Error converting num_observations to int: " << e.what() << std::endl;
+    //     throw;
+    // }
+
+    // try {
+    //     this->params.clip_obs = config["clip_obs"].as<float>();
+    // } catch (YAML::TypedBadConversion<float> &e) {
+    //     std::cout << "Error converting clip_obs to float: " << e.what() << std::endl;
+    //     throw;
+    // }
+
+    // try {
+    //     this->params.clip_actions = config["clip_actions"].as<float>();
+    // } catch (YAML::TypedBadConversion<float> &e) {
+    //     std::cout << "Error converting clip_actions to float: " << e.what() << std::endl;
+    //     throw;
+    // }
+
+    // try {
+    //     this->params.action_scale = config["action_scale"].as<float>();
+    // } catch (YAML::TypedBadConversion<float> &e) {
+    //     std::cout << "Error converting action_scale to float: " << e.what() << std::endl;
+    //     throw;
+    // }
+
+    // try {
+    //     this->params.hip_scale_reduction = config["hip_scale_reduction"].as<float>();
+    // } catch (YAML::TypedBadConversion<float> &e) {
+    //     std::cout << "Error converting hip_scale_reduction to float: " << e.what() << std::endl;
+    //     throw;
+    // }
+
+    // try {
+    //     this->params.hip_scale_reduction_indices = ReadVectorFromYaml<int>(config["hip_scale_reduction_indices"]);
+    // } catch (YAML::TypedBadConversion<int> &e) {
+    //     std::cout << "Error converting hip_scale_reduction_indices to int: " << e.what() << std::endl;
+    //     throw;
+    // } catch (YAML::Exception &e) {
+    //     std::cout << "Error reading hip_scale_reduction_indices: " << e.what() << std::endl;
+    //     throw;
+    // }
+
+    // try {
+    //     this->params.num_of_dofs = config["num_of_dofs"].as<int>();
+    // } catch (YAML::TypedBadConversion<int> &e) {
+    //     std::cout << "Error converting num_of_dofs to int: " << e.what() << std::endl;
+    //     throw;
+    // }
+
+    // try {
+    //     this->params.lin_vel_scale = config["lin_vel_scale"].as<float>();
+    // } catch (YAML::TypedBadConversion<double> &e) {
+    //     std::cout << "Error converting lin_vel_scale to double: " << e.what() << std::endl; // first
+    //     throw;
+    // }
+
+    // try {
+    //     this->params.ang_vel_scale = config["ang_vel_scale"].as<float>();
+    // } catch (YAML::TypedBadConversion<float> &e) {
+    //     std::cout << "Error converting ang_vel_scale to float: " << e.what() << std::endl;
+    //     throw;
+    // }
+
+    // try {
+    //     this->params.dof_pos_scale = config["dof_pos_scale"].as<float>();
+    // } catch (YAML::TypedBadConversion<float> &e) {
+    //     std::cout << "Error converting dof_pos_scale to float: " << e.what() << std::endl;
+    //     throw;
+    // }
+
+    // try {
+    //     this->params.dof_vel_scale = config["dof_vel_scale"].as<float>();
+    // } catch (YAML::TypedBadConversion<float> &e) {
+    //     std::cout << "Error converting dof_vel_scale to float: " << e.what() << std::endl;
+    //     throw;
+    // }
+    //  try {
+    //     this->params.default_joint_angles = ReadVectorFromYaml<float>(config["default_joint_angles"]);
+    // } catch (YAML::Exception &e) {
+    //     std::cout << "Error reading default_joint_angles: " << e.what() << std::endl;
+    //     throw;
+    // }
+    // try {
+    //    this->params.joint_names = ReadVectorFromYaml<std::string>(config["joint_names"]);
+    // } catch (YAML::Exception &e) {
+    //     std::cout << "Error reading joint_names: " << e.what() << std::endl;
+    //     throw;
+    // }
     this->params.model_name = config["model_name"].as<std::string>();
     //this->params.framework = config["framework"].as<std::string>();
     this->params.num_observations = config["num_observations"].as<int>();
-    this->params.clip_obs = config["clip_obs"].as<float>();
-    this->params.clip_actions = config["clip_actions"].as<float>();
-    this->params.action_scale = config["action_scale"].as<float>();
-    this->params.hip_scale_reduction = config["hip_scale_reduction"].as<float>();
+    this->params.clip_obs = config["clip_obs"].as<double>();
+    this->params.clip_actions = config["clip_actions"].as<double>();
+    this->params.action_scale = config["action_scale"].as<double>();
+    this->params.hip_scale_reduction = config["hip_scale_reduction"].as<double>();
     this->params.hip_scale_reduction_indices = ReadVectorFromYaml<int>(config["hip_scale_reduction_indices"]);
     this->params.num_of_dofs = config["num_of_dofs"].as<int>();
-    this->params.lin_vel_scale = config["lin_vel_scale"].as<double>();
-    this->params.ang_vel_scale = config["ang_vel_scale"].as<float>();
-    this->params.dof_pos_scale = config["dof_pos_scale"].as<float>();
-    this->params.dof_vel_scale = config["dof_vel_scale"].as<float>();
+    this->params.lin_vel_scale = config["lin_vel_scale"].as<double>();//1
+    this->params.ang_vel_scale = config["ang_vel_scale"].as<double>();
+    this->params.dof_pos_scale = config["dof_pos_scale"].as<double>();
+    this->params.dof_vel_scale = config["dof_vel_scale"].as<double>();
     // this->params.commands_scale = torch::tensor(ReadVectorFromYaml<double>(config["commands_scale"])).view({1, -1});
     this->params.commands_scale = torch::tensor({this->params.lin_vel_scale, this->params.lin_vel_scale, this->params.ang_vel_scale});
-    this->params.rl_kp = torch::tensor(ReadVectorFromYaml<float>(config["rl_kp"])).view({1, -1});
-    this->params.rl_kd = torch::tensor(ReadVectorFromYaml<float>(config["rl_kd"])).view({1, -1});
+    this->params.rl_kp = torch::tensor(ReadVectorFromYaml<double>(config["rl_kp"])).view({1, -1});
+    this->params.rl_kd = torch::tensor(ReadVectorFromYaml<double>(config["rl_kd"])).view({1, -1});
     //this->params.fixed_kp = torch::tensor(ReadVectorFromYaml<double>(config["fixed_kp"], this->params.framework, rows, cols)).view({1, -1});
     //this->params.fixed_kd = torch::tensor(ReadVectorFromYaml<double>(config["fixed_kd"], this->params.framework, rows, cols)).view({1, -1});
-    this->params.torque_limits = torch::tensor(ReadVectorFromYaml<float>(config["torque_limits"])).view({1, -1});
-    this->params.default_dof_pos = torch::tensor(ReadVectorFromYaml<float>(config["default_dof_pos"])).view({1, -1});
-    this->params.default_joint_angles = ReadVectorFromYaml<float>(config["default_joint_angles"]);
+    this->params.torque_limits = torch::tensor(ReadVectorFromYaml<double>(config["torque_limits"])).view({1, -1});
+    this->params.default_dof_pos = torch::tensor(ReadVectorFromYaml<double>(config["default_dof_pos"])).view({1, -1});
+    this->params.default_joint_angles = ReadVectorFromYaml<double>(config["default_joint_angles"]);
     this->params.joint_names = ReadVectorFromYaml<std::string>(config["joint_names"]);
 }
 
@@ -214,8 +317,6 @@ torch::Tensor Agent::ComputeObservation()
     obs = torch::clamp(obs, -this->params.clip_obs, this->params.clip_obs);
 
     printf("observation size: %lld, %lld\n", (long long)obs.sizes()[0], (long long)obs.sizes()[1]);
-
-
     return obs;
 }
 

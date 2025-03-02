@@ -1,0 +1,4 @@
+source;share/ros2_unitree_legged_msgs/environment/ament_prefix_path.sh
+source;share/ros2_unitree_legged_msgs/environment/library_path.sh
+source;share/ros2_unitree_legged_msgs/environment/path.sh
+source;share/ros2_unitree_legged_msgs/environment/pythonpath.sh

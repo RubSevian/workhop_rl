@@ -1,0 +1,25 @@
+[0.005s] Invoking command in '/home/ruben/workhop_rl/build/unitree_rl_controller': CMAKE_PREFIX_PATH=/home/ruben/workhop_rl/install/ros2_unitree_legged_msgs:/home/ruben/workhop_rl/install/unitree_legged_real:/home/ruben/workhop_rl/install/unitree_rl_controller:/opt/ros/humble LD_LIBRARY_PATH=/home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/lib:/home/ruben/workhop_rl/install/unitree_legged_real/lib:/home/ruben/workhop_rl/install/unitree_rl_controller/lib:/usr/lib/x86_64-linux-gnu/gazebo-11/plugins:/opt/ros/humble/opt/rviz_ogre_vendor/lib:/opt/ros/humble/lib/x86_64-linux-gnu:/opt/ros/humble/lib:/usr/local/cuda-12.6/lib64:/home/ruben/workhop_rl/src/libtorch/lib/ /usr/bin/cmake --build /home/ruben/workhop_rl/build/unitree_rl_controller -- -j20 -l20
+[0.039s] [35m[1mConsolidate compiler generated dependencies of target unitree_rl_controller[0m
+[0.069s] [ 50%] [32mBuilding CXX object CMakeFiles/unitree_rl_controller.dir/src/rl_agent.cpp.o[0m
+[3.931s] In file included from [01m[K/home/ruben/workhop_rl/src/unitree_rl_controller-ros2/src/rl_agent.cpp:2[m[K:
+[3.931s] [01m[K/home/ruben/workhop_rl/src/unitree_rl_controller-ros2/include/unitree_rl_controller/rl_agent.h:50:29:[m[K [01;31m[Kerror: [m[Kinvalid declarator before ‘[01m[Khip_scale_reduction_indices[m[K’
+[3.931s]    50 |     double std::vector<int> [01;31m[Khip_scale_reduction_indices[m[K;
+[3.931s]       |                             [01;31m[K^~~~~~~~~~~~~~~~~~~~~~~~~~~[m[K
+[3.933s] [01m[K/home/ruben/workhop_rl/src/unitree_rl_controller-ros2/src/rl_agent.cpp:[m[K In member function ‘[01m[Kat::Tensor Agent::act()[m[K’:
+[3.933s] [01m[K/home/ruben/workhop_rl/src/unitree_rl_controller-ros2/src/rl_agent.cpp:88:31:[m[K [01;31m[Kerror: [m[K‘[01m[Kstruct ModelParams[m[K’ has no member named ‘[01m[Khip_scale_reduction_indices[m[K’
+[3.933s]    88 |     for (int i : this->params.[01;31m[Khip_scale_reduction_indices[m[K)
+[3.933s]       |                               [01;31m[K^~~~~~~~~~~~~~~~~~~~~~~~~~~[m[K
+[3.933s] [01m[K/home/ruben/workhop_rl/src/unitree_rl_controller-ros2/src/rl_agent.cpp:90:39:[m[K [01;31m[Kerror: [m[K‘[01m[Kstruct ModelParams[m[K’ has no member named ‘[01m[Khip_scale_reduction[m[K’
+[3.933s]    90 |         actions[0][i] *= this->params.[01;31m[Khip_scale_reduction[m[K;
+[3.933s]       |                                       [01;31m[K^~~~~~~~~~~~~~~~~~~[m[K
+[3.935s] [01m[K/home/ruben/workhop_rl/src/unitree_rl_controller-ros2/src/rl_agent.cpp:[m[K In member function ‘[01m[Kvoid Agent::ReadYaml(std::string)[m[K’:
+[3.935s] [01m[K/home/ruben/workhop_rl/src/unitree_rl_controller-ros2/src/rl_agent.cpp:287:18:[m[K [01;31m[Kerror: [m[K‘[01m[Kstruct ModelParams[m[K’ has no member named ‘[01m[Khip_scale_reduction[m[K’
+[3.935s]   287 |     this->params.[01;31m[Khip_scale_reduction[m[K = config["hip_scale_reduction"].as<double>();
+[3.935s]       |                  [01;31m[K^~~~~~~~~~~~~~~~~~~[m[K
+[3.935s] [01m[K/home/ruben/workhop_rl/src/unitree_rl_controller-ros2/src/rl_agent.cpp:288:18:[m[K [01;31m[Kerror: [m[K‘[01m[Kstruct ModelParams[m[K’ has no member named ‘[01m[Khip_scale_reduction_indices[m[K’
+[3.935s]   288 |     this->params.[01;31m[Khip_scale_reduction_indices[m[K = ReadVectorFromYaml<int>(config["hip_scale_reduction_indices"]);
+[3.935s]       |                  [01;31m[K^~~~~~~~~~~~~~~~~~~~~~~~~~~[m[K
+[5.626s] gmake[2]: *** [CMakeFiles/unitree_rl_controller.dir/build.make:76: CMakeFiles/unitree_rl_controller.dir/src/rl_agent.cpp.o] Error 1
+[5.626s] gmake[1]: *** [CMakeFiles/Makefile2:137: CMakeFiles/unitree_rl_controller.dir/all] Error 2
+[5.626s] gmake: *** [Makefile:146: all] Error 2
+[5.628s] Invoked command in '/home/ruben/workhop_rl/build/unitree_rl_controller' returned '2': CMAKE_PREFIX_PATH=/home/ruben/workhop_rl/install/ros2_unitree_legged_msgs:/home/ruben/workhop_rl/install/unitree_legged_real:/home/ruben/workhop_rl/install/unitree_rl_controller:/opt/ros/humble LD_LIBRARY_PATH=/home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/lib:/home/ruben/workhop_rl/install/unitree_legged_real/lib:/home/ruben/workhop_rl/install/unitree_rl_controller/lib:/usr/lib/x86_64-linux-gnu/gazebo-11/plugins:/opt/ros/humble/opt/rviz_ogre_vendor/lib:/opt/ros/humble/lib/x86_64-linux-gnu:/opt/ros/humble/lib:/usr/local/cuda-12.6/lib64:/home/ruben/workhop_rl/src/libtorch/lib/ /usr/bin/cmake --build /home/ruben/workhop_rl/build/unitree_rl_controller -- -j20 -l20

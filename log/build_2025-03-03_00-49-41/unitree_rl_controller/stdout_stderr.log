@@ -1,0 +1,15 @@
+[35m[1mConsolidate compiler generated dependencies of target unitree_rl_controller[0m
+[ 50%] [32mBuilding CXX object CMakeFiles/unitree_rl_controller.dir/src/rl_agent.cpp.o[0m
+[01m[K/home/ruben/workhop_rl/src/unitree_rl_controller-ros2/src/rl_agent.cpp:[m[K In member function ‘[01m[Kat::Tensor Agent::act()[m[K’:
+[01m[K/home/ruben/workhop_rl/src/unitree_rl_controller-ros2/src/rl_agent.cpp:90:39:[m[K [01;31m[Kerror: [m[K‘[01m[Kstruct ModelParams[m[K’ has no member named ‘[01m[Khip_scale_reduction[m[K’; did you mean ‘[01m[Khip_scale_reduction_indices[m[K’?
+   90 |         actions[0][i] *= this->params.[01;31m[Khip_scale_reduction[m[K;
+      |                                       [01;31m[K^~~~~~~~~~~~~~~~~~~[m[K
+      |                                       [32m[Khip_scale_reduction_indices[m[K
+[01m[K/home/ruben/workhop_rl/src/unitree_rl_controller-ros2/src/rl_agent.cpp:[m[K In member function ‘[01m[Kvoid Agent::ReadYaml(std::string)[m[K’:
+[01m[K/home/ruben/workhop_rl/src/unitree_rl_controller-ros2/src/rl_agent.cpp:287:18:[m[K [01;31m[Kerror: [m[K‘[01m[Kstruct ModelParams[m[K’ has no member named ‘[01m[Khip_scale_reduction[m[K’; did you mean ‘[01m[Khip_scale_reduction_indices[m[K’?
+  287 |     this->params.[01;31m[Khip_scale_reduction[m[K = config["hip_scale_reduction"].as<double>();
+      |                  [01;31m[K^~~~~~~~~~~~~~~~~~~[m[K
+      |                  [32m[Khip_scale_reduction_indices[m[K
+gmake[2]: *** [CMakeFiles/unitree_rl_controller.dir/build.make:76: CMakeFiles/unitree_rl_controller.dir/src/rl_agent.cpp.o] Error 1
+gmake[1]: *** [CMakeFiles/Makefile2:137: CMakeFiles/unitree_rl_controller.dir/all] Error 2
+gmake: *** [Makefile:146: all] Error 2

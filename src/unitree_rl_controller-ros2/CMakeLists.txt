@@ -33,7 +33,7 @@ include_directories(
 add_library(${PROJECT_NAME} SHARED src/rl_agent.cpp)
 
 # Передаём CONFIG_PATH в компилятор
-target_compile_definitions(${PROJECT_NAME} PRIVATE CONFIG_PATH="\"${CMAKE_CURRENT_SOURCE_DIR}/config.yaml\"")
+#target_compile_definitions(${PROJECT_NAME} PRIVATE CONFIG_PATH="\"${CMAKE_CURRENT_SOURCE_DIR}/config.yaml\"")
 
 # Линкуем с библиотеками
 target_link_libraries(${PROJECT_NAME} ${TORCH_LIBRARIES} yaml-cpp)  # ✅ Добавляем yaml-cpp
