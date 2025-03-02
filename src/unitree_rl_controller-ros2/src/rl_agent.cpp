@@ -180,104 +180,7 @@ void Agent::ReadYaml(std::string robot_name)
 		std::cout << "The file '" << CONFIG_PATH << "' does not exist" << std::endl;
 		return;
 	}
-    // try {
-    //     this->params.model_name = config["model_name"].as<std::string>();
-    // } catch (YAML::TypedBadConversion<std::string> &e) {
-    //     std::cout << "Error converting model_name to string: " << e.what() << std::endl;
-    //     throw;
-    // }
 
-    // try {
-    //     this->params.num_observations = config["num_observations"].as<int>();
-    // } catch (YAML::TypedBadConversion<int> &e) {
-    //     std::cout << "Error converting num_observations to int: " << e.what() << std::endl;
-    //     throw;
-    // }
-
-    // try {
-    //     this->params.clip_obs = config["clip_obs"].as<float>();
-    // } catch (YAML::TypedBadConversion<float> &e) {
-    //     std::cout << "Error converting clip_obs to float: " << e.what() << std::endl;
-    //     throw;
-    // }
-
-    // try {
-    //     this->params.clip_actions = config["clip_actions"].as<float>();
-    // } catch (YAML::TypedBadConversion<float> &e) {
-    //     std::cout << "Error converting clip_actions to float: " << e.what() << std::endl;
-    //     throw;
-    // }
-
-    // try {
-    //     this->params.action_scale = config["action_scale"].as<float>();
-    // } catch (YAML::TypedBadConversion<float> &e) {
-    //     std::cout << "Error converting action_scale to float: " << e.what() << std::endl;
-    //     throw;
-    // }
-
-    // try {
-    //     this->params.hip_scale_reduction = config["hip_scale_reduction"].as<float>();
-    // } catch (YAML::TypedBadConversion<float> &e) {
-    //     std::cout << "Error converting hip_scale_reduction to float: " << e.what() << std::endl;
-    //     throw;
-    // }
-
-    // try {
-    //     this->params.hip_scale_reduction_indices = ReadVectorFromYaml<int>(config["hip_scale_reduction_indices"]);
-    // } catch (YAML::TypedBadConversion<int> &e) {
-    //     std::cout << "Error converting hip_scale_reduction_indices to int: " << e.what() << std::endl;
-    //     throw;
-    // } catch (YAML::Exception &e) {
-    //     std::cout << "Error reading hip_scale_reduction_indices: " << e.what() << std::endl;
-    //     throw;
-    // }
-
-    // try {
-    //     this->params.num_of_dofs = config["num_of_dofs"].as<int>();
-    // } catch (YAML::TypedBadConversion<int> &e) {
-    //     std::cout << "Error converting num_of_dofs to int: " << e.what() << std::endl;
-    //     throw;
-    // }
-
-    // try {
-    //     this->params.lin_vel_scale = config["lin_vel_scale"].as<float>();
-    // } catch (YAML::TypedBadConversion<double> &e) {
-    //     std::cout << "Error converting lin_vel_scale to double: " << e.what() << std::endl; // first
-    //     throw;
-    // }
-
-    // try {
-    //     this->params.ang_vel_scale = config["ang_vel_scale"].as<float>();
-    // } catch (YAML::TypedBadConversion<float> &e) {
-    //     std::cout << "Error converting ang_vel_scale to float: " << e.what() << std::endl;
-    //     throw;
-    // }
-
-    // try {
-    //     this->params.dof_pos_scale = config["dof_pos_scale"].as<float>();
-    // } catch (YAML::TypedBadConversion<float> &e) {
-    //     std::cout << "Error converting dof_pos_scale to float: " << e.what() << std::endl;
-    //     throw;
-    // }
-
-    // try {
-    //     this->params.dof_vel_scale = config["dof_vel_scale"].as<float>();
-    // } catch (YAML::TypedBadConversion<float> &e) {
-    //     std::cout << "Error converting dof_vel_scale to float: " << e.what() << std::endl;
-    //     throw;
-    // }
-    //  try {
-    //     this->params.default_joint_angles = ReadVectorFromYaml<float>(config["default_joint_angles"]);
-    // } catch (YAML::Exception &e) {
-    //     std::cout << "Error reading default_joint_angles: " << e.what() << std::endl;
-    //     throw;
-    // }
-    // try {
-    //    this->params.joint_names = ReadVectorFromYaml<std::string>(config["joint_names"]);
-    // } catch (YAML::Exception &e) {
-    //     std::cout << "Error reading joint_names: " << e.what() << std::endl;
-    //     throw;
-    // }
     this->params.model_name = config["model_name"].as<std::string>();
     //this->params.framework = config["framework"].as<std::string>();
     this->params.num_observations = config["num_observations"].as<int>();
@@ -287,7 +190,7 @@ void Agent::ReadYaml(std::string robot_name)
     this->params.hip_scale_reduction = config["hip_scale_reduction"].as<double>();
     this->params.hip_scale_reduction_indices = ReadVectorFromYaml<int>(config["hip_scale_reduction_indices"]);
     this->params.num_of_dofs = config["num_of_dofs"].as<int>();
-    this->params.lin_vel_scale = config["lin_vel_scale"].as<double>();//1
+    //this->params.lin_vel_scale = config["lin_vel_scale"].as<double>();//1
     this->params.ang_vel_scale = config["ang_vel_scale"].as<double>();
     this->params.dof_pos_scale = config["dof_pos_scale"].as<double>();
     this->params.dof_vel_scale = config["dof_vel_scale"].as<double>();
