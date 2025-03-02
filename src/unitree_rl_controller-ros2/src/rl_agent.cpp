@@ -205,7 +205,7 @@ torch::Tensor Agent::ComputeObservation()
     torch::Tensor obs = torch::cat({//(this->QuatRotateInverse(this->base_quat, this->lin_vel)) * this->params.lin_vel_scale,
                                     (this->quat_rotate_inverse(this->obs.base_quat, this->obs.ang_vel)) * this->params.ang_vel_scale,
                                     this->quat_rotate_inverse(this->obs.base_quat, this->obs.gravity_vec),
-                                    this->obs.commands * this->params.commands_scale,
+                                    //this->obs.commands * this->params.commands_scale,
                                     (this->obs.dof_pos - this->params.default_dof_pos) * this->params.dof_pos_scale,
                                     this->obs.dof_vel * this->params.dof_vel_scale,
                                     this->obs.actions},

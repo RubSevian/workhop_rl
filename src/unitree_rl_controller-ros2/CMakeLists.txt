@@ -20,7 +20,7 @@ find_package(nav_msgs REQUIRED)
 find_package(std_msgs REQUIRED)
 find_package(yaml-cpp REQUIRED)  # ✅ Добавляем поддержку YAML
 
-set(CMAKE_PREFIX_PATH "/home/ruben/Desktop/ros2_ws/src/libtorch/share/cmake/Torch")
+set(CMAKE_PREFIX_PATH "/home/ruben/workhop_rl/src/libtorch/share/cmake/Torch")
 find_package(Torch REQUIRED)
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${TORCH_CXX_FLAGS}")
 

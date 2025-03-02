@@ -1,5 +1,5 @@
 go1:
-  model_name: "model.pt"
+  model_name: "policy_1.pt"
   num_observations: 42  3+3++12+12+12
   clip_obs: 100.0
   clip_actions: 100.0

@@ -87,5 +87,6 @@
         "typeinfo": "cpp",
         "valarray": "cpp",
         "__nullptr": "cpp"
-    }
+    },
+    "ros.distro": "humble"
 }

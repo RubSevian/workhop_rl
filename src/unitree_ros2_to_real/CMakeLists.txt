@@ -9,11 +9,11 @@ find_package(ros2_unitree_legged_msgs REQUIRED)
 find_package(unitree_rl_controller REQUIRED)
 
 
-list(APPEND CMAKE_PREFIX_PATH "/home/ruben/Desktop/ros2_ws/src/libtorch/share/cmake/Torch")
+list(APPEND CMAKE_PREFIX_PATH "/home/ruben/workhop_rl/src/libtorch/share/cmake/Torch")
 find_package(Torch REQUIRED)
 find_library( TORCH_LIBRARIES libtorch_cpu.so libc10.so:
               PATHS
-              /home/ruben/Desktop/ros2_ws/src/libtorch/lib/
+              /home/ruben/workhop_rl/src/libtorch/lib/
               NO_DEFAULT_PATH )
 ## set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${TORCH_CXX_FLAGS}")
 

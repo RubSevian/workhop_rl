@@ -80,7 +80,7 @@ const std::vector<std::string> urdf_feet_names = {"FR_foot", "FL_foot", "RR_foot
 
 
 
-std::string model_path = {"/home/a/ros2_ws/src/unitree_rl_controller/weights/policy_gallop_v21_10.pt"}; // add my learn model
+std::string model_path = {"/home/ruben/workhop_rl/src/unitree_rl_controller-ros2/weights/policy_1.pt"}; // add my learn model
 
 double jointLinearInterpolation(double initPos, double targetPos, double rate)
 {
