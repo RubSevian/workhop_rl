@@ -82,7 +82,7 @@ torch::Tensor Agent::act()
     // _previous_actions = actions;
 
     // 5. Масштабируем выходные действия
-    actions *= this->params.action_scale;
+    // actions *= this->params.action_scale;
 
     // 6. Корректируем действия суставов
     for (int i : this->params.hip_scale_reduction_indices)
@@ -117,10 +117,10 @@ torch::Tensor Agent::act()
 
 void Agent::InitObservations()
 {
-    this->obs.lin_vel = torch::tensor({{0.0, 0.0, 0.0}});
+    //this->obs.lin_vel = torch::tensor({{0.0, 0.0, 0.0}});
     this->obs.ang_vel = torch::tensor({{0.0, 0.0, 0.0}});
     this->obs.gravity_vec = torch::tensor({{0.0, 0.0, -1.0}});
-    this->obs.commands = torch::tensor({{0.0, 0.0, 0.0}});
+    //this->obs.commands = torch::tensor({{0.0, 0.0, 0.0}});
     this->obs.base_quat = torch::tensor({{0.0, 0.0, 0.0, 1.0}});
     this->obs.dof_pos = this->params.default_dof_pos;
     this->obs.dof_vel = torch::tensor({{0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0}});
@@ -195,7 +195,7 @@ void Agent::ReadYaml(std::string robot_name)
     this->params.dof_pos_scale = config["dof_pos_scale"].as<double>();
     this->params.dof_vel_scale = config["dof_vel_scale"].as<double>();
     // this->params.commands_scale = torch::tensor(ReadVectorFromYaml<double>(config["commands_scale"])).view({1, -1});
-    this->params.commands_scale = torch::tensor({this->params.lin_vel_scale, this->params.lin_vel_scale, this->params.ang_vel_scale});
+    //this->params.commands_scale = torch::tensor({this->params.lin_vel_scale, this->params.lin_vel_scale, this->params.ang_vel_scale});
     this->params.rl_kp = torch::tensor(ReadVectorFromYaml<double>(config["rl_kp"])).view({1, -1});
     this->params.rl_kd = torch::tensor(ReadVectorFromYaml<double>(config["rl_kd"])).view({1, -1});
     //this->params.fixed_kp = torch::tensor(ReadVectorFromYaml<double>(config["fixed_kp"], this->params.framework, rows, cols)).view({1, -1});

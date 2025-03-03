@@ -93,23 +93,40 @@ double jointLinearInterpolation(double initPos, double targetPos, double rate)
 
 void update_dof_state(const ros2_unitree_legged_msgs::msg::LowState &state, Agent &agent)
 {
-    for (int i = 0; i < 12; i++)
-    {
-        agent.dof_pos.index({net2joint_indexes[i]}) = state.motor_state[i].q - default_joint_angles[i];
-        agent.dof_vel.index({net2joint_indexes[i]}) = state.motor_state[i].dq;
-    }
+    // Создаем тензоры для dof_pos и dof_vel, перезаписываем их с новыми значениями
+    agent.obs.dof_pos = torch::tensor({
+        {state.motor_state[3].q, state.motor_state[4].q, state.motor_state[5].q,
+         state.motor_state[0].q, state.motor_state[1].q, state.motor_state[2].q,
+         state.motor_state[9].q, state.motor_state[10].q, state.motor_state[11].q,
+         state.motor_state[6].q, state.motor_state[7].q, state.motor_state[8].q}
+    }) - torch::tensor(default_joint_angles);  // Вычитаем default_joint_angles
+
+    agent.obs.dof_vel = torch::tensor({
+        {state.motor_state[3].dq, state.motor_state[4].dq, state.motor_state[5].dq,
+         state.motor_state[0].dq, state.motor_state[1].dq, state.motor_state[2].dq,
+         state.motor_state[9].dq, state.motor_state[10].dq, state.motor_state[11].dq,
+         state.motor_state[6].dq, state.motor_state[7].dq, state.motor_state[8].dq}
+    });
 }
 
-void update_commands(const geometry_msgs::msg::Twist& commands, Agent& agent) {
-    agent.commands.index({0}) = commands.linear.x;
-    agent.commands.index({1}) = commands.linear.y;
-    agent.commands.index({2}) = commands.angular.z;
-}
+// void update_commands(const geometry_msgs::msg::Twist& commands, Agent& agent) {
+//     agent.commands.index({0}) = commands.linear.x;
+//     agent.commands.index({1}) = commands.linear.y;
+//     agent.commands.index({2}) = commands.angular.z;
+// }
 
 int main(int argc, char **argv)
 {
+
     Agent agent;
-    agent.ReadYaml(ROBOT_NAME);
+    // agent.ReadYaml(ROBOT_NAME);
+    try {
+        agent.ReadYaml(ROBOT_NAME);
+
+    } catch (const std::exception& e) {
+        std::cerr << "Error: " << e.what() << std::endl;
+        return 1;
+    }
     joint_names = agent.params.joint_names;
     default_joint_angles = agent.params.default_joint_angles;
 
@@ -139,7 +156,7 @@ int main(int argc, char **argv)
     float Kp[12] = {0};
     float Kd[12] = {0};
 
-    void update_commands(const geometry_msgs::msg::Twist& commands, Agent& agent);
+    //void update_commands(const geometry_msgs::msg::Twist& commands, Agent& agent);
 
     ros2_unitree_legged_msgs::msg::LowCmd low_cmd_ros;
     ros2_unitree_legged_msgs::msg::LowState low_state_ros;
@@ -175,14 +192,14 @@ int main(int argc, char **argv)
         RCLCPP_INFO(node->get_logger(), "Model loaded successfully\n");
 
 
-    rclcpp::Subscription<geometry_msgs::msg::Twist>::SharedPtr commands_sub;
+    //rclcpp::Subscription<geometry_msgs::msg::Twist>::SharedPtr commands_sub;
     //commands_sub = node->create_subscription<geometry_msgs::msg::Twist>("/cmd_vel", 10, std::bind(update_commands, std::placeholders::_1 , std::ref(agent)));
 
-    commands_sub = node->create_subscription<geometry_msgs::msg::Twist>(
-        "/cmd_vel", 10,
-        [ &agent](const geometry_msgs::msg::Twist::SharedPtr msg) {
-            update_commands(*msg, agent);
-        });
+    // commands_sub = node->create_subscription<geometry_msgs::msg::Twist>(
+    //     "/cmd_vel", 10,
+    //     [ &agent](const geometry_msgs::msg::Twist::SharedPtr msg) {
+    //         update_commands(*msg, agent);
+    //     });
 
 
     bool initiated_flag = false; // initiate need time
@@ -261,17 +278,19 @@ int main(int argc, char **argv)
             imu_state_filter.angular_velocity.z = low_state_ros.imu.gyroscope[2];
             pub_imu_filter->publish(imu_state_filter);
 
-            agent.lin_vel.index({0}) = acc_filter[0];
-            agent.lin_vel.index({1}) = acc_filter[1];
-            agent.lin_vel.index({2}) = acc_filter[2];
+            // agent.lin_vel.index({0}) = acc_filter[0];
+            // agent.lin_vel.index({1}) = acc_filter[1];
+            // agent.lin_vel.index({2}) = acc_filter[2];
 
-            agent.ang_vel.index({0}) = low_state_ros.imu.gyroscope[0];
-            agent.ang_vel.index({1}) = low_state_ros.imu.gyroscope[1];
-            agent.ang_vel.index({2}) = low_state_ros.imu.gyroscope[2];
-            agent.base_quat.index({0}) = low_state_ros.imu.quaternion[1];
-            agent.base_quat.index({1}) = low_state_ros.imu.quaternion[2];
-            agent.base_quat.index({2}) = low_state_ros.imu.quaternion[3];
-            agent.base_quat.index({3}) = low_state_ros.imu.quaternion[0];
+            // Обновляем ang_vel с использованием torch::tensor
+            agent.obs.ang_vel = torch::tensor({
+                {low_state_ros.imu.gyroscope[0], low_state_ros.imu.gyroscope[1], low_state_ros.imu.gyroscope[2]}
+            });
+
+            // Обновляем base_quat с использованием torch::tensor
+            agent.obs.base_quat = torch::tensor({
+                {low_state_ros.imu.quaternion[1], low_state_ros.imu.quaternion[2], low_state_ros.imu.quaternion[3], low_state_ros.imu.quaternion[0]}
+            });
 
             std::vector<geometry_msgs::msg::WrenchStamped> feet_forces;
             for (size_t k = 0; k < 4; k++)
@@ -348,7 +367,7 @@ int main(int argc, char **argv)
                     if (motiontime % (rate_value / net_rate_value) == 0)
                     {
                         auto actions = agent.act();
-                        if (agent.gravity_vec.index({2}).item().to<double>() >= -0.7)
+                        if (agent.obs.gravity_vec.index({2}).item().to<double>() >= -0.7)
                             robot_state = STATE_FALLEN;
                         else if (robot_state == STATE_FALLEN)
                             robot_state = STATE_WAITING;

@@ -33,10 +33,10 @@
 
 struct Observations
 {
-    torch::Tensor lin_vel;           
+    //torch::Tensor lin_vel;           
     torch::Tensor ang_vel;      
     torch::Tensor gravity_vec;
-    torch::Tensor commands;          
+    //torch::Tensor commands;          
     torch::Tensor base_quat;   
     torch::Tensor dof_pos;           
     torch::Tensor dof_vel;           
@@ -51,14 +51,14 @@ struct ModelParams
     std::vector<int> hip_scale_reduction_indices;
     int num_of_dofs;
     double action_scale;
-    double lin_vel_scale;
+    //double lin_vel_scale;
     double ang_vel_scale;
     double dof_pos_scale;
     double dof_vel_scale;
     double clip_obs;
     double clip_actions;
     std::vector<double> default_joint_angles;
-    torch::Tensor commands_scale;
+    //torch::Tensor commands_scale;
     torch::Tensor rl_kp;
     torch::Tensor rl_kd;
     torch::Tensor torque_limits;
@@ -72,16 +72,23 @@ class Agent
 {
 
     private:
-       // torch::Tensor _previous_actions = torch::zeros({12});
         torch::jit::script::Module module;
-      //  std::map<std::string, torch::jit::script::Module> module_dict;
-        torch::Tensor get_observations();
-        //Scales scales = Scales();
+    //    // torch::Tensor _previous_actions = torch::zeros({12});
+    // //     torch::jit::script::Module module;
+    // //   //  std::map<std::string, torch::jit::script::Module> module_dict;
+    // //     torch::Tensor get_observations();
+    //     //Scales scales = Scales();
 
-        //torch::Tensor _gravity_vector = torch::tensor({0.0, 0.0, -1.0});
+    //     //torch::Tensor _gravity_vector = torch::tensor({0.0, 0.0, -1.0});
+    //             //~~~~~~~~~~~MY_CODE~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~//
     public:
         ModelParams params;
         Observations obs;
+
+        //torch::jit::script::Module module;
+        //  std::map<std::string, torch::jit::script::Module> module_dict;
+        torch::Tensor get_observations();
+
         //Agent();
         bool load_model(std::string model_path);
        // bool load_model_dict(std::map<std::string, std::string> model_paths);
@@ -103,17 +110,16 @@ class Agent
         // yaml params
 
         // rl module
-        //torch::jit::script::Module model;
-        // observation buffer
-        torch::Tensor lin_vel;           
-        torch::Tensor ang_vel;      
-        torch::Tensor gravity_vec;      
-        torch::Tensor commands;        
-        torch::Tensor base_quat;   
-        torch::Tensor dof_pos;           
-        torch::Tensor dof_vel;           
-        torch::Tensor actions;
-        // output buffer
+        //torch::jit::script::Module module;
+        //torch::Tensor lin_vel;           
+        // torch::Tensor ang_vel;      
+        // torch::Tensor gravity_vec;      
+        // //torch::Tensor commands;        
+        // torch::Tensor base_quat;   
+        // torch::Tensor dof_pos;           
+        // torch::Tensor dof_vel;           
+        // torch::Tensor actions;
+        // // output buffer
         torch::Tensor output_torques;
         torch::Tensor output_dof_pos;
 
