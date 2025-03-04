@@ -119,6 +119,8 @@ int main(int argc, char **argv)
 {
 
     Agent agent;
+    agent.InitObservations();
+    agent.InitOutputs();
     // agent.ReadYaml(ROBOT_NAME);
     try {
         agent.ReadYaml(ROBOT_NAME);
@@ -361,40 +363,35 @@ int main(int argc, char **argv)
                     robot_state = STATE_READY;
                 }
 
-                torch::Tensor actions;
                 if (motiontime > 3000)
                 {
                     if (motiontime % (rate_value / net_rate_value) == 0)
                     {
-                        auto actions = agent.act();
-                        if (agent.obs.gravity_vec.index({2}).item().to<double>() >= -0.7)
+                        agent.obs.actions = agent.act(); // Получаем действия от агента
+                        auto actions_accessor = agent.obs.actions.accessor<float, 2>();
+                        auto gravity_vec_accessor = agent.obs.gravity_vec.accessor<float, 2>();
+
+                        if (gravity_vec_accessor[0][2] >= -0.7)
                             robot_state = STATE_FALLEN;
                         else if (robot_state == STATE_FALLEN)
                             robot_state = STATE_WAITING;
                         fallen_pause_time = motiontime;
-                
+
                         if (robot_state == STATE_WAITING && (motiontime - fallen_pause_time > 1000))
                             robot_state = STATE_READY;
-                
+
                         if (robot_state == STATE_FALLEN) {
-                            actions = torch::zeros({1, 12});
-                
-                            // Заполняем значениями, если нужно
-                            // for (int i = 0; i < 12; ++i) {
-                            //     actions[0][i] = 0.0; // Или любое другое значение
-                            // }
+                            agent.obs.actions.zero_();  // Обнуляем значения, а не пересоздаем тензор
                         }
-                
-                        std::cout << "actions " << actions << std::endl;
-                    
+
                         for (size_t k = 0; k < 12; k++)
                         {
-                            qDes[k] = default_joint_angles[k] + actions.index({net2joint_indexes[k]}).item().to<double>(); // Подправить под output_dof_pose
-                            // qDes[k] = default_joint_angles[k];
-                      
+                            qDes[k] = default_joint_angles[k] + actions_accessor[0][net2joint_indexes[k]];
                         }
                     }
                 }
+
+
                 if (currentControlMode != CM_POSTITION)
                 {
                     currentControlMode = CM_POSTITION;
@@ -427,4 +424,3 @@ int main(int argc, char **argv)
 
     return 0;
 }
-

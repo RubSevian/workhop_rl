@@ -4,11 +4,12 @@
 #include "std_msgs/msg/string.hpp"
 
 torch::Tensor Agent::quat_rotate_inverse(torch::Tensor q, torch::Tensor v) {
-    torch::Tensor q_w = q.index({3});
-    torch::Tensor q_vec = q.index({torch::indexing::Slice(torch::indexing::None, 3)});
-    torch::Tensor a = v * (2.0 * q_w * q_w - 1.0);
-    torch::Tensor b = torch::cross(q_vec, v) * q_w * 2.0;
-    torch::Tensor c = q_vec * torch::matmul(q_vec.view({1, 3}), v.view({3, 1})).squeeze(-1) * 2.0;
+    c10::IntArrayRef shape = q.sizes();
+    torch::Tensor q_w = q.index({torch::indexing::Slice(), -1});
+    torch::Tensor q_vec = q.index({torch::indexing::Slice(), torch::indexing::Slice(0, 3)});
+    torch::Tensor a = v * (2.0 * torch::pow(q_w, 2) - 1.0).unsqueeze(-1);
+    torch::Tensor b = torch::cross(q_vec, v, -1) * q_w.unsqueeze(-1) * 2.0;
+    torch::Tensor c = q_vec * torch::bmm(q_vec.view({shape[0], 1, 3}), v.view({shape[0], 3, 1})).squeeze(-1) * 2.0;
     return a - b + c;
 }
 
@@ -69,20 +70,8 @@ bool Agent::load_model(std::string model_path)
 
 torch::Tensor Agent::act()
 {
-    // torch::Tensor observations = ComputeObservation();
-    // // std::cout << "GRAVITY: " << projected_gravity << std::endl;
-    // // Create a vector of inputs.
-    // // 2. Создаём входной вектор для модели
-    // std::vector<torch::jit::IValue> inputs;
-    // inputs.push_back(observations);
-
     torch::Tensor actions = this->Forward();
 
-    // // 4. Сохраняем действия для последующего использования
-    // _previous_actions = actions;
-
-    // 5. Масштабируем выходные действия
-    // actions *= this->params.action_scale;
 
     // 6. Корректируем действия суставов
     for (int i : this->params.hip_scale_reduction_indices)
@@ -96,15 +85,9 @@ torch::Tensor Agent::act()
 
     return output_dof_pos;
 
-    // Execute the model and turn its output into a tensor.
-    // std::cout << "mode " << mode << std::endl;
-    // torch::Tensor output = module_dict[mode].forward(inputs).toTensor();
-    // Save the output to use as previous_actions.
-    //_previous_actions = output;
-    //return output *  this->params.action_scale;
-
+    // std::cout << "Agent::act() called (stub)" << std::endl; // Check if it's called at all
+    // return torch::zeros({1, 12});
     
-
 }
 
 // void Agent::set_mode(const std_msgs::msg::String::SharedPtr& msg)
@@ -219,7 +202,7 @@ torch::Tensor Agent::ComputeObservation()
 
     obs = torch::clamp(obs, -this->params.clip_obs, this->params.clip_obs);
 
-    printf("observation size: %lld, %lld\n", (long long)obs.sizes()[0], (long long)obs.sizes()[1]);
+    //printf("observation size: %lld, %lld\n", (long long)obs.sizes()[0], (long long)obs.sizes()[1]); // Commit if your obs match obs learned model 
     return obs;
 }
 
