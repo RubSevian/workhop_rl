@@ -1,4 +1,0 @@
-Invoking command in '/home/ruben/workhop_rl/build/ros2_unitree_legged_msgs': CMAKE_PREFIX_PATH=${CMAKE_PREFIX_PATH}:/opt/ros/humble /usr/bin/cmake --build /home/ruben/workhop_rl/build/ros2_unitree_legged_msgs -- -j20 -l20
-Invoked command in '/home/ruben/workhop_rl/build/ros2_unitree_legged_msgs' returned '0': CMAKE_PREFIX_PATH=${CMAKE_PREFIX_PATH}:/opt/ros/humble /usr/bin/cmake --build /home/ruben/workhop_rl/build/ros2_unitree_legged_msgs -- -j20 -l20
-Invoking command in '/home/ruben/workhop_rl/build/ros2_unitree_legged_msgs': CMAKE_PREFIX_PATH=${CMAKE_PREFIX_PATH}:/opt/ros/humble /usr/bin/cmake --install /home/ruben/workhop_rl/build/ros2_unitree_legged_msgs
-Invoked command in '/home/ruben/workhop_rl/build/ros2_unitree_legged_msgs' returned '0': CMAKE_PREFIX_PATH=${CMAKE_PREFIX_PATH}:/opt/ros/humble /usr/bin/cmake --install /home/ruben/workhop_rl/build/ros2_unitree_legged_msgs
