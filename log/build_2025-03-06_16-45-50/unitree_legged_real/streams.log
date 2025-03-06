@@ -1,0 +1,88 @@
+[0.006s] Invoking command in '/home/ruben/workhop_rl/build/unitree_legged_real': AMENT_PREFIX_PATH=/home/ruben/workhop_rl/install/unitree_rl_controller:/home/ruben/workhop_rl/install/ros2_unitree_legged_msgs:${AMENT_PREFIX_PATH} CMAKE_PREFIX_PATH=/home/ruben/workhop_rl/install/unitree_rl_controller:/home/ruben/workhop_rl/install/ros2_unitree_legged_msgs:/opt/ros/humble LD_LIBRARY_PATH=/home/ruben/workhop_rl/install/unitree_rl_controller/lib:/home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/lib:${LD_LIBRARY_PATH} PYTHONPATH=/home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/local/lib/python3.10/dist-packages:${PYTHONPATH} /usr/bin/cmake /home/ruben/workhop_rl/src/unitree_ros2_to_real -DCMAKE_INSTALL_PREFIX=/home/ruben/workhop_rl/install/unitree_legged_real
+[0.039s] -- The C compiler identification is GNU 11.4.0
+[0.070s] -- The CXX compiler identification is GNU 11.4.0
+[0.074s] -- Detecting C compiler ABI info
+[0.112s] -- Detecting C compiler ABI info - done
+[0.116s] -- Check for working C compiler: /usr/bin/cc - skipped
+[0.116s] -- Detecting C compile features
+[0.116s] -- Detecting C compile features - done
+[0.118s] -- Detecting CXX compiler ABI info
+[0.167s] -- Detecting CXX compiler ABI info - done
+[0.171s] -- Check for working CXX compiler: /usr/bin/c++ - skipped
+[0.171s] -- Detecting CXX compile features
+[0.171s] -- Detecting CXX compile features - done
+[0.172s] -- Found ament_cmake: 1.3.11 (/opt/ros/humble/share/ament_cmake/cmake)
+[0.258s] -- Found Python3: /usr/bin/python3 (found version "3.10.12") found components: Interpreter 
+[0.304s] -- Found rclcpp: 16.0.11 (/opt/ros/humble/share/rclcpp/cmake)
+[0.328s] -- Found rosidl_generator_c: 3.1.6 (/opt/ros/humble/share/rosidl_generator_c/cmake)
+[0.330s] -- Found rosidl_adapter: 3.1.6 (/opt/ros/humble/share/rosidl_adapter/cmake)
+[0.334s] -- Found rosidl_generator_cpp: 3.1.6 (/opt/ros/humble/share/rosidl_generator_cpp/cmake)
+[0.339s] -- Using all available rosidl_typesupport_c: rosidl_typesupport_fastrtps_c;rosidl_typesupport_introspection_c
+[0.346s] -- Using all available rosidl_typesupport_cpp: rosidl_typesupport_fastrtps_cpp;rosidl_typesupport_introspection_cpp
+[0.366s] -- Found rmw_implementation_cmake: 6.1.2 (/opt/ros/humble/share/rmw_implementation_cmake/cmake)
+[0.367s] -- Found rmw_fastrtps_cpp: 6.2.7 (/opt/ros/humble/share/rmw_fastrtps_cpp/cmake)
+[0.414s] -- Found OpenSSL: /usr/lib/x86_64-linux-gnu/libcrypto.so (found version "3.0.2")  
+[0.430s] -- Found FastRTPS: /opt/ros/humble/include  
+[0.449s] -- Using RMW implementation 'rmw_fastrtps_cpp' as default
+[0.453s] -- Looking for pthread.h
+[0.494s] -- Looking for pthread.h - found
+[0.494s] -- Performing Test CMAKE_HAVE_LIBC_PTHREAD
+[0.534s] -- Performing Test CMAKE_HAVE_LIBC_PTHREAD - Success
+[0.535s] -- Found Threads: TRUE  
+[0.560s] -- Found sensor_msgs: 4.2.4 (/opt/ros/humble/share/sensor_msgs/cmake)
+[0.574s] -- Found ros2_unitree_legged_msgs: 0.4.0 (/home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/share/ros2_unitree_legged_msgs/cmake)
+[0.578s] -- Found unitree_rl_controller: 0.0.0 (/home/ruben/workhop_rl/install/unitree_rl_controller/share/unitree_rl_controller/cmake)
+[0.597s] [0m-- CMAKE_SYSTEM_PROCESSOR: x86_64[0m
+[0.597s] -- Found Torch: /home/ruben/workhop_rl/src/libtorch/lib/libtorch.so  
+[0.632s] -- Configuring done
+[0.643s] -- Generating done
+[0.646s] -- Build files have been written to: /home/ruben/workhop_rl/build/unitree_legged_real
+[0.652s] Invoked command in '/home/ruben/workhop_rl/build/unitree_legged_real' returned '0': AMENT_PREFIX_PATH=/home/ruben/workhop_rl/install/unitree_rl_controller:/home/ruben/workhop_rl/install/ros2_unitree_legged_msgs:${AMENT_PREFIX_PATH} CMAKE_PREFIX_PATH=/home/ruben/workhop_rl/install/unitree_rl_controller:/home/ruben/workhop_rl/install/ros2_unitree_legged_msgs:/opt/ros/humble LD_LIBRARY_PATH=/home/ruben/workhop_rl/install/unitree_rl_controller/lib:/home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/lib:${LD_LIBRARY_PATH} PYTHONPATH=/home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/local/lib/python3.10/dist-packages:${PYTHONPATH} /usr/bin/cmake /home/ruben/workhop_rl/src/unitree_ros2_to_real -DCMAKE_INSTALL_PREFIX=/home/ruben/workhop_rl/install/unitree_legged_real
+[0.652s] Invoking command in '/home/ruben/workhop_rl/build/unitree_legged_real': AMENT_PREFIX_PATH=/home/ruben/workhop_rl/install/unitree_rl_controller:/home/ruben/workhop_rl/install/ros2_unitree_legged_msgs:${AMENT_PREFIX_PATH} CMAKE_PREFIX_PATH=/home/ruben/workhop_rl/install/unitree_rl_controller:/home/ruben/workhop_rl/install/ros2_unitree_legged_msgs:/opt/ros/humble LD_LIBRARY_PATH=/home/ruben/workhop_rl/install/unitree_rl_controller/lib:/home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/lib:${LD_LIBRARY_PATH} PYTHONPATH=/home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/local/lib/python3.10/dist-packages:${PYTHONPATH} /usr/bin/cmake --build /home/ruben/workhop_rl/build/unitree_legged_real -- -j20 -l20
+[0.680s] [ 20%] [32mBuilding CXX object CMakeFiles/ros2_position_example.dir/src/ros2_position_example.cpp.o[0m
+[0.680s] [ 20%] [32mBuilding CXX object CMakeFiles/lcm_server.dir/unitree_legged_sdk/examples/lcm_server.cpp.o[0m
+[0.680s] [ 30%] [32mBuilding CXX object CMakeFiles/ros2_test.dir/src/ros2_test.cpp.o[0m
+[0.682s] [ 40%] [32mBuilding CXX object CMakeFiles/ros2_walk_example.dir/src/ros2_walk_example.cpp.o[0m
+[0.683s] [ 50%] [32mBuilding CXX object CMakeFiles/ros2_rl.dir/src/ros2_rl.cpp.o[0m
+[1.175s] [ 60%] [32m[1mLinking CXX executable lcm_server[0m
+[1.218s] [ 60%] Built target lcm_server
+[3.365s] [ 70%] [32m[1mLinking CXX executable ros2_test[0m
+[3.382s] [ 80%] [32m[1mLinking CXX executable ros2_walk_example[0m
+[3.387s] [ 90%] [32m[1mLinking CXX executable ros2_position_example[0m
+[3.429s] [ 90%] Built target ros2_test
+[3.447s] [ 90%] Built target ros2_walk_example
+[3.456s] [ 90%] Built target ros2_position_example
+[12.083s] [100%] [32m[1mLinking CXX executable ros2_rl[0m
+[12.459s] [100%] Built target ros2_rl
+[12.465s] Invoked command in '/home/ruben/workhop_rl/build/unitree_legged_real' returned '0': AMENT_PREFIX_PATH=/home/ruben/workhop_rl/install/unitree_rl_controller:/home/ruben/workhop_rl/install/ros2_unitree_legged_msgs:${AMENT_PREFIX_PATH} CMAKE_PREFIX_PATH=/home/ruben/workhop_rl/install/unitree_rl_controller:/home/ruben/workhop_rl/install/ros2_unitree_legged_msgs:/opt/ros/humble LD_LIBRARY_PATH=/home/ruben/workhop_rl/install/unitree_rl_controller/lib:/home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/lib:${LD_LIBRARY_PATH} PYTHONPATH=/home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/local/lib/python3.10/dist-packages:${PYTHONPATH} /usr/bin/cmake --build /home/ruben/workhop_rl/build/unitree_legged_real -- -j20 -l20
+[12.466s] Invoking command in '/home/ruben/workhop_rl/build/unitree_legged_real': AMENT_PREFIX_PATH=/home/ruben/workhop_rl/install/unitree_rl_controller:/home/ruben/workhop_rl/install/ros2_unitree_legged_msgs:${AMENT_PREFIX_PATH} CMAKE_PREFIX_PATH=/home/ruben/workhop_rl/install/unitree_rl_controller:/home/ruben/workhop_rl/install/ros2_unitree_legged_msgs:/opt/ros/humble LD_LIBRARY_PATH=/home/ruben/workhop_rl/install/unitree_rl_controller/lib:/home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/lib:${LD_LIBRARY_PATH} PYTHONPATH=/home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/local/lib/python3.10/dist-packages:${PYTHONPATH} /usr/bin/cmake --install /home/ruben/workhop_rl/build/unitree_legged_real
+[12.471s] -- Install configuration: ""
+[12.471s] -- Installing: /home/ruben/workhop_rl/install/unitree_legged_real/lib
+[12.471s] -- Installing: /home/ruben/workhop_rl/install/unitree_legged_real/lib/libunitree_legged_sdk_arm64.so
+[12.471s] -- Installing: /home/ruben/workhop_rl/install/unitree_legged_real/lib/libunitree_legged_sdk_amd64.so
+[12.472s] -- Installing: /home/ruben/workhop_rl/install/unitree_legged_real/lib/unitree_legged_real/ros2_walk_example
+[12.472s] -- Set runtime path of "/home/ruben/workhop_rl/install/unitree_legged_real/lib/unitree_legged_real/ros2_walk_example" to ""
+[12.472s] -- Installing: /home/ruben/workhop_rl/install/unitree_legged_real/lib/unitree_legged_real/ros2_position_example
+[12.472s] -- Set runtime path of "/home/ruben/workhop_rl/install/unitree_legged_real/lib/unitree_legged_real/ros2_position_example" to ""
+[12.472s] -- Installing: /home/ruben/workhop_rl/install/unitree_legged_real/lib/unitree_legged_real/ros2_rl
+[12.472s] -- Set runtime path of "/home/ruben/workhop_rl/install/unitree_legged_real/lib/unitree_legged_real/ros2_rl" to ""
+[12.472s] -- Installing: /home/ruben/workhop_rl/install/unitree_legged_real/lib/unitree_legged_real/ros2_test
+[12.473s] -- Set runtime path of "/home/ruben/workhop_rl/install/unitree_legged_real/lib/unitree_legged_real/ros2_test" to ""
+[12.473s] -- Installing: /home/ruben/workhop_rl/install/unitree_legged_real/lib/unitree_legged_real/lcm_server
+[12.473s] -- Set runtime path of "/home/ruben/workhop_rl/install/unitree_legged_real/lib/unitree_legged_real/lcm_server" to ""
+[12.473s] -- Installing: /home/ruben/workhop_rl/install/unitree_legged_real/share/ament_index/resource_index/package_run_dependencies/unitree_legged_real
+[12.473s] -- Installing: /home/ruben/workhop_rl/install/unitree_legged_real/share/ament_index/resource_index/parent_prefix_path/unitree_legged_real
+[12.473s] -- Installing: /home/ruben/workhop_rl/install/unitree_legged_real/share/unitree_legged_real/environment/ament_prefix_path.sh
+[12.473s] -- Installing: /home/ruben/workhop_rl/install/unitree_legged_real/share/unitree_legged_real/environment/ament_prefix_path.dsv
+[12.473s] -- Installing: /home/ruben/workhop_rl/install/unitree_legged_real/share/unitree_legged_real/environment/path.sh
+[12.473s] -- Installing: /home/ruben/workhop_rl/install/unitree_legged_real/share/unitree_legged_real/environment/path.dsv
+[12.473s] -- Installing: /home/ruben/workhop_rl/install/unitree_legged_real/share/unitree_legged_real/local_setup.bash
+[12.473s] -- Installing: /home/ruben/workhop_rl/install/unitree_legged_real/share/unitree_legged_real/local_setup.sh
+[12.473s] -- Installing: /home/ruben/workhop_rl/install/unitree_legged_real/share/unitree_legged_real/local_setup.zsh
+[12.473s] -- Installing: /home/ruben/workhop_rl/install/unitree_legged_real/share/unitree_legged_real/local_setup.dsv
+[12.473s] -- Installing: /home/ruben/workhop_rl/install/unitree_legged_real/share/unitree_legged_real/package.dsv
+[12.473s] -- Installing: /home/ruben/workhop_rl/install/unitree_legged_real/share/ament_index/resource_index/packages/unitree_legged_real
+[12.473s] -- Installing: /home/ruben/workhop_rl/install/unitree_legged_real/share/unitree_legged_real/cmake/unitree_legged_realConfig.cmake
+[12.473s] -- Installing: /home/ruben/workhop_rl/install/unitree_legged_real/share/unitree_legged_real/cmake/unitree_legged_realConfig-version.cmake
+[12.473s] -- Installing: /home/ruben/workhop_rl/install/unitree_legged_real/share/unitree_legged_real/package.xml
+[12.474s] Invoked command in '/home/ruben/workhop_rl/build/unitree_legged_real' returned '0': AMENT_PREFIX_PATH=/home/ruben/workhop_rl/install/unitree_rl_controller:/home/ruben/workhop_rl/install/ros2_unitree_legged_msgs:${AMENT_PREFIX_PATH} CMAKE_PREFIX_PATH=/home/ruben/workhop_rl/install/unitree_rl_controller:/home/ruben/workhop_rl/install/ros2_unitree_legged_msgs:/opt/ros/humble LD_LIBRARY_PATH=/home/ruben/workhop_rl/install/unitree_rl_controller/lib:/home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/lib:${LD_LIBRARY_PATH} PYTHONPATH=/home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/local/lib/python3.10/dist-packages:${PYTHONPATH} /usr/bin/cmake --install /home/ruben/workhop_rl/build/unitree_legged_real

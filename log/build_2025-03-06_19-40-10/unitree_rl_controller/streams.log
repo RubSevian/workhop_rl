@@ -1,0 +1,33 @@
+[0.005s] Invoking command in '/home/ruben/workhop_rl/build/unitree_rl_controller': AMENT_PREFIX_PATH=/home/ruben/workhop_rl/install/ros2_unitree_legged_msgs:${AMENT_PREFIX_PATH} CMAKE_PREFIX_PATH=/home/ruben/workhop_rl/install/ros2_unitree_legged_msgs:/opt/ros/humble LD_LIBRARY_PATH=/home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/lib:${LD_LIBRARY_PATH} PYTHONPATH=/home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/local/lib/python3.10/dist-packages:${PYTHONPATH} /usr/bin/cmake --build /home/ruben/workhop_rl/build/unitree_rl_controller -- -j20 -l20
+[0.032s] [35m[1mConsolidate compiler generated dependencies of target unitree_rl_controller[0m
+[0.062s] [ 50%] [32mBuilding CXX object CMakeFiles/unitree_rl_controller.dir/src/rl_agent.cpp.o[0m
+[8.434s] [100%] [32m[1mLinking CXX shared library libunitree_rl_controller.so[0m
+[8.804s] [100%] Built target unitree_rl_controller
+[8.810s] Invoked command in '/home/ruben/workhop_rl/build/unitree_rl_controller' returned '0': AMENT_PREFIX_PATH=/home/ruben/workhop_rl/install/ros2_unitree_legged_msgs:${AMENT_PREFIX_PATH} CMAKE_PREFIX_PATH=/home/ruben/workhop_rl/install/ros2_unitree_legged_msgs:/opt/ros/humble LD_LIBRARY_PATH=/home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/lib:${LD_LIBRARY_PATH} PYTHONPATH=/home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/local/lib/python3.10/dist-packages:${PYTHONPATH} /usr/bin/cmake --build /home/ruben/workhop_rl/build/unitree_rl_controller -- -j20 -l20
+[8.811s] Invoking command in '/home/ruben/workhop_rl/build/unitree_rl_controller': AMENT_PREFIX_PATH=/home/ruben/workhop_rl/install/ros2_unitree_legged_msgs:${AMENT_PREFIX_PATH} CMAKE_PREFIX_PATH=/home/ruben/workhop_rl/install/ros2_unitree_legged_msgs:/opt/ros/humble LD_LIBRARY_PATH=/home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/lib:${LD_LIBRARY_PATH} PYTHONPATH=/home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/local/lib/python3.10/dist-packages:${PYTHONPATH} /usr/bin/cmake --install /home/ruben/workhop_rl/build/unitree_rl_controller
+[8.814s] -- Install configuration: ""
+[8.814s] -- Up-to-date: /home/ruben/workhop_rl/install/unitree_rl_controller/share/unitree_rl_controller/environment/library_path.sh
+[8.814s] -- Up-to-date: /home/ruben/workhop_rl/install/unitree_rl_controller/share/unitree_rl_controller/environment/library_path.dsv
+[8.814s] -- Installing: /home/ruben/workhop_rl/install/unitree_rl_controller/lib/libunitree_rl_controller.so
+[8.814s] -- Set runtime path of "/home/ruben/workhop_rl/install/unitree_rl_controller/lib/libunitree_rl_controller.so" to ""
+[8.814s] -- Up-to-date: /home/ruben/workhop_rl/install/unitree_rl_controller/include/unitree_rl_controller/unitree_rl_controller
+[8.814s] -- Installing: /home/ruben/workhop_rl/install/unitree_rl_controller/include/unitree_rl_controller/unitree_rl_controller/rl_agent.h
+[8.814s] -- Up-to-date: /home/ruben/workhop_rl/install/unitree_rl_controller/share/ament_index/resource_index/package_run_dependencies/unitree_rl_controller
+[8.814s] -- Up-to-date: /home/ruben/workhop_rl/install/unitree_rl_controller/share/ament_index/resource_index/parent_prefix_path/unitree_rl_controller
+[8.814s] -- Up-to-date: /home/ruben/workhop_rl/install/unitree_rl_controller/share/unitree_rl_controller/environment/ament_prefix_path.sh
+[8.814s] -- Up-to-date: /home/ruben/workhop_rl/install/unitree_rl_controller/share/unitree_rl_controller/environment/ament_prefix_path.dsv
+[8.814s] -- Up-to-date: /home/ruben/workhop_rl/install/unitree_rl_controller/share/unitree_rl_controller/environment/path.sh
+[8.814s] -- Up-to-date: /home/ruben/workhop_rl/install/unitree_rl_controller/share/unitree_rl_controller/environment/path.dsv
+[8.814s] -- Up-to-date: /home/ruben/workhop_rl/install/unitree_rl_controller/share/unitree_rl_controller/local_setup.bash
+[8.814s] -- Up-to-date: /home/ruben/workhop_rl/install/unitree_rl_controller/share/unitree_rl_controller/local_setup.sh
+[8.814s] -- Up-to-date: /home/ruben/workhop_rl/install/unitree_rl_controller/share/unitree_rl_controller/local_setup.zsh
+[8.814s] -- Up-to-date: /home/ruben/workhop_rl/install/unitree_rl_controller/share/unitree_rl_controller/local_setup.dsv
+[8.814s] -- Installing: /home/ruben/workhop_rl/install/unitree_rl_controller/share/unitree_rl_controller/package.dsv
+[8.814s] -- Up-to-date: /home/ruben/workhop_rl/install/unitree_rl_controller/share/ament_index/resource_index/packages/unitree_rl_controller
+[8.814s] -- Up-to-date: /home/ruben/workhop_rl/install/unitree_rl_controller/share/unitree_rl_controller/cmake/ament_cmake_export_dependencies-extras.cmake
+[8.814s] -- Up-to-date: /home/ruben/workhop_rl/install/unitree_rl_controller/share/unitree_rl_controller/cmake/ament_cmake_export_include_directories-extras.cmake
+[8.814s] -- Up-to-date: /home/ruben/workhop_rl/install/unitree_rl_controller/share/unitree_rl_controller/cmake/ament_cmake_export_libraries-extras.cmake
+[8.814s] -- Up-to-date: /home/ruben/workhop_rl/install/unitree_rl_controller/share/unitree_rl_controller/cmake/unitree_rl_controllerConfig.cmake
+[8.815s] -- Up-to-date: /home/ruben/workhop_rl/install/unitree_rl_controller/share/unitree_rl_controller/cmake/unitree_rl_controllerConfig-version.cmake
+[8.815s] -- Up-to-date: /home/ruben/workhop_rl/install/unitree_rl_controller/share/unitree_rl_controller/package.xml
+[8.815s] Invoked command in '/home/ruben/workhop_rl/build/unitree_rl_controller' returned '0': AMENT_PREFIX_PATH=/home/ruben/workhop_rl/install/ros2_unitree_legged_msgs:${AMENT_PREFIX_PATH} CMAKE_PREFIX_PATH=/home/ruben/workhop_rl/install/ros2_unitree_legged_msgs:/opt/ros/humble LD_LIBRARY_PATH=/home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/lib:${LD_LIBRARY_PATH} PYTHONPATH=/home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/local/lib/python3.10/dist-packages:${PYTHONPATH} /usr/bin/cmake --install /home/ruben/workhop_rl/build/unitree_rl_controller

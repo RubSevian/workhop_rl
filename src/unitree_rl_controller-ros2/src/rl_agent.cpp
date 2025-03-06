@@ -13,18 +13,6 @@ torch::Tensor Agent::quat_rotate_inverse(torch::Tensor q, torch::Tensor v) {
     return a - b + c;
 }
 
-// Agent::Agent()
-// {
-//     dof_pos = torch::zeros({12});
-//     dof_vel = torch::zeros({12});
-//     base_linear_velocity = torch::zeros({3});
-//     base_angular_velocity = torch::zeros({3});
-//     base_linear_acceleration = torch::zeros({3});
-//     orientation = torch::tensor({0.0, 0.0, 0.0, 1.0});
-//     commands = torch::zeros({3});
-//     mode = "trotting";
-// }
-
 
 bool Agent::load_model(std::string model_path)
 {
@@ -37,36 +25,6 @@ bool Agent::load_model(std::string model_path)
     }
     return true;
 }
-
-// bool Agent::load_model_dict(std::map<std::string, std::string> model_paths)
-// {
-//     try {
-//         for (const auto& [k, v] : model_paths) {
-//             module_dict[k] = torch::jit::load(v);
-//         }
-//     }
-//     catch (const c10::Error& e) {
-//         return false;
-//     }
-//     return true;
-// }
-
-// torch::Tensor Agent::get_observations()
-// {
-//     projected_gravity = quat_rotate_inverse(orientation, _gravity_vector);
-//     torch::Tensor observations = torch::cat({
-//         (base_linear_acceleration + projected_gravity * 9.81) * scales.lin_vel,
-//         base_angular_velocity * scales.ang_vel,
-//         projected_gravity,
-//         commands * scales.commands,
-//         dof_pos * scales.dof_pos,
-//         dof_vel * scales.dof_vel,
-//         _previous_actions
-//     });
-
-//     std::cout << "observations " << observations << std::endl;
-//     return observations;
-// }
 
 torch::Tensor Agent::act()
 {
@@ -89,12 +47,6 @@ torch::Tensor Agent::act()
     // return torch::zeros({1, 12});
     
 }
-
-// void Agent::set_mode(const std_msgs::msg::String::SharedPtr& msg)
-// {
-//     mode = msg->data;
-    
-// }
 
 //~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~MY_CODE~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~//
 
@@ -203,6 +155,14 @@ torch::Tensor Agent::ComputeObservation()
     obs = torch::clamp(obs, -this->params.clip_obs, this->params.clip_obs);
 
     //printf("observation size: %lld, %lld\n", (long long)obs.sizes()[0], (long long)obs.sizes()[1]); // Commit if your obs match obs learned model 
+    //std::cout << "Observation tensor:\n" << obs << std::endl;
+    std::cout << "Angular velocity: " << obs.index({0, torch::indexing::Slice(0, 3)}) << std::endl;
+    std::cout << "Projected gravity: " << obs.index({0, torch::indexing::Slice(3, 6)}) << std::endl;
+    std::cout << "DOF positions: " << obs.index({0, torch::indexing::Slice(6, 18)}) << std::endl;
+    std::cout << "DOF velocities: " << obs.index({0, torch::indexing::Slice(18, 30)}) << std::endl;
+    std::cout << "Actions: " << obs.index({0, torch::indexing::Slice(30, 42)}) << std::endl;
+
+
     return obs;
 }
 

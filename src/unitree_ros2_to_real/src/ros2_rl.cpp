@@ -49,11 +49,11 @@ enum ROBOT_STATE
 //     "RL_hip", "RL_thigh", "RL_calf"};
 // const std::vector<std::string> joint_names = agent.params.joint_names;
 
-// const std::vector<float> default_joint_angles = this->params.default_joint_angles;
-    // -0., 0.8, -1.3,
-    // 0., 0.8, -1.3,
-    // -0.0, 0.8, -1.3,
-    // 0.0, 0.8, -1.3};
+const std::vector<float> default_joint_angle = {
+    -0., 0.8, -1.3,
+    0., 0.8, -1.3,
+    -0.0, 0.8, -1.3,
+    0.0, 0.8, -1.3};
 // Глобальные константы (теперь инициализируются позже)
 std::vector<std::string> joint_names;
 std::vector<double> default_joint_angles;
@@ -75,7 +75,6 @@ const std::vector<double> damping = {
     0.5, 0.5, 0.5,
     0.5, 0.5, 0.5};
 
-//
 
 const std::vector<std::string> urdf_feet_names = {"FR_foot", "FL_foot", "RR_foot", "RL_foot"};
 
@@ -131,6 +130,12 @@ int main(int argc, char **argv)
     }
     joint_names = agent.params.joint_names;
     default_joint_angles = agent.params.default_joint_angles;
+
+    std::cout<<"STABLE"<<std::endl;
+    std::cout << default_joint_angle << std::endl;
+
+    std::cout<<"config"<<std::endl;
+    std::cout << default_joint_angles << std::endl;
 
     rclcpp::init(argc, argv);
 
