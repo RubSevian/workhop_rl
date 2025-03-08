@@ -1,0 +1,469 @@
+#ifndef ROS2_RL_CONTROLLER_HPP
+#define ROS2_RL_CONTROLLER_HPP
+
+#include "rclcpp/rclcpp.hpp"
+#include "ros2_unitree_legged_msgs/msg/high_cmd.hpp"
+#include "ros2_unitree_legged_msgs/msg/high_state.hpp"
+#include "ros2_unitree_legged_msgs/msg/low_cmd.hpp"
+#include "ros2_unitree_legged_msgs/msg/low_state.hpp"
+#include "unitree_legged_sdk/unitree_legged_sdk.h"
+
+#include <torch/torch.h>
+#include "unitree_rl_controller/rl_agent.h"
+
+#include "std_msgs/msg/string.hpp"
+#include "sensor_msgs/msg/joint_state.hpp"
+#include "sensor_msgs/msg/imu.hpp"
+#include "geometry_msgs/msg/wrench_stamped.hpp"
+#include "std_msgs/msg/u_int8_multi_array.hpp"
+
+#include <mean_smoothing.h>
+#include <map>
+
+#include <random>
+#include <chrono>
+#include <functional>
+
+#include <unitree_legged_sdk/loop_func.h>
+
+#define DIMENSION 3
+#define ROBOT_NAME "go1"
+
+using namespace UNITREE_LEGGED_SDK;
+
+enum CONTROL_MODE {
+    CM_UNDEFINED,
+    CM_POSTITION,
+    CM_TORQUE
+};
+
+enum ROBOT_STATE {
+    STATE_INIT,
+    STATE_READY,
+    STATE_WAITING,
+    STATE_FALLEN,
+    STATE_RL_INIT,
+    STATE_RL_RUNNING,
+    STATE_POS_GETUP,
+    STATE_POS_GETDOWN
+};
+
+class Ros2RlController : public rclcpp::Node {
+public:
+    Ros2RlController();
+    ~Ros2RlController();
+
+private:
+    // Publishers
+    rclcpp::Publisher<sensor_msgs::msg::JointState>::SharedPtr pub_jointstates_;
+    rclcpp::Publisher<sensor_msgs::msg::Imu>::SharedPtr pub_imu_;
+    rclcpp::Publisher<sensor_msgs::msg::Imu>::SharedPtr pub_imu_filter_;
+    rclcpp::Publisher<geometry_msgs::msg::WrenchStamped>::SharedPtr pub_FL_force_, pub_FR_force_, pub_RL_force_, pub_RR_force_;
+    rclcpp::Publisher<std_msgs::msg::UInt8MultiArray>::SharedPtr pub_wireless_remote_;
+    rclcpp::Publisher<ros2_unitree_legged_msgs::msg::LowCmd>::SharedPtr pub_lowcmd_;
+
+    // UDP and safety
+    UDP udp_;
+    Safety safe_;
+    LowCmd cmd_ = {0};
+    LowState state_ = {0};
+
+    // RL agent
+    Agent agent_;
+
+    // Robot state variables
+    int robot_state_;
+    long motiontime_;
+    bool initiated_flag_;
+    int count_;
+    int rate_value_;
+    int net_rate_value_;
+
+    // Joint data
+    std::vector<std::string> joint_names_;
+    std::vector<float> default_joint_angles_;
+    float qInit_[12] = {0};
+    float qDes_[12] = {0};
+    float Kp_[12] = {0};
+    float Kd_[12] = {0};
+
+    ros2_unitree_legged_msgs::msg::LowCmd low_cmd_ros_;
+    ros2_unitree_legged_msgs::msg::LowState low_state_ros_;
+
+    // Mean smoothing
+    mean_smoothing<double, DIMENSION> meansmth_;
+
+    // Random number generation
+    std::random_device rd_;
+    std::mt19937 gen_;
+
+    // Loop functions
+    std::shared_ptr<LoopFunc> control_loop_;
+    std::shared_ptr<LoopFunc> rl_loop_;
+    std::shared_ptr<LoopFunc> udp_send_loop_;
+    std::shared_ptr<LoopFunc> udp_recv_loop_;
+
+    // Helper functions
+    float randomFloat(float min, float max);
+    float jointLinearInterpolation(float initPos, float targetPos, float rate);
+    void rateCount();
+
+    // Loop functions
+    void udpRecvLoop();
+    void udpSendLoop();
+    void controlLoop();
+    void rlLoop();
+
+    // Data handling
+    void publishSensorData();
+    void updateObservations();
+
+    std::vector<float> action_ = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
+    float rate_ = 0.0;
+    int rate_count_ = 0;
+    float fallen_pause_time_ = 0.0;
+    int currentControlMode_ = CM_UNDEFINED;
+    const std::vector<int> net2joint_indexes = {
+        3, 4, 5,
+        0, 1, 2,
+        9, 10, 11,
+        6, 7, 8};
+
+    const std::vector<std::string> urdf_feet_names = {"FR_foot", "FL_foot", "RR_foot", "RL_foot"};
+};
+
+#endif // ROS2_RL_CONTROLLER_HPP
+
+
+#include "ros2_rl_controller.hpp"
+
+Ros2RlController::Ros2RlController() : Node("ros2_rl_controller"), udp_(LOWLEVEL), safe_(UNITREE_LEGGED_SDK::LeggedType::Go1) {
+    // Initialize parameters
+    robot_state_ = STATE_INIT;
+    motiontime_ = 0;
+    initiated_flag_ = false;
+    count_ = 0;
+    rate_value_ = 1000;
+    net_rate_value_ = 50;
+
+    // Initialize publishers
+    pub_jointstates_ = create_publisher<sensor_msgs::msg::JointState>("/go1/joint_states", 1000);
+    pub_imu_ = create_publisher<sensor_msgs::msg::Imu>("/go1/imu0", 1000);
+    pub_imu_filter_ = create_publisher<sensor_msgs::msg::Imu>("/go1/imu0_filter", 1000);
+    pub_FR_force_ = create_publisher<geometry_msgs::msg::WrenchStamped>("/go1/legFR/force_torque_states", 1000);
+    pub_FL_force_ = create_publisher<geometry_msgs::msg::WrenchStamped>("/go1/legFL/force_torque_states", 1000);
+    pub_RR_force_ = create_publisher<geometry_msgs::msg::WrenchStamped>("/go1/legRR/force_torque_states", 1000);
+    pub_RL_force_ = create_publisher<geometry_msgs::msg::WrenchStamped>("/go1/legRL/force_torque_states", 1000);
+    pub_wireless_remote_ = create_publisher<std_msgs::msg::UInt8MultiArray>("/go1/remote", 100);
+    pub_lowcmd_ = create_publisher<ros2_unitree_legged_msgs::msg::LowCmd>("low_cmd", 1000);
+
+    // Read YAML configuration
+    try {
+        agent_.ReadYaml(ROBOT_NAME);
+        joint_names_ = agent_.params.joint_names;
+        default_joint_angles_ = agent_.params.default_joint_angles;
+    } catch (const std::exception& e) {
+        RCLCPP_ERROR(get_logger(), "Error reading YAML: %s", e.what());
+        rclcpp::shutdown();
+        return;
+    }
+
+    // Load RL model
+    std::string model_path = {"/home/ruben/workhop_rl/src/unitree_rl_controller-ros2/weights/policy_1.pt"};
+    if (!agent_.load_model(model_path))
+        RCLCPP_ERROR(get_logger(), "Error loading the model\n");
+    else
+        RCLCPP_INFO(get_logger(), "Model loaded successfully\n");
+
+    // Initialize observations and outputs
+    agent_.InitObservations();
+    agent_.InitOutputs();
+
+    // Initialize UDP command data
+    udp_.InitCmdData(cmd_);
+
+    // Initialize mean smoothing
+    meansmth_ = mean_smoothing<double, DIMENSION>();
+
+    // Initialize random number generator
+    rd_ = std::random_device();
+    gen_ = std::mt19937(rd_());
+
+    // Initialize low command
+    low_cmd_ros_.level_flag = LOWLEVEL;
+    for (int i = 0; i < 12; i++) {
+        low_cmd_ros_.motor_cmd[i].mode = 0x0A;  // motor switch to servo (PMSM) mode
+        low_cmd_ros_.motor_cmd[i].q = PosStopF; // 禁止位置环
+        low_cmd_ros_.motor_cmd[i].kp = 0;
+        low_cmd_ros_.motor_cmd[i].dq = VelStopF; // 禁止 скорость环
+        low_cmd_ros_.motor_cmd[i].kd = 0;
+        low_cmd_ros_.motor_cmd[i].tau = 0;
+    }
+
+    // Create loop functions
+    control_loop_ = std::make_shared<LoopFunc>("control_loop", 0.002, std::bind(&Ros2RlController::controlLoop, this));
+    rl_loop_ = std::make_shared<LoopFunc>("rl_loop", 0.02, std::bind(&Ros2RlController::rlLoop, this)); // RL runs at 50 Hz
+    udp_send_loop_ = std::make_shared<LoopFunc>("udp_send_loop", 0.002, 3, std::bind(&Ros2RlController::udpSendLoop, this));
+    udp_recv_loop_ = std::make_shared<LoopFunc>("udp_recv_loop", 0.002, 3, std::bind(&Ros2RlController::udpRecvLoop, this));
+
+    // Start loops
+    udp_send_loop_->start();
+    udp_recv_loop_->start();
+    control_loop_->start();
+
+    RCLCPP_INFO(get_logger(), "Ros2RlController initialized");
+}
+
+Ros2RlController::~Ros2RlController() {
+    control_loop_->shutdown();
+    rl_loop_->shutdown();
+    udp_send_loop_->shutdown();
+    udp_recv_loop_->shutdown();
+    RCLCPP_INFO(get_logger(), "Ros2RlController shutdown");
+}
+
+float Ros2RlController::randomFloat(float min, float max) {
+    std::uniform_real_distribution<float> distrib(min, max);
+    return distrib(gen_);
+}
+
+float Ros2RlController::jointLinearInterpolation(float initPos, float targetPos, float rate) {
+    rate = std::min(std::max(rate, 0.0f), 1.0f);
+    return initPos * (1 - rate) + targetPos * rate;
+}
+
+void Ros2RlController::rateCount() {
+    rate_count_++;
+    rate_ = rate_count_ / (1000.0f - 1.0f);
+    rate_ = std::min(std::max(rate_, 0.0f), 1.0f);
+}
+
+void Ros2RlController::udpRecvLoop() {
+    udp_.Recv();
+    udp_.GetRecv(state_);
+    low_state_ros_ = state2rosMsg(state_);
+}
+
+void Ros2RlController::udpSendLoop() {
+    udp_.SetSend(cmd_);
+    udp_.Send();
+}
+
+void Ros2RlController::controlLoop() {
+    // Simulate random data injection
+    if (motiontime_ > 100) {
+        // Example: Inject random accelerometer data
+        for (int i = 0; i < 3; ++i) {
+            low_state_ros_.imu.accelerometer[i] = randomFloat(-1.0, 1.0); // Random acceleration between -1 and 1 m/s^2
+        }
+
+        // Example: Inject random gyroscope data
+        for (int i = 0; i < 3; ++i) {
+            low_state_ros_.imu.gyroscope[i] = randomFloat(-0.1, 0.1); // Random angular velocity between -0.1 and 0.1 rad/s
+        }
+
+        // Example: Inject random joint positions
+        for (int i = 0; i < 12; ++i) {
+            low_state_ros_.motor_state[i].q = default_joint_angles_[i] + randomFloat(-0.2, 0.2); // Random joint position around default
+        }
+
+        // Example: Inject random foot force data
+        for (int i = 0; i < 4; ++i) {
+            low_state_ros_.foot_force[i] = randomFloat(0.0, 50.0); // Random foot force between 0 and 50 N
+        }
+    }
+
+    if (initiated_flag_) {
+        motiontime_++;
+        publishSensorData();
+        update_dof_state(low_state_ros_, agent_);
+
+        if (motiontime_ >= 0) {
+            // Get record initial position
+            if (motiontime_ >= 0 && motiontime_ < 10) {
+                for (size_t k = 0; k < 12; k++) {
+                    qInit_[k] = low_state_ros_.motor_state[k].q;
+                }
+            }
+
+            // Move to the origin point with soft Kp/Kd
+            if (motiontime_ >= 1 && motiontime_ < 1000) {
+                rateCount();
+
+                for (size_t k = 0; k < 12; k++) {
+                    Kp_[k] = 50.0;
+                    Kd_[k] = 2.0;
+                }
+
+                for (size_t k = 0; k < 12; k++) {
+                    qDes_[k] = jointLinearInterpolation(qInit_[k], default_joint_angles_[k], rate_);
+                }
+            }
+
+            if (motiontime_ == 1000) {
+                for (size_t k = 0; k < 12; k++) {
+                    Kp_[k] = 20.0; //stiffness[k];
+                    Kd_[k] = 0.5; //damping[k];
+                }
+                robot_state_ = STATE_READY;
+            }
+
+            if (motiontime_ > 3000) {
+                if (motiontime_ % (rate_value_ / net_rate_value_) == 0) {
+                    if (robot_state_ == STATE_READY && !rl_loop_->isRunning()) {
+                        RCLCPP_INFO(get_logger(), "Starting rl loop");
+                        rl_loop_->start();
+                        robot_state_ = STATE_RL_RUNNING;
+                    } else if (robot_state_ == STATE_FALLEN) {
+                        robot_state_ = STATE_WAITING;
+                        agent_.obs.actions.zero_();
+                        rl_loop_->shutdown();
+                        RCLCPP_INFO(get_logger(), "Robot Fallen, shutdown RL");
+                    } else if (robot_state_ == STATE_WAITING) {
+                        RCLCPP_INFO(get_logger(), "Robot waiting");
+                        if ((motiontime_ - fallen_pause_time_ > 1000))
+                            robot_state_ = STATE_READY;
+                    }
+
+                    for (size_t k = 0; k < 12; k++) {
+                        qDes_[k] = default_joint_angles_[k] + action_[k];
+                    }
+                }
+            }
+
+            if (currentControlMode_ != CM_POSTITION) {
+                currentControlMode_ = CM_POSTITION;
+                RCLCPP_INFO(get_logger(), "ros2real switching to POSITION control");
+            }
+            for (size_t k = 0; k < 12; k++) {
+                low_cmd_ros_.motor_cmd[k].q = qDes_[k];
+                low_cmd_ros_.motor_cmd[k].dq = 0;
+                low_cmd_ros_.motor_cmd[k].kp = Kp_[k];
+                low_cmd_ros_.motor_cmd[k].kd = Kd_[k];
+                low_cmd_ros_.motor_cmd[k].tau = 0.0f;
+            }
+        }
+    } else {
+        count_++;
+        if (count_ > 10) {
+            count_ = 10;
+            initiated_flag_ = true;
+        }
+    }
+    cmd_ = rosMsg2Cmd(low_cmd_ros_);
+    pub_lowcmd_->publish(low_cmd_ros_);
+    safe_.PowerProtect(cmd_, state_, 8); //Added safety check
+}
+
+void Ros2RlController::rlLoop() {
+    if (robot_state_ == STATE_RL_RUNNING) {
+        updateObservations();
+        agent_.obs.actions = agent_.act(); // Get actions from the agent
+        auto actions_accessor = agent_.obs.actions.accessor<float, 2>();
+        auto gravity_vec_accessor = agent_.obs.gravity_vec.accessor<float, 2>();
+
+        if (gravity_vec_accessor[0][2] >= -0.7) {
+            fallen_pause_time_ = motiontime_;
+            robot_state_ = STATE_FALLEN;
+            RCLCPP_INFO(get_logger(), "FALLEN DETECTED");
+        }
+
+        for (size_t k = 0; k < 12; k++) {
+            action_[k] = actions_accessor[0][net2joint_indexes[k]];
+        }
+    }
+}
+
+void Ros2RlController::publishSensorData() {
+    auto joint_state = sensor_msgs::msg::JointState();
+    joint_state.header.stamp = this->now();
+    joint_state.name.resize(joint_names_.size());
+    joint_state.position.resize(joint_names_.size());
+    joint_state.velocity.resize(joint_names_.size());
+    for (size_t i = 0; i < joint_names_.size(); i++) {
+        size_t j = 3, 4, 5, 0, 1, 2, 9, 10, 11, 6, 7, 8; //net2joint_indexes[i];
+        joint_state.name[j] = joint_names_[j];
+        joint_state.position[j] = low_state_ros_.motor_state[i].q; // Position here is a servo angle in rads
+        joint_state.velocity[j] = low_state_ros_.motor_state[i].dq;
+    }
+    pub_jointstates_->publish(joint_state);
+
+    sensor_msgs::msg::Imu imu_state;
+    imu_state.header.stamp = this->now();
+    imu_state.header.frame_id = "imu_link";
+    imu_state.orientation.w = low_state_ros_.imu.quaternion[0];
+    imu_state.orientation.x = low_state_ros_.imu.quaternion[1];
+    imu_state.orientation.y = low_state_ros_.imu.quaternion[2];
+    imu_state.orientation.z = low_state_ros_.imu.quaternion[3];
+    imu_state.linear_acceleration.x = low_state_ros_.imu.accelerometer[0];
+    imu_state.linear_acceleration.y = low_state_ros_.imu.accelerometer[1];
+    imu_state.linear_acceleration.z = low_state_ros_.imu.accelerometer[2];
+    imu_state.angular_velocity.x = low_state_ros_.imu.gyroscope[0];
+    imu_state.angular_velocity.y = low_state_ros_.imu.gyroscope[1];
+    imu_state.angular_velocity.z = low_state_ros_.imu.gyroscope[2];
+    pub_imu_->publish(imu_state);
+
+    es_vec<double, DIMENSION> curr_query;
+    for (size_t i = 0; i < DIMENSION; ++i) curr_query[i] = low_state_ros_.imu.accelerometer[i];
+    es_vec<double, DIMENSION> acc_filter = meansmth_.push_to_pop(curr_query);
+
+    sensor_msgs::msg::Imu imu_state_filter;
+    imu_state_filter.header.stamp = this->now();
+    imu_state_filter.header.frame_id = "imu_link";
+    imu_state_filter.orientation.w = low_state_ros_.imu.quaternion[0];
+    imu_state_filter.orientation.x = low_state_ros_.imu.quaternion[1];
+    imu_state_filter.orientation.y = low_state_ros_.imu.quaternion[2];
+    imu_state_filter.orientation.z = low_state_ros_.imu.quaternion[3];
+    imu_state_filter.linear_acceleration.x = acc_filter[0];
+    imu_state_filter.linear_acceleration.y = acc_filter[1];
+    imu_state_filter.linear_acceleration.z = acc_filter[2];
+    imu_state_filter.angular_velocity.x = low_state_ros_.imu.gyroscope[0];
+    imu_state_filter.angular_velocity.y = low_state_ros_.imu.gyroscope[1];
+    imu_state_filter.angular_velocity.z = low_state_ros_.imu.gyroscope[2];
+    pub_imu_filter_->publish(imu_state_filter);
+
+    std::vector<geometry_msgs::msg::WrenchStamped> feet_forces;
+    for (size_t k = 0; k < 4; k++) {
+        geometry_msgs::msg::WrenchStamped msg;
+        msg.header.frame_id = urdf_feet_names[k];
+        msg.header.stamp = this->now();
+        msg.wrench.force.x = 0;
+        msg.wrench.force.y = 0;
+        msg.wrench.force.z = low_state_ros_.foot_force[k] * 0.1;
+        msg.wrench.torque.x = 0;
+        msg.wrench.torque.y = 0;
+        msg.wrench.torque.z = 0;
+        feet_forces.push_back(msg);
+    }
+    pub_FR_force_->publish(feet_forces[0]);
+    pub_FL_force_->publish(feet_forces[1]);
+    pub_RR_force_->publish(feet_forces[2]);
+    pub_RL_force_->publish(feet_forces[3]);
+
+    std_msgs::msg::UInt8MultiArray remote_array;
+    remote_array.data.clear();
+    for (size_t k = 0; k < low_state_ros_.wireless_remote.size(); k++) {
+        remote_array.data.push_back(low_state_ros_.wireless_remote[k]);
+    }
+    pub_wireless_remote_->publish(remote_array);
+}
+
+void Ros2RlController::updateObservations() {
+    // Обновляем ang_vel с использованием torch::tensor
+    agent_.obs.ang_vel = torch::tensor({
+        {low_state_ros_.imu.gyroscope[0], low_state_ros_.imu.gyroscope[1], low_state_ros_.imu.gyroscope[2]}
+    });
+
+    // Обновляем base_quat с использованием torch::tensor
+    agent_.obs.base_quat = torch::tensor({
+        {low_state_ros_.imu.quaternion[1], low_state_ros_.imu.quaternion[2], low_state_ros_.imu.quaternion[3], low_state_ros_.imu.quaternion[0]}
+    });
+}
+
+int main(int argc, char** argv) {
+    rclcpp::init(argc, argv);
+    auto node = std::make_shared<Ros2RlController>();
+    rclcpp::spin(node);
+    rclcpp::shutdown();
+    return 0;
+}

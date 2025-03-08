@@ -156,11 +156,11 @@ torch::Tensor Agent::ComputeObservation()
 
     //printf("observation size: %lld, %lld\n", (long long)obs.sizes()[0], (long long)obs.sizes()[1]); // Commit if your obs match obs learned model 
     //std::cout << "Observation tensor:\n" << obs << std::endl;
-    std::cout << "Angular velocity: " << obs.index({0, torch::indexing::Slice(0, 3)}) << std::endl;
-    std::cout << "Projected gravity: " << obs.index({0, torch::indexing::Slice(3, 6)}) << std::endl;
-    std::cout << "DOF positions: " << obs.index({0, torch::indexing::Slice(6, 18)}) << std::endl;
-    std::cout << "DOF velocities: " << obs.index({0, torch::indexing::Slice(18, 30)}) << std::endl;
-    std::cout << "Actions: " << obs.index({0, torch::indexing::Slice(30, 42)}) << std::endl;
+    // std::cout << "Angular velocity: " << obs.index({0, torch::indexing::Slice(0, 3)}) << std::endl;
+    // std::cout << "Projected gravity: " << obs.index({0, torch::indexing::Slice(3, 6)}) << std::endl;
+    // std::cout << "DOF positions: " << obs.index({0, torch::indexing::Slice(6, 18)}) << std::endl;
+    // std::cout << "DOF velocities: " << obs.index({0, torch::indexing::Slice(18, 30)}) << std::endl;
+    // std::cout << "Actions: " << obs.index({0, torch::indexing::Slice(30, 42)}) << std::endl;
 
 
     return obs;

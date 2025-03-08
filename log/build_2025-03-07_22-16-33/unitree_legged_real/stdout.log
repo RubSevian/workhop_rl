@@ -1,0 +1,7 @@
+[ 16%] Built target ros2_position_example
+[ 33%] Built target ros2_test
+[ 50%] Built target lcm_server
+[ 66%] Built target ros2_walk_example
+[35m[1mConsolidate compiler generated dependencies of target ros2_rl[0m
+[ 83%] Built target ros2_rl_control
+[ 91%] [32mBuilding CXX object CMakeFiles/ros2_rl.dir/src/ros2_rl.cpp.o[0m

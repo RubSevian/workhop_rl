@@ -9,11 +9,11 @@ find_package(ros2_unitree_legged_msgs REQUIRED)
 find_package(unitree_rl_controller REQUIRED)
 
 
-list(APPEND CMAKE_PREFIX_PATH "/home/ruben/workhop_rl/src/libtorch/share/cmake/Torch")
+list(APPEND CMAKE_PREFIX_PATH "/home/ruben/libtorch/share/cmake/Torch")
 find_package(Torch REQUIRED)
 find_library( TORCH_LIBRARIES libtorch_cpu.so libc10.so:
               PATHS
-              /home/ruben/workhop_rl/src/libtorch/lib/
+              /home/ruben/libtorch/lib/
               NO_DEFAULT_PATH )
 ## set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${TORCH_CXX_FLAGS}")
 
@@ -70,12 +70,17 @@ add_executable(ros2_rl src/ros2_rl.cpp)
 target_link_libraries(ros2_rl ${EXTRA_LIBS} ${TORCH_LIBRARIES})
 ament_target_dependencies(ros2_rl rclcpp ros2_unitree_legged_msgs unitree_rl_controller sensor_msgs)
 
+add_executable(ros2_rl_control src/ros2_rl_control.cpp)
+target_link_libraries(ros2_rl_control ${EXTRA_LIBS} ${TORCH_LIBRARIES})
+ament_target_dependencies(ros2_rl_control rclcpp ros2_unitree_legged_msgs unitree_rl_controller sensor_msgs)
+
 
 
 install(TARGETS
     ros2_walk_example
     ros2_position_example
     ros2_rl
+    ros2_rl_control
     ros2_test
     lcm_server
     DESTINATION lib/${PROJECT_NAME}

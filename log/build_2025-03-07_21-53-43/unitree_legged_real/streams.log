@@ -1,0 +1,24 @@
+[0.007s] Invoking command in '/home/ruben/workhop_rl/build/unitree_legged_real': CMAKE_PREFIX_PATH=/home/ruben/workhop_rl/install/unitree_rl_controller:/home/ruben/workhop_rl/install/ros2_unitree_legged_msgs:/home/ruben/workhop_rl/install/unitree_legged_real:/opt/ros/humble LD_LIBRARY_PATH=/home/ruben/workhop_rl/install/unitree_rl_controller/lib:/home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/lib:/home/ruben/workhop_rl/install/unitree_legged_real/lib:/usr/lib/x86_64-linux-gnu/gazebo-11/plugins:/opt/ros/humble/opt/rviz_ogre_vendor/lib:/opt/ros/humble/lib/x86_64-linux-gnu:/opt/ros/humble/lib:/usr/local/cuda-12.6/lib64:/home/ruben/workhop_rl/src/libtorch/lib/:/home/ruben/workhop_rl/src/libtorch/lib/:/home/ruben/libtorch/lib/ /usr/bin/cmake --build /home/ruben/workhop_rl/build/unitree_legged_real -- -j20 -l20
+[0.019s] -- Found ament_cmake: 1.3.11 (/opt/ros/humble/share/ament_cmake/cmake)
+[0.087s] -- Found rclcpp: 16.0.11 (/opt/ros/humble/share/rclcpp/cmake)
+[0.100s] -- Found rosidl_generator_c: 3.1.6 (/opt/ros/humble/share/rosidl_generator_c/cmake)
+[0.102s] -- Found rosidl_adapter: 3.1.6 (/opt/ros/humble/share/rosidl_adapter/cmake)
+[0.104s] -- Found rosidl_generator_cpp: 3.1.6 (/opt/ros/humble/share/rosidl_generator_cpp/cmake)
+[0.109s] -- Using all available rosidl_typesupport_c: rosidl_typesupport_fastrtps_c;rosidl_typesupport_introspection_c
+[0.115s] -- Using all available rosidl_typesupport_cpp: rosidl_typesupport_fastrtps_cpp;rosidl_typesupport_introspection_cpp
+[0.130s] -- Found rmw_implementation_cmake: 6.1.2 (/opt/ros/humble/share/rmw_implementation_cmake/cmake)
+[0.130s] -- Found rmw_fastrtps_cpp: 6.2.7 (/opt/ros/humble/share/rmw_fastrtps_cpp/cmake)
+[0.184s] -- Using RMW implementation 'rmw_fastrtps_cpp' as default
+[0.214s] -- Found sensor_msgs: 4.2.4 (/opt/ros/humble/share/sensor_msgs/cmake)
+[0.227s] -- Found ros2_unitree_legged_msgs: 0.4.0 (/home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/share/ros2_unitree_legged_msgs/cmake)
+[0.231s] -- Found unitree_rl_controller: 0.0.0 (/home/ruben/workhop_rl/install/unitree_rl_controller/share/unitree_rl_controller/cmake)
+[0.244s] [0m-- CMAKE_SYSTEM_PROCESSOR: x86_64[0m
+[0.248s] [31mCMake Error at CMakeLists.txt:74 (target_link_libraries):
+[0.248s]   Cannot specify link libraries for target "ros2_rl_control" which is not
+[0.248s]   built by this project.
+[0.248s] 
+[0.248s] [0m
+[0.248s] -- Configuring incomplete, errors occurred!
+[0.248s] See also "/home/ruben/workhop_rl/build/unitree_legged_real/CMakeFiles/CMakeOutput.log".
+[0.251s] gmake: *** [Makefile:431: cmake_check_build_system] Error 1
+[0.252s] Invoked command in '/home/ruben/workhop_rl/build/unitree_legged_real' returned '2': CMAKE_PREFIX_PATH=/home/ruben/workhop_rl/install/unitree_rl_controller:/home/ruben/workhop_rl/install/ros2_unitree_legged_msgs:/home/ruben/workhop_rl/install/unitree_legged_real:/opt/ros/humble LD_LIBRARY_PATH=/home/ruben/workhop_rl/install/unitree_rl_controller/lib:/home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/lib:/home/ruben/workhop_rl/install/unitree_legged_real/lib:/usr/lib/x86_64-linux-gnu/gazebo-11/plugins:/opt/ros/humble/opt/rviz_ogre_vendor/lib:/opt/ros/humble/lib/x86_64-linux-gnu:/opt/ros/humble/lib:/usr/local/cuda-12.6/lib64:/home/ruben/workhop_rl/src/libtorch/lib/:/home/ruben/workhop_rl/src/libtorch/lib/:/home/ruben/libtorch/lib/ /usr/bin/cmake --build /home/ruben/workhop_rl/build/unitree_legged_real -- -j20 -l20

@@ -1,0 +1,29 @@
+-- Found ament_cmake: 1.3.11 (/opt/ros/humble/share/ament_cmake/cmake)
+-- Found rclcpp: 16.0.11 (/opt/ros/humble/share/rclcpp/cmake)
+-- Found rosidl_generator_c: 3.1.6 (/opt/ros/humble/share/rosidl_generator_c/cmake)
+-- Found rosidl_adapter: 3.1.6 (/opt/ros/humble/share/rosidl_adapter/cmake)
+-- Found rosidl_generator_cpp: 3.1.6 (/opt/ros/humble/share/rosidl_generator_cpp/cmake)
+-- Using all available rosidl_typesupport_c: rosidl_typesupport_fastrtps_c;rosidl_typesupport_introspection_c
+-- Using all available rosidl_typesupport_cpp: rosidl_typesupport_fastrtps_cpp;rosidl_typesupport_introspection_cpp
+-- Found rmw_implementation_cmake: 6.1.2 (/opt/ros/humble/share/rmw_implementation_cmake/cmake)
+-- Found rmw_fastrtps_cpp: 6.2.7 (/opt/ros/humble/share/rmw_fastrtps_cpp/cmake)
+-- Using RMW implementation 'rmw_fastrtps_cpp' as default
+-- Found sensor_msgs: 4.2.4 (/opt/ros/humble/share/sensor_msgs/cmake)
+-- Found ros2_unitree_legged_msgs: 0.4.0 (/home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/share/ros2_unitree_legged_msgs/cmake)
+-- Found unitree_rl_controller: 0.0.0 (/home/ruben/workhop_rl/install/unitree_rl_controller/share/unitree_rl_controller/cmake)
+[0m-- CMAKE_SYSTEM_PROCESSOR: x86_64[0m
+[31mCMake Error at CMakeLists.txt:73 (add_executable):
+  add_executable cannot create target "ros2_rl" because another target with
+  the same name already exists.  The existing target is an executable created
+  in source directory "/home/ruben/workhop_rl/src/unitree_ros2_to_real".  See
+  documentation for policy CMP0002 for more details.
+
+[0m
+[31mCMake Error at CMakeLists.txt:74 (target_link_libraries):
+  Cannot specify link libraries for target "ros2_rl_control" which is not
+  built by this project.
+
+[0m
+-- Configuring incomplete, errors occurred!
+See also "/home/ruben/workhop_rl/build/unitree_legged_real/CMakeFiles/CMakeOutput.log".
+gmake: *** [Makefile:431: cmake_check_build_system] Error 1

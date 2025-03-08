@@ -1,0 +1,25 @@
+[0.006s] Invoking command in '/home/ruben/workhop_rl/build/unitree_legged_real': CMAKE_PREFIX_PATH=/home/ruben/workhop_rl/install/unitree_rl_controller:/home/ruben/workhop_rl/install/ros2_unitree_legged_msgs:/home/ruben/workhop_rl/install/unitree_legged_real:/opt/ros/humble LD_LIBRARY_PATH=/home/ruben/workhop_rl/install/unitree_rl_controller/lib:/home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/lib:/home/ruben/workhop_rl/install/unitree_legged_real/lib:/usr/lib/x86_64-linux-gnu/gazebo-11/plugins:/opt/ros/humble/opt/rviz_ogre_vendor/lib:/opt/ros/humble/lib/x86_64-linux-gnu:/opt/ros/humble/lib:/usr/local/cuda-12.6/lib64:/home/ruben/workhop_rl/src/libtorch/lib/:/home/ruben/workhop_rl/src/libtorch/lib/:/home/ruben/libtorch/lib/ /usr/bin/cmake --build /home/ruben/workhop_rl/build/unitree_legged_real -- -j20 -l20
+[0.037s] [ 16%] Built target lcm_server
+[0.037s] [ 50%] Built target ros2_test
+[0.037s] [ 50%] Built target ros2_walk_example
+[0.040s] [ 66%] Built target ros2_position_example
+[0.043s] [35m[1mConsolidate compiler generated dependencies of target ros2_rl[0m
+[0.057s] [ 83%] Built target ros2_rl_control
+[0.079s] [ 91%] [32mBuilding CXX object CMakeFiles/ros2_rl.dir/src/ros2_rl.cpp.o[0m
+[5.153s] [01m[K/home/ruben/workhop_rl/src/unitree_ros2_to_real/src/ros2_rl.cpp:[m[K In function ‘[01m[Kint main(int, char**)[m[K’:
+[5.153s] [01m[K/home/ruben/workhop_rl/src/unitree_ros2_to_real/src/ros2_rl.cpp:387:55:[m[K [01;31m[Kerror: [m[K‘[01m[Kstruct Observations[m[K’ has no member named ‘[01m[Ksize[m[K’
+[5.153s]   387 |                         obs_msg.data.resize(agent.obs.[01;31m[Ksize[m[K(1));
+[5.153s]       |                                                       [01;31m[K^~~~[m[K
+[5.153s] [01m[K/home/ruben/workhop_rl/src/unitree_ros2_to_real/src/ros2_rl.cpp:388:55:[m[K [01;31m[Kerror: [m[K‘[01m[Kstruct Observations[m[K’ has no member named ‘[01m[Ksize[m[K’
+[5.153s]   388 |                         for (int i = 0; i < agent.obs.[01;31m[Ksize[m[K(1); ++i) {
+[5.153s]       |                                                       [01;31m[K^~~~[m[K
+[5.153s] [01m[K/home/ruben/workhop_rl/src/unitree_ros2_to_real/src/ros2_rl.cpp:389:56:[m[K [01;31m[Kerror: [m[Kno match for ‘[01m[Koperator[][m[K’ (operand types are ‘[01m[KObservations[m[K’ and ‘[01m[Kint[m[K’)
+[5.153s]   389 |                             obs_msg.data[i] = agent.obs[01;31m[K[[m[K0][i].item<float>();
+[5.153s]       |                                                        [01;31m[K^[m[K
+[5.153s] [01m[K/home/ruben/workhop_rl/src/unitree_ros2_to_real/src/ros2_rl.cpp:389:68:[m[K [01;31m[Kerror: [m[Kexpected primary-expression before ‘[01m[Kfloat[m[K’
+[5.153s]   389 |                             obs_msg.data[i] = agent.obs[0][i].item<[01;31m[Kfloat[m[K>();
+[5.153s]       |                                                                    [01;31m[K^~~~~[m[K
+[7.866s] gmake[2]: *** [CMakeFiles/ros2_rl.dir/build.make:76: CMakeFiles/ros2_rl.dir/src/ros2_rl.cpp.o] Error 1
+[7.866s] gmake[1]: *** [CMakeFiles/Makefile2:251: CMakeFiles/ros2_rl.dir/all] Error 2
+[7.866s] gmake: *** [Makefile:146: all] Error 2
+[7.868s] Invoked command in '/home/ruben/workhop_rl/build/unitree_legged_real' returned '2': CMAKE_PREFIX_PATH=/home/ruben/workhop_rl/install/unitree_rl_controller:/home/ruben/workhop_rl/install/ros2_unitree_legged_msgs:/home/ruben/workhop_rl/install/unitree_legged_real:/opt/ros/humble LD_LIBRARY_PATH=/home/ruben/workhop_rl/install/unitree_rl_controller/lib:/home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/lib:/home/ruben/workhop_rl/install/unitree_legged_real/lib:/usr/lib/x86_64-linux-gnu/gazebo-11/plugins:/opt/ros/humble/opt/rviz_ogre_vendor/lib:/opt/ros/humble/lib/x86_64-linux-gnu:/opt/ros/humble/lib:/usr/local/cuda-12.6/lib64:/home/ruben/workhop_rl/src/libtorch/lib/:/home/ruben/workhop_rl/src/libtorch/lib/:/home/ruben/libtorch/lib/ /usr/bin/cmake --build /home/ruben/workhop_rl/build/unitree_legged_real -- -j20 -l20

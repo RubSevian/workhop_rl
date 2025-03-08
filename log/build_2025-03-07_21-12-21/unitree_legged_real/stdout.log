@@ -1,0 +1,5 @@
+[ 20%] Built target lcm_server
+[ 40%] Built target ros2_position_example
+[ 60%] Built target ros2_walk_example
+[ 80%] Built target ros2_test
+[ 90%] [32mBuilding CXX object CMakeFiles/ros2_rl.dir/src/ros2_rl.cpp.o[0m

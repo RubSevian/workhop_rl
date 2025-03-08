@@ -1,0 +1,298 @@
+[0m-- CMAKE_SYSTEM_PROCESSOR: x86_64[0m
+In file included from [01m[K/home/ruben/libtorch/include/ATen/Functions.h:60[m[K,
+                 from [01m[K/home/ruben/libtorch/include/ATen/ExpandUtils.h:4[m[K,
+                 from [01m[K/home/ruben/libtorch/include/torch/csrc/autograd/input_metadata.h:3[m[K,
+                 from [01m[K/home/ruben/libtorch/include/torch/csrc/autograd/function.h:7[m[K,
+                 from [01m[K/home/ruben/libtorch/include/torch/csrc/autograd/custom_function.h:6[m[K,
+                 from [01m[K/home/ruben/libtorch/include/torch/csrc/api/include/torch/autograd.h:5[m[K,
+                 from [01m[K/home/ruben/libtorch/include/torch/csrc/api/include/torch/all.h:7[m[K,
+                 from [01m[K/home/ruben/libtorch/include/torch/csrc/api/include/torch/torch.h:3[m[K,
+                 from [01m[K/home/ruben/workhop_rl/src/unitree_ros2_to_real/src/ros2_rl.cpp:10[m[K:
+[01m[K/home/ruben/libtorch/include/ATen/DeviceGuard.h:[m[K In function ‘[01m[Kc10::optional<c10::Device> at::device_of(const c10::optional<at::Tensor>&)[m[K’:
+[01m[K/home/ruben/libtorch/include/ATen/DeviceGuard.h:27:49:[m[K [01;31m[Kerror: [m[Kreference to ‘[01m[Knullopt[m[K’ is ambiguous
+   27 |   return t.has_value() ? device_of(t.value()) : [01;31m[Knullopt[m[K;
+      |                                                 [01;31m[K^~~~~~~[m[K
+In file included from [01m[K/opt/ros/humble/include/rclcpp/rclcpp/client.hpp:23[m[K,
+                 from [01m[K/opt/ros/humble/include/rclcpp/rclcpp/callback_group.hpp:24[m[K,
+                 from [01m[K/opt/ros/humble/include/rclcpp/rclcpp/any_executable.hpp:20[m[K,
+                 from [01m[K/opt/ros/humble/include/rclcpp/rclcpp/memory_strategy.hpp:25[m[K,
+                 from [01m[K/opt/ros/humble/include/rclcpp/rclcpp/memory_strategies.hpp:18[m[K,
+                 from [01m[K/opt/ros/humble/include/rclcpp/rclcpp/executor_options.hpp:20[m[K,
+                 from [01m[K/opt/ros/humble/include/rclcpp/rclcpp/executor.hpp:37[m[K,
+                 from [01m[K/opt/ros/humble/include/rclcpp/rclcpp/executors/multi_threaded_executor.hpp:25[m[K,
+                 from [01m[K/opt/ros/humble/include/rclcpp/rclcpp/executors.hpp:21[m[K,
+                 from [01m[K/opt/ros/humble/include/rclcpp/rclcpp/rclcpp.hpp:155[m[K,
+                 from [01m[K/home/ruben/workhop_rl/src/unitree_ros2_to_real/src/ros2_rl.cpp:1[m[K:
+[01m[K/usr/include/c++/11/optional:82:30:[m[K [01;36m[Knote: [m[Kcandidates are: ‘[01m[Kconstexpr const std::nullopt_t std::nullopt[m[K’
+   82 |   inline constexpr nullopt_t [01;36m[Knullopt[m[K { nullopt_t::_Construct::_Token };
+      |                              [01;36m[K^~~~~~~[m[K
+In file included from [01m[K/home/ruben/libtorch/include/c10/core/ScalarTypeToTypeMeta.h:4[m[K,
+                 from [01m[K/home/ruben/libtorch/include/ATen/core/TensorBody.h:18[m[K,
+                 from [01m[K/home/ruben/libtorch/include/ATen/core/Tensor.h:3[m[K,
+                 from [01m[K/home/ruben/libtorch/include/ATen/Tensor.h:3[m[K,
+                 from [01m[K/home/ruben/libtorch/include/torch/csrc/autograd/function_hook.h:3[m[K,
+                 from [01m[K/home/ruben/libtorch/include/torch/csrc/autograd/cpp_hook.h:2[m[K,
+                 from [01m[K/home/ruben/libtorch/include/torch/csrc/autograd/variable.h:6[m[K,
+                 from [01m[K/home/ruben/libtorch/include/torch/csrc/autograd/autograd.h:3[m[K,
+                 from [01m[K/home/ruben/libtorch/include/torch/csrc/api/include/torch/autograd.h:3[m[K,
+                 from [01m[K/home/ruben/libtorch/include/torch/csrc/api/include/torch/all.h:7[m[K,
+                 from [01m[K/home/ruben/libtorch/include/torch/csrc/api/include/torch/torch.h:3[m[K,
+                 from [01m[K/home/ruben/workhop_rl/src/unitree_ros2_to_real/src/ros2_rl.cpp:10[m[K:
+[01m[K/home/ruben/libtorch/include/c10/util/Optional.h:163:21:[m[K [01;36m[Knote: [m[K                ‘[01m[Kconstexpr const c10::nullopt_t c10::nullopt[m[K’
+  163 | constexpr nullopt_t [01;36m[Knullopt[m[K{0};
+      |                     [01;36m[K^~~~~~~[m[K
+In file included from [01m[K/home/ruben/libtorch/include/ATen/Functions.h:74[m[K,
+                 from [01m[K/home/ruben/libtorch/include/ATen/ExpandUtils.h:4[m[K,
+                 from [01m[K/home/ruben/libtorch/include/torch/csrc/autograd/input_metadata.h:3[m[K,
+                 from [01m[K/home/ruben/libtorch/include/torch/csrc/autograd/function.h:7[m[K,
+                 from [01m[K/home/ruben/libtorch/include/torch/csrc/autograd/custom_function.h:6[m[K,
+                 from [01m[K/home/ruben/libtorch/include/torch/csrc/api/include/torch/autograd.h:5[m[K,
+                 from [01m[K/home/ruben/libtorch/include/torch/csrc/api/include/torch/all.h:7[m[K,
+                 from [01m[K/home/ruben/libtorch/include/torch/csrc/api/include/torch/torch.h:3[m[K,
+                 from [01m[K/home/ruben/workhop_rl/src/unitree_ros2_to_real/src/ros2_rl.cpp:10[m[K:
+[01m[K/home/ruben/libtorch/include/ATen/ops/from_blob.h:[m[K At global scope:
+[01m[K/home/ruben/libtorch/include/ATen/ops/from_blob.h:35:31:[m[K [01;31m[Kerror: [m[Kreference to ‘[01m[Koptional[m[K’ is ambiguous
+   35 |   TensorMaker& storage_offset([01;31m[Koptional[m[K<int64_t> value) noexcept {
+      |                               [01;31m[K^~~~~~~~[m[K
+In file included from [01m[K/opt/ros/humble/include/rclcpp/rclcpp/client.hpp:23[m[K,
+                 from [01m[K/opt/ros/humble/include/rclcpp/rclcpp/callback_group.hpp:24[m[K,
+                 from [01m[K/opt/ros/humble/include/rclcpp/rclcpp/any_executable.hpp:20[m[K,
+                 from [01m[K/opt/ros/humble/include/rclcpp/rclcpp/memory_strategy.hpp:25[m[K,
+                 from [01m[K/opt/ros/humble/include/rclcpp/rclcpp/memory_strategies.hpp:18[m[K,
+                 from [01m[K/opt/ros/humble/include/rclcpp/rclcpp/executor_options.hpp:20[m[K,
+                 from [01m[K/opt/ros/humble/include/rclcpp/rclcpp/executor.hpp:37[m[K,
+                 from [01m[K/opt/ros/humble/include/rclcpp/rclcpp/executors/multi_threaded_executor.hpp:25[m[K,
+                 from [01m[K/opt/ros/humble/include/rclcpp/rclcpp/executors.hpp:21[m[K,
+                 from [01m[K/opt/ros/humble/include/rclcpp/rclcpp/rclcpp.hpp:155[m[K,
+                 from [01m[K/home/ruben/workhop_rl/src/unitree_ros2_to_real/src/ros2_rl.cpp:1[m[K:
+[01m[K/usr/include/c++/11/optional:65:11:[m[K [01;36m[Knote: [m[Kcandidates are: ‘[01m[Ktemplate<class _Tp> class std::optional[m[K’
+   65 |     class [01;36m[Koptional[m[K;
+      |           [01;36m[K^~~~~~~~[m[K
+In file included from [01m[K/home/ruben/libtorch/include/c10/core/ScalarTypeToTypeMeta.h:4[m[K,
+                 from [01m[K/home/ruben/libtorch/include/ATen/core/TensorBody.h:18[m[K,
+                 from [01m[K/home/ruben/libtorch/include/ATen/core/Tensor.h:3[m[K,
+                 from [01m[K/home/ruben/libtorch/include/ATen/Tensor.h:3[m[K,
+                 from [01m[K/home/ruben/libtorch/include/torch/csrc/autograd/function_hook.h:3[m[K,
+                 from [01m[K/home/ruben/libtorch/include/torch/csrc/autograd/cpp_hook.h:2[m[K,
+                 from [01m[K/home/ruben/libtorch/include/torch/csrc/autograd/variable.h:6[m[K,
+                 from [01m[K/home/ruben/libtorch/include/torch/csrc/autograd/autograd.h:3[m[K,
+                 from [01m[K/home/ruben/libtorch/include/torch/csrc/api/include/torch/autograd.h:3[m[K,
+                 from [01m[K/home/ruben/libtorch/include/torch/csrc/api/include/torch/all.h:7[m[K,
+                 from [01m[K/home/ruben/libtorch/include/torch/csrc/api/include/torch/torch.h:3[m[K,
+                 from [01m[K/home/ruben/workhop_rl/src/unitree_ros2_to_real/src/ros2_rl.cpp:10[m[K:
+[01m[K/home/ruben/libtorch/include/c10/util/Optional.h:66:7:[m[K [01;36m[Knote: [m[K                ‘[01m[Ktemplate<class T> class c10::optional[m[K’
+   66 | class [01;36m[Koptional[m[K;
+      |       [01;36m[K^~~~~~~~[m[K
+In file included from [01m[K/home/ruben/libtorch/include/ATen/Functions.h:74[m[K,
+                 from [01m[K/home/ruben/libtorch/include/ATen/ExpandUtils.h:4[m[K,
+                 from [01m[K/home/ruben/libtorch/include/torch/csrc/autograd/input_metadata.h:3[m[K,
+                 from [01m[K/home/ruben/libtorch/include/torch/csrc/autograd/function.h:7[m[K,
+                 from [01m[K/home/ruben/libtorch/include/torch/csrc/autograd/custom_function.h:6[m[K,
+                 from [01m[K/home/ruben/libtorch/include/torch/csrc/api/include/torch/autograd.h:5[m[K,
+                 from [01m[K/home/ruben/libtorch/include/torch/csrc/api/include/torch/all.h:7[m[K,
+                 from [01m[K/home/ruben/libtorch/include/torch/csrc/api/include/torch/torch.h:3[m[K,
+                 from [01m[K/home/ruben/workhop_rl/src/unitree_ros2_to_real/src/ros2_rl.cpp:10[m[K:
+[01m[K/home/ruben/libtorch/include/ATen/ops/from_blob.h:35:31:[m[K [01;31m[Kerror: [m[K‘[01m[Koptional[m[K’ has not been declared
+   35 |   TensorMaker& storage_offset([01;31m[Koptional[m[K<int64_t> value) noexcept {
+      |                               [01;31m[K^~~~~~~~[m[K
+[01m[K/home/ruben/libtorch/include/ATen/ops/from_blob.h:35:39:[m[K [01;31m[Kerror: [m[Kexpected ‘[01m[K,[m[K’ or ‘[01m[K...[m[K’ before ‘[01m[K<[m[K’ token
+   35 |   TensorMaker& storage_offset(optional[01;31m[K<[m[Kint64_t> value) noexcept {
+      |                                       [01;31m[K^[m[K
+[01m[K/home/ruben/libtorch/include/ATen/ops/from_blob.h:54:30:[m[K [01;31m[Kerror: [m[Kreference to ‘[01m[Koptional[m[K’ is ambiguous
+   54 |   TensorMaker& target_device([01;31m[Koptional[m[K<Device> value) noexcept {
+      |                              [01;31m[K^~~~~~~~[m[K
+In file included from [01m[K/opt/ros/humble/include/rclcpp/rclcpp/client.hpp:23[m[K,
+                 from [01m[K/opt/ros/humble/include/rclcpp/rclcpp/callback_group.hpp:24[m[K,
+                 from [01m[K/opt/ros/humble/include/rclcpp/rclcpp/any_executable.hpp:20[m[K,
+                 from [01m[K/opt/ros/humble/include/rclcpp/rclcpp/memory_strategy.hpp:25[m[K,
+                 from [01m[K/opt/ros/humble/include/rclcpp/rclcpp/memory_strategies.hpp:18[m[K,
+                 from [01m[K/opt/ros/humble/include/rclcpp/rclcpp/executor_options.hpp:20[m[K,
+                 from [01m[K/opt/ros/humble/include/rclcpp/rclcpp/executor.hpp:37[m[K,
+                 from [01m[K/opt/ros/humble/include/rclcpp/rclcpp/executors/multi_threaded_executor.hpp:25[m[K,
+                 from [01m[K/opt/ros/humble/include/rclcpp/rclcpp/executors.hpp:21[m[K,
+                 from [01m[K/opt/ros/humble/include/rclcpp/rclcpp/rclcpp.hpp:155[m[K,
+                 from [01m[K/home/ruben/workhop_rl/src/unitree_ros2_to_real/src/ros2_rl.cpp:1[m[K:
+[01m[K/usr/include/c++/11/optional:65:11:[m[K [01;36m[Knote: [m[Kcandidates are: ‘[01m[Ktemplate<class _Tp> class std::optional[m[K’
+   65 |     class [01;36m[Koptional[m[K;
+      |           [01;36m[K^~~~~~~~[m[K
+In file included from [01m[K/home/ruben/libtorch/include/c10/core/ScalarTypeToTypeMeta.h:4[m[K,
+                 from [01m[K/home/ruben/libtorch/include/ATen/core/TensorBody.h:18[m[K,
+                 from [01m[K/home/ruben/libtorch/include/ATen/core/Tensor.h:3[m[K,
+                 from [01m[K/home/ruben/libtorch/include/ATen/Tensor.h:3[m[K,
+                 from [01m[K/home/ruben/libtorch/include/torch/csrc/autograd/function_hook.h:3[m[K,
+                 from [01m[K/home/ruben/libtorch/include/torch/csrc/autograd/cpp_hook.h:2[m[K,
+                 from [01m[K/home/ruben/libtorch/include/torch/csrc/autograd/variable.h:6[m[K,
+                 from [01m[K/home/ruben/libtorch/include/torch/csrc/autograd/autograd.h:3[m[K,
+                 from [01m[K/home/ruben/libtorch/include/torch/csrc/api/include/torch/autograd.h:3[m[K,
+                 from [01m[K/home/ruben/libtorch/include/torch/csrc/api/include/torch/all.h:7[m[K,
+                 from [01m[K/home/ruben/libtorch/include/torch/csrc/api/include/torch/torch.h:3[m[K,
+                 from [01m[K/home/ruben/workhop_rl/src/unitree_ros2_to_real/src/ros2_rl.cpp:10[m[K:
+[01m[K/home/ruben/libtorch/include/c10/util/Optional.h:66:7:[m[K [01;36m[Knote: [m[K                ‘[01m[Ktemplate<class T> class c10::optional[m[K’
+   66 | class [01;36m[Koptional[m[K;
+      |       [01;36m[K^~~~~~~~[m[K
+In file included from [01m[K/home/ruben/libtorch/include/ATen/Functions.h:74[m[K,
+                 from [01m[K/home/ruben/libtorch/include/ATen/ExpandUtils.h:4[m[K,
+                 from [01m[K/home/ruben/libtorch/include/torch/csrc/autograd/input_metadata.h:3[m[K,
+                 from [01m[K/home/ruben/libtorch/include/torch/csrc/autograd/function.h:7[m[K,
+                 from [01m[K/home/ruben/libtorch/include/torch/csrc/autograd/custom_function.h:6[m[K,
+                 from [01m[K/home/ruben/libtorch/include/torch/csrc/api/include/torch/autograd.h:5[m[K,
+                 from [01m[K/home/ruben/libtorch/include/torch/csrc/api/include/torch/all.h:7[m[K,
+                 from [01m[K/home/ruben/libtorch/include/torch/csrc/api/include/torch/torch.h:3[m[K,
+                 from [01m[K/home/ruben/workhop_rl/src/unitree_ros2_to_real/src/ros2_rl.cpp:10[m[K:
+[01m[K/home/ruben/libtorch/include/ATen/ops/from_blob.h:54:30:[m[K [01;31m[Kerror: [m[K‘[01m[Koptional[m[K’ has not been declared
+   54 |   TensorMaker& target_device([01;31m[Koptional[m[K<Device> value) noexcept {
+      |                              [01;31m[K^~~~~~~~[m[K
+[01m[K/home/ruben/libtorch/include/ATen/ops/from_blob.h:54:38:[m[K [01;31m[Kerror: [m[Kexpected ‘[01m[K,[m[K’ or ‘[01m[K...[m[K’ before ‘[01m[K<[m[K’ token
+   54 |   TensorMaker& target_device(optional[01;31m[K<[m[KDevice> value) noexcept {
+      |                                      [01;31m[K^[m[K
+[01m[K/home/ruben/libtorch/include/ATen/ops/from_blob.h:83:3:[m[K [01;31m[Kerror: [m[Kreference to ‘[01m[Koptional[m[K’ is ambiguous
+   83 |   [01;31m[Koptional[m[K<int64_t> storage_offset_{};
+      |   [01;31m[K^~~~~~~~[m[K
+In file included from [01m[K/opt/ros/humble/include/rclcpp/rclcpp/client.hpp:23[m[K,
+                 from [01m[K/opt/ros/humble/include/rclcpp/rclcpp/callback_group.hpp:24[m[K,
+                 from [01m[K/opt/ros/humble/include/rclcpp/rclcpp/any_executable.hpp:20[m[K,
+                 from [01m[K/opt/ros/humble/include/rclcpp/rclcpp/memory_strategy.hpp:25[m[K,
+                 from [01m[K/opt/ros/humble/include/rclcpp/rclcpp/memory_strategies.hpp:18[m[K,
+                 from [01m[K/opt/ros/humble/include/rclcpp/rclcpp/executor_options.hpp:20[m[K,
+                 from [01m[K/opt/ros/humble/include/rclcpp/rclcpp/executor.hpp:37[m[K,
+                 from [01m[K/opt/ros/humble/include/rclcpp/rclcpp/executors/multi_threaded_executor.hpp:25[m[K,
+                 from [01m[K/opt/ros/humble/include/rclcpp/rclcpp/executors.hpp:21[m[K,
+                 from [01m[K/opt/ros/humble/include/rclcpp/rclcpp/rclcpp.hpp:155[m[K,
+                 from [01m[K/home/ruben/workhop_rl/src/unitree_ros2_to_real/src/ros2_rl.cpp:1[m[K:
+[01m[K/usr/include/c++/11/optional:65:11:[m[K [01;36m[Knote: [m[Kcandidates are: ‘[01m[Ktemplate<class _Tp> class std::optional[m[K’
+   65 |     class [01;36m[Koptional[m[K;
+      |           [01;36m[K^~~~~~~~[m[K
+In file included from [01m[K/home/ruben/libtorch/include/c10/core/ScalarTypeToTypeMeta.h:4[m[K,
+                 from [01m[K/home/ruben/libtorch/include/ATen/core/TensorBody.h:18[m[K,
+                 from [01m[K/home/ruben/libtorch/include/ATen/core/Tensor.h:3[m[K,
+                 from [01m[K/home/ruben/libtorch/include/ATen/Tensor.h:3[m[K,
+                 from [01m[K/home/ruben/libtorch/include/torch/csrc/autograd/function_hook.h:3[m[K,
+                 from [01m[K/home/ruben/libtorch/include/torch/csrc/autograd/cpp_hook.h:2[m[K,
+                 from [01m[K/home/ruben/libtorch/include/torch/csrc/autograd/variable.h:6[m[K,
+                 from [01m[K/home/ruben/libtorch/include/torch/csrc/autograd/autograd.h:3[m[K,
+                 from [01m[K/home/ruben/libtorch/include/torch/csrc/api/include/torch/autograd.h:3[m[K,
+                 from [01m[K/home/ruben/libtorch/include/torch/csrc/api/include/torch/all.h:7[m[K,
+                 from [01m[K/home/ruben/libtorch/include/torch/csrc/api/include/torch/torch.h:3[m[K,
+                 from [01m[K/home/ruben/workhop_rl/src/unitree_ros2_to_real/src/ros2_rl.cpp:10[m[K:
+[01m[K/home/ruben/libtorch/include/c10/util/Optional.h:66:7:[m[K [01;36m[Knote: [m[K                ‘[01m[Ktemplate<class T> class c10::optional[m[K’
+   66 | class [01;36m[Koptional[m[K;
+      |       [01;36m[K^~~~~~~~[m[K
+In file included from [01m[K/home/ruben/libtorch/include/ATen/Functions.h:74[m[K,
+                 from [01m[K/home/ruben/libtorch/include/ATen/ExpandUtils.h:4[m[K,
+                 from [01m[K/home/ruben/libtorch/include/torch/csrc/autograd/input_metadata.h:3[m[K,
+                 from [01m[K/home/ruben/libtorch/include/torch/csrc/autograd/function.h:7[m[K,
+                 from [01m[K/home/ruben/libtorch/include/torch/csrc/autograd/custom_function.h:6[m[K,
+                 from [01m[K/home/ruben/libtorch/include/torch/csrc/api/include/torch/autograd.h:5[m[K,
+                 from [01m[K/home/ruben/libtorch/include/torch/csrc/api/include/torch/all.h:7[m[K,
+                 from [01m[K/home/ruben/libtorch/include/torch/csrc/api/include/torch/torch.h:3[m[K,
+                 from [01m[K/home/ruben/workhop_rl/src/unitree_ros2_to_real/src/ros2_rl.cpp:10[m[K:
+[01m[K/home/ruben/libtorch/include/ATen/ops/from_blob.h:86:3:[m[K [01;31m[Kerror: [m[Kreference to ‘[01m[Koptional[m[K’ is ambiguous
+   86 |   [01;31m[Koptional[m[K<Device> device_{};
+      |   [01;31m[K^~~~~~~~[m[K
+In file included from [01m[K/opt/ros/humble/include/rclcpp/rclcpp/client.hpp:23[m[K,
+                 from [01m[K/opt/ros/humble/include/rclcpp/rclcpp/callback_group.hpp:24[m[K,
+                 from [01m[K/opt/ros/humble/include/rclcpp/rclcpp/any_executable.hpp:20[m[K,
+                 from [01m[K/opt/ros/humble/include/rclcpp/rclcpp/memory_strategy.hpp:25[m[K,
+                 from [01m[K/opt/ros/humble/include/rclcpp/rclcpp/memory_strategies.hpp:18[m[K,
+                 from [01m[K/opt/ros/humble/include/rclcpp/rclcpp/executor_options.hpp:20[m[K,
+                 from [01m[K/opt/ros/humble/include/rclcpp/rclcpp/executor.hpp:37[m[K,
+                 from [01m[K/opt/ros/humble/include/rclcpp/rclcpp/executors/multi_threaded_executor.hpp:25[m[K,
+                 from [01m[K/opt/ros/humble/include/rclcpp/rclcpp/executors.hpp:21[m[K,
+                 from [01m[K/opt/ros/humble/include/rclcpp/rclcpp/rclcpp.hpp:155[m[K,
+                 from [01m[K/home/ruben/workhop_rl/src/unitree_ros2_to_real/src/ros2_rl.cpp:1[m[K:
+[01m[K/usr/include/c++/11/optional:65:11:[m[K [01;36m[Knote: [m[Kcandidates are: ‘[01m[Ktemplate<class _Tp> class std::optional[m[K’
+   65 |     class [01;36m[Koptional[m[K;
+      |           [01;36m[K^~~~~~~~[m[K
+In file included from [01m[K/home/ruben/libtorch/include/c10/core/ScalarTypeToTypeMeta.h:4[m[K,
+                 from [01m[K/home/ruben/libtorch/include/ATen/core/TensorBody.h:18[m[K,
+                 from [01m[K/home/ruben/libtorch/include/ATen/core/Tensor.h:3[m[K,
+                 from [01m[K/home/ruben/libtorch/include/ATen/Tensor.h:3[m[K,
+                 from [01m[K/home/ruben/libtorch/include/torch/csrc/autograd/function_hook.h:3[m[K,
+                 from [01m[K/home/ruben/libtorch/include/torch/csrc/autograd/cpp_hook.h:2[m[K,
+                 from [01m[K/home/ruben/libtorch/include/torch/csrc/autograd/variable.h:6[m[K,
+                 from [01m[K/home/ruben/libtorch/include/torch/csrc/autograd/autograd.h:3[m[K,
+                 from [01m[K/home/ruben/libtorch/include/torch/csrc/api/include/torch/autograd.h:3[m[K,
+                 from [01m[K/home/ruben/libtorch/include/torch/csrc/api/include/torch/all.h:7[m[K,
+                 from [01m[K/home/ruben/libtorch/include/torch/csrc/api/include/torch/torch.h:3[m[K,
+                 from [01m[K/home/ruben/workhop_rl/src/unitree_ros2_to_real/src/ros2_rl.cpp:10[m[K:
+[01m[K/home/ruben/libtorch/include/c10/util/Optional.h:66:7:[m[K [01;36m[Knote: [m[K                ‘[01m[Ktemplate<class T> class c10::optional[m[K’
+   66 | class [01;36m[Koptional[m[K;
+      |       [01;36m[K^~~~~~~~[m[K
+In file included from [01m[K/home/ruben/libtorch/include/ATen/Functions.h:74[m[K,
+                 from [01m[K/home/ruben/libtorch/include/ATen/ExpandUtils.h:4[m[K,
+                 from [01m[K/home/ruben/libtorch/include/torch/csrc/autograd/input_metadata.h:3[m[K,
+                 from [01m[K/home/ruben/libtorch/include/torch/csrc/autograd/function.h:7[m[K,
+                 from [01m[K/home/ruben/libtorch/include/torch/csrc/autograd/custom_function.h:6[m[K,
+                 from [01m[K/home/ruben/libtorch/include/torch/csrc/api/include/torch/autograd.h:5[m[K,
+                 from [01m[K/home/ruben/libtorch/include/torch/csrc/api/include/torch/all.h:7[m[K,
+                 from [01m[K/home/ruben/libtorch/include/torch/csrc/api/include/torch/torch.h:3[m[K,
+                 from [01m[K/home/ruben/workhop_rl/src/unitree_ros2_to_real/src/ros2_rl.cpp:10[m[K:
+[01m[K/home/ruben/libtorch/include/ATen/ops/from_blob.h:[m[K In member function ‘[01m[Kat::TensorMaker& at::TensorMaker::storage_offset(int)[m[K’:
+[01m[K/home/ruben/libtorch/include/ATen/ops/from_blob.h:36:5:[m[K [01;31m[Kerror: [m[K‘[01m[Kstorage_offset_[m[K’ was not declared in this scope; did you mean ‘[01m[Kstorage_offset[m[K’?
+   36 |     [01;31m[Kstorage_offset_[m[K = value;
+      |     [01;31m[K^~~~~~~~~~~~~~~[m[K
+      |     [32m[Kstorage_offset[m[K
+[01m[K/home/ruben/libtorch/include/ATen/ops/from_blob.h:36:23:[m[K [01;31m[Kerror: [m[K‘[01m[Kvalue[m[K’ was not declared in this scope; did you mean ‘[01m[Kboost::_bi::value[m[K’?
+   36 |     storage_offset_ = [01;31m[Kvalue[m[K;
+      |                       [01;31m[K^~~~~[m[K
+      |                       [32m[Kboost::_bi::value[m[K
+In file included from [01m[K/usr/local/include/boost/bind.hpp:22[m[K,
+                 from [01m[K/home/ruben/workhop_rl/src/unitree_ros2_to_real/unitree_legged_sdk/include/unitree_legged_sdk/unitree_legged_sdk.h:14[m[K,
+                 from [01m[K/home/ruben/workhop_rl/src/unitree_ros2_to_real/src/ros2_rl.cpp:6[m[K:
+[01m[K/usr/local/include/boost/bind/bind.hpp:118:25:[m[K [01;36m[Knote: [m[K‘[01m[Kboost::_bi::value[m[K’ declared here
+  118 | template<class T> class [01;36m[Kvalue[m[K
+      |                         [01;36m[K^~~~~[m[K
+In file included from [01m[K/home/ruben/libtorch/include/ATen/Functions.h:74[m[K,
+                 from [01m[K/home/ruben/libtorch/include/ATen/ExpandUtils.h:4[m[K,
+                 from [01m[K/home/ruben/libtorch/include/torch/csrc/autograd/input_metadata.h:3[m[K,
+                 from [01m[K/home/ruben/libtorch/include/torch/csrc/autograd/function.h:7[m[K,
+                 from [01m[K/home/ruben/libtorch/include/torch/csrc/autograd/custom_function.h:6[m[K,
+                 from [01m[K/home/ruben/libtorch/include/torch/csrc/api/include/torch/autograd.h:5[m[K,
+                 from [01m[K/home/ruben/libtorch/include/torch/csrc/api/include/torch/all.h:7[m[K,
+                 from [01m[K/home/ruben/libtorch/include/torch/csrc/api/include/torch/torch.h:3[m[K,
+                 from [01m[K/home/ruben/workhop_rl/src/unitree_ros2_to_real/src/ros2_rl.cpp:10[m[K:
+[01m[K/home/ruben/libtorch/include/ATen/ops/from_blob.h:[m[K In member function ‘[01m[Kat::TensorMaker& at::TensorMaker::target_device(int)[m[K’:
+[01m[K/home/ruben/libtorch/include/ATen/ops/from_blob.h:55:5:[m[K [01;31m[Kerror: [m[K‘[01m[Kdevice_[m[K’ was not declared in this scope; did you mean ‘[01m[Kdevice_of[m[K’?
+   55 |     [01;31m[Kdevice_[m[K = value;
+      |     [01;31m[K^~~~~~~[m[K
+      |     [32m[Kdevice_of[m[K
+[01m[K/home/ruben/libtorch/include/ATen/ops/from_blob.h:55:15:[m[K [01;31m[Kerror: [m[K‘[01m[Kvalue[m[K’ was not declared in this scope; did you mean ‘[01m[Kboost::_bi::value[m[K’?
+   55 |     device_ = [01;31m[Kvalue[m[K;
+      |               [01;31m[K^~~~~[m[K
+      |               [32m[Kboost::_bi::value[m[K
+In file included from [01m[K/usr/local/include/boost/bind.hpp:22[m[K,
+                 from [01m[K/home/ruben/workhop_rl/src/unitree_ros2_to_real/unitree_legged_sdk/include/unitree_legged_sdk/unitree_legged_sdk.h:14[m[K,
+                 from [01m[K/home/ruben/workhop_rl/src/unitree_ros2_to_real/src/ros2_rl.cpp:6[m[K:
+[01m[K/usr/local/include/boost/bind/bind.hpp:118:25:[m[K [01;36m[Knote: [m[K‘[01m[Kboost::_bi::value[m[K’ declared here
+  118 | template<class T> class [01;36m[Kvalue[m[K
+      |                         [01;36m[K^~~~~[m[K
+In file included from [01m[K/home/ruben/libtorch/include/ATen/Functions.h:74[m[K,
+                 from [01m[K/home/ruben/libtorch/include/ATen/ExpandUtils.h:4[m[K,
+                 from [01m[K/home/ruben/libtorch/include/torch/csrc/autograd/input_metadata.h:3[m[K,
+                 from [01m[K/home/ruben/libtorch/include/torch/csrc/autograd/function.h:7[m[K,
+                 from [01m[K/home/ruben/libtorch/include/torch/csrc/autograd/custom_function.h:6[m[K,
+                 from [01m[K/home/ruben/libtorch/include/torch/csrc/api/include/torch/autograd.h:5[m[K,
+                 from [01m[K/home/ruben/libtorch/include/torch/csrc/api/include/torch/all.h:7[m[K,
+                 from [01m[K/home/ruben/libtorch/include/torch/csrc/api/include/torch/torch.h:3[m[K,
+                 from [01m[K/home/ruben/workhop_rl/src/unitree_ros2_to_real/src/ros2_rl.cpp:10[m[K:
+[01m[K/home/ruben/libtorch/include/ATen/ops/from_blob.h:[m[K In function ‘[01m[Kat::Tensor at::from_blob(void*, at::IntArrayRef, at::IntArrayRef, const std::function<void(void*)>&, const c10::TensorOptions&, c10::optional<c10::Device>)[m[K’:
+[01m[K/home/ruben/libtorch/include/ATen/ops/from_blob.h:105:22:[m[K [01;31m[Kerror: [m[Kcannot convert ‘[01m[Kconst c10::optional<c10::Device>[m[K’ to ‘[01m[Kint[m[K’
+  105 |       .target_device([01;31m[Ktarget_device[m[K)
+      |                      [01;31m[K^~~~~~~~~~~~~[m[K
+      |                      [01;31m[K|[m[K
+      |                      [01;31m[Kconst c10::optional<c10::Device>[m[K
+[01m[K/home/ruben/libtorch/include/ATen/ops/from_blob.h:54:30:[m[K [01;36m[Knote: [m[K  initializing argument 1 of ‘[01m[Kat::TensorMaker& at::TensorMaker::target_device(int)[m[K’
+   54 |   TensorMaker& target_device([01;36m[Koptional[m[K<Device> value) noexcept {
+      |                              [01;36m[K^~~~~~~~[m[K
+[01m[K/home/ruben/libtorch/include/ATen/ops/from_blob.h:[m[K In function ‘[01m[Kat::Tensor at::from_blob(void*, at::IntArrayRef, at::IntArrayRef, int64_t, const std::function<void(void*)>&, const c10::TensorOptions&, c10::optional<c10::Device>)[m[K’:
+[01m[K/home/ruben/libtorch/include/ATen/ops/from_blob.h:122:22:[m[K [01;31m[Kerror: [m[Kcannot convert ‘[01m[Kconst c10::optional<c10::Device>[m[K’ to ‘[01m[Kint[m[K’
+  122 |       .target_device([01;31m[Ktarget_device[m[K)
+      |                      [01;31m[K^~~~~~~~~~~~~[m[K
+      |                      [01;31m[K|[m[K
+      |                      [01;31m[Kconst c10::optional<c10::Device>[m[K
+[01m[K/home/ruben/libtorch/include/ATen/ops/from_blob.h:54:30:[m[K [01;36m[Knote: [m[K  initializing argument 1 of ‘[01m[Kat::TensorMaker& at::TensorMaker::target_device(int)[m[K’
+   54 |   TensorMaker& target_device([01;36m[Koptional[m[K<Device> value) noexcept {
+      |                              [01;36m[K^~~~~~~~[m[K
+gmake[2]: *** [CMakeFiles/ros2_rl.dir/build.make:76: CMakeFiles/ros2_rl.dir/src/ros2_rl.cpp.o] Error 1
+gmake[1]: *** [CMakeFiles/Makefile2:249: CMakeFiles/ros2_rl.dir/all] Error 2
+gmake: *** [Makefile:146: all] Error 2

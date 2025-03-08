@@ -1,0 +1,74 @@
+// generated from rosidl_adapter/resource/msg.idl.em
+// with input from ros2_unitree_legged_msgs/msg/HighState.msg
+// generated code does not contain a copyright notice
+
+#include "ros2_unitree_legged_msgs/msg/BmsState.idl"
+#include "ros2_unitree_legged_msgs/msg/Cartesian.idl"
+#include "ros2_unitree_legged_msgs/msg/IMU.idl"
+#include "ros2_unitree_legged_msgs/msg/MotorState.idl"
+
+module ros2_unitree_legged_msgs {
+  module msg {
+    typedef uint8 uint8__2[2];
+    typedef uint32 uint32__2[2];
+    typedef ros2_unitree_legged_msgs::msg::MotorState ros2_unitree_legged_msgs__msg__MotorState;
+    typedef ros2_unitree_legged_msgs__msg__MotorState ros2_unitree_legged_msgs__msg__MotorState__20[20];
+    typedef int16 int16__4[4];
+    typedef float float__3[3];
+    typedef float float__4[4];
+    typedef ros2_unitree_legged_msgs::msg::Cartesian ros2_unitree_legged_msgs__msg__Cartesian;
+    typedef ros2_unitree_legged_msgs__msg__Cartesian ros2_unitree_legged_msgs__msg__Cartesian__4[4];
+    typedef uint8 uint8__40[40];
+    struct HighState {
+      uint8__2 head;
+
+      uint8 level_flag;
+
+      uint8 frame_reserve;
+
+      uint32__2 sn;
+
+      uint32__2 version;
+
+      uint16 band_width;
+
+      ros2_unitree_legged_msgs::msg::IMU imu;
+
+      ros2_unitree_legged_msgs__msg__MotorState__20 motor_state;
+
+      ros2_unitree_legged_msgs::msg::BmsState bms;
+
+      int16__4 foot_force;
+
+      int16__4 foot_force_est;
+
+      uint8 mode;
+
+      float progress;
+
+      uint8 gait_type;
+
+      float foot_raise_height;
+
+      float__3 position;
+
+      float body_height;
+
+      float__3 velocity;
+
+      float yaw_speed;
+
+      float__4 range_obstacle;
+
+      ros2_unitree_legged_msgs__msg__Cartesian__4 foot_position2body;
+
+      ros2_unitree_legged_msgs__msg__Cartesian__4 foot_speed2body;
+
+      uint8__40 wireless_remote;
+
+      uint32 reserve;
+
+      uint32 crc;
+    };
+  };
+};

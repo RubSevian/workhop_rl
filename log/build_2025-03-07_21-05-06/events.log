@@ -1,0 +1,640 @@
+[0.000000] (-) TimerEvent: {}
+[0.000128] (ros2_unitree_legged_msgs) JobQueued: {'identifier': 'ros2_unitree_legged_msgs', 'dependencies': OrderedDict()}
+[0.000155] (unitree_rl_controller) JobQueued: {'identifier': 'unitree_rl_controller', 'dependencies': OrderedDict([('ros2_unitree_legged_msgs', '/home/ruben/workhop_rl/install/ros2_unitree_legged_msgs')])}
+[0.000213] (unitree_legged_real) JobQueued: {'identifier': 'unitree_legged_real', 'dependencies': OrderedDict([('ros2_unitree_legged_msgs', '/home/ruben/workhop_rl/install/ros2_unitree_legged_msgs'), ('unitree_rl_controller', '/home/ruben/workhop_rl/install/unitree_rl_controller')])}
+[0.000234] (ros2_unitree_legged_msgs) JobStarted: {'identifier': 'ros2_unitree_legged_msgs'}
+[0.004224] (ros2_unitree_legged_msgs) JobProgress: {'identifier': 'ros2_unitree_legged_msgs', 'progress': 'cmake'}
+[0.004466] (ros2_unitree_legged_msgs) JobProgress: {'identifier': 'ros2_unitree_legged_msgs', 'progress': 'build'}
+[0.004747] (ros2_unitree_legged_msgs) Command: {'cmd': ['/usr/bin/cmake', '--build', '/home/ruben/workhop_rl/build/ros2_unitree_legged_msgs', '--', '-j20', '-l20'], 'cwd': '/home/ruben/workhop_rl/build/ros2_unitree_legged_msgs', 'env': OrderedDict([('LESSOPEN', '| /usr/bin/lesspipe %s'), ('USER', 'ruben'), ('LC_TIME', 'ru_RU.UTF-8'), ('XDG_SESSION_TYPE', 'x11'), ('SHLVL', '1'), ('LD_LIBRARY_PATH', '/home/ruben/workhop_rl/install/unitree_legged_real/lib:/home/ruben/workhop_rl/install/unitree_rl_controller/lib:/home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/lib:/usr/lib/x86_64-linux-gnu/gazebo-11/plugins:/opt/ros/humble/opt/rviz_ogre_vendor/lib:/opt/ros/humble/lib/x86_64-linux-gnu:/opt/ros/humble/lib:/usr/local/cuda-12.6/lib64:/home/ruben/workhop_rl/src/libtorch/lib/:/home/ruben/workhop_rl/src/libtorch/lib/:/home/ruben/libtorch/lib/'), ('HOME', '/home/ruben'), ('CONDA_SHLVL', '0'), ('OLDPWD', '/home/ruben'), ('DESKTOP_SESSION', 'ubuntu'), ('ROS_PYTHON_VERSION', '3'), ('GNOME_SHELL_SESSION_MODE', 'ubuntu'), ('GTK_MODULES', 'gail:atk-bridge'), ('LC_MONETARY', 'ru_RU.UTF-8'), ('DBUS_STARTER_BUS_TYPE', 'session'), ('SYSTEMD_EXEC_PID', '2409'), ('DBUS_SESSION_BUS_ADDRESS', 'unix:path=/run/user/1000/bus,guid=148f9c57c8634de544413d2e67cad70e'), ('COLORTERM', 'truecolor'), ('_CE_M', ''), ('COLCON_PREFIX_PATH', '/home/ruben/workhop_rl/install'), ('ROS_DISTRO', 'humble'), ('GTK_IM_MODULE', 'ibus'), ('LOGNAME', 'ruben'), ('_', '/usr/bin/colcon'), ('ROS_VERSION', '2'), ('XDG_SESSION_CLASS', 'user'), ('USERNAME', 'ruben'), ('TERM', 'xterm-256color'), ('GNOME_DESKTOP_SESSION_ID', 'this-is-deprecated'), ('_CE_CONDA', ''), ('ROS_LOCALHOST_ONLY', '0'), ('WINDOWPATH', '2'), ('PATH', '/opt/ros/humble/bin:/usr/local/cuda/bin:/home/ruben/miniconda3/condabin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/games:/usr/local/games:/snap/bin:/snap/bin'), ('SESSION_MANAGER', 'local/ruben:@/tmp/.ICE-unix/2409,unix/ruben:/tmp/.ICE-unix/2409'), ('XDG_MENU_PREFIX', 'gnome-'), ('LC_ADDRESS', 'ru_RU.UTF-8'), ('GNOME_TERMINAL_SCREEN', '/org/gnome/Terminal/screen/92f2c06f_25f7_4288_a0e9_0f39b749d39b'), ('XDG_RUNTIME_DIR', '/run/user/1000'), ('DISPLAY', ':1'), ('LANG', 'en_US.UTF-8'), ('XDG_CURRENT_DESKTOP', 'ubuntu:GNOME'), ('LC_TELEPHONE', 'ru_RU.UTF-8'), ('XMODIFIERS', '@im=ibus'), ('XDG_SESSION_DESKTOP', 'ubuntu'), ('XAUTHORITY', '/run/user/1000/gdm/Xauthority'), ('LS_COLORS', 'rs=0:di=01;34:ln=01;36:mh=00:pi=40;33:so=01;35:do=01;35:bd=40;33;01:cd=40;33;01:or=40;31;01:mi=00:su=37;41:sg=30;43:ca=30;41:tw=30;42:ow=34;42:st=37;44:ex=01;32:*.tar=01;31:*.tgz=01;31:*.arc=01;31:*.arj=01;31:*.taz=01;31:*.lha=01;31:*.lz4=01;31:*.lzh=01;31:*.lzma=01;31:*.tlz=01;31:*.txz=01;31:*.tzo=01;31:*.t7z=01;31:*.zip=01;31:*.z=01;31:*.dz=01;31:*.gz=01;31:*.lrz=01;31:*.lz=01;31:*.lzo=01;31:*.xz=01;31:*.zst=01;31:*.tzst=01;31:*.bz2=01;31:*.bz=01;31:*.tbz=01;31:*.tbz2=01;31:*.tz=01;31:*.deb=01;31:*.rpm=01;31:*.jar=01;31:*.war=01;31:*.ear=01;31:*.sar=01;31:*.rar=01;31:*.alz=01;31:*.ace=01;31:*.zoo=01;31:*.cpio=01;31:*.7z=01;31:*.rz=01;31:*.cab=01;31:*.wim=01;31:*.swm=01;31:*.dwm=01;31:*.esd=01;31:*.jpg=01;35:*.jpeg=01;35:*.mjpg=01;35:*.mjpeg=01;35:*.gif=01;35:*.bmp=01;35:*.pbm=01;35:*.pgm=01;35:*.ppm=01;35:*.tga=01;35:*.xbm=01;35:*.xpm=01;35:*.tif=01;35:*.tiff=01;35:*.png=01;35:*.svg=01;35:*.svgz=01;35:*.mng=01;35:*.pcx=01;35:*.mov=01;35:*.mpg=01;35:*.mpeg=01;35:*.m2v=01;35:*.mkv=01;35:*.webm=01;35:*.webp=01;35:*.ogm=01;35:*.mp4=01;35:*.m4v=01;35:*.mp4v=01;35:*.vob=01;35:*.qt=01;35:*.nuv=01;35:*.wmv=01;35:*.asf=01;35:*.rm=01;35:*.rmvb=01;35:*.flc=01;35:*.avi=01;35:*.fli=01;35:*.flv=01;35:*.gl=01;35:*.dl=01;35:*.xcf=01;35:*.xwd=01;35:*.yuv=01;35:*.cgm=01;35:*.emf=01;35:*.ogv=01;35:*.ogx=01;35:*.aac=00;36:*.au=00;36:*.flac=00;36:*.m4a=00;36:*.mid=00;36:*.midi=00;36:*.mka=00;36:*.mp3=00;36:*.mpc=00;36:*.ogg=00;36:*.ra=00;36:*.wav=00;36:*.oga=00;36:*.opus=00;36:*.spx=00;36:*.xspf=00;36:'), ('GNOME_TERMINAL_SERVICE', ':1.125'), ('SSH_AGENT_LAUNCHER', 'gnome-keyring'), ('SSH_AUTH_SOCK', '/run/user/1000/keyring/ssh'), ('AMENT_PREFIX_PATH', '/home/ruben/workhop_rl/install/unitree_legged_real:/home/ruben/workhop_rl/install/unitree_rl_controller:/home/ruben/workhop_rl/install/ros2_unitree_legged_msgs:/opt/ros/humble'), ('CONDA_PYTHON_EXE', '/home/ruben/miniconda3/bin/python'), ('SHELL', '/bin/bash'), ('LC_NAME', 'ru_RU.UTF-8'), ('QT_ACCESSIBILITY', '1'), ('GDMSESSION', 'ubuntu'), ('Torch_DIR', '/home/ruben/libtorch'), ('LESSCLOSE', '/usr/bin/lesspipe %s %s'), ('LC_MEASUREMENT', 'ru_RU.UTF-8'), ('GPG_AGENT_INFO', '/run/user/1000/gnupg/S.gpg-agent:0:1'), ('LC_IDENTIFICATION', 'ru_RU.UTF-8'), ('QT_IM_MODULE', 'ibus'), ('PWD', '/home/ruben/workhop_rl/build/ros2_unitree_legged_msgs'), ('XDG_CONFIG_DIRS', '/etc/xdg/xdg-ubuntu:/etc/xdg'), ('CONDA_EXE', '/home/ruben/miniconda3/bin/conda'), ('DBUS_STARTER_ADDRESS', 'unix:path=/run/user/1000/bus,guid=148f9c57c8634de544413d2e67cad70e'), ('XDG_DATA_DIRS', '/usr/share/ubuntu:/usr/share/gnome:/usr/local/share/:/usr/share/:/var/lib/snapd/desktop'), ('PYTHONPATH', '/home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/local/lib/python3.10/dist-packages:/opt/ros/humble/lib/python3.10/site-packages:/opt/ros/humble/local/lib/python3.10/dist-packages'), ('LC_NUMERIC', 'ru_RU.UTF-8'), ('LC_PAPER', 'ru_RU.UTF-8'), ('COLCON', '1'), ('VTE_VERSION', '6800'), ('CMAKE_PREFIX_PATH', '/home/ruben/workhop_rl/install/unitree_legged_real:/home/ruben/workhop_rl/install/unitree_rl_controller:/home/ruben/workhop_rl/install/ros2_unitree_legged_msgs:/opt/ros/humble')]), 'shell': False}
+[0.037209] (ros2_unitree_legged_msgs) StdoutLine: {'line': b'[ 12%] Built target ros2_unitree_legged_msgs__rosidl_generator_c\n'}
+[0.037629] (ros2_unitree_legged_msgs) StdoutLine: {'line': b'[ 12%] Built target ros2_unitree_legged_msgs__cpp\n'}
+[0.041942] (ros2_unitree_legged_msgs) StdoutLine: {'line': b'[ 12%] Built target ament_cmake_python_copy_ros2_unitree_legged_msgs\n'}
+[0.048788] (ros2_unitree_legged_msgs) StdoutLine: {'line': b'[ 24%] Built target ros2_unitree_legged_msgs__rosidl_typesupport_c\n'}
+[0.049272] (ros2_unitree_legged_msgs) StdoutLine: {'line': b'[ 36%] Built target ros2_unitree_legged_msgs__rosidl_typesupport_introspection_c\n'}
+[0.050038] (ros2_unitree_legged_msgs) StdoutLine: {'line': b'[ 48%] Built target ros2_unitree_legged_msgs__rosidl_typesupport_introspection_cpp\n'}
+[0.050172] (ros2_unitree_legged_msgs) StdoutLine: {'line': b'[ 60%] Built target ros2_unitree_legged_msgs__rosidl_typesupport_cpp\n'}
+[0.051078] (ros2_unitree_legged_msgs) StdoutLine: {'line': b'[ 72%] Built target ros2_unitree_legged_msgs__rosidl_typesupport_fastrtps_c\n'}
+[0.051768] (ros2_unitree_legged_msgs) StdoutLine: {'line': b'[ 83%] Built target ros2_unitree_legged_msgs__rosidl_typesupport_fastrtps_cpp\n'}
+[0.064602] (ros2_unitree_legged_msgs) StdoutLine: {'line': b'[ 83%] Built target ros2_unitree_legged_msgs\n'}
+[0.077817] (ros2_unitree_legged_msgs) StdoutLine: {'line': b'[ 84%] Built target ros2_unitree_legged_msgs__py\n'}
+[0.095421] (ros2_unitree_legged_msgs) StdoutLine: {'line': b'[ 95%] Built target ros2_unitree_legged_msgs__rosidl_generator_py\n'}
+[0.099583] (-) TimerEvent: {}
+[0.106408] (ros2_unitree_legged_msgs) StdoutLine: {'line': b'[ 97%] Built target ros2_unitree_legged_msgs__rosidl_typesupport_fastrtps_c__pyext\n'}
+[0.107281] (ros2_unitree_legged_msgs) StdoutLine: {'line': b'[ 99%] Built target ros2_unitree_legged_msgs__rosidl_typesupport_introspection_c__pyext\n'}
+[0.108410] (ros2_unitree_legged_msgs) StdoutLine: {'line': b'[100%] Built target ros2_unitree_legged_msgs__rosidl_typesupport_c__pyext\n'}
+[0.154874] (ros2_unitree_legged_msgs) StdoutLine: {'line': b'running egg_info\n'}
+[0.155143] (ros2_unitree_legged_msgs) StdoutLine: {'line': b'writing ros2_unitree_legged_msgs.egg-info/PKG-INFO\n'}
+[0.155265] (ros2_unitree_legged_msgs) StdoutLine: {'line': b'writing dependency_links to ros2_unitree_legged_msgs.egg-info/dependency_links.txt\n'}
+[0.155344] (ros2_unitree_legged_msgs) StdoutLine: {'line': b'writing top-level names to ros2_unitree_legged_msgs.egg-info/top_level.txt\n'}
+[0.156425] (ros2_unitree_legged_msgs) StdoutLine: {'line': b"reading manifest file 'ros2_unitree_legged_msgs.egg-info/SOURCES.txt'\n"}
+[0.156765] (ros2_unitree_legged_msgs) StdoutLine: {'line': b"writing manifest file 'ros2_unitree_legged_msgs.egg-info/SOURCES.txt'\n"}
+[0.172319] (ros2_unitree_legged_msgs) StdoutLine: {'line': b'[100%] Built target ament_cmake_python_build_ros2_unitree_legged_msgs_egg\n'}
+[0.179933] (ros2_unitree_legged_msgs) CommandEnded: {'returncode': 0}
+[0.180369] (ros2_unitree_legged_msgs) JobProgress: {'identifier': 'ros2_unitree_legged_msgs', 'progress': 'install'}
+[0.186488] (ros2_unitree_legged_msgs) Command: {'cmd': ['/usr/bin/cmake', '--install', '/home/ruben/workhop_rl/build/ros2_unitree_legged_msgs'], 'cwd': '/home/ruben/workhop_rl/build/ros2_unitree_legged_msgs', 'env': OrderedDict([('LESSOPEN', '| /usr/bin/lesspipe %s'), ('USER', 'ruben'), ('LC_TIME', 'ru_RU.UTF-8'), ('XDG_SESSION_TYPE', 'x11'), ('SHLVL', '1'), ('LD_LIBRARY_PATH', '/home/ruben/workhop_rl/install/unitree_legged_real/lib:/home/ruben/workhop_rl/install/unitree_rl_controller/lib:/home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/lib:/usr/lib/x86_64-linux-gnu/gazebo-11/plugins:/opt/ros/humble/opt/rviz_ogre_vendor/lib:/opt/ros/humble/lib/x86_64-linux-gnu:/opt/ros/humble/lib:/usr/local/cuda-12.6/lib64:/home/ruben/workhop_rl/src/libtorch/lib/:/home/ruben/workhop_rl/src/libtorch/lib/:/home/ruben/libtorch/lib/'), ('HOME', '/home/ruben'), ('CONDA_SHLVL', '0'), ('OLDPWD', '/home/ruben'), ('DESKTOP_SESSION', 'ubuntu'), ('ROS_PYTHON_VERSION', '3'), ('GNOME_SHELL_SESSION_MODE', 'ubuntu'), ('GTK_MODULES', 'gail:atk-bridge'), ('LC_MONETARY', 'ru_RU.UTF-8'), ('DBUS_STARTER_BUS_TYPE', 'session'), ('SYSTEMD_EXEC_PID', '2409'), ('DBUS_SESSION_BUS_ADDRESS', 'unix:path=/run/user/1000/bus,guid=148f9c57c8634de544413d2e67cad70e'), ('COLORTERM', 'truecolor'), ('_CE_M', ''), ('COLCON_PREFIX_PATH', '/home/ruben/workhop_rl/install'), ('ROS_DISTRO', 'humble'), ('GTK_IM_MODULE', 'ibus'), ('LOGNAME', 'ruben'), ('_', '/usr/bin/colcon'), ('ROS_VERSION', '2'), ('XDG_SESSION_CLASS', 'user'), ('USERNAME', 'ruben'), ('TERM', 'xterm-256color'), ('GNOME_DESKTOP_SESSION_ID', 'this-is-deprecated'), ('_CE_CONDA', ''), ('ROS_LOCALHOST_ONLY', '0'), ('WINDOWPATH', '2'), ('PATH', '/opt/ros/humble/bin:/usr/local/cuda/bin:/home/ruben/miniconda3/condabin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/games:/usr/local/games:/snap/bin:/snap/bin'), ('SESSION_MANAGER', 'local/ruben:@/tmp/.ICE-unix/2409,unix/ruben:/tmp/.ICE-unix/2409'), ('XDG_MENU_PREFIX', 'gnome-'), ('LC_ADDRESS', 'ru_RU.UTF-8'), ('GNOME_TERMINAL_SCREEN', '/org/gnome/Terminal/screen/92f2c06f_25f7_4288_a0e9_0f39b749d39b'), ('XDG_RUNTIME_DIR', '/run/user/1000'), ('DISPLAY', ':1'), ('LANG', 'en_US.UTF-8'), ('XDG_CURRENT_DESKTOP', 'ubuntu:GNOME'), ('LC_TELEPHONE', 'ru_RU.UTF-8'), ('XMODIFIERS', '@im=ibus'), ('XDG_SESSION_DESKTOP', 'ubuntu'), ('XAUTHORITY', '/run/user/1000/gdm/Xauthority'), ('LS_COLORS', 'rs=0:di=01;34:ln=01;36:mh=00:pi=40;33:so=01;35:do=01;35:bd=40;33;01:cd=40;33;01:or=40;31;01:mi=00:su=37;41:sg=30;43:ca=30;41:tw=30;42:ow=34;42:st=37;44:ex=01;32:*.tar=01;31:*.tgz=01;31:*.arc=01;31:*.arj=01;31:*.taz=01;31:*.lha=01;31:*.lz4=01;31:*.lzh=01;31:*.lzma=01;31:*.tlz=01;31:*.txz=01;31:*.tzo=01;31:*.t7z=01;31:*.zip=01;31:*.z=01;31:*.dz=01;31:*.gz=01;31:*.lrz=01;31:*.lz=01;31:*.lzo=01;31:*.xz=01;31:*.zst=01;31:*.tzst=01;31:*.bz2=01;31:*.bz=01;31:*.tbz=01;31:*.tbz2=01;31:*.tz=01;31:*.deb=01;31:*.rpm=01;31:*.jar=01;31:*.war=01;31:*.ear=01;31:*.sar=01;31:*.rar=01;31:*.alz=01;31:*.ace=01;31:*.zoo=01;31:*.cpio=01;31:*.7z=01;31:*.rz=01;31:*.cab=01;31:*.wim=01;31:*.swm=01;31:*.dwm=01;31:*.esd=01;31:*.jpg=01;35:*.jpeg=01;35:*.mjpg=01;35:*.mjpeg=01;35:*.gif=01;35:*.bmp=01;35:*.pbm=01;35:*.pgm=01;35:*.ppm=01;35:*.tga=01;35:*.xbm=01;35:*.xpm=01;35:*.tif=01;35:*.tiff=01;35:*.png=01;35:*.svg=01;35:*.svgz=01;35:*.mng=01;35:*.pcx=01;35:*.mov=01;35:*.mpg=01;35:*.mpeg=01;35:*.m2v=01;35:*.mkv=01;35:*.webm=01;35:*.webp=01;35:*.ogm=01;35:*.mp4=01;35:*.m4v=01;35:*.mp4v=01;35:*.vob=01;35:*.qt=01;35:*.nuv=01;35:*.wmv=01;35:*.asf=01;35:*.rm=01;35:*.rmvb=01;35:*.flc=01;35:*.avi=01;35:*.fli=01;35:*.flv=01;35:*.gl=01;35:*.dl=01;35:*.xcf=01;35:*.xwd=01;35:*.yuv=01;35:*.cgm=01;35:*.emf=01;35:*.ogv=01;35:*.ogx=01;35:*.aac=00;36:*.au=00;36:*.flac=00;36:*.m4a=00;36:*.mid=00;36:*.midi=00;36:*.mka=00;36:*.mp3=00;36:*.mpc=00;36:*.ogg=00;36:*.ra=00;36:*.wav=00;36:*.oga=00;36:*.opus=00;36:*.spx=00;36:*.xspf=00;36:'), ('GNOME_TERMINAL_SERVICE', ':1.125'), ('SSH_AGENT_LAUNCHER', 'gnome-keyring'), ('SSH_AUTH_SOCK', '/run/user/1000/keyring/ssh'), ('AMENT_PREFIX_PATH', '/home/ruben/workhop_rl/install/unitree_legged_real:/home/ruben/workhop_rl/install/unitree_rl_controller:/home/ruben/workhop_rl/install/ros2_unitree_legged_msgs:/opt/ros/humble'), ('CONDA_PYTHON_EXE', '/home/ruben/miniconda3/bin/python'), ('SHELL', '/bin/bash'), ('LC_NAME', 'ru_RU.UTF-8'), ('QT_ACCESSIBILITY', '1'), ('GDMSESSION', 'ubuntu'), ('Torch_DIR', '/home/ruben/libtorch'), ('LESSCLOSE', '/usr/bin/lesspipe %s %s'), ('LC_MEASUREMENT', 'ru_RU.UTF-8'), ('GPG_AGENT_INFO', '/run/user/1000/gnupg/S.gpg-agent:0:1'), ('LC_IDENTIFICATION', 'ru_RU.UTF-8'), ('QT_IM_MODULE', 'ibus'), ('PWD', '/home/ruben/workhop_rl/build/ros2_unitree_legged_msgs'), ('XDG_CONFIG_DIRS', '/etc/xdg/xdg-ubuntu:/etc/xdg'), ('CONDA_EXE', '/home/ruben/miniconda3/bin/conda'), ('DBUS_STARTER_ADDRESS', 'unix:path=/run/user/1000/bus,guid=148f9c57c8634de544413d2e67cad70e'), ('XDG_DATA_DIRS', '/usr/share/ubuntu:/usr/share/gnome:/usr/local/share/:/usr/share/:/var/lib/snapd/desktop'), ('PYTHONPATH', '/home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/local/lib/python3.10/dist-packages:/opt/ros/humble/lib/python3.10/site-packages:/opt/ros/humble/local/lib/python3.10/dist-packages'), ('LC_NUMERIC', 'ru_RU.UTF-8'), ('LC_PAPER', 'ru_RU.UTF-8'), ('COLCON', '1'), ('VTE_VERSION', '6800'), ('CMAKE_PREFIX_PATH', '/home/ruben/workhop_rl/install/unitree_legged_real:/home/ruben/workhop_rl/install/unitree_rl_controller:/home/ruben/workhop_rl/install/ros2_unitree_legged_msgs:/opt/ros/humble')]), 'shell': False}
+[0.191039] (ros2_unitree_legged_msgs) StdoutLine: {'line': b'-- Install configuration: ""\n'}
+[0.191126] (ros2_unitree_legged_msgs) StdoutLine: {'line': b'-- Up-to-date: /home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/share/ament_index/resource_index/rosidl_interfaces/ros2_unitree_legged_msgs\n'}
+[0.191157] (ros2_unitree_legged_msgs) StdoutLine: {'line': b'-- Up-to-date: /home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/include/ros2_unitree_legged_msgs/ros2_unitree_legged_msgs\n'}
+[0.191181] (ros2_unitree_legged_msgs) StdoutLine: {'line': b'-- Up-to-date: /home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/include/ros2_unitree_legged_msgs/ros2_unitree_legged_msgs/msg\n'}
+[0.191204] (ros2_unitree_legged_msgs) StdoutLine: {'line': b'-- Up-to-date: /home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/include/ros2_unitree_legged_msgs/ros2_unitree_legged_msgs/msg/bms_cmd.h\n'}
+[0.191227] (ros2_unitree_legged_msgs) StdoutLine: {'line': b'-- Up-to-date: /home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/include/ros2_unitree_legged_msgs/ros2_unitree_legged_msgs/msg/motor_state.h\n'}
+[0.191251] (ros2_unitree_legged_msgs) StdoutLine: {'line': b'-- Up-to-date: /home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/include/ros2_unitree_legged_msgs/ros2_unitree_legged_msgs/msg/detail\n'}
+[0.191280] (ros2_unitree_legged_msgs) StdoutLine: {'line': b'-- Up-to-date: /home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/include/ros2_unitree_legged_msgs/ros2_unitree_legged_msgs/msg/detail/led__functions.h\n'}
+[0.191303] (ros2_unitree_legged_msgs) StdoutLine: {'line': b'-- Up-to-date: /home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/include/ros2_unitree_legged_msgs/ros2_unitree_legged_msgs/msg/detail/high_state__functions.h\n'}
+[0.191324] (ros2_unitree_legged_msgs) StdoutLine: {'line': b'-- Up-to-date: /home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/include/ros2_unitree_legged_msgs/ros2_unitree_legged_msgs/msg/detail/led__struct.h\n'}
+[0.191351] (ros2_unitree_legged_msgs) StdoutLine: {'line': b'-- Up-to-date: /home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/include/ros2_unitree_legged_msgs/ros2_unitree_legged_msgs/msg/detail/high_state__functions.c\n'}
+[0.191374] (ros2_unitree_legged_msgs) StdoutLine: {'line': b'-- Up-to-date: /home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/include/ros2_unitree_legged_msgs/ros2_unitree_legged_msgs/msg/detail/high_cmd__functions.h\n'}
+[0.191420] (ros2_unitree_legged_msgs) StdoutLine: {'line': b'-- Up-to-date: /home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/include/ros2_unitree_legged_msgs/ros2_unitree_legged_msgs/msg/detail/bms_cmd__functions.h\n'}
+[0.191442] (ros2_unitree_legged_msgs) StdoutLine: {'line': b'-- Up-to-date: /home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/include/ros2_unitree_legged_msgs/ros2_unitree_legged_msgs/msg/detail/high_state__type_support.h\n'}
+[0.191464] (ros2_unitree_legged_msgs) StdoutLine: {'line': b'-- Up-to-date: /home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/include/ros2_unitree_legged_msgs/ros2_unitree_legged_msgs/msg/detail/motor_state__struct.h\n'}
+[0.191485] (ros2_unitree_legged_msgs) StdoutLine: {'line': b'-- Up-to-date: /home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/include/ros2_unitree_legged_msgs/ros2_unitree_legged_msgs/msg/detail/motor_cmd__struct.h\n'}
+[0.191507] (ros2_unitree_legged_msgs) StdoutLine: {'line': b'-- Up-to-date: /home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/include/ros2_unitree_legged_msgs/ros2_unitree_legged_msgs/msg/detail/motor_cmd__functions.h\n'}
+[0.191527] (ros2_unitree_legged_msgs) StdoutLine: {'line': b'-- Up-to-date: /home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/include/ros2_unitree_legged_msgs/ros2_unitree_legged_msgs/msg/detail/motor_state__functions.c\n'}
+[0.191590] (ros2_unitree_legged_msgs) StdoutLine: {'line': b'-- Up-to-date: /home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/include/ros2_unitree_legged_msgs/ros2_unitree_legged_msgs/msg/detail/high_cmd__type_support.h\n'}
+[0.191613] (ros2_unitree_legged_msgs) StdoutLine: {'line': b'-- Up-to-date: /home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/include/ros2_unitree_legged_msgs/ros2_unitree_legged_msgs/msg/detail/imu__type_support.h\n'}
+[0.191634] (ros2_unitree_legged_msgs) StdoutLine: {'line': b'-- Up-to-date: /home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/include/ros2_unitree_legged_msgs/ros2_unitree_legged_msgs/msg/detail/low_state__functions.h\n'}
+[0.191655] (ros2_unitree_legged_msgs) StdoutLine: {'line': b'-- Up-to-date: /home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/include/ros2_unitree_legged_msgs/ros2_unitree_legged_msgs/msg/detail/high_cmd__struct.h\n'}
+[0.191676] (ros2_unitree_legged_msgs) StdoutLine: {'line': b'-- Up-to-date: /home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/include/ros2_unitree_legged_msgs/ros2_unitree_legged_msgs/msg/detail/high_cmd__functions.c\n'}
+[0.191697] (ros2_unitree_legged_msgs) StdoutLine: {'line': b'-- Up-to-date: /home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/include/ros2_unitree_legged_msgs/ros2_unitree_legged_msgs/msg/detail/cartesian__functions.c\n'}
+[0.191718] (ros2_unitree_legged_msgs) StdoutLine: {'line': b'-- Up-to-date: /home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/include/ros2_unitree_legged_msgs/ros2_unitree_legged_msgs/msg/detail/low_state__struct.h\n'}
+[0.191747] (ros2_unitree_legged_msgs) StdoutLine: {'line': b'-- Up-to-date: /home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/include/ros2_unitree_legged_msgs/ros2_unitree_legged_msgs/msg/detail/motor_state__type_support.h\n'}
+[0.191768] (ros2_unitree_legged_msgs) StdoutLine: {'line': b'-- Up-to-date: /home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/include/ros2_unitree_legged_msgs/ros2_unitree_legged_msgs/msg/detail/bms_cmd__functions.c\n'}
+[0.191788] (ros2_unitree_legged_msgs) StdoutLine: {'line': b'-- Up-to-date: /home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/include/ros2_unitree_legged_msgs/ros2_unitree_legged_msgs/msg/detail/cartesian__functions.h\n'}
+[0.191809] (ros2_unitree_legged_msgs) StdoutLine: {'line': b'-- Up-to-date: /home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/include/ros2_unitree_legged_msgs/ros2_unitree_legged_msgs/msg/detail/cartesian__type_support.h\n'}
+[0.191829] (ros2_unitree_legged_msgs) StdoutLine: {'line': b'-- Up-to-date: /home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/include/ros2_unitree_legged_msgs/ros2_unitree_legged_msgs/msg/detail/cartesian__struct.h\n'}
+[0.191850] (ros2_unitree_legged_msgs) StdoutLine: {'line': b'-- Up-to-date: /home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/include/ros2_unitree_legged_msgs/ros2_unitree_legged_msgs/msg/detail/motor_state__functions.h\n'}
+[0.191871] (ros2_unitree_legged_msgs) StdoutLine: {'line': b'-- Up-to-date: /home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/include/ros2_unitree_legged_msgs/ros2_unitree_legged_msgs/msg/detail/low_cmd__type_support.h\n'}
+[0.191894] (ros2_unitree_legged_msgs) StdoutLine: {'line': b'-- Up-to-date: /home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/include/ros2_unitree_legged_msgs/ros2_unitree_legged_msgs/msg/detail/low_cmd__functions.c\n'}
+[0.191916] (ros2_unitree_legged_msgs) StdoutLine: {'line': b'-- Up-to-date: /home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/include/ros2_unitree_legged_msgs/ros2_unitree_legged_msgs/msg/detail/bms_cmd__struct.h\n'}
+[0.191956] (ros2_unitree_legged_msgs) StdoutLine: {'line': b'-- Up-to-date: /home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/include/ros2_unitree_legged_msgs/ros2_unitree_legged_msgs/msg/detail/low_state__type_support.h\n'}
+[0.191977] (ros2_unitree_legged_msgs) StdoutLine: {'line': b'-- Up-to-date: /home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/include/ros2_unitree_legged_msgs/ros2_unitree_legged_msgs/msg/detail/bms_state__struct.h\n'}
+[0.192016] (ros2_unitree_legged_msgs) StdoutLine: {'line': b'-- Up-to-date: /home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/include/ros2_unitree_legged_msgs/ros2_unitree_legged_msgs/msg/detail/imu__functions.h\n'}
+[0.192038] (ros2_unitree_legged_msgs) StdoutLine: {'line': b'-- Up-to-date: /home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/include/ros2_unitree_legged_msgs/ros2_unitree_legged_msgs/msg/detail/bms_cmd__type_support.h\n'}
+[0.192059] (ros2_unitree_legged_msgs) StdoutLine: {'line': b'-- Up-to-date: /home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/include/ros2_unitree_legged_msgs/ros2_unitree_legged_msgs/msg/detail/led__functions.c\n'}
+[0.192080] (ros2_unitree_legged_msgs) StdoutLine: {'line': b'-- Up-to-date: /home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/include/ros2_unitree_legged_msgs/ros2_unitree_legged_msgs/msg/detail/imu__functions.c\n'}
+[0.192101] (ros2_unitree_legged_msgs) StdoutLine: {'line': b'-- Up-to-date: /home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/include/ros2_unitree_legged_msgs/ros2_unitree_legged_msgs/msg/detail/bms_state__functions.c\n'}
+[0.192122] (ros2_unitree_legged_msgs) StdoutLine: {'line': b'-- Up-to-date: /home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/include/ros2_unitree_legged_msgs/ros2_unitree_legged_msgs/msg/detail/low_state__functions.c\n'}
+[0.192143] (ros2_unitree_legged_msgs) StdoutLine: {'line': b'-- Up-to-date: /home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/include/ros2_unitree_legged_msgs/ros2_unitree_legged_msgs/msg/detail/bms_state__functions.h\n'}
+[0.192184] (ros2_unitree_legged_msgs) StdoutLine: {'line': b'-- Up-to-date: /home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/include/ros2_unitree_legged_msgs/ros2_unitree_legged_msgs/msg/detail/high_state__struct.h\n'}
+[0.192222] (ros2_unitree_legged_msgs) StdoutLine: {'line': b'-- Up-to-date: /home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/include/ros2_unitree_legged_msgs/ros2_unitree_legged_msgs/msg/detail/led__type_support.h\n'}
+[0.192244] (ros2_unitree_legged_msgs) StdoutLine: {'line': b'-- Up-to-date: /home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/include/ros2_unitree_legged_msgs/ros2_unitree_legged_msgs/msg/detail/motor_cmd__functions.c\n'}
+[0.192266] (ros2_unitree_legged_msgs) StdoutLine: {'line': b'-- Up-to-date: /home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/include/ros2_unitree_legged_msgs/ros2_unitree_legged_msgs/msg/detail/low_cmd__struct.h\n'}
+[0.192287] (ros2_unitree_legged_msgs) StdoutLine: {'line': b'-- Up-to-date: /home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/include/ros2_unitree_legged_msgs/ros2_unitree_legged_msgs/msg/detail/bms_state__type_support.h\n'}
+[0.192309] (ros2_unitree_legged_msgs) StdoutLine: {'line': b'-- Up-to-date: /home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/include/ros2_unitree_legged_msgs/ros2_unitree_legged_msgs/msg/detail/motor_cmd__type_support.h\n'}
+[0.192332] (ros2_unitree_legged_msgs) StdoutLine: {'line': b'-- Up-to-date: /home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/include/ros2_unitree_legged_msgs/ros2_unitree_legged_msgs/msg/detail/imu__struct.h\n'}
+[0.192358] (ros2_unitree_legged_msgs) StdoutLine: {'line': b'-- Up-to-date: /home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/include/ros2_unitree_legged_msgs/ros2_unitree_legged_msgs/msg/detail/low_cmd__functions.h\n'}
+[0.192388] (ros2_unitree_legged_msgs) StdoutLine: {'line': b'-- Up-to-date: /home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/include/ros2_unitree_legged_msgs/ros2_unitree_legged_msgs/msg/high_cmd.h\n'}
+[0.192410] (ros2_unitree_legged_msgs) StdoutLine: {'line': b'-- Up-to-date: /home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/include/ros2_unitree_legged_msgs/ros2_unitree_legged_msgs/msg/imu.h\n'}
+[0.192431] (ros2_unitree_legged_msgs) StdoutLine: {'line': b'-- Up-to-date: /home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/include/ros2_unitree_legged_msgs/ros2_unitree_legged_msgs/msg/rosidl_generator_c__visibility_control.h\n'}
+[0.192452] (ros2_unitree_legged_msgs) StdoutLine: {'line': b'-- Up-to-date: /home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/include/ros2_unitree_legged_msgs/ros2_unitree_legged_msgs/msg/cartesian.h\n'}
+[0.192473] (ros2_unitree_legged_msgs) StdoutLine: {'line': b'-- Up-to-date: /home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/include/ros2_unitree_legged_msgs/ros2_unitree_legged_msgs/msg/led.h\n'}
+[0.192493] (ros2_unitree_legged_msgs) StdoutLine: {'line': b'-- Up-to-date: /home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/include/ros2_unitree_legged_msgs/ros2_unitree_legged_msgs/msg/motor_cmd.h\n'}
+[0.192514] (ros2_unitree_legged_msgs) StdoutLine: {'line': b'-- Up-to-date: /home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/include/ros2_unitree_legged_msgs/ros2_unitree_legged_msgs/msg/low_cmd.h\n'}
+[0.192535] (ros2_unitree_legged_msgs) StdoutLine: {'line': b'-- Up-to-date: /home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/include/ros2_unitree_legged_msgs/ros2_unitree_legged_msgs/msg/low_state.h\n'}
+[0.192556] (ros2_unitree_legged_msgs) StdoutLine: {'line': b'-- Up-to-date: /home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/include/ros2_unitree_legged_msgs/ros2_unitree_legged_msgs/msg/bms_state.h\n'}
+[0.192576] (ros2_unitree_legged_msgs) StdoutLine: {'line': b'-- Up-to-date: /home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/include/ros2_unitree_legged_msgs/ros2_unitree_legged_msgs/msg/high_state.h\n'}
+[0.192614] (ros2_unitree_legged_msgs) StdoutLine: {'line': b'-- Up-to-date: /home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/share/ros2_unitree_legged_msgs/environment/library_path.sh\n'}
+[0.192718] (ros2_unitree_legged_msgs) StdoutLine: {'line': b'-- Up-to-date: /home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/share/ros2_unitree_legged_msgs/environment/library_path.dsv\n'}
+[0.192740] (ros2_unitree_legged_msgs) StdoutLine: {'line': b'-- Up-to-date: /home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/lib/libros2_unitree_legged_msgs__rosidl_generator_c.so\n'}
+[0.192761] (ros2_unitree_legged_msgs) StdoutLine: {'line': b'-- Up-to-date: /home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/include/ros2_unitree_legged_msgs/ros2_unitree_legged_msgs\n'}
+[0.192782] (ros2_unitree_legged_msgs) StdoutLine: {'line': b'-- Up-to-date: /home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/include/ros2_unitree_legged_msgs/ros2_unitree_legged_msgs/msg\n'}
+[0.192803] (ros2_unitree_legged_msgs) StdoutLine: {'line': b'-- Up-to-date: /home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/include/ros2_unitree_legged_msgs/ros2_unitree_legged_msgs/msg/detail\n'}
+[0.192824] (ros2_unitree_legged_msgs) StdoutLine: {'line': b'-- Up-to-date: /home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/include/ros2_unitree_legged_msgs/ros2_unitree_legged_msgs/msg/detail/imu__rosidl_typesupport_fastrtps_c.h\n'}
+[0.192846] (ros2_unitree_legged_msgs) StdoutLine: {'line': b'-- Up-to-date: /home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/include/ros2_unitree_legged_msgs/ros2_unitree_legged_msgs/msg/detail/cartesian__rosidl_typesupport_fastrtps_c.h\n'}
+[0.192882] (ros2_unitree_legged_msgs) StdoutLine: {'line': b'-- Up-to-date: /home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/include/ros2_unitree_legged_msgs/ros2_unitree_legged_msgs/msg/detail/led__rosidl_typesupport_fastrtps_c.h\n'}
+[0.192915] (ros2_unitree_legged_msgs) StdoutLine: {'line': b'-- Up-to-date: /home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/include/ros2_unitree_legged_msgs/ros2_unitree_legged_msgs/msg/detail/high_cmd__rosidl_typesupport_fastrtps_c.h\n'}
+[0.193006] (ros2_unitree_legged_msgs) StdoutLine: {'line': b'-- Up-to-date: /home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/include/ros2_unitree_legged_msgs/ros2_unitree_legged_msgs/msg/detail/motor_state__rosidl_typesupport_fastrtps_c.h\n'}
+[0.193038] (ros2_unitree_legged_msgs) StdoutLine: {'line': b'-- Up-to-date: /home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/include/ros2_unitree_legged_msgs/ros2_unitree_legged_msgs/msg/detail/bms_state__rosidl_typesupport_fastrtps_c.h\n'}
+[0.193070] (ros2_unitree_legged_msgs) StdoutLine: {'line': b'-- Up-to-date: /home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/include/ros2_unitree_legged_msgs/ros2_unitree_legged_msgs/msg/detail/high_state__rosidl_typesupport_fastrtps_c.h\n'}
+[0.193102] (ros2_unitree_legged_msgs) StdoutLine: {'line': b'-- Up-to-date: /home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/include/ros2_unitree_legged_msgs/ros2_unitree_legged_msgs/msg/detail/bms_cmd__rosidl_typesupport_fastrtps_c.h\n'}
+[0.193140] (ros2_unitree_legged_msgs) StdoutLine: {'line': b'-- Up-to-date: /home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/include/ros2_unitree_legged_msgs/ros2_unitree_legged_msgs/msg/detail/low_state__rosidl_typesupport_fastrtps_c.h\n'}
+[0.193175] (ros2_unitree_legged_msgs) StdoutLine: {'line': b'-- Up-to-date: /home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/include/ros2_unitree_legged_msgs/ros2_unitree_legged_msgs/msg/detail/motor_cmd__rosidl_typesupport_fastrtps_c.h\n'}
+[0.193198] (ros2_unitree_legged_msgs) StdoutLine: {'line': b'-- Up-to-date: /home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/include/ros2_unitree_legged_msgs/ros2_unitree_legged_msgs/msg/detail/low_cmd__rosidl_typesupport_fastrtps_c.h\n'}
+[0.193221] (ros2_unitree_legged_msgs) StdoutLine: {'line': b'-- Up-to-date: /home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/include/ros2_unitree_legged_msgs/ros2_unitree_legged_msgs/msg/rosidl_typesupport_fastrtps_c__visibility_control.h\n'}
+[0.193242] (ros2_unitree_legged_msgs) StdoutLine: {'line': b'-- Up-to-date: /home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/lib/libros2_unitree_legged_msgs__rosidl_typesupport_fastrtps_c.so\n'}
+[0.193274] (ros2_unitree_legged_msgs) StdoutLine: {'line': b'-- Up-to-date: /home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/include/ros2_unitree_legged_msgs/ros2_unitree_legged_msgs\n'}
+[0.193296] (ros2_unitree_legged_msgs) StdoutLine: {'line': b'-- Up-to-date: /home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/include/ros2_unitree_legged_msgs/ros2_unitree_legged_msgs/msg\n'}
+[0.193317] (ros2_unitree_legged_msgs) StdoutLine: {'line': b'-- Up-to-date: /home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/include/ros2_unitree_legged_msgs/ros2_unitree_legged_msgs/msg/detail\n'}
+[0.193343] (ros2_unitree_legged_msgs) StdoutLine: {'line': b'-- Up-to-date: /home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/include/ros2_unitree_legged_msgs/ros2_unitree_legged_msgs/msg/detail/low_cmd__rosidl_typesupport_introspection_c.h\n'}
+[0.193399] (ros2_unitree_legged_msgs) StdoutLine: {'line': b'-- Up-to-date: /home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/include/ros2_unitree_legged_msgs/ros2_unitree_legged_msgs/msg/detail/motor_cmd__type_support.c\n'}
+[0.193432] (ros2_unitree_legged_msgs) StdoutLine: {'line': b'-- Up-to-date: /home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/include/ros2_unitree_legged_msgs/ros2_unitree_legged_msgs/msg/detail/bms_state__type_support.c\n'}
+[0.193454] (ros2_unitree_legged_msgs) StdoutLine: {'line': b'-- Up-to-date: /home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/include/ros2_unitree_legged_msgs/ros2_unitree_legged_msgs/msg/detail/high_state__rosidl_typesupport_introspection_c.h\n'}
+[0.193475] (ros2_unitree_legged_msgs) StdoutLine: {'line': b'-- Up-to-date: /home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/include/ros2_unitree_legged_msgs/ros2_unitree_legged_msgs/msg/detail/low_state__rosidl_typesupport_introspection_c.h\n'}
+[0.193496] (ros2_unitree_legged_msgs) StdoutLine: {'line': b'-- Up-to-date: /home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/include/ros2_unitree_legged_msgs/ros2_unitree_legged_msgs/msg/detail/imu__type_support.c\n'}
+[0.193519] (ros2_unitree_legged_msgs) StdoutLine: {'line': b'-- Up-to-date: /home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/include/ros2_unitree_legged_msgs/ros2_unitree_legged_msgs/msg/detail/low_state__type_support.c\n'}
+[0.193542] (ros2_unitree_legged_msgs) StdoutLine: {'line': b'-- Up-to-date: /home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/include/ros2_unitree_legged_msgs/ros2_unitree_legged_msgs/msg/detail/led__type_support.c\n'}
+[0.193566] (ros2_unitree_legged_msgs) StdoutLine: {'line': b'-- Up-to-date: /home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/include/ros2_unitree_legged_msgs/ros2_unitree_legged_msgs/msg/detail/cartesian__type_support.c\n'}
+[0.193587] (ros2_unitree_legged_msgs) StdoutLine: {'line': b'-- Up-to-date: /home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/include/ros2_unitree_legged_msgs/ros2_unitree_legged_msgs/msg/detail/led__rosidl_typesupport_introspection_c.h\n'}
+[0.193608] (ros2_unitree_legged_msgs) StdoutLine: {'line': b'-- Up-to-date: /home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/include/ros2_unitree_legged_msgs/ros2_unitree_legged_msgs/msg/detail/bms_cmd__rosidl_typesupport_introspection_c.h\n'}
+[0.193629] (ros2_unitree_legged_msgs) StdoutLine: {'line': b'-- Up-to-date: /home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/include/ros2_unitree_legged_msgs/ros2_unitree_legged_msgs/msg/detail/motor_state__rosidl_typesupport_introspection_c.h\n'}
+[0.193672] (ros2_unitree_legged_msgs) StdoutLine: {'line': b'-- Up-to-date: /home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/include/ros2_unitree_legged_msgs/ros2_unitree_legged_msgs/msg/detail/high_cmd__rosidl_typesupport_introspection_c.h\n'}
+[0.193695] (ros2_unitree_legged_msgs) StdoutLine: {'line': b'-- Up-to-date: /home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/include/ros2_unitree_legged_msgs/ros2_unitree_legged_msgs/msg/detail/high_cmd__type_support.c\n'}
+[0.193741] (ros2_unitree_legged_msgs) StdoutLine: {'line': b'-- Up-to-date: /home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/include/ros2_unitree_legged_msgs/ros2_unitree_legged_msgs/msg/detail/bms_state__rosidl_typesupport_introspection_c.h\n'}
+[0.193763] (ros2_unitree_legged_msgs) StdoutLine: {'line': b'-- Up-to-date: /home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/include/ros2_unitree_legged_msgs/ros2_unitree_legged_msgs/msg/detail/bms_cmd__type_support.c\n'}
+[0.193784] (ros2_unitree_legged_msgs) StdoutLine: {'line': b'-- Up-to-date: /home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/include/ros2_unitree_legged_msgs/ros2_unitree_legged_msgs/msg/detail/motor_state__type_support.c\n'}
+[0.193806] (ros2_unitree_legged_msgs) StdoutLine: {'line': b'-- Up-to-date: /home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/include/ros2_unitree_legged_msgs/ros2_unitree_legged_msgs/msg/detail/high_state__type_support.c\n'}
+[0.193827] (ros2_unitree_legged_msgs) StdoutLine: {'line': b'-- Up-to-date: /home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/include/ros2_unitree_legged_msgs/ros2_unitree_legged_msgs/msg/detail/low_cmd__type_support.c\n'}
+[0.193849] (ros2_unitree_legged_msgs) StdoutLine: {'line': b'-- Up-to-date: /home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/include/ros2_unitree_legged_msgs/ros2_unitree_legged_msgs/msg/detail/cartesian__rosidl_typesupport_introspection_c.h\n'}
+[0.193869] (ros2_unitree_legged_msgs) StdoutLine: {'line': b'-- Up-to-date: /home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/include/ros2_unitree_legged_msgs/ros2_unitree_legged_msgs/msg/detail/motor_cmd__rosidl_typesupport_introspection_c.h\n'}
+[0.193892] (ros2_unitree_legged_msgs) StdoutLine: {'line': b'-- Up-to-date: /home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/include/ros2_unitree_legged_msgs/ros2_unitree_legged_msgs/msg/detail/imu__rosidl_typesupport_introspection_c.h\n'}
+[0.193912] (ros2_unitree_legged_msgs) StdoutLine: {'line': b'-- Up-to-date: /home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/include/ros2_unitree_legged_msgs/ros2_unitree_legged_msgs/msg/rosidl_typesupport_introspection_c__visibility_control.h\n'}
+[0.193934] (ros2_unitree_legged_msgs) StdoutLine: {'line': b'-- Up-to-date: /home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/lib/libros2_unitree_legged_msgs__rosidl_typesupport_introspection_c.so\n'}
+[0.193962] (ros2_unitree_legged_msgs) StdoutLine: {'line': b'-- Up-to-date: /home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/lib/libros2_unitree_legged_msgs__rosidl_typesupport_c.so\n'}
+[0.193986] (ros2_unitree_legged_msgs) StdoutLine: {'line': b'-- Up-to-date: /home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/include/ros2_unitree_legged_msgs/ros2_unitree_legged_msgs\n'}
+[0.194009] (ros2_unitree_legged_msgs) StdoutLine: {'line': b'-- Up-to-date: /home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/include/ros2_unitree_legged_msgs/ros2_unitree_legged_msgs/msg\n'}
+[0.194031] (ros2_unitree_legged_msgs) StdoutLine: {'line': b'-- Up-to-date: /home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/include/ros2_unitree_legged_msgs/ros2_unitree_legged_msgs/msg/imu.hpp\n'}
+[0.194052] (ros2_unitree_legged_msgs) StdoutLine: {'line': b'-- Up-to-date: /home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/include/ros2_unitree_legged_msgs/ros2_unitree_legged_msgs/msg/motor_state.hpp\n'}
+[0.194074] (ros2_unitree_legged_msgs) StdoutLine: {'line': b'-- Up-to-date: /home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/include/ros2_unitree_legged_msgs/ros2_unitree_legged_msgs/msg/low_cmd.hpp\n'}
+[0.194095] (ros2_unitree_legged_msgs) StdoutLine: {'line': b'-- Up-to-date: /home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/include/ros2_unitree_legged_msgs/ros2_unitree_legged_msgs/msg/led.hpp\n'}
+[0.194116] (ros2_unitree_legged_msgs) StdoutLine: {'line': b'-- Up-to-date: /home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/include/ros2_unitree_legged_msgs/ros2_unitree_legged_msgs/msg/detail\n'}
+[0.194137] (ros2_unitree_legged_msgs) StdoutLine: {'line': b'-- Up-to-date: /home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/include/ros2_unitree_legged_msgs/ros2_unitree_legged_msgs/msg/detail/motor_cmd__builder.hpp\n'}
+[0.194182] (ros2_unitree_legged_msgs) StdoutLine: {'line': b'-- Up-to-date: /home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/include/ros2_unitree_legged_msgs/ros2_unitree_legged_msgs/msg/detail/imu__type_support.hpp\n'}
+[0.194202] (ros2_unitree_legged_msgs) StdoutLine: {'line': b'-- Up-to-date: /home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/include/ros2_unitree_legged_msgs/ros2_unitree_legged_msgs/msg/detail/bms_state__builder.hpp\n'}
+[0.194222] (ros2_unitree_legged_msgs) StdoutLine: {'line': b'-- Up-to-date: /home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/include/ros2_unitree_legged_msgs/ros2_unitree_legged_msgs/msg/detail/low_state__type_support.hpp\n'}
+[0.194242] (ros2_unitree_legged_msgs) StdoutLine: {'line': b'-- Up-to-date: /home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/include/ros2_unitree_legged_msgs/ros2_unitree_legged_msgs/msg/detail/bms_state__traits.hpp\n'}
+[0.194267] (ros2_unitree_legged_msgs) StdoutLine: {'line': b'-- Up-to-date: /home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/include/ros2_unitree_legged_msgs/ros2_unitree_legged_msgs/msg/detail/motor_state__builder.hpp\n'}
+[0.194288] (ros2_unitree_legged_msgs) StdoutLine: {'line': b'-- Up-to-date: /home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/include/ros2_unitree_legged_msgs/ros2_unitree_legged_msgs/msg/detail/high_cmd__struct.hpp\n'}
+[0.194308] (ros2_unitree_legged_msgs) StdoutLine: {'line': b'-- Up-to-date: /home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/include/ros2_unitree_legged_msgs/ros2_unitree_legged_msgs/msg/detail/bms_cmd__struct.hpp\n'}
+[0.194328] (ros2_unitree_legged_msgs) StdoutLine: {'line': b'-- Up-to-date: /home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/include/ros2_unitree_legged_msgs/ros2_unitree_legged_msgs/msg/detail/high_state__traits.hpp\n'}
+[0.194354] (ros2_unitree_legged_msgs) StdoutLine: {'line': b'-- Up-to-date: /home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/include/ros2_unitree_legged_msgs/ros2_unitree_legged_msgs/msg/detail/high_state__builder.hpp\n'}
+[0.194374] (ros2_unitree_legged_msgs) StdoutLine: {'line': b'-- Up-to-date: /home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/include/ros2_unitree_legged_msgs/ros2_unitree_legged_msgs/msg/detail/cartesian__builder.hpp\n'}
+[0.194394] (ros2_unitree_legged_msgs) StdoutLine: {'line': b'-- Up-to-date: /home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/include/ros2_unitree_legged_msgs/ros2_unitree_legged_msgs/msg/detail/low_cmd__builder.hpp\n'}
+[0.194412] (ros2_unitree_legged_msgs) StdoutLine: {'line': b'-- Up-to-date: /home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/include/ros2_unitree_legged_msgs/ros2_unitree_legged_msgs/msg/detail/low_state__builder.hpp\n'}
+[0.194431] (ros2_unitree_legged_msgs) StdoutLine: {'line': b'-- Up-to-date: /home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/include/ros2_unitree_legged_msgs/ros2_unitree_legged_msgs/msg/detail/high_state__type_support.hpp\n'}
+[0.194451] (ros2_unitree_legged_msgs) StdoutLine: {'line': b'-- Up-to-date: /home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/include/ros2_unitree_legged_msgs/ros2_unitree_legged_msgs/msg/detail/motor_state__type_support.hpp\n'}
+[0.194470] (ros2_unitree_legged_msgs) StdoutLine: {'line': b'-- Up-to-date: /home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/include/ros2_unitree_legged_msgs/ros2_unitree_legged_msgs/msg/detail/bms_cmd__traits.hpp\n'}
+[0.194489] (ros2_unitree_legged_msgs) StdoutLine: {'line': b'-- Up-to-date: /home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/include/ros2_unitree_legged_msgs/ros2_unitree_legged_msgs/msg/detail/led__struct.hpp\n'}
+[0.194510] (ros2_unitree_legged_msgs) StdoutLine: {'line': b'-- Up-to-date: /home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/include/ros2_unitree_legged_msgs/ros2_unitree_legged_msgs/msg/detail/motor_state__traits.hpp\n'}
+[0.194529] (ros2_unitree_legged_msgs) StdoutLine: {'line': b'-- Up-to-date: /home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/include/ros2_unitree_legged_msgs/ros2_unitree_legged_msgs/msg/detail/low_cmd__traits.hpp\n'}
+[0.194549] (ros2_unitree_legged_msgs) StdoutLine: {'line': b'-- Up-to-date: /home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/include/ros2_unitree_legged_msgs/ros2_unitree_legged_msgs/msg/detail/led__type_support.hpp\n'}
+[0.194568] (ros2_unitree_legged_msgs) StdoutLine: {'line': b'-- Up-to-date: /home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/include/ros2_unitree_legged_msgs/ros2_unitree_legged_msgs/msg/detail/cartesian__struct.hpp\n'}
+[0.194588] (ros2_unitree_legged_msgs) StdoutLine: {'line': b'-- Up-to-date: /home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/include/ros2_unitree_legged_msgs/ros2_unitree_legged_msgs/msg/detail/cartesian__type_support.hpp\n'}
+[0.194606] (ros2_unitree_legged_msgs) StdoutLine: {'line': b'-- Up-to-date: /home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/include/ros2_unitree_legged_msgs/ros2_unitree_legged_msgs/msg/detail/motor_cmd__type_support.hpp\n'}
+[0.194625] (ros2_unitree_legged_msgs) StdoutLine: {'line': b'-- Up-to-date: /home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/include/ros2_unitree_legged_msgs/ros2_unitree_legged_msgs/msg/detail/bms_cmd__builder.hpp\n'}
+[0.194644] (ros2_unitree_legged_msgs) StdoutLine: {'line': b'-- Up-to-date: /home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/include/ros2_unitree_legged_msgs/ros2_unitree_legged_msgs/msg/detail/led__traits.hpp\n'}
+[0.194663] (ros2_unitree_legged_msgs) StdoutLine: {'line': b'-- Up-to-date: /home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/include/ros2_unitree_legged_msgs/ros2_unitree_legged_msgs/msg/detail/bms_state__struct.hpp\n'}
+[0.194684] (ros2_unitree_legged_msgs) StdoutLine: {'line': b'-- Up-to-date: /home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/include/ros2_unitree_legged_msgs/ros2_unitree_legged_msgs/msg/detail/low_cmd__type_support.hpp\n'}
+[0.194704] (ros2_unitree_legged_msgs) StdoutLine: {'line': b'-- Up-to-date: /home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/include/ros2_unitree_legged_msgs/ros2_unitree_legged_msgs/msg/detail/high_cmd__builder.hpp\n'}
+[0.194723] (ros2_unitree_legged_msgs) StdoutLine: {'line': b'-- Up-to-date: /home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/include/ros2_unitree_legged_msgs/ros2_unitree_legged_msgs/msg/detail/motor_cmd__traits.hpp\n'}
+[0.194746] (ros2_unitree_legged_msgs) StdoutLine: {'line': b'-- Up-to-date: /home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/include/ros2_unitree_legged_msgs/ros2_unitree_legged_msgs/msg/detail/high_cmd__traits.hpp\n'}
+[0.194771] (ros2_unitree_legged_msgs) StdoutLine: {'line': b'-- Up-to-date: /home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/include/ros2_unitree_legged_msgs/ros2_unitree_legged_msgs/msg/detail/motor_cmd__struct.hpp\n'}
+[0.194792] (ros2_unitree_legged_msgs) StdoutLine: {'line': b'-- Up-to-date: /home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/include/ros2_unitree_legged_msgs/ros2_unitree_legged_msgs/msg/detail/imu__traits.hpp\n'}
+[0.194812] (ros2_unitree_legged_msgs) StdoutLine: {'line': b'-- Up-to-date: /home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/include/ros2_unitree_legged_msgs/ros2_unitree_legged_msgs/msg/detail/low_state__traits.hpp\n'}
+[0.194831] (ros2_unitree_legged_msgs) StdoutLine: {'line': b'-- Up-to-date: /home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/include/ros2_unitree_legged_msgs/ros2_unitree_legged_msgs/msg/detail/low_state__struct.hpp\n'}
+[0.194850] (ros2_unitree_legged_msgs) StdoutLine: {'line': b'-- Up-to-date: /home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/include/ros2_unitree_legged_msgs/ros2_unitree_legged_msgs/msg/detail/high_cmd__type_support.hpp\n'}
+[0.194869] (ros2_unitree_legged_msgs) StdoutLine: {'line': b'-- Up-to-date: /home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/include/ros2_unitree_legged_msgs/ros2_unitree_legged_msgs/msg/detail/motor_state__struct.hpp\n'}
+[0.194889] (ros2_unitree_legged_msgs) StdoutLine: {'line': b'-- Up-to-date: /home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/include/ros2_unitree_legged_msgs/ros2_unitree_legged_msgs/msg/detail/bms_state__type_support.hpp\n'}
+[0.194910] (ros2_unitree_legged_msgs) StdoutLine: {'line': b'-- Up-to-date: /home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/include/ros2_unitree_legged_msgs/ros2_unitree_legged_msgs/msg/detail/imu__struct.hpp\n'}
+[0.194929] (ros2_unitree_legged_msgs) StdoutLine: {'line': b'-- Up-to-date: /home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/include/ros2_unitree_legged_msgs/ros2_unitree_legged_msgs/msg/detail/high_state__struct.hpp\n'}
+[0.194948] (ros2_unitree_legged_msgs) StdoutLine: {'line': b'-- Up-to-date: /home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/include/ros2_unitree_legged_msgs/ros2_unitree_legged_msgs/msg/detail/cartesian__traits.hpp\n'}
+[0.194967] (ros2_unitree_legged_msgs) StdoutLine: {'line': b'-- Up-to-date: /home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/include/ros2_unitree_legged_msgs/ros2_unitree_legged_msgs/msg/detail/low_cmd__struct.hpp\n'}
+[0.194988] (ros2_unitree_legged_msgs) StdoutLine: {'line': b'-- Up-to-date: /home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/include/ros2_unitree_legged_msgs/ros2_unitree_legged_msgs/msg/detail/led__builder.hpp\n'}
+[0.195007] (ros2_unitree_legged_msgs) StdoutLine: {'line': b'-- Up-to-date: /home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/include/ros2_unitree_legged_msgs/ros2_unitree_legged_msgs/msg/detail/bms_cmd__type_support.hpp\n'}
+[0.195026] (ros2_unitree_legged_msgs) StdoutLine: {'line': b'-- Up-to-date: /home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/include/ros2_unitree_legged_msgs/ros2_unitree_legged_msgs/msg/detail/imu__builder.hpp\n'}
+[0.195045] (ros2_unitree_legged_msgs) StdoutLine: {'line': b'-- Up-to-date: /home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/include/ros2_unitree_legged_msgs/ros2_unitree_legged_msgs/msg/rosidl_generator_cpp__visibility_control.hpp\n'}
+[0.195064] (ros2_unitree_legged_msgs) StdoutLine: {'line': b'-- Up-to-date: /home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/include/ros2_unitree_legged_msgs/ros2_unitree_legged_msgs/msg/low_state.hpp\n'}
+[0.195083] (ros2_unitree_legged_msgs) StdoutLine: {'line': b'-- Up-to-date: /home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/include/ros2_unitree_legged_msgs/ros2_unitree_legged_msgs/msg/high_cmd.hpp\n'}
+[0.195101] (ros2_unitree_legged_msgs) StdoutLine: {'line': b'-- Up-to-date: /home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/include/ros2_unitree_legged_msgs/ros2_unitree_legged_msgs/msg/high_state.hpp\n'}
+[0.195120] (ros2_unitree_legged_msgs) StdoutLine: {'line': b'-- Up-to-date: /home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/include/ros2_unitree_legged_msgs/ros2_unitree_legged_msgs/msg/motor_cmd.hpp\n'}
+[0.195138] (ros2_unitree_legged_msgs) StdoutLine: {'line': b'-- Up-to-date: /home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/include/ros2_unitree_legged_msgs/ros2_unitree_legged_msgs/msg/cartesian.hpp\n'}
+[0.195157] (ros2_unitree_legged_msgs) StdoutLine: {'line': b'-- Up-to-date: /home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/include/ros2_unitree_legged_msgs/ros2_unitree_legged_msgs/msg/bms_state.hpp\n'}
+[0.195176] (ros2_unitree_legged_msgs) StdoutLine: {'line': b'-- Up-to-date: /home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/include/ros2_unitree_legged_msgs/ros2_unitree_legged_msgs/msg/bms_cmd.hpp\n'}
+[0.195194] (ros2_unitree_legged_msgs) StdoutLine: {'line': b'-- Up-to-date: /home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/include/ros2_unitree_legged_msgs/ros2_unitree_legged_msgs\n'}
+[0.195213] (ros2_unitree_legged_msgs) StdoutLine: {'line': b'-- Up-to-date: /home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/include/ros2_unitree_legged_msgs/ros2_unitree_legged_msgs/msg\n'}
+[0.195232] (ros2_unitree_legged_msgs) StdoutLine: {'line': b'-- Up-to-date: /home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/include/ros2_unitree_legged_msgs/ros2_unitree_legged_msgs/msg/detail\n'}
+[0.195252] (ros2_unitree_legged_msgs) StdoutLine: {'line': b'-- Up-to-date: /home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/include/ros2_unitree_legged_msgs/ros2_unitree_legged_msgs/msg/detail/bms_cmd__rosidl_typesupport_fastrtps_cpp.hpp\n'}
+[0.195274] (ros2_unitree_legged_msgs) StdoutLine: {'line': b'-- Up-to-date: /home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/include/ros2_unitree_legged_msgs/ros2_unitree_legged_msgs/msg/detail/high_state__rosidl_typesupport_fastrtps_cpp.hpp\n'}
+[0.195293] (ros2_unitree_legged_msgs) StdoutLine: {'line': b'-- Up-to-date: /home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/include/ros2_unitree_legged_msgs/ros2_unitree_legged_msgs/msg/detail/bms_state__rosidl_typesupport_fastrtps_cpp.hpp\n'}
+[0.195313] (ros2_unitree_legged_msgs) StdoutLine: {'line': b'-- Up-to-date: /home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/include/ros2_unitree_legged_msgs/ros2_unitree_legged_msgs/msg/detail/cartesian__rosidl_typesupport_fastrtps_cpp.hpp\n'}
+[0.195331] (ros2_unitree_legged_msgs) StdoutLine: {'line': b'-- Up-to-date: /home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/include/ros2_unitree_legged_msgs/ros2_unitree_legged_msgs/msg/detail/high_cmd__rosidl_typesupport_fastrtps_cpp.hpp\n'}
+[0.195356] (ros2_unitree_legged_msgs) StdoutLine: {'line': b'-- Up-to-date: /home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/include/ros2_unitree_legged_msgs/ros2_unitree_legged_msgs/msg/detail/led__rosidl_typesupport_fastrtps_cpp.hpp\n'}
+[0.195376] (ros2_unitree_legged_msgs) StdoutLine: {'line': b'-- Up-to-date: /home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/include/ros2_unitree_legged_msgs/ros2_unitree_legged_msgs/msg/detail/low_state__rosidl_typesupport_fastrtps_cpp.hpp\n'}
+[0.195395] (ros2_unitree_legged_msgs) StdoutLine: {'line': b'-- Up-to-date: /home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/include/ros2_unitree_legged_msgs/ros2_unitree_legged_msgs/msg/detail/motor_state__rosidl_typesupport_fastrtps_cpp.hpp\n'}
+[0.195414] (ros2_unitree_legged_msgs) StdoutLine: {'line': b'-- Up-to-date: /home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/include/ros2_unitree_legged_msgs/ros2_unitree_legged_msgs/msg/detail/low_cmd__rosidl_typesupport_fastrtps_cpp.hpp\n'}
+[0.195434] (ros2_unitree_legged_msgs) StdoutLine: {'line': b'-- Up-to-date: /home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/include/ros2_unitree_legged_msgs/ros2_unitree_legged_msgs/msg/detail/dds_fastrtps\n'}
+[0.195455] (ros2_unitree_legged_msgs) StdoutLine: {'line': b'-- Up-to-date: /home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/include/ros2_unitree_legged_msgs/ros2_unitree_legged_msgs/msg/detail/motor_cmd__rosidl_typesupport_fastrtps_cpp.hpp\n'}
+[0.195475] (ros2_unitree_legged_msgs) StdoutLine: {'line': b'-- Up-to-date: /home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/include/ros2_unitree_legged_msgs/ros2_unitree_legged_msgs/msg/detail/imu__rosidl_typesupport_fastrtps_cpp.hpp\n'}
+[0.195494] (ros2_unitree_legged_msgs) StdoutLine: {'line': b'-- Up-to-date: /home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/include/ros2_unitree_legged_msgs/ros2_unitree_legged_msgs/msg/rosidl_typesupport_fastrtps_cpp__visibility_control.h\n'}
+[0.195513] (ros2_unitree_legged_msgs) StdoutLine: {'line': b'-- Up-to-date: /home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/lib/libros2_unitree_legged_msgs__rosidl_typesupport_fastrtps_cpp.so\n'}
+[0.195532] (ros2_unitree_legged_msgs) StdoutLine: {'line': b'-- Up-to-date: /home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/include/ros2_unitree_legged_msgs/ros2_unitree_legged_msgs\n'}
+[0.195551] (ros2_unitree_legged_msgs) StdoutLine: {'line': b'-- Up-to-date: /home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/include/ros2_unitree_legged_msgs/ros2_unitree_legged_msgs/msg\n'}
+[0.195571] (ros2_unitree_legged_msgs) StdoutLine: {'line': b'-- Up-to-date: /home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/include/ros2_unitree_legged_msgs/ros2_unitree_legged_msgs/msg/detail\n'}
+[0.195590] (ros2_unitree_legged_msgs) StdoutLine: {'line': b'-- Up-to-date: /home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/include/ros2_unitree_legged_msgs/ros2_unitree_legged_msgs/msg/detail/motor_cmd__type_support.cpp\n'}
+[0.195610] (ros2_unitree_legged_msgs) StdoutLine: {'line': b'-- Up-to-date: /home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/include/ros2_unitree_legged_msgs/ros2_unitree_legged_msgs/msg/detail/led__type_support.cpp\n'}
+[0.195631] (ros2_unitree_legged_msgs) StdoutLine: {'line': b'-- Up-to-date: /home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/include/ros2_unitree_legged_msgs/ros2_unitree_legged_msgs/msg/detail/high_cmd__type_support.cpp\n'}
+[0.195650] (ros2_unitree_legged_msgs) StdoutLine: {'line': b'-- Up-to-date: /home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/include/ros2_unitree_legged_msgs/ros2_unitree_legged_msgs/msg/detail/low_cmd__type_support.cpp\n'}
+[0.195670] (ros2_unitree_legged_msgs) StdoutLine: {'line': b'-- Up-to-date: /home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/include/ros2_unitree_legged_msgs/ros2_unitree_legged_msgs/msg/detail/imu__type_support.cpp\n'}
+[0.195689] (ros2_unitree_legged_msgs) StdoutLine: {'line': b'-- Up-to-date: /home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/include/ros2_unitree_legged_msgs/ros2_unitree_legged_msgs/msg/detail/high_cmd__rosidl_typesupport_introspection_cpp.hpp\n'}
+[0.195708] (ros2_unitree_legged_msgs) StdoutLine: {'line': b'-- Up-to-date: /home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/include/ros2_unitree_legged_msgs/ros2_unitree_legged_msgs/msg/detail/high_state__type_support.cpp\n'}
+[0.195727] (ros2_unitree_legged_msgs) StdoutLine: {'line': b'-- Up-to-date: /home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/include/ros2_unitree_legged_msgs/ros2_unitree_legged_msgs/msg/detail/bms_cmd__type_support.cpp\n'}
+[0.195751] (ros2_unitree_legged_msgs) StdoutLine: {'line': b'-- Up-to-date: /home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/include/ros2_unitree_legged_msgs/ros2_unitree_legged_msgs/msg/detail/bms_cmd__rosidl_typesupport_introspection_cpp.hpp\n'}
+[0.195772] (ros2_unitree_legged_msgs) StdoutLine: {'line': b'-- Up-to-date: /home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/include/ros2_unitree_legged_msgs/ros2_unitree_legged_msgs/msg/detail/high_state__rosidl_typesupport_introspection_cpp.hpp\n'}
+[0.195793] (ros2_unitree_legged_msgs) StdoutLine: {'line': b'-- Up-to-date: /home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/include/ros2_unitree_legged_msgs/ros2_unitree_legged_msgs/msg/detail/cartesian__rosidl_typesupport_introspection_cpp.hpp\n'}
+[0.195813] (ros2_unitree_legged_msgs) StdoutLine: {'line': b'-- Up-to-date: /home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/include/ros2_unitree_legged_msgs/ros2_unitree_legged_msgs/msg/detail/bms_state__type_support.cpp\n'}
+[0.195833] (ros2_unitree_legged_msgs) StdoutLine: {'line': b'-- Up-to-date: /home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/include/ros2_unitree_legged_msgs/ros2_unitree_legged_msgs/msg/detail/motor_cmd__rosidl_typesupport_introspection_cpp.hpp\n'}
+[0.195853] (ros2_unitree_legged_msgs) StdoutLine: {'line': b'-- Up-to-date: /home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/include/ros2_unitree_legged_msgs/ros2_unitree_legged_msgs/msg/detail/motor_state__type_support.cpp\n'}
+[0.195872] (ros2_unitree_legged_msgs) StdoutLine: {'line': b'-- Up-to-date: /home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/include/ros2_unitree_legged_msgs/ros2_unitree_legged_msgs/msg/detail/imu__rosidl_typesupport_introspection_cpp.hpp\n'}
+[0.195892] (ros2_unitree_legged_msgs) StdoutLine: {'line': b'-- Up-to-date: /home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/include/ros2_unitree_legged_msgs/ros2_unitree_legged_msgs/msg/detail/motor_state__rosidl_typesupport_introspection_cpp.hpp\n'}
+[0.195913] (ros2_unitree_legged_msgs) StdoutLine: {'line': b'-- Up-to-date: /home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/include/ros2_unitree_legged_msgs/ros2_unitree_legged_msgs/msg/detail/low_state__type_support.cpp\n'}
+[0.195933] (ros2_unitree_legged_msgs) StdoutLine: {'line': b'-- Up-to-date: /home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/include/ros2_unitree_legged_msgs/ros2_unitree_legged_msgs/msg/detail/low_cmd__rosidl_typesupport_introspection_cpp.hpp\n'}
+[0.195955] (ros2_unitree_legged_msgs) StdoutLine: {'line': b'-- Up-to-date: /home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/include/ros2_unitree_legged_msgs/ros2_unitree_legged_msgs/msg/detail/led__rosidl_typesupport_introspection_cpp.hpp\n'}
+[0.195975] (ros2_unitree_legged_msgs) StdoutLine: {'line': b'-- Up-to-date: /home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/include/ros2_unitree_legged_msgs/ros2_unitree_legged_msgs/msg/detail/bms_state__rosidl_typesupport_introspection_cpp.hpp\n'}
+[0.195994] (ros2_unitree_legged_msgs) StdoutLine: {'line': b'-- Up-to-date: /home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/include/ros2_unitree_legged_msgs/ros2_unitree_legged_msgs/msg/detail/low_state__rosidl_typesupport_introspection_cpp.hpp\n'}
+[0.196013] (ros2_unitree_legged_msgs) StdoutLine: {'line': b'-- Up-to-date: /home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/include/ros2_unitree_legged_msgs/ros2_unitree_legged_msgs/msg/detail/cartesian__type_support.cpp\n'}
+[0.196033] (ros2_unitree_legged_msgs) StdoutLine: {'line': b'-- Up-to-date: /home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/lib/libros2_unitree_legged_msgs__rosidl_typesupport_introspection_cpp.so\n'}
+[0.196051] (ros2_unitree_legged_msgs) StdoutLine: {'line': b'-- Up-to-date: /home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/lib/libros2_unitree_legged_msgs__rosidl_typesupport_cpp.so\n'}
+[0.196071] (ros2_unitree_legged_msgs) StdoutLine: {'line': b'-- Up-to-date: /home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/share/ros2_unitree_legged_msgs/environment/pythonpath.sh\n'}
+[0.196090] (ros2_unitree_legged_msgs) StdoutLine: {'line': b'-- Up-to-date: /home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/share/ros2_unitree_legged_msgs/environment/pythonpath.dsv\n'}
+[0.196109] (ros2_unitree_legged_msgs) StdoutLine: {'line': b'-- Up-to-date: /home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/local/lib/python3.10/dist-packages/ros2_unitree_legged_msgs-0.4.0-py3.10.egg-info\n'}
+[0.196128] (ros2_unitree_legged_msgs) StdoutLine: {'line': b'-- Installing: /home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/local/lib/python3.10/dist-packages/ros2_unitree_legged_msgs-0.4.0-py3.10.egg-info/top_level.txt\n'}
+[0.196147] (ros2_unitree_legged_msgs) StdoutLine: {'line': b'-- Installing: /home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/local/lib/python3.10/dist-packages/ros2_unitree_legged_msgs-0.4.0-py3.10.egg-info/dependency_links.txt\n'}
+[0.196166] (ros2_unitree_legged_msgs) StdoutLine: {'line': b'-- Installing: /home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/local/lib/python3.10/dist-packages/ros2_unitree_legged_msgs-0.4.0-py3.10.egg-info/SOURCES.txt\n'}
+[0.196185] (ros2_unitree_legged_msgs) StdoutLine: {'line': b'-- Installing: /home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/local/lib/python3.10/dist-packages/ros2_unitree_legged_msgs-0.4.0-py3.10.egg-info/PKG-INFO\n'}
+[0.196204] (ros2_unitree_legged_msgs) StdoutLine: {'line': b'-- Up-to-date: /home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/local/lib/python3.10/dist-packages/ros2_unitree_legged_msgs\n'}
+[0.196223] (ros2_unitree_legged_msgs) StdoutLine: {'line': b'-- Up-to-date: /home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/local/lib/python3.10/dist-packages/ros2_unitree_legged_msgs/_ros2_unitree_legged_msgs_s.ep.rosidl_typesupport_fastrtps_c.c\n'}
+[0.196245] (ros2_unitree_legged_msgs) StdoutLine: {'line': b'-- Up-to-date: /home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/local/lib/python3.10/dist-packages/ros2_unitree_legged_msgs/__init__.py\n'}
+[0.196265] (ros2_unitree_legged_msgs) StdoutLine: {'line': b'-- Up-to-date: /home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/local/lib/python3.10/dist-packages/ros2_unitree_legged_msgs/ros2_unitree_legged_msgs_s__rosidl_typesupport_c.cpython-310-x86_64-linux-gnu.so\n'}
+[0.196286] (ros2_unitree_legged_msgs) StdoutLine: {'line': b'-- Up-to-date: /home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/local/lib/python3.10/dist-packages/ros2_unitree_legged_msgs/msg\n'}
+[0.196304] (ros2_unitree_legged_msgs) StdoutLine: {'line': b'-- Up-to-date: /home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/local/lib/python3.10/dist-packages/ros2_unitree_legged_msgs/msg/_motor_cmd.py\n'}
+[0.196323] (ros2_unitree_legged_msgs) StdoutLine: {'line': b'-- Up-to-date: /home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/local/lib/python3.10/dist-packages/ros2_unitree_legged_msgs/msg/_low_cmd.py\n'}
+[0.196346] (ros2_unitree_legged_msgs) StdoutLine: {'line': b'-- Up-to-date: /home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/local/lib/python3.10/dist-packages/ros2_unitree_legged_msgs/msg/_low_state.py\n'}
+[0.196366] (ros2_unitree_legged_msgs) StdoutLine: {'line': b'-- Up-to-date: /home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/local/lib/python3.10/dist-packages/ros2_unitree_legged_msgs/msg/_bms_cmd.py\n'}
+[0.196387] (ros2_unitree_legged_msgs) StdoutLine: {'line': b'-- Up-to-date: /home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/local/lib/python3.10/dist-packages/ros2_unitree_legged_msgs/msg/_low_state_s.c\n'}
+[0.196406] (ros2_unitree_legged_msgs) StdoutLine: {'line': b'-- Up-to-date: /home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/local/lib/python3.10/dist-packages/ros2_unitree_legged_msgs/msg/__init__.py\n'}
+[0.196425] (ros2_unitree_legged_msgs) StdoutLine: {'line': b'-- Up-to-date: /home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/local/lib/python3.10/dist-packages/ros2_unitree_legged_msgs/msg/_high_cmd_s.c\n'}
+[0.196443] (ros2_unitree_legged_msgs) StdoutLine: {'line': b'-- Up-to-date: /home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/local/lib/python3.10/dist-packages/ros2_unitree_legged_msgs/msg/_high_cmd.py\n'}
+[0.196462] (ros2_unitree_legged_msgs) StdoutLine: {'line': b'-- Up-to-date: /home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/local/lib/python3.10/dist-packages/ros2_unitree_legged_msgs/msg/_low_cmd_s.c\n'}
+[0.196481] (ros2_unitree_legged_msgs) StdoutLine: {'line': b'-- Up-to-date: /home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/local/lib/python3.10/dist-packages/ros2_unitree_legged_msgs/msg/_high_state.py\n'}
+[0.196500] (ros2_unitree_legged_msgs) StdoutLine: {'line': b'-- Up-to-date: /home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/local/lib/python3.10/dist-packages/ros2_unitree_legged_msgs/msg/_high_state_s.c\n'}
+[0.196518] (ros2_unitree_legged_msgs) StdoutLine: {'line': b'-- Up-to-date: /home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/local/lib/python3.10/dist-packages/ros2_unitree_legged_msgs/msg/_motor_state_s.c\n'}
+[0.196537] (ros2_unitree_legged_msgs) StdoutLine: {'line': b'-- Up-to-date: /home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/local/lib/python3.10/dist-packages/ros2_unitree_legged_msgs/msg/_motor_cmd_s.c\n'}
+[0.196555] (ros2_unitree_legged_msgs) StdoutLine: {'line': b'-- Up-to-date: /home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/local/lib/python3.10/dist-packages/ros2_unitree_legged_msgs/msg/_imu_s.c\n'}
+[0.196574] (ros2_unitree_legged_msgs) StdoutLine: {'line': b'-- Up-to-date: /home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/local/lib/python3.10/dist-packages/ros2_unitree_legged_msgs/msg/_bms_state_s.c\n'}
+[0.196592] (ros2_unitree_legged_msgs) StdoutLine: {'line': b'-- Up-to-date: /home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/local/lib/python3.10/dist-packages/ros2_unitree_legged_msgs/msg/_bms_state.py\n'}
+[0.196610] (ros2_unitree_legged_msgs) StdoutLine: {'line': b'-- Up-to-date: /home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/local/lib/python3.10/dist-packages/ros2_unitree_legged_msgs/msg/_led_s.c\n'}
+[0.196629] (ros2_unitree_legged_msgs) StdoutLine: {'line': b'-- Up-to-date: /home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/local/lib/python3.10/dist-packages/ros2_unitree_legged_msgs/msg/_imu.py\n'}
+[0.196647] (ros2_unitree_legged_msgs) StdoutLine: {'line': b'-- Up-to-date: /home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/local/lib/python3.10/dist-packages/ros2_unitree_legged_msgs/msg/_cartesian.py\n'}
+[0.196668] (ros2_unitree_legged_msgs) StdoutLine: {'line': b'-- Up-to-date: /home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/local/lib/python3.10/dist-packages/ros2_unitree_legged_msgs/msg/_led.py\n'}
+[0.196687] (ros2_unitree_legged_msgs) StdoutLine: {'line': b'-- Up-to-date: /home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/local/lib/python3.10/dist-packages/ros2_unitree_legged_msgs/msg/_motor_state.py\n'}
+[0.196705] (ros2_unitree_legged_msgs) StdoutLine: {'line': b'-- Up-to-date: /home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/local/lib/python3.10/dist-packages/ros2_unitree_legged_msgs/msg/_cartesian_s.c\n'}
+[0.196723] (ros2_unitree_legged_msgs) StdoutLine: {'line': b'-- Up-to-date: /home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/local/lib/python3.10/dist-packages/ros2_unitree_legged_msgs/msg/_bms_cmd_s.c\n'}
+[0.196742] (ros2_unitree_legged_msgs) StdoutLine: {'line': b'-- Up-to-date: /home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/local/lib/python3.10/dist-packages/ros2_unitree_legged_msgs/_ros2_unitree_legged_msgs_s.ep.rosidl_typesupport_introspection_c.c\n'}
+[0.196764] (ros2_unitree_legged_msgs) StdoutLine: {'line': b'-- Up-to-date: /home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/local/lib/python3.10/dist-packages/ros2_unitree_legged_msgs/ros2_unitree_legged_msgs_s__rosidl_typesupport_introspection_c.cpython-310-x86_64-linux-gnu.so\n'}
+[0.196784] (ros2_unitree_legged_msgs) StdoutLine: {'line': b'-- Up-to-date: /home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/local/lib/python3.10/dist-packages/ros2_unitree_legged_msgs/libros2_unitree_legged_msgs__rosidl_generator_py.so\n'}
+[0.196803] (ros2_unitree_legged_msgs) StdoutLine: {'line': b'-- Up-to-date: /home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/local/lib/python3.10/dist-packages/ros2_unitree_legged_msgs/ros2_unitree_legged_msgs_s__rosidl_typesupport_fastrtps_c.cpython-310-x86_64-linux-gnu.so\n'}
+[0.196822] (ros2_unitree_legged_msgs) StdoutLine: {'line': b'-- Up-to-date: /home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/local/lib/python3.10/dist-packages/ros2_unitree_legged_msgs/_ros2_unitree_legged_msgs_s.ep.rosidl_typesupport_c.c\n'}
+[0.199663] (-) TimerEvent: {}
+[0.209668] (ros2_unitree_legged_msgs) StdoutLine: {'line': b"Listing '/home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/local/lib/python3.10/dist-packages/ros2_unitree_legged_msgs'...\n"}
+[0.209735] (ros2_unitree_legged_msgs) StdoutLine: {'line': b"Listing '/home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/local/lib/python3.10/dist-packages/ros2_unitree_legged_msgs/msg'...\n"}
+[0.211878] (ros2_unitree_legged_msgs) StdoutLine: {'line': b'-- Up-to-date: /home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/local/lib/python3.10/dist-packages/ros2_unitree_legged_msgs/ros2_unitree_legged_msgs_s__rosidl_typesupport_fastrtps_c.cpython-310-x86_64-linux-gnu.so\n'}
+[0.211976] (ros2_unitree_legged_msgs) StdoutLine: {'line': b'-- Up-to-date: /home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/local/lib/python3.10/dist-packages/ros2_unitree_legged_msgs/ros2_unitree_legged_msgs_s__rosidl_typesupport_introspection_c.cpython-310-x86_64-linux-gnu.so\n'}
+[0.212085] (ros2_unitree_legged_msgs) StdoutLine: {'line': b'-- Up-to-date: /home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/local/lib/python3.10/dist-packages/ros2_unitree_legged_msgs/ros2_unitree_legged_msgs_s__rosidl_typesupport_c.cpython-310-x86_64-linux-gnu.so\n'}
+[0.212186] (ros2_unitree_legged_msgs) StdoutLine: {'line': b'-- Up-to-date: /home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/lib/libros2_unitree_legged_msgs__rosidl_generator_py.so\n'}
+[0.212256] (ros2_unitree_legged_msgs) StdoutLine: {'line': b'-- Up-to-date: /home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/share/ros2_unitree_legged_msgs/msg/MotorCmd.idl\n'}
+[0.212298] (ros2_unitree_legged_msgs) StdoutLine: {'line': b'-- Up-to-date: /home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/share/ros2_unitree_legged_msgs/msg/MotorState.idl\n'}
+[0.212330] (ros2_unitree_legged_msgs) StdoutLine: {'line': b'-- Up-to-date: /home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/share/ros2_unitree_legged_msgs/msg/BmsCmd.idl\n'}
+[0.212368] (ros2_unitree_legged_msgs) StdoutLine: {'line': b'-- Up-to-date: /home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/share/ros2_unitree_legged_msgs/msg/BmsState.idl\n'}
+[0.212404] (ros2_unitree_legged_msgs) StdoutLine: {'line': b'-- Up-to-date: /home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/share/ros2_unitree_legged_msgs/msg/Cartesian.idl\n'}
+[0.212427] (ros2_unitree_legged_msgs) StdoutLine: {'line': b'-- Up-to-date: /home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/share/ros2_unitree_legged_msgs/msg/IMU.idl\n'}
+[0.212449] (ros2_unitree_legged_msgs) StdoutLine: {'line': b'-- Up-to-date: /home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/share/ros2_unitree_legged_msgs/msg/LED.idl\n'}
+[0.212480] (ros2_unitree_legged_msgs) StdoutLine: {'line': b'-- Up-to-date: /home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/share/ros2_unitree_legged_msgs/msg/LowCmd.idl\n'}
+[0.212526] (ros2_unitree_legged_msgs) StdoutLine: {'line': b'-- Up-to-date: /home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/share/ros2_unitree_legged_msgs/msg/LowState.idl\n'}
+[0.212549] (ros2_unitree_legged_msgs) StdoutLine: {'line': b'-- Up-to-date: /home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/share/ros2_unitree_legged_msgs/msg/HighCmd.idl\n'}
+[0.212571] (ros2_unitree_legged_msgs) StdoutLine: {'line': b'-- Up-to-date: /home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/share/ros2_unitree_legged_msgs/msg/HighState.idl\n'}
+[0.212593] (ros2_unitree_legged_msgs) StdoutLine: {'line': b'-- Up-to-date: /home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/share/ros2_unitree_legged_msgs/msg/MotorCmd.msg\n'}
+[0.212614] (ros2_unitree_legged_msgs) StdoutLine: {'line': b'-- Up-to-date: /home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/share/ros2_unitree_legged_msgs/msg/MotorState.msg\n'}
+[0.212635] (ros2_unitree_legged_msgs) StdoutLine: {'line': b'-- Up-to-date: /home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/share/ros2_unitree_legged_msgs/msg/BmsCmd.msg\n'}
+[0.212656] (ros2_unitree_legged_msgs) StdoutLine: {'line': b'-- Up-to-date: /home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/share/ros2_unitree_legged_msgs/msg/BmsState.msg\n'}
+[0.212685] (ros2_unitree_legged_msgs) StdoutLine: {'line': b'-- Up-to-date: /home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/share/ros2_unitree_legged_msgs/msg/Cartesian.msg\n'}
+[0.212732] (ros2_unitree_legged_msgs) StdoutLine: {'line': b'-- Up-to-date: /home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/share/ros2_unitree_legged_msgs/msg/IMU.msg\n'}
+[0.212755] (ros2_unitree_legged_msgs) StdoutLine: {'line': b'-- Up-to-date: /home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/share/ros2_unitree_legged_msgs/msg/LED.msg\n'}
+[0.212788] (ros2_unitree_legged_msgs) StdoutLine: {'line': b'-- Up-to-date: /home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/share/ros2_unitree_legged_msgs/msg/LowCmd.msg\n'}
+[0.212809] (ros2_unitree_legged_msgs) StdoutLine: {'line': b'-- Up-to-date: /home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/share/ros2_unitree_legged_msgs/msg/LowState.msg\n'}
+[0.212831] (ros2_unitree_legged_msgs) StdoutLine: {'line': b'-- Up-to-date: /home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/share/ros2_unitree_legged_msgs/msg/HighCmd.msg\n'}
+[0.212852] (ros2_unitree_legged_msgs) StdoutLine: {'line': b'-- Up-to-date: /home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/share/ros2_unitree_legged_msgs/msg/HighState.msg\n'}
+[0.212874] (ros2_unitree_legged_msgs) StdoutLine: {'line': b'-- Up-to-date: /home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/share/ament_index/resource_index/package_run_dependencies/ros2_unitree_legged_msgs\n'}
+[0.212909] (ros2_unitree_legged_msgs) StdoutLine: {'line': b'-- Up-to-date: /home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/share/ament_index/resource_index/parent_prefix_path/ros2_unitree_legged_msgs\n'}
+[0.212932] (ros2_unitree_legged_msgs) StdoutLine: {'line': b'-- Up-to-date: /home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/share/ros2_unitree_legged_msgs/environment/ament_prefix_path.sh\n'}
+[0.212951] (ros2_unitree_legged_msgs) StdoutLine: {'line': b'-- Up-to-date: /home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/share/ros2_unitree_legged_msgs/environment/ament_prefix_path.dsv\n'}
+[0.212979] (ros2_unitree_legged_msgs) StdoutLine: {'line': b'-- Up-to-date: /home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/share/ros2_unitree_legged_msgs/environment/path.sh\n'}
+[0.213010] (ros2_unitree_legged_msgs) StdoutLine: {'line': b'-- Up-to-date: /home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/share/ros2_unitree_legged_msgs/environment/path.dsv\n'}
+[0.213038] (ros2_unitree_legged_msgs) StdoutLine: {'line': b'-- Up-to-date: /home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/share/ros2_unitree_legged_msgs/local_setup.bash\n'}
+[0.213059] (ros2_unitree_legged_msgs) StdoutLine: {'line': b'-- Up-to-date: /home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/share/ros2_unitree_legged_msgs/local_setup.sh\n'}
+[0.213081] (ros2_unitree_legged_msgs) StdoutLine: {'line': b'-- Up-to-date: /home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/share/ros2_unitree_legged_msgs/local_setup.zsh\n'}
+[0.213103] (ros2_unitree_legged_msgs) StdoutLine: {'line': b'-- Up-to-date: /home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/share/ros2_unitree_legged_msgs/local_setup.dsv\n'}
+[0.213124] (ros2_unitree_legged_msgs) StdoutLine: {'line': b'-- Installing: /home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/share/ros2_unitree_legged_msgs/package.dsv\n'}
+[0.213146] (ros2_unitree_legged_msgs) StdoutLine: {'line': b'-- Up-to-date: /home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/share/ament_index/resource_index/packages/ros2_unitree_legged_msgs\n'}
+[0.213167] (ros2_unitree_legged_msgs) StdoutLine: {'line': b'-- Up-to-date: /home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/share/ros2_unitree_legged_msgs/cmake/export_ros2_unitree_legged_msgs__rosidl_generator_cExport.cmake\n'}
+[0.213189] (ros2_unitree_legged_msgs) StdoutLine: {'line': b'-- Up-to-date: /home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/share/ros2_unitree_legged_msgs/cmake/export_ros2_unitree_legged_msgs__rosidl_generator_cExport-noconfig.cmake\n'}
+[0.213220] (ros2_unitree_legged_msgs) StdoutLine: {'line': b'-- Up-to-date: /home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/share/ros2_unitree_legged_msgs/cmake/export_ros2_unitree_legged_msgs__rosidl_typesupport_fastrtps_cExport.cmake\n'}
+[0.213262] (ros2_unitree_legged_msgs) StdoutLine: {'line': b'-- Up-to-date: /home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/share/ros2_unitree_legged_msgs/cmake/export_ros2_unitree_legged_msgs__rosidl_typesupport_fastrtps_cExport-noconfig.cmake\n'}
+[0.213288] (ros2_unitree_legged_msgs) StdoutLine: {'line': b'-- Up-to-date: /home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/share/ros2_unitree_legged_msgs/cmake/ros2_unitree_legged_msgs__rosidl_typesupport_introspection_cExport.cmake\n'}
+[0.213311] (ros2_unitree_legged_msgs) StdoutLine: {'line': b'-- Up-to-date: /home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/share/ros2_unitree_legged_msgs/cmake/ros2_unitree_legged_msgs__rosidl_typesupport_introspection_cExport-noconfig.cmake\n'}
+[0.213338] (ros2_unitree_legged_msgs) StdoutLine: {'line': b'-- Up-to-date: /home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/share/ros2_unitree_legged_msgs/cmake/ros2_unitree_legged_msgs__rosidl_typesupport_cExport.cmake\n'}
+[0.213363] (ros2_unitree_legged_msgs) StdoutLine: {'line': b'-- Up-to-date: /home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/share/ros2_unitree_legged_msgs/cmake/ros2_unitree_legged_msgs__rosidl_typesupport_cExport-noconfig.cmake\n'}
+[0.213384] (ros2_unitree_legged_msgs) StdoutLine: {'line': b'-- Up-to-date: /home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/share/ros2_unitree_legged_msgs/cmake/export_ros2_unitree_legged_msgs__rosidl_generator_cppExport.cmake\n'}
+[0.213421] (ros2_unitree_legged_msgs) StdoutLine: {'line': b'-- Up-to-date: /home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/share/ros2_unitree_legged_msgs/cmake/export_ros2_unitree_legged_msgs__rosidl_typesupport_fastrtps_cppExport.cmake\n'}
+[0.213443] (ros2_unitree_legged_msgs) StdoutLine: {'line': b'-- Up-to-date: /home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/share/ros2_unitree_legged_msgs/cmake/export_ros2_unitree_legged_msgs__rosidl_typesupport_fastrtps_cppExport-noconfig.cmake\n'}
+[0.213465] (ros2_unitree_legged_msgs) StdoutLine: {'line': b'-- Up-to-date: /home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/share/ros2_unitree_legged_msgs/cmake/ros2_unitree_legged_msgs__rosidl_typesupport_introspection_cppExport.cmake\n'}
+[0.213503] (ros2_unitree_legged_msgs) StdoutLine: {'line': b'-- Up-to-date: /home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/share/ros2_unitree_legged_msgs/cmake/ros2_unitree_legged_msgs__rosidl_typesupport_introspection_cppExport-noconfig.cmake\n'}
+[0.213525] (ros2_unitree_legged_msgs) StdoutLine: {'line': b'-- Up-to-date: /home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/share/ros2_unitree_legged_msgs/cmake/ros2_unitree_legged_msgs__rosidl_typesupport_cppExport.cmake\n'}
+[0.213557] (ros2_unitree_legged_msgs) StdoutLine: {'line': b'-- Up-to-date: /home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/share/ros2_unitree_legged_msgs/cmake/ros2_unitree_legged_msgs__rosidl_typesupport_cppExport-noconfig.cmake\n'}
+[0.213584] (ros2_unitree_legged_msgs) StdoutLine: {'line': b'-- Up-to-date: /home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/share/ros2_unitree_legged_msgs/cmake/export_ros2_unitree_legged_msgs__rosidl_generator_pyExport.cmake\n'}
+[0.213606] (ros2_unitree_legged_msgs) StdoutLine: {'line': b'-- Up-to-date: /home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/share/ros2_unitree_legged_msgs/cmake/export_ros2_unitree_legged_msgs__rosidl_generator_pyExport-noconfig.cmake\n'}
+[0.213628] (ros2_unitree_legged_msgs) StdoutLine: {'line': b'-- Up-to-date: /home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/share/ros2_unitree_legged_msgs/cmake/rosidl_cmake-extras.cmake\n'}
+[0.213651] (ros2_unitree_legged_msgs) StdoutLine: {'line': b'-- Up-to-date: /home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/share/ros2_unitree_legged_msgs/cmake/ament_cmake_export_include_directories-extras.cmake\n'}
+[0.213672] (ros2_unitree_legged_msgs) StdoutLine: {'line': b'-- Up-to-date: /home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/share/ros2_unitree_legged_msgs/cmake/ament_cmake_export_libraries-extras.cmake\n'}
+[0.213693] (ros2_unitree_legged_msgs) StdoutLine: {'line': b'-- Up-to-date: /home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/share/ros2_unitree_legged_msgs/cmake/ament_cmake_export_targets-extras.cmake\n'}
+[0.213714] (ros2_unitree_legged_msgs) StdoutLine: {'line': b'-- Up-to-date: /home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/share/ros2_unitree_legged_msgs/cmake/rosidl_cmake_export_typesupport_targets-extras.cmake\n'}
+[0.213745] (ros2_unitree_legged_msgs) StdoutLine: {'line': b'-- Up-to-date: /home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/share/ros2_unitree_legged_msgs/cmake/ament_cmake_export_dependencies-extras.cmake\n'}
+[0.213779] (ros2_unitree_legged_msgs) StdoutLine: {'line': b'-- Up-to-date: /home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/share/ros2_unitree_legged_msgs/cmake/rosidl_cmake_export_typesupport_libraries-extras.cmake\n'}
+[0.213800] (ros2_unitree_legged_msgs) StdoutLine: {'line': b'-- Up-to-date: /home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/share/ros2_unitree_legged_msgs/cmake/ros2_unitree_legged_msgsConfig.cmake\n'}
+[0.213831] (ros2_unitree_legged_msgs) StdoutLine: {'line': b'-- Up-to-date: /home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/share/ros2_unitree_legged_msgs/cmake/ros2_unitree_legged_msgsConfig-version.cmake\n'}
+[0.213859] (ros2_unitree_legged_msgs) StdoutLine: {'line': b'-- Up-to-date: /home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/share/ros2_unitree_legged_msgs/package.xml\n'}
+[0.214989] (ros2_unitree_legged_msgs) CommandEnded: {'returncode': 0}
+[0.226414] (ros2_unitree_legged_msgs) JobEnded: {'identifier': 'ros2_unitree_legged_msgs', 'rc': 0}
+[0.226810] (unitree_rl_controller) JobStarted: {'identifier': 'unitree_rl_controller'}
+[0.230970] (unitree_rl_controller) JobProgress: {'identifier': 'unitree_rl_controller', 'progress': 'cmake'}
+[0.231206] (unitree_rl_controller) JobProgress: {'identifier': 'unitree_rl_controller', 'progress': 'build'}
+[0.231376] (unitree_rl_controller) Command: {'cmd': ['/usr/bin/cmake', '--build', '/home/ruben/workhop_rl/build/unitree_rl_controller', '--', '-j20', '-l20'], 'cwd': '/home/ruben/workhop_rl/build/unitree_rl_controller', 'env': OrderedDict([('LESSOPEN', '| /usr/bin/lesspipe %s'), ('USER', 'ruben'), ('LC_TIME', 'ru_RU.UTF-8'), ('XDG_SESSION_TYPE', 'x11'), ('SHLVL', '1'), ('LD_LIBRARY_PATH', '/home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/lib:/home/ruben/workhop_rl/install/unitree_legged_real/lib:/home/ruben/workhop_rl/install/unitree_rl_controller/lib:/usr/lib/x86_64-linux-gnu/gazebo-11/plugins:/opt/ros/humble/opt/rviz_ogre_vendor/lib:/opt/ros/humble/lib/x86_64-linux-gnu:/opt/ros/humble/lib:/usr/local/cuda-12.6/lib64:/home/ruben/workhop_rl/src/libtorch/lib/:/home/ruben/workhop_rl/src/libtorch/lib/:/home/ruben/libtorch/lib/'), ('HOME', '/home/ruben'), ('CONDA_SHLVL', '0'), ('OLDPWD', '/home/ruben'), ('DESKTOP_SESSION', 'ubuntu'), ('ROS_PYTHON_VERSION', '3'), ('GNOME_SHELL_SESSION_MODE', 'ubuntu'), ('GTK_MODULES', 'gail:atk-bridge'), ('LC_MONETARY', 'ru_RU.UTF-8'), ('DBUS_STARTER_BUS_TYPE', 'session'), ('SYSTEMD_EXEC_PID', '2409'), ('DBUS_SESSION_BUS_ADDRESS', 'unix:path=/run/user/1000/bus,guid=148f9c57c8634de544413d2e67cad70e'), ('COLORTERM', 'truecolor'), ('_CE_M', ''), ('COLCON_PREFIX_PATH', '/home/ruben/workhop_rl/install'), ('ROS_DISTRO', 'humble'), ('GTK_IM_MODULE', 'ibus'), ('LOGNAME', 'ruben'), ('_', '/usr/bin/colcon'), ('ROS_VERSION', '2'), ('XDG_SESSION_CLASS', 'user'), ('USERNAME', 'ruben'), ('TERM', 'xterm-256color'), ('GNOME_DESKTOP_SESSION_ID', 'this-is-deprecated'), ('_CE_CONDA', ''), ('ROS_LOCALHOST_ONLY', '0'), ('WINDOWPATH', '2'), ('PATH', '/opt/ros/humble/bin:/usr/local/cuda/bin:/home/ruben/miniconda3/condabin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/games:/usr/local/games:/snap/bin:/snap/bin'), ('SESSION_MANAGER', 'local/ruben:@/tmp/.ICE-unix/2409,unix/ruben:/tmp/.ICE-unix/2409'), ('XDG_MENU_PREFIX', 'gnome-'), ('LC_ADDRESS', 'ru_RU.UTF-8'), ('GNOME_TERMINAL_SCREEN', '/org/gnome/Terminal/screen/92f2c06f_25f7_4288_a0e9_0f39b749d39b'), ('XDG_RUNTIME_DIR', '/run/user/1000'), ('DISPLAY', ':1'), ('LANG', 'en_US.UTF-8'), ('XDG_CURRENT_DESKTOP', 'ubuntu:GNOME'), ('LC_TELEPHONE', 'ru_RU.UTF-8'), ('XMODIFIERS', '@im=ibus'), ('XDG_SESSION_DESKTOP', 'ubuntu'), ('XAUTHORITY', '/run/user/1000/gdm/Xauthority'), ('LS_COLORS', 'rs=0:di=01;34:ln=01;36:mh=00:pi=40;33:so=01;35:do=01;35:bd=40;33;01:cd=40;33;01:or=40;31;01:mi=00:su=37;41:sg=30;43:ca=30;41:tw=30;42:ow=34;42:st=37;44:ex=01;32:*.tar=01;31:*.tgz=01;31:*.arc=01;31:*.arj=01;31:*.taz=01;31:*.lha=01;31:*.lz4=01;31:*.lzh=01;31:*.lzma=01;31:*.tlz=01;31:*.txz=01;31:*.tzo=01;31:*.t7z=01;31:*.zip=01;31:*.z=01;31:*.dz=01;31:*.gz=01;31:*.lrz=01;31:*.lz=01;31:*.lzo=01;31:*.xz=01;31:*.zst=01;31:*.tzst=01;31:*.bz2=01;31:*.bz=01;31:*.tbz=01;31:*.tbz2=01;31:*.tz=01;31:*.deb=01;31:*.rpm=01;31:*.jar=01;31:*.war=01;31:*.ear=01;31:*.sar=01;31:*.rar=01;31:*.alz=01;31:*.ace=01;31:*.zoo=01;31:*.cpio=01;31:*.7z=01;31:*.rz=01;31:*.cab=01;31:*.wim=01;31:*.swm=01;31:*.dwm=01;31:*.esd=01;31:*.jpg=01;35:*.jpeg=01;35:*.mjpg=01;35:*.mjpeg=01;35:*.gif=01;35:*.bmp=01;35:*.pbm=01;35:*.pgm=01;35:*.ppm=01;35:*.tga=01;35:*.xbm=01;35:*.xpm=01;35:*.tif=01;35:*.tiff=01;35:*.png=01;35:*.svg=01;35:*.svgz=01;35:*.mng=01;35:*.pcx=01;35:*.mov=01;35:*.mpg=01;35:*.mpeg=01;35:*.m2v=01;35:*.mkv=01;35:*.webm=01;35:*.webp=01;35:*.ogm=01;35:*.mp4=01;35:*.m4v=01;35:*.mp4v=01;35:*.vob=01;35:*.qt=01;35:*.nuv=01;35:*.wmv=01;35:*.asf=01;35:*.rm=01;35:*.rmvb=01;35:*.flc=01;35:*.avi=01;35:*.fli=01;35:*.flv=01;35:*.gl=01;35:*.dl=01;35:*.xcf=01;35:*.xwd=01;35:*.yuv=01;35:*.cgm=01;35:*.emf=01;35:*.ogv=01;35:*.ogx=01;35:*.aac=00;36:*.au=00;36:*.flac=00;36:*.m4a=00;36:*.mid=00;36:*.midi=00;36:*.mka=00;36:*.mp3=00;36:*.mpc=00;36:*.ogg=00;36:*.ra=00;36:*.wav=00;36:*.oga=00;36:*.opus=00;36:*.spx=00;36:*.xspf=00;36:'), ('GNOME_TERMINAL_SERVICE', ':1.125'), ('SSH_AGENT_LAUNCHER', 'gnome-keyring'), ('SSH_AUTH_SOCK', '/run/user/1000/keyring/ssh'), ('AMENT_PREFIX_PATH', '/home/ruben/workhop_rl/install/unitree_legged_real:/home/ruben/workhop_rl/install/unitree_rl_controller:/home/ruben/workhop_rl/install/ros2_unitree_legged_msgs:/opt/ros/humble'), ('CONDA_PYTHON_EXE', '/home/ruben/miniconda3/bin/python'), ('SHELL', '/bin/bash'), ('LC_NAME', 'ru_RU.UTF-8'), ('QT_ACCESSIBILITY', '1'), ('GDMSESSION', 'ubuntu'), ('Torch_DIR', '/home/ruben/libtorch'), ('LESSCLOSE', '/usr/bin/lesspipe %s %s'), ('LC_MEASUREMENT', 'ru_RU.UTF-8'), ('GPG_AGENT_INFO', '/run/user/1000/gnupg/S.gpg-agent:0:1'), ('LC_IDENTIFICATION', 'ru_RU.UTF-8'), ('QT_IM_MODULE', 'ibus'), ('PWD', '/home/ruben/workhop_rl/build/unitree_rl_controller'), ('XDG_CONFIG_DIRS', '/etc/xdg/xdg-ubuntu:/etc/xdg'), ('CONDA_EXE', '/home/ruben/miniconda3/bin/conda'), ('DBUS_STARTER_ADDRESS', 'unix:path=/run/user/1000/bus,guid=148f9c57c8634de544413d2e67cad70e'), ('XDG_DATA_DIRS', '/usr/share/ubuntu:/usr/share/gnome:/usr/local/share/:/usr/share/:/var/lib/snapd/desktop'), ('PYTHONPATH', '/home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/local/lib/python3.10/dist-packages:/opt/ros/humble/lib/python3.10/site-packages:/opt/ros/humble/local/lib/python3.10/dist-packages'), ('LC_NUMERIC', 'ru_RU.UTF-8'), ('LC_PAPER', 'ru_RU.UTF-8'), ('COLCON', '1'), ('VTE_VERSION', '6800'), ('CMAKE_PREFIX_PATH', '/home/ruben/workhop_rl/install/ros2_unitree_legged_msgs:/home/ruben/workhop_rl/install/unitree_legged_real:/home/ruben/workhop_rl/install/unitree_rl_controller:/opt/ros/humble')]), 'shell': False}
+[0.281015] (unitree_rl_controller) StdoutLine: {'line': b'[ 50%] \x1b[32mBuilding CXX object CMakeFiles/unitree_rl_controller.dir/src/rl_agent.cpp.o\x1b[0m\n'}
+[0.299759] (-) TimerEvent: {}
+[0.399954] (-) TimerEvent: {}
+[0.500168] (-) TimerEvent: {}
+[0.600397] (-) TimerEvent: {}
+[0.700678] (-) TimerEvent: {}
+[0.800900] (-) TimerEvent: {}
+[0.901085] (-) TimerEvent: {}
+[1.001297] (-) TimerEvent: {}
+[1.101511] (-) TimerEvent: {}
+[1.201721] (-) TimerEvent: {}
+[1.302010] (-) TimerEvent: {}
+[1.402299] (-) TimerEvent: {}
+[1.502580] (-) TimerEvent: {}
+[1.602889] (-) TimerEvent: {}
+[1.703179] (-) TimerEvent: {}
+[1.803391] (-) TimerEvent: {}
+[1.903672] (-) TimerEvent: {}
+[2.003965] (-) TimerEvent: {}
+[2.104254] (-) TimerEvent: {}
+[2.204544] (-) TimerEvent: {}
+[2.304847] (-) TimerEvent: {}
+[2.405153] (-) TimerEvent: {}
+[2.505435] (-) TimerEvent: {}
+[2.605756] (-) TimerEvent: {}
+[2.706023] (-) TimerEvent: {}
+[2.806349] (-) TimerEvent: {}
+[2.906665] (-) TimerEvent: {}
+[3.006955] (-) TimerEvent: {}
+[3.107233] (-) TimerEvent: {}
+[3.207551] (-) TimerEvent: {}
+[3.307865] (-) TimerEvent: {}
+[3.408174] (-) TimerEvent: {}
+[3.508486] (-) TimerEvent: {}
+[3.608798] (-) TimerEvent: {}
+[3.709062] (-) TimerEvent: {}
+[3.809379] (-) TimerEvent: {}
+[3.909664] (-) TimerEvent: {}
+[4.009986] (-) TimerEvent: {}
+[4.110305] (-) TimerEvent: {}
+[4.210625] (-) TimerEvent: {}
+[4.310912] (-) TimerEvent: {}
+[4.411225] (-) TimerEvent: {}
+[4.511545] (-) TimerEvent: {}
+[4.611857] (-) TimerEvent: {}
+[4.712142] (-) TimerEvent: {}
+[4.812419] (-) TimerEvent: {}
+[4.912614] (-) TimerEvent: {}
+[5.012879] (-) TimerEvent: {}
+[5.113146] (-) TimerEvent: {}
+[5.213347] (-) TimerEvent: {}
+[5.313638] (-) TimerEvent: {}
+[5.413906] (-) TimerEvent: {}
+[5.514177] (-) TimerEvent: {}
+[5.614499] (-) TimerEvent: {}
+[5.714807] (-) TimerEvent: {}
+[5.815062] (-) TimerEvent: {}
+[5.915371] (-) TimerEvent: {}
+[6.015679] (-) TimerEvent: {}
+[6.115976] (-) TimerEvent: {}
+[6.216282] (-) TimerEvent: {}
+[6.316572] (-) TimerEvent: {}
+[6.416802] (-) TimerEvent: {}
+[6.517110] (-) TimerEvent: {}
+[6.617431] (-) TimerEvent: {}
+[6.717704] (-) TimerEvent: {}
+[6.817913] (-) TimerEvent: {}
+[6.918219] (-) TimerEvent: {}
+[7.018531] (-) TimerEvent: {}
+[7.118837] (-) TimerEvent: {}
+[7.219152] (-) TimerEvent: {}
+[7.319461] (-) TimerEvent: {}
+[7.419762] (-) TimerEvent: {}
+[7.520083] (-) TimerEvent: {}
+[7.620405] (-) TimerEvent: {}
+[7.720713] (-) TimerEvent: {}
+[7.820963] (-) TimerEvent: {}
+[7.921257] (-) TimerEvent: {}
+[8.021546] (-) TimerEvent: {}
+[8.121842] (-) TimerEvent: {}
+[8.222071] (-) TimerEvent: {}
+[8.322380] (-) TimerEvent: {}
+[8.422685] (-) TimerEvent: {}
+[8.521989] (unitree_rl_controller) StdoutLine: {'line': b'[100%] \x1b[32m\x1b[1mLinking CXX shared library libunitree_rl_controller.so\x1b[0m\n'}
+[8.522770] (-) TimerEvent: {}
+[8.622929] (-) TimerEvent: {}
+[8.723161] (-) TimerEvent: {}
+[8.823392] (-) TimerEvent: {}
+[8.901877] (unitree_rl_controller) StdoutLine: {'line': b'[100%] Built target unitree_rl_controller\n'}
+[8.908959] (unitree_rl_controller) CommandEnded: {'returncode': 0}
+[8.909355] (unitree_rl_controller) JobProgress: {'identifier': 'unitree_rl_controller', 'progress': 'install'}
+[8.909483] (unitree_rl_controller) Command: {'cmd': ['/usr/bin/cmake', '--install', '/home/ruben/workhop_rl/build/unitree_rl_controller'], 'cwd': '/home/ruben/workhop_rl/build/unitree_rl_controller', 'env': OrderedDict([('LESSOPEN', '| /usr/bin/lesspipe %s'), ('USER', 'ruben'), ('LC_TIME', 'ru_RU.UTF-8'), ('XDG_SESSION_TYPE', 'x11'), ('SHLVL', '1'), ('LD_LIBRARY_PATH', '/home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/lib:/home/ruben/workhop_rl/install/unitree_legged_real/lib:/home/ruben/workhop_rl/install/unitree_rl_controller/lib:/usr/lib/x86_64-linux-gnu/gazebo-11/plugins:/opt/ros/humble/opt/rviz_ogre_vendor/lib:/opt/ros/humble/lib/x86_64-linux-gnu:/opt/ros/humble/lib:/usr/local/cuda-12.6/lib64:/home/ruben/workhop_rl/src/libtorch/lib/:/home/ruben/workhop_rl/src/libtorch/lib/:/home/ruben/libtorch/lib/'), ('HOME', '/home/ruben'), ('CONDA_SHLVL', '0'), ('OLDPWD', '/home/ruben'), ('DESKTOP_SESSION', 'ubuntu'), ('ROS_PYTHON_VERSION', '3'), ('GNOME_SHELL_SESSION_MODE', 'ubuntu'), ('GTK_MODULES', 'gail:atk-bridge'), ('LC_MONETARY', 'ru_RU.UTF-8'), ('DBUS_STARTER_BUS_TYPE', 'session'), ('SYSTEMD_EXEC_PID', '2409'), ('DBUS_SESSION_BUS_ADDRESS', 'unix:path=/run/user/1000/bus,guid=148f9c57c8634de544413d2e67cad70e'), ('COLORTERM', 'truecolor'), ('_CE_M', ''), ('COLCON_PREFIX_PATH', '/home/ruben/workhop_rl/install'), ('ROS_DISTRO', 'humble'), ('GTK_IM_MODULE', 'ibus'), ('LOGNAME', 'ruben'), ('_', '/usr/bin/colcon'), ('ROS_VERSION', '2'), ('XDG_SESSION_CLASS', 'user'), ('USERNAME', 'ruben'), ('TERM', 'xterm-256color'), ('GNOME_DESKTOP_SESSION_ID', 'this-is-deprecated'), ('_CE_CONDA', ''), ('ROS_LOCALHOST_ONLY', '0'), ('WINDOWPATH', '2'), ('PATH', '/opt/ros/humble/bin:/usr/local/cuda/bin:/home/ruben/miniconda3/condabin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/games:/usr/local/games:/snap/bin:/snap/bin'), ('SESSION_MANAGER', 'local/ruben:@/tmp/.ICE-unix/2409,unix/ruben:/tmp/.ICE-unix/2409'), ('XDG_MENU_PREFIX', 'gnome-'), ('LC_ADDRESS', 'ru_RU.UTF-8'), ('GNOME_TERMINAL_SCREEN', '/org/gnome/Terminal/screen/92f2c06f_25f7_4288_a0e9_0f39b749d39b'), ('XDG_RUNTIME_DIR', '/run/user/1000'), ('DISPLAY', ':1'), ('LANG', 'en_US.UTF-8'), ('XDG_CURRENT_DESKTOP', 'ubuntu:GNOME'), ('LC_TELEPHONE', 'ru_RU.UTF-8'), ('XMODIFIERS', '@im=ibus'), ('XDG_SESSION_DESKTOP', 'ubuntu'), ('XAUTHORITY', '/run/user/1000/gdm/Xauthority'), ('LS_COLORS', 'rs=0:di=01;34:ln=01;36:mh=00:pi=40;33:so=01;35:do=01;35:bd=40;33;01:cd=40;33;01:or=40;31;01:mi=00:su=37;41:sg=30;43:ca=30;41:tw=30;42:ow=34;42:st=37;44:ex=01;32:*.tar=01;31:*.tgz=01;31:*.arc=01;31:*.arj=01;31:*.taz=01;31:*.lha=01;31:*.lz4=01;31:*.lzh=01;31:*.lzma=01;31:*.tlz=01;31:*.txz=01;31:*.tzo=01;31:*.t7z=01;31:*.zip=01;31:*.z=01;31:*.dz=01;31:*.gz=01;31:*.lrz=01;31:*.lz=01;31:*.lzo=01;31:*.xz=01;31:*.zst=01;31:*.tzst=01;31:*.bz2=01;31:*.bz=01;31:*.tbz=01;31:*.tbz2=01;31:*.tz=01;31:*.deb=01;31:*.rpm=01;31:*.jar=01;31:*.war=01;31:*.ear=01;31:*.sar=01;31:*.rar=01;31:*.alz=01;31:*.ace=01;31:*.zoo=01;31:*.cpio=01;31:*.7z=01;31:*.rz=01;31:*.cab=01;31:*.wim=01;31:*.swm=01;31:*.dwm=01;31:*.esd=01;31:*.jpg=01;35:*.jpeg=01;35:*.mjpg=01;35:*.mjpeg=01;35:*.gif=01;35:*.bmp=01;35:*.pbm=01;35:*.pgm=01;35:*.ppm=01;35:*.tga=01;35:*.xbm=01;35:*.xpm=01;35:*.tif=01;35:*.tiff=01;35:*.png=01;35:*.svg=01;35:*.svgz=01;35:*.mng=01;35:*.pcx=01;35:*.mov=01;35:*.mpg=01;35:*.mpeg=01;35:*.m2v=01;35:*.mkv=01;35:*.webm=01;35:*.webp=01;35:*.ogm=01;35:*.mp4=01;35:*.m4v=01;35:*.mp4v=01;35:*.vob=01;35:*.qt=01;35:*.nuv=01;35:*.wmv=01;35:*.asf=01;35:*.rm=01;35:*.rmvb=01;35:*.flc=01;35:*.avi=01;35:*.fli=01;35:*.flv=01;35:*.gl=01;35:*.dl=01;35:*.xcf=01;35:*.xwd=01;35:*.yuv=01;35:*.cgm=01;35:*.emf=01;35:*.ogv=01;35:*.ogx=01;35:*.aac=00;36:*.au=00;36:*.flac=00;36:*.m4a=00;36:*.mid=00;36:*.midi=00;36:*.mka=00;36:*.mp3=00;36:*.mpc=00;36:*.ogg=00;36:*.ra=00;36:*.wav=00;36:*.oga=00;36:*.opus=00;36:*.spx=00;36:*.xspf=00;36:'), ('GNOME_TERMINAL_SERVICE', ':1.125'), ('SSH_AGENT_LAUNCHER', 'gnome-keyring'), ('SSH_AUTH_SOCK', '/run/user/1000/keyring/ssh'), ('AMENT_PREFIX_PATH', '/home/ruben/workhop_rl/install/unitree_legged_real:/home/ruben/workhop_rl/install/unitree_rl_controller:/home/ruben/workhop_rl/install/ros2_unitree_legged_msgs:/opt/ros/humble'), ('CONDA_PYTHON_EXE', '/home/ruben/miniconda3/bin/python'), ('SHELL', '/bin/bash'), ('LC_NAME', 'ru_RU.UTF-8'), ('QT_ACCESSIBILITY', '1'), ('GDMSESSION', 'ubuntu'), ('Torch_DIR', '/home/ruben/libtorch'), ('LESSCLOSE', '/usr/bin/lesspipe %s %s'), ('LC_MEASUREMENT', 'ru_RU.UTF-8'), ('GPG_AGENT_INFO', '/run/user/1000/gnupg/S.gpg-agent:0:1'), ('LC_IDENTIFICATION', 'ru_RU.UTF-8'), ('QT_IM_MODULE', 'ibus'), ('PWD', '/home/ruben/workhop_rl/build/unitree_rl_controller'), ('XDG_CONFIG_DIRS', '/etc/xdg/xdg-ubuntu:/etc/xdg'), ('CONDA_EXE', '/home/ruben/miniconda3/bin/conda'), ('DBUS_STARTER_ADDRESS', 'unix:path=/run/user/1000/bus,guid=148f9c57c8634de544413d2e67cad70e'), ('XDG_DATA_DIRS', '/usr/share/ubuntu:/usr/share/gnome:/usr/local/share/:/usr/share/:/var/lib/snapd/desktop'), ('PYTHONPATH', '/home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/local/lib/python3.10/dist-packages:/opt/ros/humble/lib/python3.10/site-packages:/opt/ros/humble/local/lib/python3.10/dist-packages'), ('LC_NUMERIC', 'ru_RU.UTF-8'), ('LC_PAPER', 'ru_RU.UTF-8'), ('COLCON', '1'), ('VTE_VERSION', '6800'), ('CMAKE_PREFIX_PATH', '/home/ruben/workhop_rl/install/ros2_unitree_legged_msgs:/home/ruben/workhop_rl/install/unitree_legged_real:/home/ruben/workhop_rl/install/unitree_rl_controller:/opt/ros/humble')]), 'shell': False}
+[8.913517] (unitree_rl_controller) StdoutLine: {'line': b'-- Install configuration: ""\n'}
+[8.913602] (unitree_rl_controller) StdoutLine: {'line': b'-- Up-to-date: /home/ruben/workhop_rl/install/unitree_rl_controller/share/unitree_rl_controller/environment/library_path.sh\n'}
+[8.913630] (unitree_rl_controller) StdoutLine: {'line': b'-- Up-to-date: /home/ruben/workhop_rl/install/unitree_rl_controller/share/unitree_rl_controller/environment/library_path.dsv\n'}
+[8.913670] (unitree_rl_controller) StdoutLine: {'line': b'-- Installing: /home/ruben/workhop_rl/install/unitree_rl_controller/lib/libunitree_rl_controller.so\n'}
+[8.913986] (unitree_rl_controller) StdoutLine: {'line': b'-- Set runtime path of "/home/ruben/workhop_rl/install/unitree_rl_controller/lib/libunitree_rl_controller.so" to ""\n'}
+[8.914048] (unitree_rl_controller) StdoutLine: {'line': b'-- Up-to-date: /home/ruben/workhop_rl/install/unitree_rl_controller/include/unitree_rl_controller/unitree_rl_controller\n'}
+[8.914071] (unitree_rl_controller) StdoutLine: {'line': b'-- Up-to-date: /home/ruben/workhop_rl/install/unitree_rl_controller/include/unitree_rl_controller/unitree_rl_controller/rl_agent.h\n'}
+[8.914104] (unitree_rl_controller) StdoutLine: {'line': b'-- Up-to-date: /home/ruben/workhop_rl/install/unitree_rl_controller/share/ament_index/resource_index/package_run_dependencies/unitree_rl_controller\n'}
+[8.914149] (unitree_rl_controller) StdoutLine: {'line': b'-- Up-to-date: /home/ruben/workhop_rl/install/unitree_rl_controller/share/ament_index/resource_index/parent_prefix_path/unitree_rl_controller\n'}
+[8.914186] (unitree_rl_controller) StdoutLine: {'line': b'-- Up-to-date: /home/ruben/workhop_rl/install/unitree_rl_controller/share/unitree_rl_controller/environment/ament_prefix_path.sh\n'}
+[8.914208] (unitree_rl_controller) StdoutLine: {'line': b'-- Up-to-date: /home/ruben/workhop_rl/install/unitree_rl_controller/share/unitree_rl_controller/environment/ament_prefix_path.dsv\n'}
+[8.914242] (unitree_rl_controller) StdoutLine: {'line': b'-- Up-to-date: /home/ruben/workhop_rl/install/unitree_rl_controller/share/unitree_rl_controller/environment/path.sh\n'}
+[8.914262] (unitree_rl_controller) StdoutLine: {'line': b'-- Up-to-date: /home/ruben/workhop_rl/install/unitree_rl_controller/share/unitree_rl_controller/environment/path.dsv\n'}
+[8.914281] (unitree_rl_controller) StdoutLine: {'line': b'-- Up-to-date: /home/ruben/workhop_rl/install/unitree_rl_controller/share/unitree_rl_controller/local_setup.bash\n'}
+[8.914302] (unitree_rl_controller) StdoutLine: {'line': b'-- Up-to-date: /home/ruben/workhop_rl/install/unitree_rl_controller/share/unitree_rl_controller/local_setup.sh\n'}
+[8.914323] (unitree_rl_controller) StdoutLine: {'line': b'-- Up-to-date: /home/ruben/workhop_rl/install/unitree_rl_controller/share/unitree_rl_controller/local_setup.zsh\n'}
+[8.914366] (unitree_rl_controller) StdoutLine: {'line': b'-- Up-to-date: /home/ruben/workhop_rl/install/unitree_rl_controller/share/unitree_rl_controller/local_setup.dsv\n'}
+[8.914388] (unitree_rl_controller) StdoutLine: {'line': b'-- Installing: /home/ruben/workhop_rl/install/unitree_rl_controller/share/unitree_rl_controller/package.dsv\n'}
+[8.914409] (unitree_rl_controller) StdoutLine: {'line': b'-- Up-to-date: /home/ruben/workhop_rl/install/unitree_rl_controller/share/ament_index/resource_index/packages/unitree_rl_controller\n'}
+[8.914430] (unitree_rl_controller) StdoutLine: {'line': b'-- Up-to-date: /home/ruben/workhop_rl/install/unitree_rl_controller/share/unitree_rl_controller/cmake/ament_cmake_export_dependencies-extras.cmake\n'}
+[8.914451] (unitree_rl_controller) StdoutLine: {'line': b'-- Up-to-date: /home/ruben/workhop_rl/install/unitree_rl_controller/share/unitree_rl_controller/cmake/ament_cmake_export_include_directories-extras.cmake\n'}
+[8.914472] (unitree_rl_controller) StdoutLine: {'line': b'-- Up-to-date: /home/ruben/workhop_rl/install/unitree_rl_controller/share/unitree_rl_controller/cmake/ament_cmake_export_libraries-extras.cmake\n'}
+[8.914516] (unitree_rl_controller) StdoutLine: {'line': b'-- Up-to-date: /home/ruben/workhop_rl/install/unitree_rl_controller/share/unitree_rl_controller/cmake/unitree_rl_controllerConfig.cmake\n'}
+[8.914537] (unitree_rl_controller) StdoutLine: {'line': b'-- Up-to-date: /home/ruben/workhop_rl/install/unitree_rl_controller/share/unitree_rl_controller/cmake/unitree_rl_controllerConfig-version.cmake\n'}
+[8.914557] (unitree_rl_controller) StdoutLine: {'line': b'-- Up-to-date: /home/ruben/workhop_rl/install/unitree_rl_controller/share/unitree_rl_controller/package.xml\n'}
+[8.915224] (unitree_rl_controller) CommandEnded: {'returncode': 0}
+[8.921410] (unitree_rl_controller) JobEnded: {'identifier': 'unitree_rl_controller', 'rc': 0}
+[8.921859] (unitree_legged_real) JobStarted: {'identifier': 'unitree_legged_real'}
+[8.923442] (-) TimerEvent: {}
+[8.927181] (unitree_legged_real) JobProgress: {'identifier': 'unitree_legged_real', 'progress': 'cmake'}
+[8.927450] (unitree_legged_real) JobProgress: {'identifier': 'unitree_legged_real', 'progress': 'build'}
+[8.927610] (unitree_legged_real) Command: {'cmd': ['/usr/bin/cmake', '--build', '/home/ruben/workhop_rl/build/unitree_legged_real', '--', '-j20', '-l20'], 'cwd': '/home/ruben/workhop_rl/build/unitree_legged_real', 'env': OrderedDict([('LESSOPEN', '| /usr/bin/lesspipe %s'), ('USER', 'ruben'), ('LC_TIME', 'ru_RU.UTF-8'), ('XDG_SESSION_TYPE', 'x11'), ('SHLVL', '1'), ('LD_LIBRARY_PATH', '/home/ruben/workhop_rl/install/unitree_rl_controller/lib:/home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/lib:/home/ruben/workhop_rl/install/unitree_legged_real/lib:/usr/lib/x86_64-linux-gnu/gazebo-11/plugins:/opt/ros/humble/opt/rviz_ogre_vendor/lib:/opt/ros/humble/lib/x86_64-linux-gnu:/opt/ros/humble/lib:/usr/local/cuda-12.6/lib64:/home/ruben/workhop_rl/src/libtorch/lib/:/home/ruben/workhop_rl/src/libtorch/lib/:/home/ruben/libtorch/lib/'), ('HOME', '/home/ruben'), ('CONDA_SHLVL', '0'), ('OLDPWD', '/home/ruben'), ('DESKTOP_SESSION', 'ubuntu'), ('ROS_PYTHON_VERSION', '3'), ('GNOME_SHELL_SESSION_MODE', 'ubuntu'), ('GTK_MODULES', 'gail:atk-bridge'), ('LC_MONETARY', 'ru_RU.UTF-8'), ('DBUS_STARTER_BUS_TYPE', 'session'), ('SYSTEMD_EXEC_PID', '2409'), ('DBUS_SESSION_BUS_ADDRESS', 'unix:path=/run/user/1000/bus,guid=148f9c57c8634de544413d2e67cad70e'), ('COLORTERM', 'truecolor'), ('_CE_M', ''), ('COLCON_PREFIX_PATH', '/home/ruben/workhop_rl/install'), ('ROS_DISTRO', 'humble'), ('GTK_IM_MODULE', 'ibus'), ('LOGNAME', 'ruben'), ('_', '/usr/bin/colcon'), ('ROS_VERSION', '2'), ('XDG_SESSION_CLASS', 'user'), ('USERNAME', 'ruben'), ('TERM', 'xterm-256color'), ('GNOME_DESKTOP_SESSION_ID', 'this-is-deprecated'), ('_CE_CONDA', ''), ('ROS_LOCALHOST_ONLY', '0'), ('WINDOWPATH', '2'), ('PATH', '/opt/ros/humble/bin:/usr/local/cuda/bin:/home/ruben/miniconda3/condabin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/games:/usr/local/games:/snap/bin:/snap/bin'), ('SESSION_MANAGER', 'local/ruben:@/tmp/.ICE-unix/2409,unix/ruben:/tmp/.ICE-unix/2409'), ('XDG_MENU_PREFIX', 'gnome-'), ('LC_ADDRESS', 'ru_RU.UTF-8'), ('GNOME_TERMINAL_SCREEN', '/org/gnome/Terminal/screen/92f2c06f_25f7_4288_a0e9_0f39b749d39b'), ('XDG_RUNTIME_DIR', '/run/user/1000'), ('DISPLAY', ':1'), ('LANG', 'en_US.UTF-8'), ('XDG_CURRENT_DESKTOP', 'ubuntu:GNOME'), ('LC_TELEPHONE', 'ru_RU.UTF-8'), ('XMODIFIERS', '@im=ibus'), ('XDG_SESSION_DESKTOP', 'ubuntu'), ('XAUTHORITY', '/run/user/1000/gdm/Xauthority'), ('LS_COLORS', 'rs=0:di=01;34:ln=01;36:mh=00:pi=40;33:so=01;35:do=01;35:bd=40;33;01:cd=40;33;01:or=40;31;01:mi=00:su=37;41:sg=30;43:ca=30;41:tw=30;42:ow=34;42:st=37;44:ex=01;32:*.tar=01;31:*.tgz=01;31:*.arc=01;31:*.arj=01;31:*.taz=01;31:*.lha=01;31:*.lz4=01;31:*.lzh=01;31:*.lzma=01;31:*.tlz=01;31:*.txz=01;31:*.tzo=01;31:*.t7z=01;31:*.zip=01;31:*.z=01;31:*.dz=01;31:*.gz=01;31:*.lrz=01;31:*.lz=01;31:*.lzo=01;31:*.xz=01;31:*.zst=01;31:*.tzst=01;31:*.bz2=01;31:*.bz=01;31:*.tbz=01;31:*.tbz2=01;31:*.tz=01;31:*.deb=01;31:*.rpm=01;31:*.jar=01;31:*.war=01;31:*.ear=01;31:*.sar=01;31:*.rar=01;31:*.alz=01;31:*.ace=01;31:*.zoo=01;31:*.cpio=01;31:*.7z=01;31:*.rz=01;31:*.cab=01;31:*.wim=01;31:*.swm=01;31:*.dwm=01;31:*.esd=01;31:*.jpg=01;35:*.jpeg=01;35:*.mjpg=01;35:*.mjpeg=01;35:*.gif=01;35:*.bmp=01;35:*.pbm=01;35:*.pgm=01;35:*.ppm=01;35:*.tga=01;35:*.xbm=01;35:*.xpm=01;35:*.tif=01;35:*.tiff=01;35:*.png=01;35:*.svg=01;35:*.svgz=01;35:*.mng=01;35:*.pcx=01;35:*.mov=01;35:*.mpg=01;35:*.mpeg=01;35:*.m2v=01;35:*.mkv=01;35:*.webm=01;35:*.webp=01;35:*.ogm=01;35:*.mp4=01;35:*.m4v=01;35:*.mp4v=01;35:*.vob=01;35:*.qt=01;35:*.nuv=01;35:*.wmv=01;35:*.asf=01;35:*.rm=01;35:*.rmvb=01;35:*.flc=01;35:*.avi=01;35:*.fli=01;35:*.flv=01;35:*.gl=01;35:*.dl=01;35:*.xcf=01;35:*.xwd=01;35:*.yuv=01;35:*.cgm=01;35:*.emf=01;35:*.ogv=01;35:*.ogx=01;35:*.aac=00;36:*.au=00;36:*.flac=00;36:*.m4a=00;36:*.mid=00;36:*.midi=00;36:*.mka=00;36:*.mp3=00;36:*.mpc=00;36:*.ogg=00;36:*.ra=00;36:*.wav=00;36:*.oga=00;36:*.opus=00;36:*.spx=00;36:*.xspf=00;36:'), ('GNOME_TERMINAL_SERVICE', ':1.125'), ('SSH_AGENT_LAUNCHER', 'gnome-keyring'), ('SSH_AUTH_SOCK', '/run/user/1000/keyring/ssh'), ('AMENT_PREFIX_PATH', '/home/ruben/workhop_rl/install/unitree_legged_real:/home/ruben/workhop_rl/install/unitree_rl_controller:/home/ruben/workhop_rl/install/ros2_unitree_legged_msgs:/opt/ros/humble'), ('CONDA_PYTHON_EXE', '/home/ruben/miniconda3/bin/python'), ('SHELL', '/bin/bash'), ('LC_NAME', 'ru_RU.UTF-8'), ('QT_ACCESSIBILITY', '1'), ('GDMSESSION', 'ubuntu'), ('Torch_DIR', '/home/ruben/libtorch'), ('LESSCLOSE', '/usr/bin/lesspipe %s %s'), ('LC_MEASUREMENT', 'ru_RU.UTF-8'), ('GPG_AGENT_INFO', '/run/user/1000/gnupg/S.gpg-agent:0:1'), ('LC_IDENTIFICATION', 'ru_RU.UTF-8'), ('QT_IM_MODULE', 'ibus'), ('PWD', '/home/ruben/workhop_rl/build/unitree_legged_real'), ('XDG_CONFIG_DIRS', '/etc/xdg/xdg-ubuntu:/etc/xdg'), ('CONDA_EXE', '/home/ruben/miniconda3/bin/conda'), ('DBUS_STARTER_ADDRESS', 'unix:path=/run/user/1000/bus,guid=148f9c57c8634de544413d2e67cad70e'), ('XDG_DATA_DIRS', '/usr/share/ubuntu:/usr/share/gnome:/usr/local/share/:/usr/share/:/var/lib/snapd/desktop'), ('PYTHONPATH', '/home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/local/lib/python3.10/dist-packages:/opt/ros/humble/lib/python3.10/site-packages:/opt/ros/humble/local/lib/python3.10/dist-packages'), ('LC_NUMERIC', 'ru_RU.UTF-8'), ('LC_PAPER', 'ru_RU.UTF-8'), ('COLCON', '1'), ('VTE_VERSION', '6800'), ('CMAKE_PREFIX_PATH', '/home/ruben/workhop_rl/install/unitree_rl_controller:/home/ruben/workhop_rl/install/ros2_unitree_legged_msgs:/home/ruben/workhop_rl/install/unitree_legged_real:/opt/ros/humble')]), 'shell': False}
+[8.960396] (unitree_legged_real) StdoutLine: {'line': b'[ 40%] Built target ros2_position_example\n'}
+[8.960510] (unitree_legged_real) StdoutLine: {'line': b'[ 40%] Built target ros2_test\n'}
+[8.961757] (unitree_legged_real) StdoutLine: {'line': b'[ 60%] Built target lcm_server\n'}
+[8.963838] (unitree_legged_real) StdoutLine: {'line': b'[ 80%] Built target ros2_walk_example\n'}
+[8.963919] (unitree_legged_real) StdoutLine: {'line': b'\x1b[35m\x1b[1mConsolidate compiler generated dependencies of target ros2_rl\x1b[0m\n'}
+[8.998058] (unitree_legged_real) StdoutLine: {'line': b'[ 90%] \x1b[32mBuilding CXX object CMakeFiles/ros2_rl.dir/src/ros2_rl.cpp.o\x1b[0m\n'}
+[9.023540] (-) TimerEvent: {}
+[9.123774] (-) TimerEvent: {}
+[9.224045] (-) TimerEvent: {}
+[9.324369] (-) TimerEvent: {}
+[9.424607] (-) TimerEvent: {}
+[9.524878] (-) TimerEvent: {}
+[9.625150] (-) TimerEvent: {}
+[9.725414] (-) TimerEvent: {}
+[9.825676] (-) TimerEvent: {}
+[9.925944] (-) TimerEvent: {}
+[10.026286] (-) TimerEvent: {}
+[10.126567] (-) TimerEvent: {}
+[10.226778] (-) TimerEvent: {}
+[10.326986] (-) TimerEvent: {}
+[10.427193] (-) TimerEvent: {}
+[10.527393] (-) TimerEvent: {}
+[10.627582] (-) TimerEvent: {}
+[10.727807] (-) TimerEvent: {}
+[10.828019] (-) TimerEvent: {}
+[10.928287] (-) TimerEvent: {}
+[11.028466] (-) TimerEvent: {}
+[11.128661] (-) TimerEvent: {}
+[11.228877] (-) TimerEvent: {}
+[11.329149] (-) TimerEvent: {}
+[11.429421] (-) TimerEvent: {}
+[11.529698] (-) TimerEvent: {}
+[11.629961] (-) TimerEvent: {}
+[11.730231] (-) TimerEvent: {}
+[11.830494] (-) TimerEvent: {}
+[11.930770] (-) TimerEvent: {}
+[12.031063] (-) TimerEvent: {}
+[12.131330] (-) TimerEvent: {}
+[12.231602] (-) TimerEvent: {}
+[12.331814] (-) TimerEvent: {}
+[12.432039] (-) TimerEvent: {}
+[12.532309] (-) TimerEvent: {}
+[12.632588] (-) TimerEvent: {}
+[12.732857] (-) TimerEvent: {}
+[12.833116] (-) TimerEvent: {}
+[12.933397] (-) TimerEvent: {}
+[13.033666] (-) TimerEvent: {}
+[13.133942] (-) TimerEvent: {}
+[13.234211] (-) TimerEvent: {}
+[13.334488] (-) TimerEvent: {}
+[13.434757] (-) TimerEvent: {}
+[13.535033] (-) TimerEvent: {}
+[13.635300] (-) TimerEvent: {}
+[13.735573] (-) TimerEvent: {}
+[13.835844] (-) TimerEvent: {}
+[13.936118] (-) TimerEvent: {}
+[14.036451] (-) TimerEvent: {}
+[14.136769] (-) TimerEvent: {}
+[14.237052] (-) TimerEvent: {}
+[14.337349] (-) TimerEvent: {}
+[14.437628] (-) TimerEvent: {}
+[14.537911] (-) TimerEvent: {}
+[14.638183] (-) TimerEvent: {}
+[14.738453] (-) TimerEvent: {}
+[14.838729] (-) TimerEvent: {}
+[14.939005] (-) TimerEvent: {}
+[15.039285] (-) TimerEvent: {}
+[15.139557] (-) TimerEvent: {}
+[15.239844] (-) TimerEvent: {}
+[15.340112] (-) TimerEvent: {}
+[15.440387] (-) TimerEvent: {}
+[15.540666] (-) TimerEvent: {}
+[15.640945] (-) TimerEvent: {}
+[15.741216] (-) TimerEvent: {}
+[15.841483] (-) TimerEvent: {}
+[15.941757] (-) TimerEvent: {}
+[16.042031] (-) TimerEvent: {}
+[16.142299] (-) TimerEvent: {}
+[16.242570] (-) TimerEvent: {}
+[16.342850] (-) TimerEvent: {}
+[16.443122] (-) TimerEvent: {}
+[16.543402] (-) TimerEvent: {}
+[16.643679] (-) TimerEvent: {}
+[16.743946] (-) TimerEvent: {}
+[16.844219] (-) TimerEvent: {}
+[16.944500] (-) TimerEvent: {}
+[17.044772] (-) TimerEvent: {}
+[17.145037] (-) TimerEvent: {}
+[17.245300] (-) TimerEvent: {}
+[17.345580] (-) TimerEvent: {}
+[17.445849] (-) TimerEvent: {}
+[17.546112] (-) TimerEvent: {}
+[17.646397] (-) TimerEvent: {}
+[17.746662] (-) TimerEvent: {}
+[17.846929] (-) TimerEvent: {}
+[17.947196] (-) TimerEvent: {}
+[18.047467] (-) TimerEvent: {}
+[18.147737] (-) TimerEvent: {}
+[18.248007] (-) TimerEvent: {}
+[18.348280] (-) TimerEvent: {}
+[18.448571] (-) TimerEvent: {}
+[18.548852] (-) TimerEvent: {}
+[18.649111] (-) TimerEvent: {}
+[18.749375] (-) TimerEvent: {}
+[18.849604] (-) TimerEvent: {}
+[18.949862] (-) TimerEvent: {}
+[19.050126] (-) TimerEvent: {}
+[19.150393] (-) TimerEvent: {}
+[19.250658] (-) TimerEvent: {}
+[19.350916] (-) TimerEvent: {}
+[19.451178] (-) TimerEvent: {}
+[19.551445] (-) TimerEvent: {}
+[19.651710] (-) TimerEvent: {}
+[19.751973] (-) TimerEvent: {}
+[19.852234] (-) TimerEvent: {}
+[19.952493] (-) TimerEvent: {}
+[20.052761] (-) TimerEvent: {}
+[20.153030] (-) TimerEvent: {}
+[20.253299] (-) TimerEvent: {}
+[20.353616] (-) TimerEvent: {}
+[20.372754] (unitree_legged_real) StdoutLine: {'line': b'[100%] \x1b[32m\x1b[1mLinking CXX executable ros2_rl\x1b[0m\n'}
+[20.453790] (-) TimerEvent: {}
+[20.554124] (-) TimerEvent: {}
+[20.654423] (-) TimerEvent: {}
+[20.754661] (-) TimerEvent: {}
+[20.770833] (unitree_legged_real) StdoutLine: {'line': b'[100%] Built target ros2_rl\n'}
+[20.777135] (unitree_legged_real) CommandEnded: {'returncode': 0}
+[20.777464] (unitree_legged_real) JobProgress: {'identifier': 'unitree_legged_real', 'progress': 'install'}
+[20.777570] (unitree_legged_real) Command: {'cmd': ['/usr/bin/cmake', '--install', '/home/ruben/workhop_rl/build/unitree_legged_real'], 'cwd': '/home/ruben/workhop_rl/build/unitree_legged_real', 'env': OrderedDict([('LESSOPEN', '| /usr/bin/lesspipe %s'), ('USER', 'ruben'), ('LC_TIME', 'ru_RU.UTF-8'), ('XDG_SESSION_TYPE', 'x11'), ('SHLVL', '1'), ('LD_LIBRARY_PATH', '/home/ruben/workhop_rl/install/unitree_rl_controller/lib:/home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/lib:/home/ruben/workhop_rl/install/unitree_legged_real/lib:/usr/lib/x86_64-linux-gnu/gazebo-11/plugins:/opt/ros/humble/opt/rviz_ogre_vendor/lib:/opt/ros/humble/lib/x86_64-linux-gnu:/opt/ros/humble/lib:/usr/local/cuda-12.6/lib64:/home/ruben/workhop_rl/src/libtorch/lib/:/home/ruben/workhop_rl/src/libtorch/lib/:/home/ruben/libtorch/lib/'), ('HOME', '/home/ruben'), ('CONDA_SHLVL', '0'), ('OLDPWD', '/home/ruben'), ('DESKTOP_SESSION', 'ubuntu'), ('ROS_PYTHON_VERSION', '3'), ('GNOME_SHELL_SESSION_MODE', 'ubuntu'), ('GTK_MODULES', 'gail:atk-bridge'), ('LC_MONETARY', 'ru_RU.UTF-8'), ('DBUS_STARTER_BUS_TYPE', 'session'), ('SYSTEMD_EXEC_PID', '2409'), ('DBUS_SESSION_BUS_ADDRESS', 'unix:path=/run/user/1000/bus,guid=148f9c57c8634de544413d2e67cad70e'), ('COLORTERM', 'truecolor'), ('_CE_M', ''), ('COLCON_PREFIX_PATH', '/home/ruben/workhop_rl/install'), ('ROS_DISTRO', 'humble'), ('GTK_IM_MODULE', 'ibus'), ('LOGNAME', 'ruben'), ('_', '/usr/bin/colcon'), ('ROS_VERSION', '2'), ('XDG_SESSION_CLASS', 'user'), ('USERNAME', 'ruben'), ('TERM', 'xterm-256color'), ('GNOME_DESKTOP_SESSION_ID', 'this-is-deprecated'), ('_CE_CONDA', ''), ('ROS_LOCALHOST_ONLY', '0'), ('WINDOWPATH', '2'), ('PATH', '/opt/ros/humble/bin:/usr/local/cuda/bin:/home/ruben/miniconda3/condabin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/games:/usr/local/games:/snap/bin:/snap/bin'), ('SESSION_MANAGER', 'local/ruben:@/tmp/.ICE-unix/2409,unix/ruben:/tmp/.ICE-unix/2409'), ('XDG_MENU_PREFIX', 'gnome-'), ('LC_ADDRESS', 'ru_RU.UTF-8'), ('GNOME_TERMINAL_SCREEN', '/org/gnome/Terminal/screen/92f2c06f_25f7_4288_a0e9_0f39b749d39b'), ('XDG_RUNTIME_DIR', '/run/user/1000'), ('DISPLAY', ':1'), ('LANG', 'en_US.UTF-8'), ('XDG_CURRENT_DESKTOP', 'ubuntu:GNOME'), ('LC_TELEPHONE', 'ru_RU.UTF-8'), ('XMODIFIERS', '@im=ibus'), ('XDG_SESSION_DESKTOP', 'ubuntu'), ('XAUTHORITY', '/run/user/1000/gdm/Xauthority'), ('LS_COLORS', 'rs=0:di=01;34:ln=01;36:mh=00:pi=40;33:so=01;35:do=01;35:bd=40;33;01:cd=40;33;01:or=40;31;01:mi=00:su=37;41:sg=30;43:ca=30;41:tw=30;42:ow=34;42:st=37;44:ex=01;32:*.tar=01;31:*.tgz=01;31:*.arc=01;31:*.arj=01;31:*.taz=01;31:*.lha=01;31:*.lz4=01;31:*.lzh=01;31:*.lzma=01;31:*.tlz=01;31:*.txz=01;31:*.tzo=01;31:*.t7z=01;31:*.zip=01;31:*.z=01;31:*.dz=01;31:*.gz=01;31:*.lrz=01;31:*.lz=01;31:*.lzo=01;31:*.xz=01;31:*.zst=01;31:*.tzst=01;31:*.bz2=01;31:*.bz=01;31:*.tbz=01;31:*.tbz2=01;31:*.tz=01;31:*.deb=01;31:*.rpm=01;31:*.jar=01;31:*.war=01;31:*.ear=01;31:*.sar=01;31:*.rar=01;31:*.alz=01;31:*.ace=01;31:*.zoo=01;31:*.cpio=01;31:*.7z=01;31:*.rz=01;31:*.cab=01;31:*.wim=01;31:*.swm=01;31:*.dwm=01;31:*.esd=01;31:*.jpg=01;35:*.jpeg=01;35:*.mjpg=01;35:*.mjpeg=01;35:*.gif=01;35:*.bmp=01;35:*.pbm=01;35:*.pgm=01;35:*.ppm=01;35:*.tga=01;35:*.xbm=01;35:*.xpm=01;35:*.tif=01;35:*.tiff=01;35:*.png=01;35:*.svg=01;35:*.svgz=01;35:*.mng=01;35:*.pcx=01;35:*.mov=01;35:*.mpg=01;35:*.mpeg=01;35:*.m2v=01;35:*.mkv=01;35:*.webm=01;35:*.webp=01;35:*.ogm=01;35:*.mp4=01;35:*.m4v=01;35:*.mp4v=01;35:*.vob=01;35:*.qt=01;35:*.nuv=01;35:*.wmv=01;35:*.asf=01;35:*.rm=01;35:*.rmvb=01;35:*.flc=01;35:*.avi=01;35:*.fli=01;35:*.flv=01;35:*.gl=01;35:*.dl=01;35:*.xcf=01;35:*.xwd=01;35:*.yuv=01;35:*.cgm=01;35:*.emf=01;35:*.ogv=01;35:*.ogx=01;35:*.aac=00;36:*.au=00;36:*.flac=00;36:*.m4a=00;36:*.mid=00;36:*.midi=00;36:*.mka=00;36:*.mp3=00;36:*.mpc=00;36:*.ogg=00;36:*.ra=00;36:*.wav=00;36:*.oga=00;36:*.opus=00;36:*.spx=00;36:*.xspf=00;36:'), ('GNOME_TERMINAL_SERVICE', ':1.125'), ('SSH_AGENT_LAUNCHER', 'gnome-keyring'), ('SSH_AUTH_SOCK', '/run/user/1000/keyring/ssh'), ('AMENT_PREFIX_PATH', '/home/ruben/workhop_rl/install/unitree_legged_real:/home/ruben/workhop_rl/install/unitree_rl_controller:/home/ruben/workhop_rl/install/ros2_unitree_legged_msgs:/opt/ros/humble'), ('CONDA_PYTHON_EXE', '/home/ruben/miniconda3/bin/python'), ('SHELL', '/bin/bash'), ('LC_NAME', 'ru_RU.UTF-8'), ('QT_ACCESSIBILITY', '1'), ('GDMSESSION', 'ubuntu'), ('Torch_DIR', '/home/ruben/libtorch'), ('LESSCLOSE', '/usr/bin/lesspipe %s %s'), ('LC_MEASUREMENT', 'ru_RU.UTF-8'), ('GPG_AGENT_INFO', '/run/user/1000/gnupg/S.gpg-agent:0:1'), ('LC_IDENTIFICATION', 'ru_RU.UTF-8'), ('QT_IM_MODULE', 'ibus'), ('PWD', '/home/ruben/workhop_rl/build/unitree_legged_real'), ('XDG_CONFIG_DIRS', '/etc/xdg/xdg-ubuntu:/etc/xdg'), ('CONDA_EXE', '/home/ruben/miniconda3/bin/conda'), ('DBUS_STARTER_ADDRESS', 'unix:path=/run/user/1000/bus,guid=148f9c57c8634de544413d2e67cad70e'), ('XDG_DATA_DIRS', '/usr/share/ubuntu:/usr/share/gnome:/usr/local/share/:/usr/share/:/var/lib/snapd/desktop'), ('PYTHONPATH', '/home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/local/lib/python3.10/dist-packages:/opt/ros/humble/lib/python3.10/site-packages:/opt/ros/humble/local/lib/python3.10/dist-packages'), ('LC_NUMERIC', 'ru_RU.UTF-8'), ('LC_PAPER', 'ru_RU.UTF-8'), ('COLCON', '1'), ('VTE_VERSION', '6800'), ('CMAKE_PREFIX_PATH', '/home/ruben/workhop_rl/install/unitree_rl_controller:/home/ruben/workhop_rl/install/ros2_unitree_legged_msgs:/home/ruben/workhop_rl/install/unitree_legged_real:/opt/ros/humble')]), 'shell': False}
+[20.782478] (unitree_legged_real) StdoutLine: {'line': b'-- Install configuration: ""\n'}
+[20.782625] (unitree_legged_real) StdoutLine: {'line': b'-- Up-to-date: /home/ruben/workhop_rl/install/unitree_legged_real/lib\n'}
+[20.782693] (unitree_legged_real) StdoutLine: {'line': b'-- Up-to-date: /home/ruben/workhop_rl/install/unitree_legged_real/lib/libunitree_legged_sdk_arm64.so\n'}
+[20.782766] (unitree_legged_real) StdoutLine: {'line': b'-- Up-to-date: /home/ruben/workhop_rl/install/unitree_legged_real/lib/libunitree_legged_sdk_amd64.so\n'}
+[20.782827] (unitree_legged_real) StdoutLine: {'line': b'-- Up-to-date: /home/ruben/workhop_rl/install/unitree_legged_real/lib/unitree_legged_real/ros2_walk_example\n'}
+[20.782887] (unitree_legged_real) StdoutLine: {'line': b'-- Up-to-date: /home/ruben/workhop_rl/install/unitree_legged_real/lib/unitree_legged_real/ros2_position_example\n'}
+[20.782954] (unitree_legged_real) StdoutLine: {'line': b'-- Installing: /home/ruben/workhop_rl/install/unitree_legged_real/lib/unitree_legged_real/ros2_rl\n'}
+[20.783416] (unitree_legged_real) StdoutLine: {'line': b'-- Set runtime path of "/home/ruben/workhop_rl/install/unitree_legged_real/lib/unitree_legged_real/ros2_rl" to ""\n'}
+[20.783490] (unitree_legged_real) StdoutLine: {'line': b'-- Up-to-date: /home/ruben/workhop_rl/install/unitree_legged_real/lib/unitree_legged_real/ros2_test\n'}
+[20.783556] (unitree_legged_real) StdoutLine: {'line': b'-- Up-to-date: /home/ruben/workhop_rl/install/unitree_legged_real/lib/unitree_legged_real/lcm_server\n'}
+[20.783633] (unitree_legged_real) StdoutLine: {'line': b'-- Up-to-date: /home/ruben/workhop_rl/install/unitree_legged_real/share/ament_index/resource_index/package_run_dependencies/unitree_legged_real\n'}
+[20.783720] (unitree_legged_real) StdoutLine: {'line': b'-- Up-to-date: /home/ruben/workhop_rl/install/unitree_legged_real/share/ament_index/resource_index/parent_prefix_path/unitree_legged_real\n'}
+[20.783784] (unitree_legged_real) StdoutLine: {'line': b'-- Up-to-date: /home/ruben/workhop_rl/install/unitree_legged_real/share/unitree_legged_real/environment/ament_prefix_path.sh\n'}
+[20.783852] (unitree_legged_real) StdoutLine: {'line': b'-- Up-to-date: /home/ruben/workhop_rl/install/unitree_legged_real/share/unitree_legged_real/environment/ament_prefix_path.dsv\n'}
+[20.783904] (unitree_legged_real) StdoutLine: {'line': b'-- Up-to-date: /home/ruben/workhop_rl/install/unitree_legged_real/share/unitree_legged_real/environment/path.sh\n'}
+[20.783955] (unitree_legged_real) StdoutLine: {'line': b'-- Up-to-date: /home/ruben/workhop_rl/install/unitree_legged_real/share/unitree_legged_real/environment/path.dsv\n'}
+[20.784006] (unitree_legged_real) StdoutLine: {'line': b'-- Up-to-date: /home/ruben/workhop_rl/install/unitree_legged_real/share/unitree_legged_real/local_setup.bash\n'}
+[20.784056] (unitree_legged_real) StdoutLine: {'line': b'-- Up-to-date: /home/ruben/workhop_rl/install/unitree_legged_real/share/unitree_legged_real/local_setup.sh\n'}
+[20.784107] (unitree_legged_real) StdoutLine: {'line': b'-- Up-to-date: /home/ruben/workhop_rl/install/unitree_legged_real/share/unitree_legged_real/local_setup.zsh\n'}
+[20.784157] (unitree_legged_real) StdoutLine: {'line': b'-- Up-to-date: /home/ruben/workhop_rl/install/unitree_legged_real/share/unitree_legged_real/local_setup.dsv\n'}
+[20.784207] (unitree_legged_real) StdoutLine: {'line': b'-- Installing: /home/ruben/workhop_rl/install/unitree_legged_real/share/unitree_legged_real/package.dsv\n'}
+[20.784258] (unitree_legged_real) StdoutLine: {'line': b'-- Up-to-date: /home/ruben/workhop_rl/install/unitree_legged_real/share/ament_index/resource_index/packages/unitree_legged_real\n'}
+[20.784312] (unitree_legged_real) StdoutLine: {'line': b'-- Up-to-date: /home/ruben/workhop_rl/install/unitree_legged_real/share/unitree_legged_real/cmake/unitree_legged_realConfig.cmake\n'}
+[20.784432] (unitree_legged_real) StdoutLine: {'line': b'-- Up-to-date: /home/ruben/workhop_rl/install/unitree_legged_real/share/unitree_legged_real/cmake/unitree_legged_realConfig-version.cmake\n'}
+[20.784750] (unitree_legged_real) StdoutLine: {'line': b'-- Up-to-date: /home/ruben/workhop_rl/install/unitree_legged_real/share/unitree_legged_real/package.xml\n'}
+[20.784795] (unitree_legged_real) CommandEnded: {'returncode': 0}
+[20.791031] (unitree_legged_real) JobEnded: {'identifier': 'unitree_legged_real', 'rc': 0}
+[20.791322] (-) EventReactorShutdown: {}

@@ -1,0 +1,124 @@
+{
+	"configurations" : 
+	[
+		{
+			"directories" : 
+			[
+				{
+					"build" : ".",
+					"hasInstallRule" : true,
+					"jsonFile" : "directory-.-3abccab5535827d8a28f.json",
+					"minimumCMakeVersion" : 
+					{
+						"string" : "3.12"
+					},
+					"projectIndex" : 0,
+					"source" : ".",
+					"targetIndexes" : 
+					[
+						0,
+						1,
+						2,
+						3,
+						4,
+						5,
+						6,
+						7
+					]
+				}
+			],
+			"name" : "",
+			"projects" : 
+			[
+				{
+					"directoryIndexes" : 
+					[
+						0
+					],
+					"name" : "unitree_legged_real",
+					"targetIndexes" : 
+					[
+						0,
+						1,
+						2,
+						3,
+						4,
+						5,
+						6,
+						7
+					]
+				}
+			],
+			"targets" : 
+			[
+				{
+					"directoryIndex" : 0,
+					"id" : "lcm_server::@6890427a1f51a3e7e1df",
+					"jsonFile" : "target-lcm_server-44225cfa16641edd5e78.json",
+					"name" : "lcm_server",
+					"projectIndex" : 0
+				},
+				{
+					"directoryIndex" : 0,
+					"id" : "ros2_position_example::@6890427a1f51a3e7e1df",
+					"jsonFile" : "target-ros2_position_example-07608b0768bd7a874ba2.json",
+					"name" : "ros2_position_example",
+					"projectIndex" : 0
+				},
+				{
+					"directoryIndex" : 0,
+					"id" : "ros2_rl::@6890427a1f51a3e7e1df",
+					"jsonFile" : "target-ros2_rl-0acb7d7437fd6244ab76.json",
+					"name" : "ros2_rl",
+					"projectIndex" : 0
+				},
+				{
+					"directoryIndex" : 0,
+					"id" : "ros2_rl_control::@6890427a1f51a3e7e1df",
+					"jsonFile" : "target-ros2_rl_control-d24b1427f2364788de7e.json",
+					"name" : "ros2_rl_control",
+					"projectIndex" : 0
+				},
+				{
+					"directoryIndex" : 0,
+					"id" : "ros2_test::@6890427a1f51a3e7e1df",
+					"jsonFile" : "target-ros2_test-ee63b8cd55015f781320.json",
+					"name" : "ros2_test",
+					"projectIndex" : 0
+				},
+				{
+					"directoryIndex" : 0,
+					"id" : "ros2_walk_example::@6890427a1f51a3e7e1df",
+					"jsonFile" : "target-ros2_walk_example-0de3e0c35cf3c4f4cd72.json",
+					"name" : "ros2_walk_example",
+					"projectIndex" : 0
+				},
+				{
+					"directoryIndex" : 0,
+					"id" : "uninstall::@6890427a1f51a3e7e1df",
+					"jsonFile" : "target-uninstall-080fc02b5ad15f977a12.json",
+					"name" : "uninstall",
+					"projectIndex" : 0
+				},
+				{
+					"directoryIndex" : 0,
+					"id" : "unitree_legged_real_uninstall::@6890427a1f51a3e7e1df",
+					"jsonFile" : "target-unitree_legged_real_uninstall-3e5bd82249c8779d4e3b.json",
+					"name" : "unitree_legged_real_uninstall",
+					"projectIndex" : 0
+				}
+			]
+		}
+	],
+	"kind" : "codemodel",
+	"paths" : 
+	{
+		"build" : "/home/ruben/workhop_rl/build/unitree_legged_real",
+		"source" : "/home/ruben/workhop_rl/src/unitree_ros2_to_real"
+	},
+	"version" : 
+	{
+		"major" : 2,
+		"minor" : 3
+	}
+}

@@ -17,9 +17,12 @@
 #include "geometry_msgs/msg/wrench_stamped.hpp"
 #include "geometry_msgs/msg/twist.hpp"
 #include "std_msgs/msg/u_int8_multi_array.hpp"
+#include "std_msgs/msg/float64_multi_array.hpp"
 
 #include <mean_smoothing.h>
 #include <map>
+
+#include <random>  // генерации случайных чисел
 
 #define DIMENSION 3
 
@@ -49,14 +52,14 @@ enum ROBOT_STATE
 //     "RL_hip", "RL_thigh", "RL_calf"};
 // const std::vector<std::string> joint_names = agent.params.joint_names;
 
-const std::vector<float> default_joint_angle = {
+const std::vector<float> default_joint_angles = {
     -0., 0.8, -1.3,
     0., 0.8, -1.3,
     -0.0, 0.8, -1.3,
     0.0, 0.8, -1.3};
 // Глобальные константы (теперь инициализируются позже)
 std::vector<std::string> joint_names;
-std::vector<double> default_joint_angles;
+//std::vector<double> default_joint_angles;
 const std::vector<int> net2joint_indexes = {
     3, 4, 5,
     0, 1, 2,
@@ -77,7 +80,6 @@ const std::vector<double> damping = {
 
 
 const std::vector<std::string> urdf_feet_names = {"FR_foot", "FL_foot", "RR_foot", "RL_foot"};
-
 
 
 std::string model_path = {"/home/ruben/workhop_rl/src/unitree_rl_controller-ros2/weights/policy_1.pt"}; // add my learn model
@@ -116,11 +118,11 @@ void update_dof_state(const ros2_unitree_legged_msgs::msg::LowState &state, Agen
 
 int main(int argc, char **argv)
 {
-
     Agent agent;
     agent.InitObservations();
     agent.InitOutputs();
-    // agent.ReadYaml(ROBOT_NAME);
+  
+    agent.ReadYaml(ROBOT_NAME);
     try {
         agent.ReadYaml(ROBOT_NAME);
 
@@ -129,13 +131,13 @@ int main(int argc, char **argv)
         return 1;
     }
     joint_names = agent.params.joint_names;
-    default_joint_angles = agent.params.default_joint_angles;
+    // default_joint_angles = agent.params.default_joint_angles;
 
-    std::cout<<"STABLE"<<std::endl;
-    std::cout << default_joint_angle << std::endl;
+    // std::cout<<"STABLE"<<std::endl;
+    // std::cout << default_joint_angle << std::endl;
 
-    std::cout<<"config"<<std::endl;
-    std::cout << default_joint_angles << std::endl;
+    // std::cout<<"config"<<std::endl;
+    // std::cout << default_joint_angles << std::endl;
 
     rclcpp::init(argc, argv);
 
@@ -181,6 +183,11 @@ int main(int argc, char **argv)
 
     rclcpp::Publisher<sensor_msgs::msg::Imu>::SharedPtr pub_imu_filter;
     pub_imu_filter = node->create_publisher<sensor_msgs::msg::Imu>("/go1/imu0_filter", 1000);
+    rclcpp::Publisher<std_msgs::msg::Float64MultiArray>::SharedPtr pub_obs;
+    pub_obs = node->create_publisher<std_msgs::msg::Float64MultiArray>("/go1/observation_vector", 100);
+
+    rclcpp::Publisher<std_msgs::msg::Float64MultiArray>::SharedPtr pub_actions;
+    pub_actions = node->create_publisher<std_msgs::msg::Float64MultiArray>("/go1/action_vector", 100);
 
     rclcpp::Publisher<geometry_msgs::msg::WrenchStamped>::SharedPtr pub_FL_force, pub_FR_force, pub_RL_force, pub_RR_force;
     pub_FR_force = node->create_publisher<geometry_msgs::msg::WrenchStamped>("/go1/legFR/force_torque_states", 1000);
@@ -226,6 +233,17 @@ int main(int argc, char **argv)
 
     mean_smoothing<double, DIMENSION> meansmth; 
 
+    // Настройка генерации случайных чисел
+    std::random_device rd;
+    std::mt19937 gen(rd()); // Движок Mersenne Twister
+
+    // Функция для генерации случайного числа с плавающей точкой в заданном диапазоне
+    auto random_float = [&](float min, float max) {
+        std::uniform_real_distribution<float> distrib(min, max);
+        return distrib(gen);
+    };
+
+
     while (rclcpp::ok())
     {
         state_udp.Recv();
@@ -235,6 +253,34 @@ int main(int argc, char **argv)
         if (initiated_flag == true)
         {
             motiontime ++;
+
+            // **НАЧАЛО: Внедрение случайных данных**
+            // Вы можете внедрять случайные данные в различные части сообщения low_state_ros
+            // для имитации различных показаний датчиков. Отрегулируйте диапазоны в соответствии с
+            // тем, что реалистично для вашего робота.
+            if(motiontime > 100) {  // Начните внедрение после некоторого времени инициализации
+            // Пример: Внедрение случайных данных акселерометра
+            for (int i = 0; i < 3; ++i) {
+                low_state_ros.imu.accelerometer[i] = random_float(-0.9, 0.9); // Случайное ускорение между -1 и 1 м/с^2
+            }
+
+            // Пример: Внедрение случайных данных гироскопа
+            for (int i = 0; i < 3; ++i) {
+                low_state_ros.imu.gyroscope[i] = random_float(-0.4, 0.4); // Случайная угловая скорость между -0.1 и 0.1 рад/с
+            }
+
+            // Пример: Внедрение случайных положений суставов
+            for (int i = 0; i < 12; ++i) {
+                low_state_ros.motor_state[i].q = default_joint_angles[i] + random_float(-0.5, 0.5); // Случайное положение сустава вокруг значения по умолчанию
+            }
+
+            // Пример: Внедрение случайных данных о силе в стопе
+            for (int i = 0; i < 4; ++i) {
+                low_state_ros.foot_force[i] = random_float(0.0, 50.0); // Случайная сила в стопе между 0 и 50 Н
+            }
+            }
+            // **КОНЕЦ: Внедрение случайных данных**
+
 
             auto joint_state = sensor_msgs::msg::JointState();
             joint_state.header.stamp = node->get_clock()->now();
@@ -372,7 +418,25 @@ int main(int argc, char **argv)
                 {
                     if (motiontime % (rate_value / net_rate_value) == 0)
                     {
-                        agent.obs.actions = agent.act(); // Получаем действия от агента
+                        // Get observation
+                        torch::Tensor obs = agent.ComputeObservation();
+
+                        // Publish observation vector
+                        std_msgs::msg::Float64MultiArray obs_msg;
+                        obs_msg.data.resize(obs.size(1));
+                        for (int i = 0; i < obs.size(1); ++i) {
+                            obs_msg.data[i] = obs[0][i].item<float>();
+                        }
+                        pub_obs->publish(obs_msg);
+                        
+                        agent.obs.actions = agent.act();
+                        // Publish action vector
+                        std_msgs::msg::Float64MultiArray action_msg;
+                        action_msg.data.resize(agent.obs.actions.size(1));
+                        for (int i = 0; i < agent.obs.actions.size(1); ++i) {
+                        action_msg.data[i] = agent.obs.actions[0][i].item<float>();
+                        }
+                        pub_actions->publish(action_msg);
                         auto actions_accessor = agent.obs.actions.accessor<float, 2>();
                         auto gravity_vec_accessor = agent.obs.gravity_vec.accessor<float, 2>();
 
@@ -391,7 +455,8 @@ int main(int argc, char **argv)
 
                         for (size_t k = 0; k < 12; k++)
                         {
-                            qDes[k] = default_joint_angles[k] + actions_accessor[0][net2joint_indexes[k]];
+                            float action = actions_accessor[0][net2joint_indexes[k]]; // Получаем значение как float
+                            qDes[k] = default_joint_angles[k] + action;
                         }
                     }
                 }

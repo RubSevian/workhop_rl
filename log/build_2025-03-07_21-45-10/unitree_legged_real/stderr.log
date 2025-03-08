@@ -1,0 +1,14 @@
+[0m-- CMAKE_SYSTEM_PROCESSOR: x86_64[0m
+[31mCMake Error at CMakeLists.txt:73 (add_executable):
+  add_executable cannot create target "ros2_rl" because another target with
+  the same name already exists.  The existing target is an executable created
+  in source directory "/home/ruben/workhop_rl/src/unitree_ros2_to_real".  See
+  documentation for policy CMP0002 for more details.
+
+[0m
+[31mCMake Error at CMakeLists.txt:74 (target_link_libraries):
+  Cannot specify link libraries for target "ros2_rl_control" which is not
+  built by this project.
+
+[0m
+gmake: *** [Makefile:431: cmake_check_build_system] Error 1

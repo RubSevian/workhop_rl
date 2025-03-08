@@ -1,0 +1,10 @@
+[01m[K/home/ruben/workhop_rl/src/unitree_ros2_to_real/src/ros2_rl.cpp:83:1:[m[K [01;31m[Kerror: [m[K‘[01m[KAgrnt[m[K’ does not name a type; did you mean ‘[01m[KAgent[m[K’?
+   83 | [01;31m[KAgrnt[m[K.InitObservations();
+      | [01;31m[K^~~~~[m[K
+      | [32m[KAgent[m[K
+[01m[K/home/ruben/workhop_rl/src/unitree_ros2_to_real/src/ros2_rl.cpp:84:6:[m[K [01;31m[Kerror: [m[Kexpected unqualified-id before ‘[01m[K.[m[K’ token
+   84 | Agent[01;31m[K.[m[KInitOutputs();
+      |      [01;31m[K^[m[K
+gmake[2]: *** [CMakeFiles/ros2_rl.dir/build.make:76: CMakeFiles/ros2_rl.dir/src/ros2_rl.cpp.o] Error 1
+gmake[1]: *** [CMakeFiles/Makefile2:251: CMakeFiles/ros2_rl.dir/all] Error 2
+gmake: *** [Makefile:146: all] Error 2

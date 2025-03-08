@@ -1,0 +1,269 @@
+[0.049s] DEBUG:colcon:Command line arguments: ['/usr/bin/colcon', 'build']
+[0.049s] DEBUG:colcon:Parsed command line arguments: Namespace(log_base=None, log_level=None, verb_name='build', build_base='build', install_base='install', merge_install=False, symlink_install=False, test_result_base=None, continue_on_error=False, executor='parallel', parallel_workers=20, event_handlers=None, ignore_user_meta=False, metas=['./colcon.meta'], base_paths=['.'], packages_ignore=None, packages_ignore_regex=None, paths=None, packages_up_to=None, packages_up_to_regex=None, packages_above=None, packages_above_and_dependencies=None, packages_above_depth=None, packages_select_by_dep=None, packages_skip_by_dep=None, packages_skip_up_to=None, packages_select_build_failed=False, packages_skip_build_finished=False, packages_select_test_failures=False, packages_skip_test_passed=False, packages_select=None, packages_skip=None, packages_select_regex=None, packages_skip_regex=None, packages_start=None, packages_end=None, allow_overriding=[], cmake_args=None, cmake_target=None, cmake_target_skip_unavailable=False, cmake_clean_cache=False, cmake_clean_first=False, cmake_force_configure=False, ament_cmake_args=None, catkin_cmake_args=None, catkin_skip_building_tests=False, mixin_files=None, mixin=None, verb_parser=<colcon_mixin.mixin.mixin_argument.MixinArgumentDecorator object at 0x7db3d3f65600>, verb_extension=<colcon_core.verb.build.BuildVerb object at 0x7db3d3f65090>, main=<bound method BuildVerb.main of <colcon_core.verb.build.BuildVerb object at 0x7db3d3f65090>>, mixin_verb=('build',))
+[0.120s] Level 1:colcon.colcon_core.package_discovery:discover_packages(colcon_meta) check parameters
+[0.120s] Level 1:colcon.colcon_core.package_discovery:discover_packages(recursive) check parameters
+[0.120s] Level 1:colcon.colcon_core.package_discovery:discover_packages(ignore) check parameters
+[0.121s] Level 1:colcon.colcon_core.package_discovery:discover_packages(path) check parameters
+[0.121s] Level 1:colcon.colcon_core.package_discovery:discover_packages(colcon_meta) discover
+[0.121s] Level 1:colcon.colcon_core.package_discovery:discover_packages(recursive) discover
+[0.121s] INFO:colcon.colcon_core.package_discovery:Crawling recursively for packages in '/home/ruben/workhop_rl'
+[0.121s] Level 1:colcon.colcon_core.package_identification:_identify(.) by extensions ['ignore', 'ignore_ament_install']
+[0.121s] Level 1:colcon.colcon_core.package_identification:_identify(.) by extension 'ignore'
+[0.121s] Level 1:colcon.colcon_core.package_identification:_identify(.) by extension 'ignore_ament_install'
+[0.121s] Level 1:colcon.colcon_core.package_identification:_identify(.) by extensions ['colcon_pkg']
+[0.121s] Level 1:colcon.colcon_core.package_identification:_identify(.) by extension 'colcon_pkg'
+[0.121s] Level 1:colcon.colcon_core.package_identification:_identify(.) by extensions ['colcon_meta']
+[0.121s] Level 1:colcon.colcon_core.package_identification:_identify(.) by extension 'colcon_meta'
+[0.121s] Level 1:colcon.colcon_core.package_identification:_identify(.) by extensions ['ros']
+[0.121s] Level 1:colcon.colcon_core.package_identification:_identify(.) by extension 'ros'
+[0.126s] Level 1:colcon.colcon_core.package_identification:_identify(.) by extensions ['cmake', 'python']
+[0.126s] Level 1:colcon.colcon_core.package_identification:_identify(.) by extension 'cmake'
+[0.126s] Level 1:colcon.colcon_core.package_identification:_identify(.) by extension 'python'
+[0.126s] Level 1:colcon.colcon_core.package_identification:_identify(.) by extensions ['python_setup_py']
+[0.126s] Level 1:colcon.colcon_core.package_identification:_identify(.) by extension 'python_setup_py'
+[0.126s] Level 1:colcon.colcon_core.package_identification:_identify(build) by extensions ['ignore', 'ignore_ament_install']
+[0.126s] Level 1:colcon.colcon_core.package_identification:_identify(build) by extension 'ignore'
+[0.126s] Level 1:colcon.colcon_core.package_identification:_identify(build) ignored
+[0.126s] Level 1:colcon.colcon_core.package_identification:_identify(install) by extensions ['ignore', 'ignore_ament_install']
+[0.126s] Level 1:colcon.colcon_core.package_identification:_identify(install) by extension 'ignore'
+[0.126s] Level 1:colcon.colcon_core.package_identification:_identify(install) ignored
+[0.126s] Level 1:colcon.colcon_core.package_identification:_identify(log) by extensions ['ignore', 'ignore_ament_install']
+[0.126s] Level 1:colcon.colcon_core.package_identification:_identify(log) by extension 'ignore'
+[0.126s] Level 1:colcon.colcon_core.package_identification:_identify(log) ignored
+[0.127s] Level 1:colcon.colcon_core.package_identification:_identify(src) by extensions ['ignore', 'ignore_ament_install']
+[0.127s] Level 1:colcon.colcon_core.package_identification:_identify(src) by extension 'ignore'
+[0.127s] Level 1:colcon.colcon_core.package_identification:_identify(src) by extension 'ignore_ament_install'
+[0.127s] Level 1:colcon.colcon_core.package_identification:_identify(src) by extensions ['colcon_pkg']
+[0.127s] Level 1:colcon.colcon_core.package_identification:_identify(src) by extension 'colcon_pkg'
+[0.127s] Level 1:colcon.colcon_core.package_identification:_identify(src) by extensions ['colcon_meta']
+[0.127s] Level 1:colcon.colcon_core.package_identification:_identify(src) by extension 'colcon_meta'
+[0.127s] Level 1:colcon.colcon_core.package_identification:_identify(src) by extensions ['ros']
+[0.127s] Level 1:colcon.colcon_core.package_identification:_identify(src) by extension 'ros'
+[0.127s] Level 1:colcon.colcon_core.package_identification:_identify(src) by extensions ['cmake', 'python']
+[0.127s] Level 1:colcon.colcon_core.package_identification:_identify(src) by extension 'cmake'
+[0.127s] Level 1:colcon.colcon_core.package_identification:_identify(src) by extension 'python'
+[0.127s] Level 1:colcon.colcon_core.package_identification:_identify(src) by extensions ['python_setup_py']
+[0.127s] Level 1:colcon.colcon_core.package_identification:_identify(src) by extension 'python_setup_py'
+[0.127s] Level 1:colcon.colcon_core.package_identification:_identify(src/ros2_unitree_legged_msgs) by extensions ['ignore', 'ignore_ament_install']
+[0.127s] Level 1:colcon.colcon_core.package_identification:_identify(src/ros2_unitree_legged_msgs) by extension 'ignore'
+[0.127s] Level 1:colcon.colcon_core.package_identification:_identify(src/ros2_unitree_legged_msgs) by extension 'ignore_ament_install'
+[0.127s] Level 1:colcon.colcon_core.package_identification:_identify(src/ros2_unitree_legged_msgs) by extensions ['colcon_pkg']
+[0.127s] Level 1:colcon.colcon_core.package_identification:_identify(src/ros2_unitree_legged_msgs) by extension 'colcon_pkg'
+[0.127s] Level 1:colcon.colcon_core.package_identification:_identify(src/ros2_unitree_legged_msgs) by extensions ['colcon_meta']
+[0.127s] Level 1:colcon.colcon_core.package_identification:_identify(src/ros2_unitree_legged_msgs) by extension 'colcon_meta'
+[0.127s] Level 1:colcon.colcon_core.package_identification:_identify(src/ros2_unitree_legged_msgs) by extensions ['ros']
+[0.127s] Level 1:colcon.colcon_core.package_identification:_identify(src/ros2_unitree_legged_msgs) by extension 'ros'
+[0.128s] DEBUG:colcon.colcon_core.package_identification:Package 'src/ros2_unitree_legged_msgs' with type 'ros.ament_cmake' and name 'ros2_unitree_legged_msgs'
+[0.128s] Level 1:colcon.colcon_core.package_identification:_identify(src/unitree_rl_controller-ros2) by extensions ['ignore', 'ignore_ament_install']
+[0.128s] Level 1:colcon.colcon_core.package_identification:_identify(src/unitree_rl_controller-ros2) by extension 'ignore'
+[0.128s] Level 1:colcon.colcon_core.package_identification:_identify(src/unitree_rl_controller-ros2) by extension 'ignore_ament_install'
+[0.128s] Level 1:colcon.colcon_core.package_identification:_identify(src/unitree_rl_controller-ros2) by extensions ['colcon_pkg']
+[0.128s] Level 1:colcon.colcon_core.package_identification:_identify(src/unitree_rl_controller-ros2) by extension 'colcon_pkg'
+[0.128s] Level 1:colcon.colcon_core.package_identification:_identify(src/unitree_rl_controller-ros2) by extensions ['colcon_meta']
+[0.128s] Level 1:colcon.colcon_core.package_identification:_identify(src/unitree_rl_controller-ros2) by extension 'colcon_meta'
+[0.128s] Level 1:colcon.colcon_core.package_identification:_identify(src/unitree_rl_controller-ros2) by extensions ['ros']
+[0.128s] Level 1:colcon.colcon_core.package_identification:_identify(src/unitree_rl_controller-ros2) by extension 'ros'
+[0.129s] DEBUG:colcon.colcon_core.package_identification:Package 'src/unitree_rl_controller-ros2' with type 'ros.ament_cmake' and name 'unitree_rl_controller'
+[0.129s] Level 1:colcon.colcon_core.package_identification:_identify(src/unitree_ros2_to_real) by extensions ['ignore', 'ignore_ament_install']
+[0.129s] Level 1:colcon.colcon_core.package_identification:_identify(src/unitree_ros2_to_real) by extension 'ignore'
+[0.129s] Level 1:colcon.colcon_core.package_identification:_identify(src/unitree_ros2_to_real) by extension 'ignore_ament_install'
+[0.129s] Level 1:colcon.colcon_core.package_identification:_identify(src/unitree_ros2_to_real) by extensions ['colcon_pkg']
+[0.129s] Level 1:colcon.colcon_core.package_identification:_identify(src/unitree_ros2_to_real) by extension 'colcon_pkg'
+[0.129s] Level 1:colcon.colcon_core.package_identification:_identify(src/unitree_ros2_to_real) by extensions ['colcon_meta']
+[0.129s] Level 1:colcon.colcon_core.package_identification:_identify(src/unitree_ros2_to_real) by extension 'colcon_meta'
+[0.129s] Level 1:colcon.colcon_core.package_identification:_identify(src/unitree_ros2_to_real) by extensions ['ros']
+[0.129s] Level 1:colcon.colcon_core.package_identification:_identify(src/unitree_ros2_to_real) by extension 'ros'
+[0.129s] DEBUG:colcon.colcon_core.package_identification:Package 'src/unitree_ros2_to_real' with type 'ros.ament_cmake' and name 'unitree_legged_real'
+[0.129s] Level 1:colcon.colcon_core.package_discovery:discover_packages(recursive) using defaults
+[0.129s] Level 1:colcon.colcon_core.package_discovery:discover_packages(ignore) discover
+[0.129s] Level 1:colcon.colcon_core.package_discovery:discover_packages(ignore) using defaults
+[0.129s] Level 1:colcon.colcon_core.package_discovery:discover_packages(path) discover
+[0.129s] Level 1:colcon.colcon_core.package_discovery:discover_packages(path) using defaults
+[0.144s] Level 1:colcon.colcon_core.package_discovery:discover_packages(prefix_path) check parameters
+[0.144s] Level 1:colcon.colcon_core.package_discovery:discover_packages(prefix_path) discover
+[0.144s] DEBUG:colcon.colcon_installed_package_information.package_discovery:Found 3 installed packages in /home/ruben/workhop_rl/install
+[0.145s] DEBUG:colcon.colcon_installed_package_information.package_discovery:Found 319 installed packages in /opt/ros/humble
+[0.146s] Level 1:colcon.colcon_core.package_discovery:discover_packages(prefix_path) using defaults
+[0.163s] Level 5:colcon.colcon_core.verb:set package 'ros2_unitree_legged_msgs' build argument 'cmake_args' from command line to 'None'
+[0.163s] Level 5:colcon.colcon_core.verb:set package 'ros2_unitree_legged_msgs' build argument 'cmake_target' from command line to 'None'
+[0.163s] Level 5:colcon.colcon_core.verb:set package 'ros2_unitree_legged_msgs' build argument 'cmake_target_skip_unavailable' from command line to 'False'
+[0.163s] Level 5:colcon.colcon_core.verb:set package 'ros2_unitree_legged_msgs' build argument 'cmake_clean_cache' from command line to 'False'
+[0.163s] Level 5:colcon.colcon_core.verb:set package 'ros2_unitree_legged_msgs' build argument 'cmake_clean_first' from command line to 'False'
+[0.163s] Level 5:colcon.colcon_core.verb:set package 'ros2_unitree_legged_msgs' build argument 'cmake_force_configure' from command line to 'False'
+[0.163s] Level 5:colcon.colcon_core.verb:set package 'ros2_unitree_legged_msgs' build argument 'ament_cmake_args' from command line to 'None'
+[0.163s] Level 5:colcon.colcon_core.verb:set package 'ros2_unitree_legged_msgs' build argument 'catkin_cmake_args' from command line to 'None'
+[0.163s] Level 5:colcon.colcon_core.verb:set package 'ros2_unitree_legged_msgs' build argument 'catkin_skip_building_tests' from command line to 'False'
+[0.163s] DEBUG:colcon.colcon_core.verb:Building package 'ros2_unitree_legged_msgs' with the following arguments: {'ament_cmake_args': None, 'build_base': '/home/ruben/workhop_rl/build/ros2_unitree_legged_msgs', 'catkin_cmake_args': None, 'catkin_skip_building_tests': False, 'cmake_args': None, 'cmake_clean_cache': False, 'cmake_clean_first': False, 'cmake_force_configure': False, 'cmake_target': None, 'cmake_target_skip_unavailable': False, 'install_base': '/home/ruben/workhop_rl/install/ros2_unitree_legged_msgs', 'merge_install': False, 'path': '/home/ruben/workhop_rl/src/ros2_unitree_legged_msgs', 'symlink_install': False, 'test_result_base': None}
+[0.163s] Level 5:colcon.colcon_core.verb:set package 'unitree_rl_controller' build argument 'cmake_args' from command line to 'None'
+[0.163s] Level 5:colcon.colcon_core.verb:set package 'unitree_rl_controller' build argument 'cmake_target' from command line to 'None'
+[0.163s] Level 5:colcon.colcon_core.verb:set package 'unitree_rl_controller' build argument 'cmake_target_skip_unavailable' from command line to 'False'
+[0.163s] Level 5:colcon.colcon_core.verb:set package 'unitree_rl_controller' build argument 'cmake_clean_cache' from command line to 'False'
+[0.163s] Level 5:colcon.colcon_core.verb:set package 'unitree_rl_controller' build argument 'cmake_clean_first' from command line to 'False'
+[0.163s] Level 5:colcon.colcon_core.verb:set package 'unitree_rl_controller' build argument 'cmake_force_configure' from command line to 'False'
+[0.163s] Level 5:colcon.colcon_core.verb:set package 'unitree_rl_controller' build argument 'ament_cmake_args' from command line to 'None'
+[0.163s] Level 5:colcon.colcon_core.verb:set package 'unitree_rl_controller' build argument 'catkin_cmake_args' from command line to 'None'
+[0.164s] Level 5:colcon.colcon_core.verb:set package 'unitree_rl_controller' build argument 'catkin_skip_building_tests' from command line to 'False'
+[0.164s] DEBUG:colcon.colcon_core.verb:Building package 'unitree_rl_controller' with the following arguments: {'ament_cmake_args': None, 'build_base': '/home/ruben/workhop_rl/build/unitree_rl_controller', 'catkin_cmake_args': None, 'catkin_skip_building_tests': False, 'cmake_args': None, 'cmake_clean_cache': False, 'cmake_clean_first': False, 'cmake_force_configure': False, 'cmake_target': None, 'cmake_target_skip_unavailable': False, 'install_base': '/home/ruben/workhop_rl/install/unitree_rl_controller', 'merge_install': False, 'path': '/home/ruben/workhop_rl/src/unitree_rl_controller-ros2', 'symlink_install': False, 'test_result_base': None}
+[0.164s] Level 5:colcon.colcon_core.verb:set package 'unitree_legged_real' build argument 'cmake_args' from command line to 'None'
+[0.164s] Level 5:colcon.colcon_core.verb:set package 'unitree_legged_real' build argument 'cmake_target' from command line to 'None'
+[0.164s] Level 5:colcon.colcon_core.verb:set package 'unitree_legged_real' build argument 'cmake_target_skip_unavailable' from command line to 'False'
+[0.164s] Level 5:colcon.colcon_core.verb:set package 'unitree_legged_real' build argument 'cmake_clean_cache' from command line to 'False'
+[0.164s] Level 5:colcon.colcon_core.verb:set package 'unitree_legged_real' build argument 'cmake_clean_first' from command line to 'False'
+[0.164s] Level 5:colcon.colcon_core.verb:set package 'unitree_legged_real' build argument 'cmake_force_configure' from command line to 'False'
+[0.164s] Level 5:colcon.colcon_core.verb:set package 'unitree_legged_real' build argument 'ament_cmake_args' from command line to 'None'
+[0.164s] Level 5:colcon.colcon_core.verb:set package 'unitree_legged_real' build argument 'catkin_cmake_args' from command line to 'None'
+[0.164s] Level 5:colcon.colcon_core.verb:set package 'unitree_legged_real' build argument 'catkin_skip_building_tests' from command line to 'False'
+[0.164s] DEBUG:colcon.colcon_core.verb:Building package 'unitree_legged_real' with the following arguments: {'ament_cmake_args': None, 'build_base': '/home/ruben/workhop_rl/build/unitree_legged_real', 'catkin_cmake_args': None, 'catkin_skip_building_tests': False, 'cmake_args': None, 'cmake_clean_cache': False, 'cmake_clean_first': False, 'cmake_force_configure': False, 'cmake_target': None, 'cmake_target_skip_unavailable': False, 'install_base': '/home/ruben/workhop_rl/install/unitree_legged_real', 'merge_install': False, 'path': '/home/ruben/workhop_rl/src/unitree_ros2_to_real', 'symlink_install': False, 'test_result_base': None}
+[0.164s] INFO:colcon.colcon_core.executor:Executing jobs using 'parallel' executor
+[0.164s] DEBUG:colcon.colcon_parallel_executor.executor.parallel:run_until_complete
+[0.164s] INFO:colcon.colcon_ros.task.ament_cmake.build:Building ROS package in '/home/ruben/workhop_rl/src/ros2_unitree_legged_msgs' with build type 'ament_cmake'
+[0.165s] INFO:colcon.colcon_cmake.task.cmake.build:Building CMake package in '/home/ruben/workhop_rl/src/ros2_unitree_legged_msgs'
+[0.165s] INFO:colcon.colcon_core.plugin_system:Skipping extension 'colcon_core.shell.bat': Not used on non-Windows systems
+[0.166s] INFO:colcon.colcon_core.shell:Skip shell extension 'powershell' for command environment: Not usable outside of PowerShell
+[0.166s] DEBUG:colcon.colcon_core.shell:Skip shell extension 'dsv' for command environment
+[0.171s] DEBUG:colcon.colcon_core.event_handler.log_command:Invoking command in '/home/ruben/workhop_rl/build/ros2_unitree_legged_msgs': CMAKE_PREFIX_PATH=${CMAKE_PREFIX_PATH}:/opt/ros/humble /usr/bin/cmake --build /home/ruben/workhop_rl/build/ros2_unitree_legged_msgs -- -j20 -l20
+[0.340s] DEBUG:colcon.colcon_core.event_handler.log_command:Invoked command in '/home/ruben/workhop_rl/build/ros2_unitree_legged_msgs' returned '0': CMAKE_PREFIX_PATH=${CMAKE_PREFIX_PATH}:/opt/ros/humble /usr/bin/cmake --build /home/ruben/workhop_rl/build/ros2_unitree_legged_msgs -- -j20 -l20
+[0.345s] DEBUG:colcon.colcon_core.event_handler.log_command:Invoking command in '/home/ruben/workhop_rl/build/ros2_unitree_legged_msgs': CMAKE_PREFIX_PATH=${CMAKE_PREFIX_PATH}:/opt/ros/humble /usr/bin/cmake --install /home/ruben/workhop_rl/build/ros2_unitree_legged_msgs
+[0.375s] Level 1:colcon.colcon_core.environment:create_environment_scripts_only(ros2_unitree_legged_msgs)
+[0.376s] DEBUG:colcon.colcon_core.event_handler.log_command:Invoked command in '/home/ruben/workhop_rl/build/ros2_unitree_legged_msgs' returned '0': CMAKE_PREFIX_PATH=${CMAKE_PREFIX_PATH}:/opt/ros/humble /usr/bin/cmake --install /home/ruben/workhop_rl/build/ros2_unitree_legged_msgs
+[0.377s] Level 1:colcon.colcon_core.environment:checking '/home/ruben/workhop_rl/install/ros2_unitree_legged_msgs' for CMake module files
+[0.377s] Level 1:colcon.colcon_core.environment:checking '/home/ruben/workhop_rl/install/ros2_unitree_legged_msgs' for CMake config files
+[0.377s] Level 1:colcon.colcon_core.shell:create_environment_hook('ros2_unitree_legged_msgs', 'cmake_prefix_path')
+[0.377s] INFO:colcon.colcon_core.shell:Creating environment hook '/home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/share/ros2_unitree_legged_msgs/hook/cmake_prefix_path.ps1'
+[0.377s] INFO:colcon.colcon_core.shell:Creating environment descriptor '/home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/share/ros2_unitree_legged_msgs/hook/cmake_prefix_path.dsv'
+[0.378s] INFO:colcon.colcon_core.shell:Creating environment hook '/home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/share/ros2_unitree_legged_msgs/hook/cmake_prefix_path.sh'
+[0.378s] Level 1:colcon.colcon_core.environment:checking '/home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/lib'
+[0.378s] Level 1:colcon.colcon_core.shell:create_environment_hook('ros2_unitree_legged_msgs', 'ld_library_path_lib')
+[0.378s] INFO:colcon.colcon_core.shell:Creating environment hook '/home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/share/ros2_unitree_legged_msgs/hook/ld_library_path_lib.ps1'
+[0.378s] INFO:colcon.colcon_core.shell:Creating environment descriptor '/home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/share/ros2_unitree_legged_msgs/hook/ld_library_path_lib.dsv'
+[0.378s] INFO:colcon.colcon_core.shell:Creating environment hook '/home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/share/ros2_unitree_legged_msgs/hook/ld_library_path_lib.sh'
+[0.379s] Level 1:colcon.colcon_core.environment:checking '/home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/bin'
+[0.379s] Level 1:colcon.colcon_core.environment:checking '/home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/lib/pkgconfig/ros2_unitree_legged_msgs.pc'
+[0.379s] Level 1:colcon.colcon_core.environment:checking '/home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/lib/python3.10/site-packages'
+[0.379s] Level 1:colcon.colcon_core.environment:checking '/home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/bin'
+[0.379s] INFO:colcon.colcon_core.shell:Creating package script '/home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/share/ros2_unitree_legged_msgs/package.ps1'
+[0.379s] INFO:colcon.colcon_core.shell:Creating package descriptor '/home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/share/ros2_unitree_legged_msgs/package.dsv'
+[0.380s] INFO:colcon.colcon_core.shell:Creating package script '/home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/share/ros2_unitree_legged_msgs/package.sh'
+[0.380s] INFO:colcon.colcon_core.shell:Creating package script '/home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/share/ros2_unitree_legged_msgs/package.bash'
+[0.380s] INFO:colcon.colcon_core.shell:Creating package script '/home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/share/ros2_unitree_legged_msgs/package.zsh'
+[0.381s] Level 1:colcon.colcon_core.environment:create_file_with_runtime_dependencies(/home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/share/colcon-core/packages/ros2_unitree_legged_msgs)
+[0.381s] Level 1:colcon.colcon_core.environment:create_environment_scripts_only(ros2_unitree_legged_msgs)
+[0.381s] Level 1:colcon.colcon_core.environment:checking '/home/ruben/workhop_rl/install/ros2_unitree_legged_msgs' for CMake module files
+[0.381s] Level 1:colcon.colcon_core.environment:checking '/home/ruben/workhop_rl/install/ros2_unitree_legged_msgs' for CMake config files
+[0.381s] Level 1:colcon.colcon_core.shell:create_environment_hook('ros2_unitree_legged_msgs', 'cmake_prefix_path')
+[0.381s] INFO:colcon.colcon_core.shell:Creating environment hook '/home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/share/ros2_unitree_legged_msgs/hook/cmake_prefix_path.ps1'
+[0.382s] INFO:colcon.colcon_core.shell:Creating environment descriptor '/home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/share/ros2_unitree_legged_msgs/hook/cmake_prefix_path.dsv'
+[0.382s] INFO:colcon.colcon_core.shell:Creating environment hook '/home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/share/ros2_unitree_legged_msgs/hook/cmake_prefix_path.sh'
+[0.382s] Level 1:colcon.colcon_core.environment:checking '/home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/lib'
+[0.382s] Level 1:colcon.colcon_core.shell:create_environment_hook('ros2_unitree_legged_msgs', 'ld_library_path_lib')
+[0.382s] INFO:colcon.colcon_core.shell:Creating environment hook '/home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/share/ros2_unitree_legged_msgs/hook/ld_library_path_lib.ps1'
+[0.382s] INFO:colcon.colcon_core.shell:Creating environment descriptor '/home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/share/ros2_unitree_legged_msgs/hook/ld_library_path_lib.dsv'
+[0.382s] INFO:colcon.colcon_core.shell:Creating environment hook '/home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/share/ros2_unitree_legged_msgs/hook/ld_library_path_lib.sh'
+[0.383s] Level 1:colcon.colcon_core.environment:checking '/home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/bin'
+[0.383s] Level 1:colcon.colcon_core.environment:checking '/home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/lib/pkgconfig/ros2_unitree_legged_msgs.pc'
+[0.383s] Level 1:colcon.colcon_core.environment:checking '/home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/lib/python3.10/site-packages'
+[0.383s] Level 1:colcon.colcon_core.environment:checking '/home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/bin'
+[0.383s] INFO:colcon.colcon_core.shell:Creating package script '/home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/share/ros2_unitree_legged_msgs/package.ps1'
+[0.383s] INFO:colcon.colcon_core.shell:Creating package descriptor '/home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/share/ros2_unitree_legged_msgs/package.dsv'
+[0.383s] INFO:colcon.colcon_core.shell:Creating package script '/home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/share/ros2_unitree_legged_msgs/package.sh'
+[0.384s] INFO:colcon.colcon_core.shell:Creating package script '/home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/share/ros2_unitree_legged_msgs/package.bash'
+[0.384s] INFO:colcon.colcon_core.shell:Creating package script '/home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/share/ros2_unitree_legged_msgs/package.zsh'
+[0.384s] Level 1:colcon.colcon_core.environment:create_file_with_runtime_dependencies(/home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/share/colcon-core/packages/ros2_unitree_legged_msgs)
+[0.384s] INFO:colcon.colcon_ros.task.ament_cmake.build:Building ROS package in '/home/ruben/workhop_rl/src/unitree_rl_controller-ros2' with build type 'ament_cmake'
+[0.384s] INFO:colcon.colcon_cmake.task.cmake.build:Building CMake package in '/home/ruben/workhop_rl/src/unitree_rl_controller-ros2'
+[0.384s] INFO:colcon.colcon_core.shell:Skip shell extension 'powershell' for command environment: Not usable outside of PowerShell
+[0.384s] DEBUG:colcon.colcon_core.shell:Skip shell extension 'dsv' for command environment
+[0.389s] DEBUG:colcon.colcon_core.event_handler.log_command:Invoking command in '/home/ruben/workhop_rl/build/unitree_rl_controller': CMAKE_PREFIX_PATH=/home/ruben/workhop_rl/install/ros2_unitree_legged_msgs:/home/ruben/workhop_rl/install/unitree_legged_real:/home/ruben/workhop_rl/install/unitree_rl_controller:/opt/ros/humble LD_LIBRARY_PATH=/home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/lib:/home/ruben/workhop_rl/install/unitree_legged_real/lib:/home/ruben/workhop_rl/install/unitree_rl_controller/lib:/usr/lib/x86_64-linux-gnu/gazebo-11/plugins:/opt/ros/humble/opt/rviz_ogre_vendor/lib:/opt/ros/humble/lib/x86_64-linux-gnu:/opt/ros/humble/lib:/usr/local/cuda-12.6/lib64:/home/ruben/workhop_rl/src/libtorch/lib/:/home/ruben/workhop_rl/src/libtorch/lib/:/home/ruben/libtorch/lib/ /usr/bin/cmake --build /home/ruben/workhop_rl/build/unitree_rl_controller -- -j20 -l20
+[0.444s] DEBUG:colcon.colcon_core.event_handler.log_command:Invoked command in '/home/ruben/workhop_rl/build/unitree_rl_controller' returned '0': CMAKE_PREFIX_PATH=/home/ruben/workhop_rl/install/ros2_unitree_legged_msgs:/home/ruben/workhop_rl/install/unitree_legged_real:/home/ruben/workhop_rl/install/unitree_rl_controller:/opt/ros/humble LD_LIBRARY_PATH=/home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/lib:/home/ruben/workhop_rl/install/unitree_legged_real/lib:/home/ruben/workhop_rl/install/unitree_rl_controller/lib:/usr/lib/x86_64-linux-gnu/gazebo-11/plugins:/opt/ros/humble/opt/rviz_ogre_vendor/lib:/opt/ros/humble/lib/x86_64-linux-gnu:/opt/ros/humble/lib:/usr/local/cuda-12.6/lib64:/home/ruben/workhop_rl/src/libtorch/lib/:/home/ruben/workhop_rl/src/libtorch/lib/:/home/ruben/libtorch/lib/ /usr/bin/cmake --build /home/ruben/workhop_rl/build/unitree_rl_controller -- -j20 -l20
+[0.445s] DEBUG:colcon.colcon_core.event_handler.log_command:Invoking command in '/home/ruben/workhop_rl/build/unitree_rl_controller': CMAKE_PREFIX_PATH=/home/ruben/workhop_rl/install/ros2_unitree_legged_msgs:/home/ruben/workhop_rl/install/unitree_legged_real:/home/ruben/workhop_rl/install/unitree_rl_controller:/opt/ros/humble LD_LIBRARY_PATH=/home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/lib:/home/ruben/workhop_rl/install/unitree_legged_real/lib:/home/ruben/workhop_rl/install/unitree_rl_controller/lib:/usr/lib/x86_64-linux-gnu/gazebo-11/plugins:/opt/ros/humble/opt/rviz_ogre_vendor/lib:/opt/ros/humble/lib/x86_64-linux-gnu:/opt/ros/humble/lib:/usr/local/cuda-12.6/lib64:/home/ruben/workhop_rl/src/libtorch/lib/:/home/ruben/workhop_rl/src/libtorch/lib/:/home/ruben/libtorch/lib/ /usr/bin/cmake --install /home/ruben/workhop_rl/build/unitree_rl_controller
+[0.450s] Level 1:colcon.colcon_core.environment:create_environment_scripts_only(unitree_rl_controller)
+[0.450s] Level 1:colcon.colcon_core.environment:checking '/home/ruben/workhop_rl/install/unitree_rl_controller' for CMake module files
+[0.450s] DEBUG:colcon.colcon_core.event_handler.log_command:Invoked command in '/home/ruben/workhop_rl/build/unitree_rl_controller' returned '0': CMAKE_PREFIX_PATH=/home/ruben/workhop_rl/install/ros2_unitree_legged_msgs:/home/ruben/workhop_rl/install/unitree_legged_real:/home/ruben/workhop_rl/install/unitree_rl_controller:/opt/ros/humble LD_LIBRARY_PATH=/home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/lib:/home/ruben/workhop_rl/install/unitree_legged_real/lib:/home/ruben/workhop_rl/install/unitree_rl_controller/lib:/usr/lib/x86_64-linux-gnu/gazebo-11/plugins:/opt/ros/humble/opt/rviz_ogre_vendor/lib:/opt/ros/humble/lib/x86_64-linux-gnu:/opt/ros/humble/lib:/usr/local/cuda-12.6/lib64:/home/ruben/workhop_rl/src/libtorch/lib/:/home/ruben/workhop_rl/src/libtorch/lib/:/home/ruben/libtorch/lib/ /usr/bin/cmake --install /home/ruben/workhop_rl/build/unitree_rl_controller
+[0.450s] Level 1:colcon.colcon_core.environment:checking '/home/ruben/workhop_rl/install/unitree_rl_controller' for CMake config files
+[0.450s] Level 1:colcon.colcon_core.shell:create_environment_hook('unitree_rl_controller', 'cmake_prefix_path')
+[0.450s] INFO:colcon.colcon_core.shell:Creating environment hook '/home/ruben/workhop_rl/install/unitree_rl_controller/share/unitree_rl_controller/hook/cmake_prefix_path.ps1'
+[0.451s] INFO:colcon.colcon_core.shell:Creating environment descriptor '/home/ruben/workhop_rl/install/unitree_rl_controller/share/unitree_rl_controller/hook/cmake_prefix_path.dsv'
+[0.451s] INFO:colcon.colcon_core.shell:Creating environment hook '/home/ruben/workhop_rl/install/unitree_rl_controller/share/unitree_rl_controller/hook/cmake_prefix_path.sh'
+[0.451s] Level 1:colcon.colcon_core.environment:checking '/home/ruben/workhop_rl/install/unitree_rl_controller/lib'
+[0.451s] Level 1:colcon.colcon_core.shell:create_environment_hook('unitree_rl_controller', 'ld_library_path_lib')
+[0.451s] INFO:colcon.colcon_core.shell:Creating environment hook '/home/ruben/workhop_rl/install/unitree_rl_controller/share/unitree_rl_controller/hook/ld_library_path_lib.ps1'
+[0.451s] INFO:colcon.colcon_core.shell:Creating environment descriptor '/home/ruben/workhop_rl/install/unitree_rl_controller/share/unitree_rl_controller/hook/ld_library_path_lib.dsv'
+[0.451s] INFO:colcon.colcon_core.shell:Creating environment hook '/home/ruben/workhop_rl/install/unitree_rl_controller/share/unitree_rl_controller/hook/ld_library_path_lib.sh'
+[0.452s] Level 1:colcon.colcon_core.environment:checking '/home/ruben/workhop_rl/install/unitree_rl_controller/bin'
+[0.452s] Level 1:colcon.colcon_core.environment:checking '/home/ruben/workhop_rl/install/unitree_rl_controller/lib/pkgconfig/unitree_rl_controller.pc'
+[0.452s] Level 1:colcon.colcon_core.environment:checking '/home/ruben/workhop_rl/install/unitree_rl_controller/lib/python3.10/site-packages'
+[0.452s] Level 1:colcon.colcon_core.environment:checking '/home/ruben/workhop_rl/install/unitree_rl_controller/bin'
+[0.452s] INFO:colcon.colcon_core.shell:Creating package script '/home/ruben/workhop_rl/install/unitree_rl_controller/share/unitree_rl_controller/package.ps1'
+[0.452s] INFO:colcon.colcon_core.shell:Creating package descriptor '/home/ruben/workhop_rl/install/unitree_rl_controller/share/unitree_rl_controller/package.dsv'
+[0.452s] INFO:colcon.colcon_core.shell:Creating package script '/home/ruben/workhop_rl/install/unitree_rl_controller/share/unitree_rl_controller/package.sh'
+[0.453s] INFO:colcon.colcon_core.shell:Creating package script '/home/ruben/workhop_rl/install/unitree_rl_controller/share/unitree_rl_controller/package.bash'
+[0.453s] INFO:colcon.colcon_core.shell:Creating package script '/home/ruben/workhop_rl/install/unitree_rl_controller/share/unitree_rl_controller/package.zsh'
+[0.453s] Level 1:colcon.colcon_core.environment:create_file_with_runtime_dependencies(/home/ruben/workhop_rl/install/unitree_rl_controller/share/colcon-core/packages/unitree_rl_controller)
+[0.453s] Level 1:colcon.colcon_core.environment:create_environment_scripts_only(unitree_rl_controller)
+[0.453s] Level 1:colcon.colcon_core.environment:checking '/home/ruben/workhop_rl/install/unitree_rl_controller' for CMake module files
+[0.453s] Level 1:colcon.colcon_core.environment:checking '/home/ruben/workhop_rl/install/unitree_rl_controller' for CMake config files
+[0.453s] Level 1:colcon.colcon_core.shell:create_environment_hook('unitree_rl_controller', 'cmake_prefix_path')
+[0.453s] INFO:colcon.colcon_core.shell:Creating environment hook '/home/ruben/workhop_rl/install/unitree_rl_controller/share/unitree_rl_controller/hook/cmake_prefix_path.ps1'
+[0.454s] INFO:colcon.colcon_core.shell:Creating environment descriptor '/home/ruben/workhop_rl/install/unitree_rl_controller/share/unitree_rl_controller/hook/cmake_prefix_path.dsv'
+[0.454s] INFO:colcon.colcon_core.shell:Creating environment hook '/home/ruben/workhop_rl/install/unitree_rl_controller/share/unitree_rl_controller/hook/cmake_prefix_path.sh'
+[0.454s] Level 1:colcon.colcon_core.environment:checking '/home/ruben/workhop_rl/install/unitree_rl_controller/lib'
+[0.454s] Level 1:colcon.colcon_core.shell:create_environment_hook('unitree_rl_controller', 'ld_library_path_lib')
+[0.454s] INFO:colcon.colcon_core.shell:Creating environment hook '/home/ruben/workhop_rl/install/unitree_rl_controller/share/unitree_rl_controller/hook/ld_library_path_lib.ps1'
+[0.454s] INFO:colcon.colcon_core.shell:Creating environment descriptor '/home/ruben/workhop_rl/install/unitree_rl_controller/share/unitree_rl_controller/hook/ld_library_path_lib.dsv'
+[0.454s] INFO:colcon.colcon_core.shell:Creating environment hook '/home/ruben/workhop_rl/install/unitree_rl_controller/share/unitree_rl_controller/hook/ld_library_path_lib.sh'
+[0.455s] Level 1:colcon.colcon_core.environment:checking '/home/ruben/workhop_rl/install/unitree_rl_controller/bin'
+[0.455s] Level 1:colcon.colcon_core.environment:checking '/home/ruben/workhop_rl/install/unitree_rl_controller/lib/pkgconfig/unitree_rl_controller.pc'
+[0.455s] Level 1:colcon.colcon_core.environment:checking '/home/ruben/workhop_rl/install/unitree_rl_controller/lib/python3.10/site-packages'
+[0.455s] Level 1:colcon.colcon_core.environment:checking '/home/ruben/workhop_rl/install/unitree_rl_controller/bin'
+[0.455s] INFO:colcon.colcon_core.shell:Creating package script '/home/ruben/workhop_rl/install/unitree_rl_controller/share/unitree_rl_controller/package.ps1'
+[0.455s] INFO:colcon.colcon_core.shell:Creating package descriptor '/home/ruben/workhop_rl/install/unitree_rl_controller/share/unitree_rl_controller/package.dsv'
+[0.455s] INFO:colcon.colcon_core.shell:Creating package script '/home/ruben/workhop_rl/install/unitree_rl_controller/share/unitree_rl_controller/package.sh'
+[0.456s] INFO:colcon.colcon_core.shell:Creating package script '/home/ruben/workhop_rl/install/unitree_rl_controller/share/unitree_rl_controller/package.bash'
+[0.456s] INFO:colcon.colcon_core.shell:Creating package script '/home/ruben/workhop_rl/install/unitree_rl_controller/share/unitree_rl_controller/package.zsh'
+[0.456s] Level 1:colcon.colcon_core.environment:create_file_with_runtime_dependencies(/home/ruben/workhop_rl/install/unitree_rl_controller/share/colcon-core/packages/unitree_rl_controller)
+[0.456s] INFO:colcon.colcon_ros.task.ament_cmake.build:Building ROS package in '/home/ruben/workhop_rl/src/unitree_ros2_to_real' with build type 'ament_cmake'
+[0.456s] INFO:colcon.colcon_cmake.task.cmake.build:Building CMake package in '/home/ruben/workhop_rl/src/unitree_ros2_to_real'
+[0.456s] INFO:colcon.colcon_core.shell:Skip shell extension 'powershell' for command environment: Not usable outside of PowerShell
+[0.456s] DEBUG:colcon.colcon_core.shell:Skip shell extension 'dsv' for command environment
+[0.463s] DEBUG:colcon.colcon_core.event_handler.log_command:Invoking command in '/home/ruben/workhop_rl/build/unitree_legged_real': CMAKE_PREFIX_PATH=/home/ruben/workhop_rl/install/unitree_rl_controller:/home/ruben/workhop_rl/install/ros2_unitree_legged_msgs:/home/ruben/workhop_rl/install/unitree_legged_real:/opt/ros/humble LD_LIBRARY_PATH=/home/ruben/workhop_rl/install/unitree_rl_controller/lib:/home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/lib:/home/ruben/workhop_rl/install/unitree_legged_real/lib:/usr/lib/x86_64-linux-gnu/gazebo-11/plugins:/opt/ros/humble/opt/rviz_ogre_vendor/lib:/opt/ros/humble/lib/x86_64-linux-gnu:/opt/ros/humble/lib:/usr/local/cuda-12.6/lib64:/home/ruben/workhop_rl/src/libtorch/lib/:/home/ruben/workhop_rl/src/libtorch/lib/:/home/ruben/libtorch/lib/ /usr/bin/cmake --build /home/ruben/workhop_rl/build/unitree_legged_real -- -j20 -l20
+[0.715s] DEBUG:colcon.colcon_core.event_handler.log_command:Invoked command in '/home/ruben/workhop_rl/build/unitree_legged_real' returned '2': CMAKE_PREFIX_PATH=/home/ruben/workhop_rl/install/unitree_rl_controller:/home/ruben/workhop_rl/install/ros2_unitree_legged_msgs:/home/ruben/workhop_rl/install/unitree_legged_real:/opt/ros/humble LD_LIBRARY_PATH=/home/ruben/workhop_rl/install/unitree_rl_controller/lib:/home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/lib:/home/ruben/workhop_rl/install/unitree_legged_real/lib:/usr/lib/x86_64-linux-gnu/gazebo-11/plugins:/opt/ros/humble/opt/rviz_ogre_vendor/lib:/opt/ros/humble/lib/x86_64-linux-gnu:/opt/ros/humble/lib:/usr/local/cuda-12.6/lib64:/home/ruben/workhop_rl/src/libtorch/lib/:/home/ruben/workhop_rl/src/libtorch/lib/:/home/ruben/libtorch/lib/ /usr/bin/cmake --build /home/ruben/workhop_rl/build/unitree_legged_real -- -j20 -l20
+[0.716s] Level 1:colcon.colcon_core.environment:create_environment_scripts_only(unitree_legged_real)
+[0.716s] Level 1:colcon.colcon_core.environment:checking '/home/ruben/workhop_rl/install/unitree_legged_real' for CMake module files
+[0.716s] Level 1:colcon.colcon_core.environment:checking '/home/ruben/workhop_rl/install/unitree_legged_real' for CMake config files
+[0.716s] Level 1:colcon.colcon_core.shell:create_environment_hook('unitree_legged_real', 'cmake_prefix_path')
+[0.716s] INFO:colcon.colcon_core.shell:Creating environment hook '/home/ruben/workhop_rl/install/unitree_legged_real/share/unitree_legged_real/hook/cmake_prefix_path.ps1'
+[0.716s] INFO:colcon.colcon_core.shell:Creating environment descriptor '/home/ruben/workhop_rl/install/unitree_legged_real/share/unitree_legged_real/hook/cmake_prefix_path.dsv'
+[0.717s] INFO:colcon.colcon_core.shell:Creating environment hook '/home/ruben/workhop_rl/install/unitree_legged_real/share/unitree_legged_real/hook/cmake_prefix_path.sh'
+[0.717s] Level 1:colcon.colcon_core.environment:checking '/home/ruben/workhop_rl/install/unitree_legged_real/lib'
+[0.717s] Level 1:colcon.colcon_core.shell:create_environment_hook('unitree_legged_real', 'ld_library_path_lib')
+[0.717s] INFO:colcon.colcon_core.shell:Creating environment hook '/home/ruben/workhop_rl/install/unitree_legged_real/share/unitree_legged_real/hook/ld_library_path_lib.ps1'
+[0.717s] INFO:colcon.colcon_core.shell:Creating environment descriptor '/home/ruben/workhop_rl/install/unitree_legged_real/share/unitree_legged_real/hook/ld_library_path_lib.dsv'
+[0.717s] INFO:colcon.colcon_core.shell:Creating environment hook '/home/ruben/workhop_rl/install/unitree_legged_real/share/unitree_legged_real/hook/ld_library_path_lib.sh'
+[0.717s] Level 1:colcon.colcon_core.environment:checking '/home/ruben/workhop_rl/install/unitree_legged_real/bin'
+[0.717s] Level 1:colcon.colcon_core.environment:checking '/home/ruben/workhop_rl/install/unitree_legged_real/lib/pkgconfig/unitree_legged_real.pc'
+[0.718s] Level 1:colcon.colcon_core.environment:checking '/home/ruben/workhop_rl/install/unitree_legged_real/lib/python3.10/site-packages'
+[0.718s] Level 1:colcon.colcon_core.environment:checking '/home/ruben/workhop_rl/install/unitree_legged_real/bin'
+[0.718s] INFO:colcon.colcon_core.shell:Creating package script '/home/ruben/workhop_rl/install/unitree_legged_real/share/unitree_legged_real/package.ps1'
+[0.718s] INFO:colcon.colcon_core.shell:Creating package descriptor '/home/ruben/workhop_rl/install/unitree_legged_real/share/unitree_legged_real/package.dsv'
+[0.718s] INFO:colcon.colcon_core.shell:Creating package script '/home/ruben/workhop_rl/install/unitree_legged_real/share/unitree_legged_real/package.sh'
+[0.719s] INFO:colcon.colcon_core.shell:Creating package script '/home/ruben/workhop_rl/install/unitree_legged_real/share/unitree_legged_real/package.bash'
+[0.719s] INFO:colcon.colcon_core.shell:Creating package script '/home/ruben/workhop_rl/install/unitree_legged_real/share/unitree_legged_real/package.zsh'
+[0.719s] Level 1:colcon.colcon_core.environment:create_file_with_runtime_dependencies(/home/ruben/workhop_rl/install/unitree_legged_real/share/colcon-core/packages/unitree_legged_real)
+[0.729s] DEBUG:colcon.colcon_parallel_executor.executor.parallel:closing loop
+[0.729s] DEBUG:colcon.colcon_parallel_executor.executor.parallel:loop closed
+[0.729s] DEBUG:colcon.colcon_parallel_executor.executor.parallel:run_until_complete finished with '2'
+[0.729s] DEBUG:colcon.colcon_core.event_reactor:joining thread
+[0.732s] INFO:colcon.colcon_core.plugin_system:Skipping extension 'colcon_notification.desktop_notification.terminal_notifier': Not used on non-Darwin systems
+[0.732s] INFO:colcon.colcon_core.plugin_system:Skipping extension 'colcon_notification.desktop_notification.win32': Not used on non-Windows systems
+[0.732s] INFO:colcon.colcon_notification.desktop_notification:Sending desktop notification using 'notify2'
+[0.741s] DEBUG:colcon.colcon_core.event_reactor:joined thread
+[0.742s] INFO:colcon.colcon_core.shell:Creating prefix script '/home/ruben/workhop_rl/install/local_setup.ps1'
+[0.742s] INFO:colcon.colcon_core.shell:Creating prefix util module '/home/ruben/workhop_rl/install/_local_setup_util_ps1.py'
+[0.743s] INFO:colcon.colcon_core.shell:Creating prefix chain script '/home/ruben/workhop_rl/install/setup.ps1'
+[0.743s] INFO:colcon.colcon_core.shell:Creating prefix script '/home/ruben/workhop_rl/install/local_setup.sh'
+[0.744s] INFO:colcon.colcon_core.shell:Creating prefix util module '/home/ruben/workhop_rl/install/_local_setup_util_sh.py'
+[0.744s] INFO:colcon.colcon_core.shell:Creating prefix chain script '/home/ruben/workhop_rl/install/setup.sh'
+[0.744s] INFO:colcon.colcon_core.shell:Creating prefix script '/home/ruben/workhop_rl/install/local_setup.bash'
+[0.744s] INFO:colcon.colcon_core.shell:Creating prefix chain script '/home/ruben/workhop_rl/install/setup.bash'
+[0.745s] INFO:colcon.colcon_core.shell:Creating prefix script '/home/ruben/workhop_rl/install/local_setup.zsh'
+[0.745s] INFO:colcon.colcon_core.shell:Creating prefix chain script '/home/ruben/workhop_rl/install/setup.zsh'

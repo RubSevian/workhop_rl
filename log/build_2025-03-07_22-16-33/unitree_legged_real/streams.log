@@ -1,0 +1,19 @@
+[0.007s] Invoking command in '/home/ruben/workhop_rl/build/unitree_legged_real': CMAKE_PREFIX_PATH=/home/ruben/workhop_rl/install/unitree_rl_controller:/home/ruben/workhop_rl/install/ros2_unitree_legged_msgs:/home/ruben/workhop_rl/install/unitree_legged_real:/opt/ros/humble LD_LIBRARY_PATH=/home/ruben/workhop_rl/install/unitree_rl_controller/lib:/home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/lib:/home/ruben/workhop_rl/install/unitree_legged_real/lib:/usr/lib/x86_64-linux-gnu/gazebo-11/plugins:/opt/ros/humble/opt/rviz_ogre_vendor/lib:/opt/ros/humble/lib/x86_64-linux-gnu:/opt/ros/humble/lib:/usr/local/cuda-12.6/lib64:/home/ruben/workhop_rl/src/libtorch/lib/:/home/ruben/workhop_rl/src/libtorch/lib/:/home/ruben/libtorch/lib/ /usr/bin/cmake --build /home/ruben/workhop_rl/build/unitree_legged_real -- -j20 -l20
+[0.039s] [ 16%] Built target ros2_position_example
+[0.039s] [ 33%] Built target ros2_test
+[0.039s] [ 50%] Built target lcm_server
+[0.040s] [ 66%] Built target ros2_walk_example
+[0.044s] [35m[1mConsolidate compiler generated dependencies of target ros2_rl[0m
+[0.056s] [ 83%] Built target ros2_rl_control
+[0.078s] [ 91%] [32mBuilding CXX object CMakeFiles/ros2_rl.dir/src/ros2_rl.cpp.o[0m
+[5.214s] [01m[K/home/ruben/workhop_rl/src/unitree_ros2_to_real/src/ros2_rl.cpp:83:1:[m[K [01;31m[Kerror: [m[K‘[01m[KAgrnt[m[K’ does not name a type; did you mean ‘[01m[KAgent[m[K’?
+[5.214s]    83 | [01;31m[KAgrnt[m[K.InitObservations();
+[5.214s]       | [01;31m[K^~~~~[m[K
+[5.214s]       | [32m[KAgent[m[K
+[5.215s] [01m[K/home/ruben/workhop_rl/src/unitree_ros2_to_real/src/ros2_rl.cpp:84:6:[m[K [01;31m[Kerror: [m[Kexpected unqualified-id before ‘[01m[K.[m[K’ token
+[5.215s]    84 | Agent[01;31m[K.[m[KInitOutputs();
+[5.215s]       |      [01;31m[K^[m[K
+[7.981s] gmake[2]: *** [CMakeFiles/ros2_rl.dir/build.make:76: CMakeFiles/ros2_rl.dir/src/ros2_rl.cpp.o] Error 1
+[7.981s] gmake[1]: *** [CMakeFiles/Makefile2:251: CMakeFiles/ros2_rl.dir/all] Error 2
+[7.981s] gmake: *** [Makefile:146: all] Error 2
+[7.983s] Invoked command in '/home/ruben/workhop_rl/build/unitree_legged_real' returned '2': CMAKE_PREFIX_PATH=/home/ruben/workhop_rl/install/unitree_rl_controller:/home/ruben/workhop_rl/install/ros2_unitree_legged_msgs:/home/ruben/workhop_rl/install/unitree_legged_real:/opt/ros/humble LD_LIBRARY_PATH=/home/ruben/workhop_rl/install/unitree_rl_controller/lib:/home/ruben/workhop_rl/install/ros2_unitree_legged_msgs/lib:/home/ruben/workhop_rl/install/unitree_legged_real/lib:/usr/lib/x86_64-linux-gnu/gazebo-11/plugins:/opt/ros/humble/opt/rviz_ogre_vendor/lib:/opt/ros/humble/lib/x86_64-linux-gnu:/opt/ros/humble/lib:/usr/local/cuda-12.6/lib64:/home/ruben/workhop_rl/src/libtorch/lib/:/home/ruben/workhop_rl/src/libtorch/lib/:/home/ruben/libtorch/lib/ /usr/bin/cmake --build /home/ruben/workhop_rl/build/unitree_legged_real -- -j20 -l20

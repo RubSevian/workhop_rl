@@ -1,0 +1,35 @@
+[ 16%] Built target ros2_test
+[ 33%] Built target lcm_server
+[ 50%] Built target ros2_position_example
+[35m[1mConsolidate compiler generated dependencies of target ros2_rl[0m
+[ 66%] Built target ros2_walk_example
+[ 83%] Built target ros2_rl_control
+[ 91%] [32mBuilding CXX object CMakeFiles/ros2_rl.dir/src/ros2_rl.cpp.o[0m
+[100%] [32m[1mLinking CXX executable ros2_rl[0m
+[100%] Built target ros2_rl
+-- Install configuration: ""
+-- Up-to-date: /home/ruben/workhop_rl/install/unitree_legged_real/lib
+-- Up-to-date: /home/ruben/workhop_rl/install/unitree_legged_real/lib/libunitree_legged_sdk_arm64.so
+-- Up-to-date: /home/ruben/workhop_rl/install/unitree_legged_real/lib/libunitree_legged_sdk_amd64.so
+-- Up-to-date: /home/ruben/workhop_rl/install/unitree_legged_real/lib/unitree_legged_real/ros2_walk_example
+-- Up-to-date: /home/ruben/workhop_rl/install/unitree_legged_real/lib/unitree_legged_real/ros2_position_example
+-- Installing: /home/ruben/workhop_rl/install/unitree_legged_real/lib/unitree_legged_real/ros2_rl
+-- Set runtime path of "/home/ruben/workhop_rl/install/unitree_legged_real/lib/unitree_legged_real/ros2_rl" to ""
+-- Up-to-date: /home/ruben/workhop_rl/install/unitree_legged_real/lib/unitree_legged_real/ros2_rl_control
+-- Up-to-date: /home/ruben/workhop_rl/install/unitree_legged_real/lib/unitree_legged_real/ros2_test
+-- Up-to-date: /home/ruben/workhop_rl/install/unitree_legged_real/lib/unitree_legged_real/lcm_server
+-- Up-to-date: /home/ruben/workhop_rl/install/unitree_legged_real/share/ament_index/resource_index/package_run_dependencies/unitree_legged_real
+-- Up-to-date: /home/ruben/workhop_rl/install/unitree_legged_real/share/ament_index/resource_index/parent_prefix_path/unitree_legged_real
+-- Up-to-date: /home/ruben/workhop_rl/install/unitree_legged_real/share/unitree_legged_real/environment/ament_prefix_path.sh
+-- Up-to-date: /home/ruben/workhop_rl/install/unitree_legged_real/share/unitree_legged_real/environment/ament_prefix_path.dsv
+-- Up-to-date: /home/ruben/workhop_rl/install/unitree_legged_real/share/unitree_legged_real/environment/path.sh
+-- Up-to-date: /home/ruben/workhop_rl/install/unitree_legged_real/share/unitree_legged_real/environment/path.dsv
+-- Up-to-date: /home/ruben/workhop_rl/install/unitree_legged_real/share/unitree_legged_real/local_setup.bash
+-- Up-to-date: /home/ruben/workhop_rl/install/unitree_legged_real/share/unitree_legged_real/local_setup.sh
+-- Up-to-date: /home/ruben/workhop_rl/install/unitree_legged_real/share/unitree_legged_real/local_setup.zsh
+-- Up-to-date: /home/ruben/workhop_rl/install/unitree_legged_real/share/unitree_legged_real/local_setup.dsv
+-- Installing: /home/ruben/workhop_rl/install/unitree_legged_real/share/unitree_legged_real/package.dsv
+-- Up-to-date: /home/ruben/workhop_rl/install/unitree_legged_real/share/ament_index/resource_index/packages/unitree_legged_real
+-- Up-to-date: /home/ruben/workhop_rl/install/unitree_legged_real/share/unitree_legged_real/cmake/unitree_legged_realConfig.cmake
+-- Up-to-date: /home/ruben/workhop_rl/install/unitree_legged_real/share/unitree_legged_real/cmake/unitree_legged_realConfig-version.cmake
+-- Up-to-date: /home/ruben/workhop_rl/install/unitree_legged_real/share/unitree_legged_real/package.xml

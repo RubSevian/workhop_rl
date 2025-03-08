@@ -1,0 +1,82 @@
+[01m[K/home/ruben/workhop_rl/src/unitree_ros2_to_real/src/ros2_rl.cpp:[m[K In function ‘[01m[Kint main(int, char**)[m[K’:
+[01m[K/home/ruben/workhop_rl/src/unitree_ros2_to_real/src/ros2_rl.cpp:186:38:[m[K [01;31m[Kerror: [m[K‘[01m[KFloat32MultiArray[m[K’ is not a member of ‘[01m[Kstd_msgs::msg[m[K’; did you mean ‘[01m[KFloat64MultiArray[m[K’?
+  186 |     rclcpp::Publisher<std_msgs::msg::[01;31m[KFloat32MultiArray[m[K>::SharedPtr pub_obs;
+      |                                      [01;31m[K^~~~~~~~~~~~~~~~~[m[K
+      |                                      [32m[KFloat64MultiArray[m[K
+[01m[K/home/ruben/workhop_rl/src/unitree_ros2_to_real/src/ros2_rl.cpp:186:55:[m[K [01;31m[Kerror: [m[Ktemplate argument 1 is invalid
+  186 |     rclcpp::Publisher<std_msgs::msg::Float32MultiArray[01;31m[K>[m[K::SharedPtr pub_obs;
+      |                                                       [01;31m[K^[m[K
+[01m[K/home/ruben/workhop_rl/src/unitree_ros2_to_real/src/ros2_rl.cpp:186:68:[m[K [01;31m[Kerror: [m[Kexpected initializer before ‘[01m[Kpub_obs[m[K’
+  186 |     rclcpp::Publisher<std_msgs::msg::Float32MultiArray>::SharedPtr [01;31m[Kpub_obs[m[K;
+      |                                                                    [01;31m[K^~~~~~~[m[K
+[01m[K/home/ruben/workhop_rl/src/unitree_ros2_to_real/src/ros2_rl.cpp:187:5:[m[K [01;31m[Kerror: [m[K‘[01m[Kpub_obs[m[K’ was not declared in this scope
+  187 |     [01;31m[Kpub_obs[m[K = node->create_publisher<std_msgs::msg::Float32MultiArray>("/go1/observation_vector", 100);
+      |     [01;31m[K^~~~~~~[m[K
+[01m[K/home/ruben/workhop_rl/src/unitree_ros2_to_real/src/ros2_rl.cpp:187:53:[m[K [01;31m[Kerror: [m[K‘[01m[KFloat32MultiArray[m[K’ is not a member of ‘[01m[Kstd_msgs::msg[m[K’; did you mean ‘[01m[KFloat64MultiArray[m[K’?
+  187 |     pub_obs = node->create_publisher<std_msgs::msg::[01;31m[KFloat32MultiArray[m[K>("/go1/observation_vector", 100);
+      |                                                     [01;31m[K^~~~~~~~~~~~~~~~~[m[K
+      |                                                     [32m[KFloat64MultiArray[m[K
+[01m[K/home/ruben/workhop_rl/src/unitree_ros2_to_real/src/ros2_rl.cpp:187:71:[m[K [01;31m[Kerror: [m[Kno matching function for call to ‘[01m[Krclcpp::Node::create_publisher<<expression error> >(const char [24], int)[m[K’
+  187 |     pub_obs = [01;31m[Knode->create_publisher<std_msgs::msg::Float32MultiArray>("/go1/observation_vector", 100)[m[K;
+      |               [01;31m[K~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~[m[K
+In file included from [01m[K/opt/ros/humble/include/rclcpp/rclcpp/node.hpp:1321[m[K,
+                 from [01m[K/opt/ros/humble/include/rclcpp/rclcpp/executors/single_threaded_executor.hpp:28[m[K,
+                 from [01m[K/opt/ros/humble/include/rclcpp/rclcpp/executors.hpp:22[m[K,
+                 from [01m[K/opt/ros/humble/include/rclcpp/rclcpp/rclcpp.hpp:155[m[K,
+                 from [01m[K/home/ruben/workhop_rl/src/unitree_ros2_to_real/src/ros2_rl.cpp:1[m[K:
+[01m[K/opt/ros/humble/include/rclcpp/rclcpp/node_impl.hpp:73:1:[m[K [01;36m[Knote: [m[Kcandidate: ‘[01m[Ktemplate<class MessageT, class AllocatorT, class PublisherT> std::shared_ptr<PublisherT> rclcpp::Node::create_publisher(const string&, const rclcpp::QoS&, const rclcpp::PublisherOptionsWithAllocator<AllocatorT>&)[m[K’
+   73 | [01;36m[KNode[m[K::create_publisher(
+      | [01;36m[K^~~~[m[K
+[01m[K/opt/ros/humble/include/rclcpp/rclcpp/node_impl.hpp:73:1:[m[K [01;36m[Knote: [m[K  template argument deduction/substitution failed:
+[01m[K/home/ruben/workhop_rl/src/unitree_ros2_to_real/src/ros2_rl.cpp:187:71:[m[K [01;31m[Kerror: [m[Ktemplate argument 1 is invalid
+  187 |     pub_obs = [01;31m[Knode->create_publisher<std_msgs::msg::Float32MultiArray>("/go1/observation_vector", 100)[m[K;
+      |               [01;31m[K~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~[m[K
+[01m[K/home/ruben/workhop_rl/src/unitree_ros2_to_real/src/ros2_rl.cpp:189:38:[m[K [01;31m[Kerror: [m[K‘[01m[KFloat32MultiArray[m[K’ is not a member of ‘[01m[Kstd_msgs::msg[m[K’; did you mean ‘[01m[KFloat64MultiArray[m[K’?
+  189 |     rclcpp::Publisher<std_msgs::msg::[01;31m[KFloat32MultiArray[m[K>::SharedPtr pub_actions;
+      |                                      [01;31m[K^~~~~~~~~~~~~~~~~[m[K
+      |                                      [32m[KFloat64MultiArray[m[K
+[01m[K/home/ruben/workhop_rl/src/unitree_ros2_to_real/src/ros2_rl.cpp:189:55:[m[K [01;31m[Kerror: [m[Ktemplate argument 1 is invalid
+  189 |     rclcpp::Publisher<std_msgs::msg::Float32MultiArray[01;31m[K>[m[K::SharedPtr pub_actions;
+      |                                                       [01;31m[K^[m[K
+[01m[K/home/ruben/workhop_rl/src/unitree_ros2_to_real/src/ros2_rl.cpp:189:68:[m[K [01;31m[Kerror: [m[Kexpected initializer before ‘[01m[Kpub_actions[m[K’
+  189 |     rclcpp::Publisher<std_msgs::msg::Float32MultiArray>::SharedPtr [01;31m[Kpub_actions[m[K;
+      |                                                                    [01;31m[K^~~~~~~~~~~[m[K
+[01m[K/home/ruben/workhop_rl/src/unitree_ros2_to_real/src/ros2_rl.cpp:190:5:[m[K [01;31m[Kerror: [m[K‘[01m[Kpub_actions[m[K’ was not declared in this scope
+  190 |     [01;31m[Kpub_actions[m[K = node->create_publisher<std_msgs::msg::Float32MultiArray>("/go1/action_vector", 100);
+      |     [01;31m[K^~~~~~~~~~~[m[K
+[01m[K/home/ruben/workhop_rl/src/unitree_ros2_to_real/src/ros2_rl.cpp:190:57:[m[K [01;31m[Kerror: [m[K‘[01m[KFloat32MultiArray[m[K’ is not a member of ‘[01m[Kstd_msgs::msg[m[K’; did you mean ‘[01m[KFloat64MultiArray[m[K’?
+  190 |     pub_actions = node->create_publisher<std_msgs::msg::[01;31m[KFloat32MultiArray[m[K>("/go1/action_vector", 100);
+      |                                                         [01;31m[K^~~~~~~~~~~~~~~~~[m[K
+      |                                                         [32m[KFloat64MultiArray[m[K
+[01m[K/home/ruben/workhop_rl/src/unitree_ros2_to_real/src/ros2_rl.cpp:190:75:[m[K [01;31m[Kerror: [m[Kno matching function for call to ‘[01m[Krclcpp::Node::create_publisher<<expression error> >(const char [19], int)[m[K’
+  190 |     pub_actions = [01;31m[Knode->create_publisher<std_msgs::msg::Float32MultiArray>("/go1/action_vector", 100)[m[K;
+      |                   [01;31m[K~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^~~~~~~~~~~~~~~~~~~~~~~~~~~[m[K
+In file included from [01m[K/opt/ros/humble/include/rclcpp/rclcpp/node.hpp:1321[m[K,
+                 from [01m[K/opt/ros/humble/include/rclcpp/rclcpp/executors/single_threaded_executor.hpp:28[m[K,
+                 from [01m[K/opt/ros/humble/include/rclcpp/rclcpp/executors.hpp:22[m[K,
+                 from [01m[K/opt/ros/humble/include/rclcpp/rclcpp/rclcpp.hpp:155[m[K,
+                 from [01m[K/home/ruben/workhop_rl/src/unitree_ros2_to_real/src/ros2_rl.cpp:1[m[K:
+[01m[K/opt/ros/humble/include/rclcpp/rclcpp/node_impl.hpp:73:1:[m[K [01;36m[Knote: [m[Kcandidate: ‘[01m[Ktemplate<class MessageT, class AllocatorT, class PublisherT> std::shared_ptr<PublisherT> rclcpp::Node::create_publisher(const string&, const rclcpp::QoS&, const rclcpp::PublisherOptionsWithAllocator<AllocatorT>&)[m[K’
+   73 | [01;36m[KNode[m[K::create_publisher(
+      | [01;36m[K^~~~[m[K
+[01m[K/opt/ros/humble/include/rclcpp/rclcpp/node_impl.hpp:73:1:[m[K [01;36m[Knote: [m[K  template argument deduction/substitution failed:
+[01m[K/home/ruben/workhop_rl/src/unitree_ros2_to_real/src/ros2_rl.cpp:190:75:[m[K [01;31m[Kerror: [m[Ktemplate argument 1 is invalid
+  190 |     pub_actions = [01;31m[Knode->create_publisher<std_msgs::msg::Float32MultiArray>("/go1/action_vector", 100)[m[K;
+      |                   [01;31m[K~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^~~~~~~~~~~~~~~~~~~~~~~~~~~[m[K
+[01m[K/home/ruben/workhop_rl/src/unitree_ros2_to_real/src/ros2_rl.cpp:386:40:[m[K [01;31m[Kerror: [m[K‘[01m[KFloat32MultiArray[m[K’ is not a member of ‘[01m[Kstd_msgs::msg[m[K’; did you mean ‘[01m[KFloat64MultiArray[m[K’?
+  386 |                         std_msgs::msg::[01;31m[KFloat32MultiArray[m[K obs_msg;
+      |                                        [01;31m[K^~~~~~~~~~~~~~~~~[m[K
+      |                                        [32m[KFloat64MultiArray[m[K
+[01m[K/home/ruben/workhop_rl/src/unitree_ros2_to_real/src/ros2_rl.cpp:387:25:[m[K [01;31m[Kerror: [m[K‘[01m[Kobs_msg[m[K’ was not declared in this scope
+  387 |                         [01;31m[Kobs_msg[m[K.data.resize(obs.size(1));
+      |                         [01;31m[K^~~~~~~[m[K
+[01m[K/home/ruben/workhop_rl/src/unitree_ros2_to_real/src/ros2_rl.cpp:393:40:[m[K [01;31m[Kerror: [m[K‘[01m[KFloat32MultiArray[m[K’ is not a member of ‘[01m[Kstd_msgs::msg[m[K’; did you mean ‘[01m[KFloat64MultiArray[m[K’?
+  393 |                         std_msgs::msg::[01;31m[KFloat32MultiArray[m[K action_msg;
+      |                                        [01;31m[K^~~~~~~~~~~~~~~~~[m[K
+      |                                        [32m[KFloat64MultiArray[m[K
+[01m[K/home/ruben/workhop_rl/src/unitree_ros2_to_real/src/ros2_rl.cpp:394:25:[m[K [01;31m[Kerror: [m[K‘[01m[Kaction_msg[m[K’ was not declared in this scope
+  394 |                         [01;31m[Kaction_msg[m[K.data.resize(agent.obs.actions.size(1));
+      |                         [01;31m[K^~~~~~~~~~[m[K
+gmake[2]: *** [CMakeFiles/ros2_rl.dir/build.make:76: CMakeFiles/ros2_rl.dir/src/ros2_rl.cpp.o] Error 1
+gmake[1]: *** [CMakeFiles/Makefile2:249: CMakeFiles/ros2_rl.dir/all] Error 2
+gmake: *** [Makefile:146: all] Error 2
