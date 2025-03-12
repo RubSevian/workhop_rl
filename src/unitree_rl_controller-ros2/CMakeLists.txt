@@ -1,6 +1,8 @@
 cmake_minimum_required(VERSION 3.5)
 project(unitree_rl_controller)
 
+set(CONFIG_BASE_DIR "${CMAKE_CURRENT_SOURCE_DIR}")
+
 # Default to C++14
 if(NOT CMAKE_CXX_STANDARD)
   set(CMAKE_CXX_STANDARD 14)
@@ -29,11 +31,14 @@ include_directories(
   ${TORCH_INCLUDE_DIRS}
 )
 
+
 # Создаём библиотеку
 add_library(${PROJECT_NAME} SHARED src/rl_agent.cpp)
 
-# Передаём CONFIG_PATH в компилятор
-#target_compile_definitions(${PROJECT_NAME} PRIVATE CONFIG_PATH="\"${CMAKE_CURRENT_SOURCE_DIR}/config.yaml\"")
+target_compile_definitions(${PROJECT_NAME}
+    PRIVATE
+    "CONFIG_BASE_DIR=\"${CONFIG_BASE_DIR}\""
+)
 
 # Линкуем с библиотеками
 target_link_libraries(${PROJECT_NAME} ${TORCH_LIBRARIES} yaml-cpp)  # ✅ Добавляем yaml-cpp
@@ -53,5 +58,6 @@ install(TARGETS ${PROJECT_NAME}
 install(DIRECTORY include/${PROJECT_NAME}
   DESTINATION include/${PROJECT_NAME}
 )
+
 
 ament_package()

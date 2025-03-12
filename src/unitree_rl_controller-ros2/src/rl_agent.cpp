@@ -13,6 +13,11 @@ torch::Tensor Agent::quat_rotate_inverse(torch::Tensor q, torch::Tensor v) {
     return a - b + c;
 }
 
+Agent::Agent()
+{
+    Agent::InitObservations();
+    Agent::InitOutputs();
+}
 
 bool Agent::load_model(std::string model_path)
 {
@@ -104,7 +109,8 @@ void Agent::ReadYaml(std::string robot_name)
 {
     // The config file is located at "rl_sar/src/rl_sar/models/<robot_name>/config.yaml"
    // std::string config_path = std::string(CMAKE_CURRENT_SOURCE_DIR) + "/models/" + robot_name + "/config.yaml";
-    //std::string config_path = std::string("/home/ruben/Desktop/ros2_ws/src/unitree_rl_controller-ros2/weights/config.yaml");
+   // std::string CONFIG_PATH = std::string("/home/ruben/Desktop/ros2_ws/src/unitree_rl_controller-ros2/weights/config.yaml");
+    std::string CONFIG_PATH = std::string(CONFIG_BASE_DIR) + "/weights/" + robot_name + "/config.yaml";
 	YAML::Node config;
 	try
 	{

@@ -1,3 +1,4 @@
+#include <iostream> 
 #include "rclcpp/rclcpp.hpp"
 #include "ros2_unitree_legged_msgs/msg/high_cmd.hpp"
 #include "ros2_unitree_legged_msgs/msg/high_state.hpp"
@@ -52,14 +53,14 @@ enum ROBOT_STATE
 //     "RL_hip", "RL_thigh", "RL_calf"};
 // const std::vector<std::string> joint_names = agent.params.joint_names;
 
-const std::vector<float> default_joint_angles = {
-    -0., 0.8, -1.3,
-    0., 0.8, -1.3,
-    -0.0, 0.8, -1.3,
-    0.0, 0.8, -1.3};
+// const std::vector<float> default_joint_angles = {
+//     -0., 0.8, -1.3,
+//     0., 0.8, -1.3,
+//     -0.0, 0.8, -1.3,
+//     0.0, 0.8, -1.3};
 // Глобальные константы (теперь инициализируются позже)
 std::vector<std::string> joint_names;
-//std::vector<double> default_joint_angles;
+std::vector<double> default_joint_angles;
 const std::vector<int> net2joint_indexes = {
     3, 4, 5,
     0, 1, 2,
@@ -81,8 +82,9 @@ const std::vector<double> damping = {
 
 const std::vector<std::string> urdf_feet_names = {"FR_foot", "FL_foot", "RR_foot", "RL_foot"};
 
-
-std::string model_path = {"/home/ruben/workhop_rl/src/unitree_rl_controller-ros2/weights/policy_1.pt"}; // add my learn model
+//std::string CONFIG_PATH = std::string(CONFIG_BASE_DIR) + "/../unitree_rl_controller-ros2/weights/" + ROBOT_NAME + "/config.yaml";
+std::string CONFIG_PATH = std::string("/home/ruben/workhop_rl/src/unitree_rl_controller-ros2/weights/") + std::string(ROBOT_NAME) + "/policy_1.pt"; //FIXME
+std::string model_path =CONFIG_PATH; // add my learn model
 
 double jointLinearInterpolation(double initPos, double targetPos, double rate)
 {
@@ -119,8 +121,6 @@ void update_dof_state(const ros2_unitree_legged_msgs::msg::LowState &state, Agen
 int main(int argc, char **argv)
 {
     Agent agent;
-    agent.InitObservations();
-    agent.InitOutputs();
   
     agent.ReadYaml(ROBOT_NAME);
     try {
@@ -131,8 +131,8 @@ int main(int argc, char **argv)
         return 1;
     }
     joint_names = agent.params.joint_names;
-    // default_joint_angles = agent.params.default_joint_angles;
-
+    default_joint_angles = agent.params.default_joint_angles;
+    std::cout<<model_path<<std::endl;
     // std::cout<<"STABLE"<<std::endl;
     // std::cout << default_joint_angle << std::endl;
 
@@ -235,7 +235,7 @@ int main(int argc, char **argv)
 
     // Настройка генерации случайных чисел
     std::random_device rd;
-    std::mt19937 gen(rd()); // Движок Mersenne Twister
+    std::mt19937 gen(rd()); 
 
     // Функция для генерации случайного числа с плавающей точкой в заданном диапазоне
     auto random_float = [&](float min, float max) {
@@ -255,29 +255,34 @@ int main(int argc, char **argv)
             motiontime ++;
 
             // **НАЧАЛО: Внедрение случайных данных**
-            // Вы можете внедрять случайные данные в различные части сообщения low_state_ros
-            // для имитации различных показаний датчиков. Отрегулируйте диапазоны в соответствии с
-            // тем, что реалистично для вашего робота.
             if(motiontime > 100) {  // Начните внедрение после некоторого времени инициализации
             // Пример: Внедрение случайных данных акселерометра
             for (int i = 0; i < 3; ++i) {
-                low_state_ros.imu.accelerometer[i] = random_float(-0.9, 0.9); // Случайное ускорение между -1 и 1 м/с^2
+                low_state_ros.imu.accelerometer[i] = random_float(-2.0, 2.0); // Случайное ускорение между -1 и 1 м/с^2
             }
 
             // Пример: Внедрение случайных данных гироскопа
             for (int i = 0; i < 3; ++i) {
-                low_state_ros.imu.gyroscope[i] = random_float(-0.4, 0.4); // Случайная угловая скорость между -0.1 и 0.1 рад/с
+                low_state_ros.imu.gyroscope[i] = random_float(-0.8, 0.8); // Случайная угловая скорость между -0.1 и 0.1 рад/с
             }
 
             // Пример: Внедрение случайных положений суставов
             for (int i = 0; i < 12; ++i) {
-                low_state_ros.motor_state[i].q = default_joint_angles[i] + random_float(-0.5, 0.5); // Случайное положение сустава вокруг значения по умолчанию
+                low_state_ros.motor_state[i].q = default_joint_angles[i] + random_float(-0.9, 0.9); // Случайное положение сустава вокруг значения по умолчанию
             }
 
             // Пример: Внедрение случайных данных о силе в стопе
             for (int i = 0; i < 4; ++i) {
                 low_state_ros.foot_force[i] = random_float(0.0, 50.0); // Случайная сила в стопе между 0 и 50 Н
             }
+            }
+
+            for (int i = 0 ; i < 12; ++i){
+
+                low_state_ros.motor_state[i].dq = default_joint_angles[i] + random_float(-0.9, 0.9);
+            }
+            for (int i = 0; i < 4; ++i) {
+                low_state_ros.imu.quaternion[i] = random_float(-0.10, 0.20); 
             }
             // **КОНЕЦ: Внедрение случайных данных**
 

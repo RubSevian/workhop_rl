@@ -7,7 +7,7 @@
 #include "std_msgs/msg/string.hpp"
 
 #include <yaml-cpp/yaml.h>
-#define CONFIG_PATH  "/home/ruben/workhop_rl/src/unitree_rl_controller-ros2/weights/config.yaml"
+//#define CONFIG_PATH  "/home/ruben/workhop_rl/src/unitree_rl_controller-ros2/weights/config.yaml"
 
 struct Observations
 {
@@ -49,21 +49,17 @@ struct ModelParams
 class Agent
 {
 
-    private:
-        torch::jit::script::Module module;
     public:
         ModelParams params;
         Observations obs;
 
         //torch::Tensor get_observations();
 
-        //Agent();
+        Agent();
         bool load_model(std::string model_path);
         torch::Tensor act();
         torch::Tensor output_torques;
         torch::Tensor output_dof_pos;
-
-
         void ReadYaml(std::string robot_name);
         torch::Tensor quat_rotate_inverse(torch::Tensor q, torch::Tensor v);
         void InitObservations();
@@ -72,5 +68,7 @@ class Agent
         torch::Tensor ComputePosition(torch::Tensor actions);
         torch::Tensor ComputeObservation();
         torch::Tensor Forward();
+    private:
+        torch::jit::script::Module module;
 };
 

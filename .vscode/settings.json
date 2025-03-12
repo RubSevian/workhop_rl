@@ -9,9 +9,8 @@
         "/opt/ros/humble/lib/python3.10/site-packages",
         "/opt/ros/humble/local/lib/python3.10/dist-packages"
     ],
+    "cmake.sourceDirectory": "/home/ruben/workhop_rl/src/unitree_ros2_to_real",
     "files.associations": {
-        "chrono": "cpp",
-        "variant": "cpp",
         "cctype": "cpp",
         "clocale": "cpp",
         "cmath": "cpp",
@@ -31,7 +30,7 @@
         "bit": "cpp",
         "*.tcc": "cpp",
         "bitset": "cpp",
-        "cinttypes": "cpp",
+        "chrono": "cpp",
         "codecvt": "cpp",
         "compare": "cpp",
         "complex": "cpp",
@@ -83,10 +82,10 @@
         "streambuf": "cpp",
         "thread": "cpp",
         "cfenv": "cpp",
+        "cinttypes": "cpp",
         "typeindex": "cpp",
         "typeinfo": "cpp",
-        "valarray": "cpp",
+        "variant": "cpp",
         "__nullptr": "cpp"
-    },
-    "ros.distro": "humble"
+    }
 }
