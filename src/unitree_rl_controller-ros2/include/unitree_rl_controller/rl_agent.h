@@ -60,7 +60,7 @@ class Agent
         torch::Tensor act();
         torch::Tensor output_torques;
         torch::Tensor output_dof_pos;
-        void ReadYaml(std::string robot_name);
+        void ReadYaml(std::string robot_name,std::string config_path);
         torch::Tensor quat_rotate_inverse(torch::Tensor q, torch::Tensor v);
         void InitObservations();
         void InitOutputs();

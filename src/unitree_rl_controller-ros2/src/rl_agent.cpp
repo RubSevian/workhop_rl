@@ -105,20 +105,20 @@ std::vector<T> ReadVectorFromYaml(const YAML::Node& node)
     return values;
 }
 
-void Agent::ReadYaml(std::string robot_name)
+void Agent::ReadYaml(std::string robot_name,std::string config_path)
 {
     // The config file is located at "rl_sar/src/rl_sar/models/<robot_name>/config.yaml"
    // std::string config_path = std::string(CMAKE_CURRENT_SOURCE_DIR) + "/models/" + robot_name + "/config.yaml";
    // std::string CONFIG_PATH = std::string("/home/ruben/Desktop/ros2_ws/src/unitree_rl_controller-ros2/weights/config.yaml");
-    std::string CONFIG_PATH = std::string(CONFIG_BASE_DIR) + "/weights/" + robot_name + "/config.yaml";
+   // std::string config_path = std::string(CONFIG_BASE_DIR) + "/weights/" + robot_name + "/config.yaml";
 	YAML::Node config;
 	try
 	{
-		config = YAML::LoadFile(CONFIG_PATH)[robot_name];
+		config = YAML::LoadFile(config_path)[robot_name];
 	} catch(YAML::BadFile &e)
 	{
 
-		std::cout << "The file '" << CONFIG_PATH << "' does not exist" << std::endl;
+		std::cout << "The file '" << config_path << "' does not exist" << std::endl;
 		return;
 	}
 

@@ -82,9 +82,9 @@ const std::vector<double> damping = {
 
 const std::vector<std::string> urdf_feet_names = {"FR_foot", "FL_foot", "RR_foot", "RL_foot"};
 
-//std::string CONFIG_PATH = std::string(CONFIG_BASE_DIR) + "/../unitree_rl_controller-ros2/weights/" + ROBOT_NAME + "/config.yaml";
-std::string CONFIG_PATH = std::string("/home/ruben/workhop_rl/src/unitree_rl_controller-ros2/weights/") + std::string(ROBOT_NAME) + "/policy_1.pt"; //FIXME
-std::string model_path =CONFIG_PATH; // add my learn model
+std::string CONFIG_PATH = std::string(CONFIG_BASE_DIR) + "/weights/" + ROBOT_NAME + "/config.yaml";
+//std::string config_path = std::string(CONFIG_BASE_DIR) + "/weights/" + ROBOT_NAME + + "/policy_1.pt"; //FIXME
+std::string model_path =std::string(CONFIG_BASE_DIR) + "/weights/" + ROBOT_NAME + + "/policy_1.pt"; // add my learn model
 
 double jointLinearInterpolation(double initPos, double targetPos, double rate)
 {
@@ -121,10 +121,9 @@ void update_dof_state(const ros2_unitree_legged_msgs::msg::LowState &state, Agen
 int main(int argc, char **argv)
 {
     Agent agent;
-  
-    agent.ReadYaml(ROBOT_NAME);
+
     try {
-        agent.ReadYaml(ROBOT_NAME);
+        agent.ReadYaml(ROBOT_NAME,CONFIG_PATH);
 
     } catch (const std::exception& e) {
         std::cerr << "Error: " << e.what() << std::endl;

@@ -72,8 +72,8 @@ add_executable(ros2_rl src/ros2_rl.cpp)
 target_link_libraries(ros2_rl ${EXTRA_LIBS} ${TORCH_LIBRARIES})
 ament_target_dependencies(ros2_rl rclcpp ros2_unitree_legged_msgs unitree_rl_controller sensor_msgs)
 
-# set(CONFIG_BASE_DIR "${CMAKE_CURRENT_SOURCE_DIR}")
-# target_compile_definitions(ros2_rl PRIVATE "CONFIG_BASE_DIR=\"${CONFIG_BASE_DIR}\"")
+set(CONFIG_BASE_DIR "${CMAKE_CURRENT_SOURCE_DIR}")
+target_compile_definitions(ros2_rl PRIVATE "CONFIG_BASE_DIR=\"${CONFIG_BASE_DIR}\"")
 
 add_executable(ros2_rl_control src/ros2_rl_control.cpp)
 target_link_libraries(ros2_rl_control ${EXTRA_LIBS} ${TORCH_LIBRARIES})
