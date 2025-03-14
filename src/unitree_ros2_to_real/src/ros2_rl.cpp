@@ -253,37 +253,37 @@ int main(int argc, char **argv)
         {
             motiontime ++;
 
-            // **НАЧАЛО: Внедрение случайных данных**
-            if(motiontime > 100) {  // Начните внедрение после некоторого времени инициализации
-            // Пример: Внедрение случайных данных акселерометра
-            for (int i = 0; i < 3; ++i) {
-                low_state_ros.imu.accelerometer[i] = random_float(-2.0, 2.0); // Случайное ускорение между -1 и 1 м/с^2
-            }
+            // // **НАЧАЛО: Внедрение случайных данных**
+            // if(motiontime > 100) {  // Начните внедрение после некоторого времени инициализации
+            // // Пример: Внедрение случайных данных акселерометра
+            // for (int i = 0; i < 3; ++i) {
+            //     low_state_ros.imu.accelerometer[i] = random_float(-2.0, 2.0); // Случайное ускорение между -1 и 1 м/с^2
+            // }
 
-            // Пример: Внедрение случайных данных гироскопа
-            for (int i = 0; i < 3; ++i) {
-                low_state_ros.imu.gyroscope[i] = random_float(-0.8, 0.8); // Случайная угловая скорость между -0.1 и 0.1 рад/с
-            }
+            // // Пример: Внедрение случайных данных гироскопа
+            // for (int i = 0; i < 3; ++i) {
+            //     low_state_ros.imu.gyroscope[i] = random_float(-0.8, 0.8); // Случайная угловая скорость между -0.1 и 0.1 рад/с
+            // }
 
-            // Пример: Внедрение случайных положений суставов
-            for (int i = 0; i < 12; ++i) {
-                low_state_ros.motor_state[i].q = default_joint_angles[i] + random_float(-0.9, 0.9); // Случайное положение сустава вокруг значения по умолчанию
-            }
+            // // Пример: Внедрение случайных положений суставов
+            // for (int i = 0; i < 12; ++i) {
+            //     low_state_ros.motor_state[i].q = default_joint_angles[i] + random_float(-0.9, 0.9); // Случайное положение сустава вокруг значения по умолчанию
+            // }
 
-            // Пример: Внедрение случайных данных о силе в стопе
-            for (int i = 0; i < 4; ++i) {
-                low_state_ros.foot_force[i] = random_float(0.0, 50.0); // Случайная сила в стопе между 0 и 50 Н
-            }
-            }
+            // // Пример: Внедрение случайных данных о силе в стопе
+            // for (int i = 0; i < 4; ++i) {
+            //     low_state_ros.foot_force[i] = random_float(0.0, 50.0); // Случайная сила в стопе между 0 и 50 Н
+            // }
+            // }
 
-            for (int i = 0 ; i < 12; ++i){
+            // for (int i = 0 ; i < 12; ++i){
 
-                low_state_ros.motor_state[i].dq = default_joint_angles[i] + random_float(-0.9, 0.9);
-            }
-            for (int i = 0; i < 4; ++i) {
-                low_state_ros.imu.quaternion[i] = random_float(-0.10, 0.20); 
-            }
-            // **КОНЕЦ: Внедрение случайных данных**
+            //     low_state_ros.motor_state[i].dq = default_joint_angles[i] + random_float(-0.9, 0.9);
+            // }
+            // for (int i = 0; i < 4; ++i) {
+            //     low_state_ros.imu.quaternion[i] = random_float(-0.10, 0.20); 
+            // }
+            // // **КОНЕЦ: Внедрение случайных данных**
 
 
             auto joint_state = sensor_msgs::msg::JointState();

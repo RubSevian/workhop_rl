@@ -467,3 +467,6 @@ int main(int argc, char** argv) {
     rclcpp::shutdown();
     return 0;
 }
+
+
+ros2 topic echo /go1/action_vector 
