@@ -60,6 +60,7 @@ void Agent::InitObservations()
     //this->obs.lin_vel = torch::tensor({{0.0, 0.0, 0.0}});
     this->obs.ang_vel = torch::tensor({{0.0, 0.0, 0.0}});
     this->obs.gravity_vec = torch::tensor({{0.0, 0.0, -1.0}});
+    this->obs.time = torch::tensor({{0.0}});
     //this->obs.commands = torch::tensor({{0.0, 0.0, 0.0}});
     this->obs.base_quat = torch::tensor({{0.0, 0.0, 0.0, 1.0}});
     this->obs.dof_pos = this->params.default_dof_pos;
@@ -150,8 +151,10 @@ void Agent::ReadYaml(std::string robot_name,std::string config_path)
 torch::Tensor Agent::ComputeObservation()
 {
     torch::Tensor obs = torch::cat({//(this->QuatRotateInverse(this->base_quat, this->lin_vel)) * this->params.lin_vel_scale,
-                                    (this->quat_rotate_inverse(this->obs.base_quat, this->obs.ang_vel)) * this->params.ang_vel_scale,
+                                    // (this->quat_rotate_inverse(this->obs.base_quat, this->obs.ang_vel)) * this->params.ang_vel_scale,
+                                    this->obs.ang_vel * this->params.ang_vel_scale,
                                     this->quat_rotate_inverse(this->obs.base_quat, this->obs.gravity_vec),
+                                    this->obs.time,
                                     //this->obs.commands * this->params.commands_scale,
                                     (this->obs.dof_pos - this->params.default_dof_pos) * this->params.dof_pos_scale,
                                     this->obs.dof_vel * this->params.dof_vel_scale,
@@ -174,7 +177,12 @@ torch::Tensor Agent::ComputeObservation()
 
 torch::Tensor Agent::Forward()
 {
+    this->obs.time += 0.02;
+    this->obs.time = torch::clip(this->obs.time, 0., 3.);
+    
     torch::Tensor obs = this->ComputeObservation();
+
+    std::cout << obs << std::endl;
 
     torch::Tensor actor_input = torch::cat({obs}, 1);
 

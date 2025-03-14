@@ -1,6 +1,6 @@
 go1:
-  model_name: "policy_1.pt"
-  num_observations: 42 
+  model_name: "Mar14_13-45-05_model_400.pt"
+  num_observations: 40
   clip_obs: 100.0
   clip_actions: 100.0
   # damping: 0.5

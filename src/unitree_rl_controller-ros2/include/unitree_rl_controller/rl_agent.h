@@ -14,6 +14,7 @@ struct Observations
     //torch::Tensor lin_vel;           
     torch::Tensor ang_vel;      
     torch::Tensor gravity_vec;
+    torch::Tensor time;
     //torch::Tensor commands;          
     torch::Tensor base_quat;   
     torch::Tensor dof_pos;           

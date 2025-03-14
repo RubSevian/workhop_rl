@@ -84,7 +84,7 @@ const std::vector<std::string> urdf_feet_names = {"FR_foot", "FL_foot", "RR_foot
 
 std::string CONFIG_PATH = std::string(CONFIG_BASE_DIR) + "/weights/" + ROBOT_NAME + "/config.yaml";
 //std::string config_path = std::string(CONFIG_BASE_DIR) + "/weights/" + ROBOT_NAME + + "/policy_1.pt"; //FIXME
-std::string model_path =std::string(CONFIG_BASE_DIR) + "/weights/" + ROBOT_NAME + + "/policy_1.pt"; // add my learn model
+std::string model_path =std::string(CONFIG_BASE_DIR) + "/weights/" + ROBOT_NAME + + "/Mar14_13-45-05_model_400.pt"; // add my learn model
 
 double jointLinearInterpolation(double initPos, double targetPos, double rate)
 {
@@ -453,9 +453,9 @@ int main(int argc, char **argv)
                         if (robot_state == STATE_WAITING && (motiontime - fallen_pause_time > 1000))
                             robot_state = STATE_READY;
 
-                        if (robot_state == STATE_FALLEN) {
-                            agent.obs.actions.zero_();  // Обнуляем значения, а не пересоздаем тензор
-                        }
+                        // if (robot_state == STATE_FALLEN) {
+                        //     agent.obs.actions.zero_();  // Обнуляем значения, а не пересоздаем тензор
+                        // }
 
                         for (size_t k = 0; k < 12; k++)
                         {
