@@ -71,7 +71,7 @@ void Agent::InitObservations()
 void Agent::InitOutputs()
 {
     output_torques = torch::tensor({{0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0}});
-    output_dof_pos = params.default_dof_pos;
+    output_dof_pos = this->params.default_dof_pos;
 }
 
 torch::Tensor Agent::ComputeTorques(torch::Tensor actions)

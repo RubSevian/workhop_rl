@@ -460,7 +460,7 @@ int main(int argc, char **argv)
                         for (size_t k = 0; k < 12; k++)
                         {
                             float action = actions_accessor[0][net2joint_indexes[k]]; // Получаем значение как float
-                            qDes[k] = default_joint_angles[k] + action;
+                            qDes[k] = action;
                         }
                     }
                 }
