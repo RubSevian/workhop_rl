@@ -58,19 +58,19 @@ torch::Tensor Agent::act()
 void Agent::InitObservations()
 {
     //this->obs.lin_vel = torch::tensor({{0.0, 0.0, 0.0}});
-    this->obs.ang_vel = torch::tensor({{0.0, 0.0, 0.0}});
+    this->obs.ang_vel = torch::zeros({1, 3});
     this->obs.gravity_vec = torch::tensor({{0.0, 0.0, -1.0}});
     this->obs.time = torch::tensor({{0.0}});
     //this->obs.commands = torch::tensor({{0.0, 0.0, 0.0}});
     this->obs.base_quat = torch::tensor({{0.0, 0.0, 0.0, 1.0}});
     this->obs.dof_pos = this->params.default_dof_pos;
-    this->obs.dof_vel = torch::tensor({{0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0}});
-    this->obs.actions = torch::tensor({{0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0}});
+    this->obs.dof_vel = torch::zeros({1, 12});
+    this->obs.actions = torch::zeros({1, 12});
 }
 
 void Agent::InitOutputs()
 {
-    output_torques = torch::tensor({{0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0}});
+    output_torques = torch::zeros({1, 12});
     output_dof_pos = this->params.default_dof_pos;
 }
 
