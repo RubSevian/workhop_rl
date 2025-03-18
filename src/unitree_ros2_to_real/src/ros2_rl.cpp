@@ -60,7 +60,7 @@ enum ROBOT_STATE
 //     0.0, 0.8, -1.3};
 // Глобальные константы (теперь инициализируются позже)
 std::vector<std::string> joint_names;
-std::vector<double> default_joint_angles;
+//std::vector<double> default_joint_angles;
 const std::vector<int> net2joint_indexes = {
     3, 4, 5,
     0, 1, 2,
@@ -102,7 +102,7 @@ void update_dof_state(const ros2_unitree_legged_msgs::msg::LowState &state, Agen
          state.motor_state[0].q, state.motor_state[1].q, state.motor_state[2].q,
          state.motor_state[9].q, state.motor_state[10].q, state.motor_state[11].q,
          state.motor_state[6].q, state.motor_state[7].q, state.motor_state[8].q}
-    }) - torch::tensor(default_joint_angles);  // Вычитаем default_joint_angles
+    }) ;
 
     agent.obs.dof_vel = torch::tensor({
         {state.motor_state[3].dq, state.motor_state[4].dq, state.motor_state[5].dq,
@@ -130,7 +130,7 @@ int main(int argc, char **argv)
         return 1;
     }
     joint_names = agent.params.joint_names;
-    default_joint_angles = agent.params.default_joint_angles;
+    //default_joint_angles = agent.params.default_joint_angles;
     std::cout<<model_path<<std::endl;
     // std::cout<<"STABLE"<<std::endl;
     // std::cout << default_joint_angle << std::endl;
@@ -404,7 +404,8 @@ int main(int argc, char **argv)
 
                     for (size_t k = 0; k < 12; k++)
                     {
-                        qDes[k] = jointLinearInterpolation(qInit[k], default_joint_angles[k], rate);
+                        double default_joint_angles = agent.params.default_dof_pos[0][k].item<double>();
+                        qDes[k] = jointLinearInterpolation(qInit[k], default_joint_angles, rate);
                     }
                 }
 

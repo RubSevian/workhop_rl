@@ -36,7 +36,7 @@ struct ModelParams
     double dof_vel_scale;
     double clip_obs;
     double clip_actions;
-    std::vector<double> default_joint_angles;
+    //std::vector<double> default_joint_angles;
     //torch::Tensor commands_scale;
     torch::Tensor rl_kp;
     torch::Tensor rl_kd;

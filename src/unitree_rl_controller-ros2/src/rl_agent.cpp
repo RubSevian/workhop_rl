@@ -144,7 +144,7 @@ void Agent::ReadYaml(std::string robot_name,std::string config_path)
     //this->params.fixed_kd = torch::tensor(ReadVectorFromYaml<double>(config["fixed_kd"], this->params.framework, rows, cols)).view({1, -1});
     this->params.torque_limits = torch::tensor(ReadVectorFromYaml<double>(config["torque_limits"])).view({1, -1});
     this->params.default_dof_pos = torch::tensor(ReadVectorFromYaml<double>(config["default_dof_pos"])).view({1, -1});
-    this->params.default_joint_angles = ReadVectorFromYaml<double>(config["default_joint_angles"]);
+    //this->params.default_joint_angles = ReadVectorFromYaml<double>(config["default_joint_angles"]);
     this->params.joint_names = ReadVectorFromYaml<std::string>(config["joint_names"]);
 }
 
