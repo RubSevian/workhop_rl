@@ -36,11 +36,11 @@ torch::Tensor Agent::act()
     torch::Tensor actions = this->Forward();
 
 
-    // 6. Корректируем действия суставов
-    for (int i : this->params.hip_scale_reduction_indices)
-    {
-        actions[0][i] *= this->params.hip_scale_reduction;
-    }
+    // // 6. Корректируем действия суставов
+    // for (int i : this->params.hip_scale_reduction_indices)
+    // {
+    //     actions[0][i] *= this->params.hip_scale_reduction;
+    // }
 
     // 7. Вычисляем крутящие моменты и  позиции суставов
     //output_torques = this->ComputeTorques(actions);
