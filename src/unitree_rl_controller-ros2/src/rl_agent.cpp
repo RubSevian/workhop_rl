@@ -48,8 +48,7 @@ void Agent::InitObservations()
 
 void Agent::InitOutputs()
 {
-    //output_torques = torch::zeros({1, 12});
-    output_dof_pos = torch::zeros({1, 12});//this->params.default_dof_pos;
+    output_dof_pos = torch::zeros({1, 12});
 }
 
 torch::Tensor Agent::ComputePosition(torch::Tensor actions)

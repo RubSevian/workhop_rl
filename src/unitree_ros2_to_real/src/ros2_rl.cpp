@@ -53,7 +53,7 @@ const std::vector<int> net2joint_indexes = {
     0, 1, 2,
     9, 10, 11,
     6, 7, 8};
-// Я бы убрал это 
+const std::vector<int> orient_quat_index = {1 , 2 , 3 , 0}; //quaternion : w x y z to x y z w
 const std::vector<float> stiffness = {
     20., 20., 20.,
     20., 20., 20.,
@@ -70,7 +70,7 @@ const std::vector<float> damping = {
 const std::vector<std::string> urdf_feet_names = {"FR_foot", "FL_foot", "RR_foot", "RL_foot"};
 
 
-float jointLinearInterpolation(float initPos, float targetPos, float rate)
+float jointLinearInterpolation(float &initPos, float &targetPos, float &rate)
 {
     float p;
     rate = std::min(std::max(rate, 0.0f), 1.0f);
@@ -98,8 +98,6 @@ int main(int argc, char **argv)
 
     try {
         agent.ReadYaml(ROBOT_NAME,CONFIG_PATH);
-        // std::cout << "params.default_dof_pos size: (" << agent.params.default_dof_pos.size(0) << ", " << agent.params.default_dof_pos.size(1) << ")" << std::endl;
-        // std::cout << "params.default_dof_pos type: " << agent.params.default_dof_pos.dtype().name() << std::endl;
 
     } catch (const std::exception& e) {
         std::cerr << "Error: " << e.what() << std::endl;
@@ -134,8 +132,6 @@ int main(int argc, char **argv)
     float Kp[12] = {0};
     float Kd[12] = {0};
 
-    //void update_commands(const geometry_msgs::msg::Twist& commands, Agent& agent);
-
     ros2_unitree_legged_msgs::msg::LowCmd low_cmd_ros;
     ros2_unitree_legged_msgs::msg::LowState low_state_ros;
 
@@ -164,9 +160,6 @@ int main(int argc, char **argv)
     pub_RR_force = node->create_publisher<geometry_msgs::msg::WrenchStamped>("/go1/legRR/force_torque_states", 1000);
     pub_RL_force = node->create_publisher<geometry_msgs::msg::WrenchStamped>("/go1/legRL/force_torque_states", 1000);
 
-    rclcpp::Publisher<std_msgs::msg::UInt8MultiArray>::SharedPtr pub_wireless_remote;
-    pub_wireless_remote = node->create_publisher<std_msgs::msg::UInt8MultiArray>("/go1/remote", 100);
-
     auto pub = node->create_publisher<ros2_unitree_legged_msgs::msg::LowCmd>("low_cmd", 1000);
 
     if (!agent.load_model(model_path))
@@ -182,9 +175,9 @@ int main(int argc, char **argv)
     for (int i = 0; i < 12; i++)
     {
         low_cmd_ros.motor_cmd[i].mode = 0x0A;  // motor switch to servo (PMSM) mode
-        low_cmd_ros.motor_cmd[i].q = PosStopF; // 禁止位置环
+        low_cmd_ros.motor_cmd[i].q = PosStopF; // Forbidden position 
         low_cmd_ros.motor_cmd[i].kp = 0;
-        low_cmd_ros.motor_cmd[i].dq = VelStopF; // 禁止速度环
+        low_cmd_ros.motor_cmd[i].dq = VelStopF; // Forbidden speed 
         low_cmd_ros.motor_cmd[i].kd = 0;
         low_cmd_ros.motor_cmd[i].tau = 0;
     }
@@ -255,10 +248,9 @@ int main(int argc, char **argv)
             for (int i = 0; i < 3; ++i) {
                 ang_vel_accessor[0][i] = low_state_ros.imu.gyroscope[i];
             }                 
-            std::vector<int> orient_quat = {1,2,3,0};
-
-            for (int i = 0; i < orient_quat.size(); ++i){
-                int count_quat = orient_quat[i];
+            
+            for (int i = 0; i < orient_quat_index.size(); ++i){
+                int count_quat = orient_quat_index[i];
                 base_quat_accessor[0][i] = low_state_ros.imu.quaternion[count_quat];
             };
 
@@ -282,14 +274,6 @@ int main(int argc, char **argv)
             pub_RR_force->publish(feet_forces[2]);
             pub_RL_force->publish(feet_forces[3]);
 
-            std_msgs::msg::UInt8MultiArray remote_array;
-            remote_array.data.clear();
-            for (size_t k = 0; k < low_state_ros.wireless_remote.size(); k++)
-            {
-                remote_array.data.push_back(low_state_ros.wireless_remote[k]);
-            }
-            pub_wireless_remote->publish(remote_array);
-
             update_dof_state(low_state_ros, agent,node);
 
             if (motiontime >= 0)
@@ -307,7 +291,7 @@ int main(int argc, char **argv)
                 if (motiontime >= 1 && motiontime < 1000)
                 {
                     rate_count++;
-                    double rate = rate_count / (1000.0 - 1.0);
+                    float rate = rate_count / (1000.0 - 1.0);
 
                     for (size_t k = 0; k < 12; k++)
                     {

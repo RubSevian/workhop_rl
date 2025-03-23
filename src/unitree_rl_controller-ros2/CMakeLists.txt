@@ -20,7 +20,7 @@ find_package(ros2_unitree_legged_msgs REQUIRED)
 find_package(geometry_msgs REQUIRED)
 find_package(nav_msgs REQUIRED)
 find_package(std_msgs REQUIRED)
-find_package(yaml-cpp REQUIRED)  # ✅ Добавляем поддержку YAML
+find_package(yaml-cpp REQUIRED)  
 
 set(CMAKE_PREFIX_PATH "/home/ruben/libtorch/share/cmake/Torch")
 find_package(Torch REQUIRED)
@@ -41,7 +41,7 @@ target_compile_definitions(${PROJECT_NAME}
 )
 
 # Линкуем с библиотеками
-target_link_libraries(${PROJECT_NAME} ${TORCH_LIBRARIES} yaml-cpp)  # ✅ Добавляем yaml-cpp
+target_link_libraries(${PROJECT_NAME} ${TORCH_LIBRARIES} yaml-cpp)  
 
 ament_target_dependencies(${PROJECT_NAME} std_msgs rclcpp)
 
