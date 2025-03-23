@@ -13,12 +13,6 @@ torch::Tensor Agent::quat_rotate_inverse(torch::Tensor q, torch::Tensor v) {
     return a - b + c;
 }
 
-Agent::Agent()
-{
-    Agent::InitObservations();
-    Agent::InitOutputs();
-}
-
 bool Agent::load_model(std::string model_path)
 {
     try {
@@ -35,53 +29,28 @@ torch::Tensor Agent::act()
 {
     torch::Tensor actions = this->Forward();
 
-
-    // // 6. Корректируем действия суставов
-    // for (int i : this->params.hip_scale_reduction_indices)
-    // {
-    //     actions[0][i] *= this->params.hip_scale_reduction;
-    // }
-
-    // 7. Вычисляем крутящие моменты и  позиции суставов
-    //output_torques = this->ComputeTorques(actions);
     output_dof_pos = this->ComputePosition(actions);
 
     return output_dof_pos;
-
-    // std::cout << "Agent::act() called (stub)" << std::endl; // Check if it's called at all
-    // return torch::zeros({1, 12});
-    
+  
 }
-
-//~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~MY_CODE~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~//
 
 void Agent::InitObservations()
 {
-    //this->obs.lin_vel = torch::tensor({{0.0, 0.0, 0.0}});
-    this->obs.ang_vel = torch::zeros({1, 3});
-    this->obs.gravity_vec = torch::tensor({{0.0, 0.0, -1.0}});
-    this->obs.time = torch::tensor({{0.0}});
-    //this->obs.commands = torch::tensor({{0.0, 0.0, 0.0}});
-    this->obs.base_quat = torch::tensor({{0.0, 0.0, 0.0, 1.0}});
-    this->obs.dof_pos = this->params.default_dof_pos;
-    this->obs.dof_vel = torch::zeros({1, 12});
-    this->obs.actions = torch::zeros({1, 12});
+    this->obs.ang_vel = torch::zeros({1, 3}, torch::kFloat);
+    this->obs.gravity_vec = torch::tensor({{0.0, 0.0, -1.0}}, torch::kFloat);
+    this->obs.time = torch::tensor({{0.0}}, torch::kFloat);
+    this->obs.base_quat = torch::tensor({{0.0, 0.0, 0.0, 1.0}}, torch::kFloat);// Явное указание типа
+    this->obs.dof_pos = torch::zeros({1, 12}, torch::kFloat);
+    this->obs.dof_vel = torch::zeros({1, 12}, torch::kFloat);
+    this->obs.actions = torch::zeros({1, 12}, torch::kFloat);
 }
 
 void Agent::InitOutputs()
 {
-    output_torques = torch::zeros({1, 12});
-    output_dof_pos = this->params.default_dof_pos;
+    //output_torques = torch::zeros({1, 12});
+    output_dof_pos = torch::zeros({1, 12});//this->params.default_dof_pos;
 }
-
-torch::Tensor Agent::ComputeTorques(torch::Tensor actions)
-{
-    torch::Tensor actions_scaled = actions * this->params.action_scale;
-    torch::Tensor output_torques = this->params.rl_kp * (actions_scaled + this->params.default_dof_pos - this->obs.dof_pos) - this->params.rl_kd * this->obs.dof_vel;
-    torch::Tensor clamped = torch::clamp(output_torques, -(this->params.torque_limits), this->params.torque_limits);
-    return clamped;
-}
-
 
 torch::Tensor Agent::ComputePosition(torch::Tensor actions)
 {
@@ -108,10 +77,7 @@ std::vector<T> ReadVectorFromYaml(const YAML::Node& node)
 
 void Agent::ReadYaml(std::string robot_name,std::string config_path)
 {
-    // The config file is located at "rl_sar/src/rl_sar/models/<robot_name>/config.yaml"
-   // std::string config_path = std::string(CMAKE_CURRENT_SOURCE_DIR) + "/models/" + robot_name + "/config.yaml";
-   // std::string CONFIG_PATH = std::string("/home/ruben/Desktop/ros2_ws/src/unitree_rl_controller-ros2/weights/config.yaml");
-   // std::string config_path = std::string(CONFIG_BASE_DIR) + "/weights/" + robot_name + "/config.yaml";
+
 	YAML::Node config;
 	try
 	{
@@ -124,53 +90,35 @@ void Agent::ReadYaml(std::string robot_name,std::string config_path)
 	}
 
     this->params.model_name = config["model_name"].as<std::string>();
-    //this->params.framework = config["framework"].as<std::string>();
     this->params.num_observations = config["num_observations"].as<int>();
-    this->params.clip_obs = config["clip_obs"].as<double>();
-    this->params.clip_actions = config["clip_actions"].as<double>();
-    this->params.action_scale = config["action_scale"].as<double>();
-    this->params.hip_scale_reduction = config["hip_scale_reduction"].as<double>();
+    this->params.clip_obs = config["clip_obs"].as<float>();
+    this->params.clip_actions = config["clip_actions"].as<float>();
+    this->params.action_scale = config["action_scale"].as<float>();
+    this->params.hip_scale_reduction = config["hip_scale_reduction"].as<float>();
     this->params.hip_scale_reduction_indices = ReadVectorFromYaml<int>(config["hip_scale_reduction_indices"]);
     this->params.num_of_dofs = config["num_of_dofs"].as<int>();
-    //this->params.lin_vel_scale = config["lin_vel_scale"].as<double>();//1
-    this->params.ang_vel_scale = config["ang_vel_scale"].as<double>();
-    this->params.dof_pos_scale = config["dof_pos_scale"].as<double>();
-    this->params.dof_vel_scale = config["dof_vel_scale"].as<double>();
-    // this->params.commands_scale = torch::tensor(ReadVectorFromYaml<double>(config["commands_scale"])).view({1, -1});
-    //this->params.commands_scale = torch::tensor({this->params.lin_vel_scale, this->params.lin_vel_scale, this->params.ang_vel_scale});
-    this->params.rl_kp = torch::tensor(ReadVectorFromYaml<double>(config["rl_kp"])).view({1, -1});
-    this->params.rl_kd = torch::tensor(ReadVectorFromYaml<double>(config["rl_kd"])).view({1, -1});
-    //this->params.fixed_kp = torch::tensor(ReadVectorFromYaml<double>(config["fixed_kp"], this->params.framework, rows, cols)).view({1, -1});
-    //this->params.fixed_kd = torch::tensor(ReadVectorFromYaml<double>(config["fixed_kd"], this->params.framework, rows, cols)).view({1, -1});
-    this->params.torque_limits = torch::tensor(ReadVectorFromYaml<double>(config["torque_limits"])).view({1, -1});
-    this->params.default_dof_pos = torch::tensor(ReadVectorFromYaml<double>(config["default_dof_pos"])).view({1, -1});
-    //this->params.default_joint_angles = ReadVectorFromYaml<double>(config["default_joint_angles"]);
+    this->params.ang_vel_scale = config["ang_vel_scale"].as<float>();
+    this->params.dof_pos_scale = config["dof_pos_scale"].as<float>();
+    this->params.dof_vel_scale = config["dof_vel_scale"].as<float>();
+    this->params.rl_kp = torch::tensor(ReadVectorFromYaml<float>(config["rl_kp"])).view({1, -1});
+    this->params.rl_kd = torch::tensor(ReadVectorFromYaml<float>(config["rl_kd"])).view({1, -1});
+    this->params.torque_limits = torch::tensor(ReadVectorFromYaml<float>(config["torque_limits"])).view({1, -1});
+    this->params.default_dof_pos = torch::tensor(ReadVectorFromYaml<float>(config["default_dof_pos"])).view({1, -1});
+   // std::cout << "this->params.default_dof_pos.scalar_type(): " << this->params.default_dof_pos.scalar_type() << std::endl;
     this->params.joint_names = ReadVectorFromYaml<std::string>(config["joint_names"]);
 }
 
 torch::Tensor Agent::ComputeObservation()
 {
-    torch::Tensor obs = torch::cat({//(this->QuatRotateInverse(this->base_quat, this->lin_vel)) * this->params.lin_vel_scale,
-                                    // (this->quat_rotate_inverse(this->obs.base_quat, this->obs.ang_vel)) * this->params.ang_vel_scale,
-                                    this->obs.ang_vel * this->params.ang_vel_scale,
+    torch::Tensor obs = torch::cat({this->obs.ang_vel * this->params.ang_vel_scale,
                                     this->quat_rotate_inverse(this->obs.base_quat, this->obs.gravity_vec),
                                     this->obs.time,
-                                    //this->obs.commands * this->params.commands_scale,
                                     (this->obs.dof_pos - this->params.default_dof_pos) * this->params.dof_pos_scale,
                                     this->obs.dof_vel * this->params.dof_vel_scale,
                                     this->obs.actions},
                                    1);
 
     obs = torch::clamp(obs, -this->params.clip_obs, this->params.clip_obs);
-
-    //printf("observation size: %lld, %lld\n", (long long)obs.sizes()[0], (long long)obs.sizes()[1]); // Commit if your obs match obs learned model 
-    //std::cout << "Observation tensor:\n" << obs << std::endl;
-    // std::cout << "Angular velocity: " << obs.index({0, torch::indexing::Slice(0, 3)}) << std::endl;
-    // std::cout << "Projected gravity: " << obs.index({0, torch::indexing::Slice(3, 6)}) << std::endl;
-    // std::cout << "DOF positions: " << obs.index({0, torch::indexing::Slice(6, 18)}) << std::endl;
-    // std::cout << "DOF velocities: " << obs.index({0, torch::indexing::Slice(18, 30)}) << std::endl;
-    // std::cout << "Actions: " << obs.index({0, torch::indexing::Slice(30, 42)}) << std::endl;
-
 
     return obs;
 }
@@ -186,7 +134,6 @@ torch::Tensor Agent::Forward()
 
     torch::Tensor actor_input = torch::cat({obs}, 1);
 
-    //torch::Tensor action = this->model.forward({actor_input}).toTensor();
     torch::Tensor action = this->module.forward({actor_input}).toTensor();
 
     this->obs.actions = action;

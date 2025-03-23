@@ -9,8 +9,11 @@
         "/opt/ros/humble/lib/python3.10/site-packages",
         "/opt/ros/humble/local/lib/python3.10/dist-packages"
     ],
-    "cmake.sourceDirectory": "/home/ruben/workhop_rl/src/unitree_ros2_to_real",
+    "C_Cpp.errorSquiggles": "enabled",
+    "C_Cpp.default.intelliSenseMode": "gcc-x64",
     "files.associations": {
+        "*.cpp": "cpp",
+        "random": "cpp",
         "cctype": "cpp",
         "clocale": "cpp",
         "cmath": "cpp",
@@ -31,6 +34,7 @@
         "*.tcc": "cpp",
         "bitset": "cpp",
         "chrono": "cpp",
+        "cinttypes": "cpp",
         "codecvt": "cpp",
         "compare": "cpp",
         "complex": "cpp",
@@ -54,7 +58,6 @@
         "memory_resource": "cpp",
         "numeric": "cpp",
         "optional": "cpp",
-        "random": "cpp",
         "ratio": "cpp",
         "regex": "cpp",
         "string_view": "cpp",
@@ -82,11 +85,13 @@
         "streambuf": "cpp",
         "thread": "cpp",
         "cfenv": "cpp",
-        "cinttypes": "cpp",
         "typeindex": "cpp",
         "typeinfo": "cpp",
+        "valarray": "cpp",
         "variant": "cpp",
-        "__nullptr": "cpp"
+        "__nullptr": "cpp",
+        "__locale": "cpp"
     },
     "ros.distro": "humble"
+
 }

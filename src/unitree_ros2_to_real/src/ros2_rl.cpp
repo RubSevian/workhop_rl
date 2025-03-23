@@ -23,8 +23,6 @@
 #include <mean_smoothing.h>
 #include <map>
 
-#include <random>  // генерации случайных чисел
-
 #define DIMENSION 3
 
 #define ROBOT_NAME "go1"
@@ -46,34 +44,23 @@ enum ROBOT_STATE
     STATE_FALLEN
 };
 
-// const std::vector<std::string> joint_names = {
-//     "FR_hip", "FR_thigh", "FR_calf",
-//     "FL_hip", "FL_thigh", "FL_calf",
-//     "RR_hip", "RR_thigh", "RR_calf",
-//     "RL_hip", "RL_thigh", "RL_calf"};
-// const std::vector<std::string> joint_names = agent.params.joint_names;
-
-// const std::vector<float> default_joint_angles = {
-//     -0., 0.8, -1.3,
-//     0., 0.8, -1.3,
-//     -0.0, 0.8, -1.3,
-//     0.0, 0.8, -1.3};
 // Глобальные константы (теперь инициализируются позже)
 std::vector<std::string> joint_names;
-//std::vector<double> default_joint_angles;
+std::string CONFIG_PATH = std::string(CONFIG_BASE_DIR) + "/weights/" + ROBOT_NAME + "/config.yaml";
+std::string model_path =std::string(CONFIG_BASE_DIR) + "/weights/" + ROBOT_NAME + + "/Mar14_13-45-05_model_400.pt"; 
 const std::vector<int> net2joint_indexes = {
     3, 4, 5,
     0, 1, 2,
     9, 10, 11,
     6, 7, 8};
 // Я бы убрал это 
-const std::vector<double> stiffness = {
+const std::vector<float> stiffness = {
     20., 20., 20.,
     20., 20., 20.,
     20., 20., 20.,
     20., 20., 20.};
 
-const std::vector<double> damping = {
+const std::vector<float> damping = {
     0.5, 0.5, 0.5,
     0.5, 0.5, 0.5,
     0.5, 0.5, 0.5,
@@ -82,41 +69,28 @@ const std::vector<double> damping = {
 
 const std::vector<std::string> urdf_feet_names = {"FR_foot", "FL_foot", "RR_foot", "RL_foot"};
 
-std::string CONFIG_PATH = std::string(CONFIG_BASE_DIR) + "/weights/" + ROBOT_NAME + "/config.yaml";
-//std::string config_path = std::string(CONFIG_BASE_DIR) + "/weights/" + ROBOT_NAME + + "/policy_1.pt"; //FIXME
-std::string model_path =std::string(CONFIG_BASE_DIR) + "/weights/" + ROBOT_NAME + + "/Mar14_13-45-05_model_400.pt"; // add my learn model
 
-double jointLinearInterpolation(double initPos, double targetPos, double rate)
+float jointLinearInterpolation(float initPos, float targetPos, float rate)
 {
-    double p;
-    rate = std::min(std::max(rate, 0.0), 1.0);
+    float p;
+    rate = std::min(std::max(rate, 0.0f), 1.0f);
     p = initPos * (1 - rate) + targetPos * rate;
     return p;
 }
 
-void update_dof_state(const ros2_unitree_legged_msgs::msg::LowState &state, Agent &agent)
+void update_dof_state(const ros2_unitree_legged_msgs::msg::LowState &state, Agent &agent,rclcpp::Node::SharedPtr &node)
 {
-    // Создаем тензоры для dof_pos и dof_vel, перезаписываем их с новыми значениями
-    agent.obs.dof_pos = torch::tensor({
-        {state.motor_state[3].q, state.motor_state[4].q, state.motor_state[5].q,
-         state.motor_state[0].q, state.motor_state[1].q, state.motor_state[2].q,
-         state.motor_state[9].q, state.motor_state[10].q, state.motor_state[11].q,
-         state.motor_state[6].q, state.motor_state[7].q, state.motor_state[8].q}
-    }) ;
+    
+    auto dof_ang_accessor = agent.obs.dof_vel.accessor<float, 2>();
+    auto dof_vel_accessor = agent.obs.dof_vel.accessor<float, 2>();
+    for (int i = 0; i < net2joint_indexes.size(); ++i) {
+        int motor_index = net2joint_indexes[i];
 
-    agent.obs.dof_vel = torch::tensor({
-        {state.motor_state[3].dq, state.motor_state[4].dq, state.motor_state[5].dq,
-         state.motor_state[0].dq, state.motor_state[1].dq, state.motor_state[2].dq,
-         state.motor_state[9].dq, state.motor_state[10].dq, state.motor_state[11].dq,
-         state.motor_state[6].dq, state.motor_state[7].dq, state.motor_state[8].dq}
-    });
+        dof_ang_accessor[0][i] = state.motor_state[motor_index].q;
+        dof_vel_accessor[0][i] = state.motor_state[motor_index].dq;
+    }
 }
 
-// void update_commands(const geometry_msgs::msg::Twist& commands, Agent& agent) {
-//     agent.commands.index({0}) = commands.linear.x;
-//     agent.commands.index({1}) = commands.linear.y;
-//     agent.commands.index({2}) = commands.angular.z;
-// }
 
 int main(int argc, char **argv)
 {
@@ -124,20 +98,16 @@ int main(int argc, char **argv)
 
     try {
         agent.ReadYaml(ROBOT_NAME,CONFIG_PATH);
+        // std::cout << "params.default_dof_pos size: (" << agent.params.default_dof_pos.size(0) << ", " << agent.params.default_dof_pos.size(1) << ")" << std::endl;
+        // std::cout << "params.default_dof_pos type: " << agent.params.default_dof_pos.dtype().name() << std::endl;
 
     } catch (const std::exception& e) {
         std::cerr << "Error: " << e.what() << std::endl;
         return 1;
     }
+    agent.InitObservations();
+    agent.InitOutputs();
     joint_names = agent.params.joint_names;
-    //default_joint_angles = agent.params.default_joint_angles;
-    std::cout<<model_path<<std::endl;
-    // std::cout<<"STABLE"<<std::endl;
-    // std::cout << default_joint_angle << std::endl;
-
-    // std::cout<<"config"<<std::endl;
-    // std::cout << default_joint_angles << std::endl;
-
     rclcpp::init(argc, argv);
 
     std::cout << "Communication level is set to LOW-level." << std::endl
@@ -204,17 +174,6 @@ int main(int argc, char **argv)
     else
         RCLCPP_INFO(node->get_logger(), "Model loaded successfully\n");
 
-
-    //rclcpp::Subscription<geometry_msgs::msg::Twist>::SharedPtr commands_sub;
-    //commands_sub = node->create_subscription<geometry_msgs::msg::Twist>("/cmd_vel", 10, std::bind(update_commands, std::placeholders::_1 , std::ref(agent)));
-
-    // commands_sub = node->create_subscription<geometry_msgs::msg::Twist>(
-    //     "/cmd_vel", 10,
-    //     [ &agent](const geometry_msgs::msg::Twist::SharedPtr msg) {
-    //         update_commands(*msg, agent);
-    //     });
-
-
     bool initiated_flag = false; // initiate need time
     int count = 0;
 
@@ -230,18 +189,7 @@ int main(int argc, char **argv)
         low_cmd_ros.motor_cmd[i].tau = 0;
     }
 
-    mean_smoothing<double, DIMENSION> meansmth; 
-
-    // Настройка генерации случайных чисел
-    std::random_device rd;
-    std::mt19937 gen(rd()); 
-
-    // Функция для генерации случайного числа с плавающей точкой в заданном диапазоне
-    auto random_float = [&](float min, float max) {
-        std::uniform_real_distribution<float> distrib(min, max);
-        return distrib(gen);
-    };
-
+    mean_smoothing<float, DIMENSION> meansmth; 
 
     while (rclcpp::ok())
     {
@@ -252,39 +200,6 @@ int main(int argc, char **argv)
         if (initiated_flag == true)
         {
             motiontime ++;
-
-            // // **НАЧАЛО: Внедрение случайных данных**
-            // if(motiontime > 100) {  // Начните внедрение после некоторого времени инициализации
-            // // Пример: Внедрение случайных данных акселерометра
-            // for (int i = 0; i < 3; ++i) {
-            //     low_state_ros.imu.accelerometer[i] = random_float(-2.0, 2.0); // Случайное ускорение между -1 и 1 м/с^2
-            // }
-
-            // // Пример: Внедрение случайных данных гироскопа
-            // for (int i = 0; i < 3; ++i) {
-            //     low_state_ros.imu.gyroscope[i] = random_float(-0.8, 0.8); // Случайная угловая скорость между -0.1 и 0.1 рад/с
-            // }
-
-            // // Пример: Внедрение случайных положений суставов
-            // for (int i = 0; i < 12; ++i) {
-            //     low_state_ros.motor_state[i].q = default_joint_angles[i] + random_float(-0.9, 0.9); // Случайное положение сустава вокруг значения по умолчанию
-            // }
-
-            // // Пример: Внедрение случайных данных о силе в стопе
-            // for (int i = 0; i < 4; ++i) {
-            //     low_state_ros.foot_force[i] = random_float(0.0, 50.0); // Случайная сила в стопе между 0 и 50 Н
-            // }
-            // }
-
-            // for (int i = 0 ; i < 12; ++i){
-
-            //     low_state_ros.motor_state[i].dq = default_joint_angles[i] + random_float(-0.9, 0.9);
-            // }
-            // for (int i = 0; i < 4; ++i) {
-            //     low_state_ros.imu.quaternion[i] = random_float(-0.10, 0.20); 
-            // }
-            // // **КОНЕЦ: Внедрение случайных данных**
-
 
             auto joint_state = sensor_msgs::msg::JointState();
             joint_state.header.stamp = node->get_clock()->now();
@@ -316,9 +231,9 @@ int main(int argc, char **argv)
             imu_state.angular_velocity.z = low_state_ros.imu.gyroscope[2];
             pub_imu->publish(imu_state);
 
-            es_vec<double, DIMENSION> curr_query;
+            es_vec<float, DIMENSION> curr_query;
             for (size_t i = 0; i < DIMENSION; ++i) curr_query[i] = low_state_ros.imu.accelerometer[i];
-            es_vec<double, DIMENSION> acc_filter = meansmth.push_to_pop(curr_query);
+            es_vec<float, DIMENSION> acc_filter = meansmth.push_to_pop(curr_query);
 
             sensor_msgs::msg::Imu imu_state_filter;
             imu_state_filter.header.stamp = node->get_clock()->now();
@@ -335,19 +250,17 @@ int main(int argc, char **argv)
             imu_state_filter.angular_velocity.z = low_state_ros.imu.gyroscope[2];
             pub_imu_filter->publish(imu_state_filter);
 
-            // agent.lin_vel.index({0}) = acc_filter[0];
-            // agent.lin_vel.index({1}) = acc_filter[1];
-            // agent.lin_vel.index({2}) = acc_filter[2];
+            auto ang_vel_accessor = agent.obs.ang_vel.accessor<float, 2>();
+            auto base_quat_accessor = agent.obs.base_quat.accessor<float, 2>();
+            for (int i = 0; i < 3; ++i) {
+                ang_vel_accessor[0][i] = low_state_ros.imu.gyroscope[i];
+            }                 
+            std::vector<int> orient_quat = {1,2,3,0};
 
-            // Обновляем ang_vel с использованием torch::tensor
-            agent.obs.ang_vel = torch::tensor({
-                {low_state_ros.imu.gyroscope[0], low_state_ros.imu.gyroscope[1], low_state_ros.imu.gyroscope[2]}
-            });
-
-            // Обновляем base_quat с использованием torch::tensor
-            agent.obs.base_quat = torch::tensor({
-                {low_state_ros.imu.quaternion[1], low_state_ros.imu.quaternion[2], low_state_ros.imu.quaternion[3], low_state_ros.imu.quaternion[0]}
-            });
+            for (int i = 0; i < orient_quat.size(); ++i){
+                int count_quat = orient_quat[i];
+                base_quat_accessor[0][i] = low_state_ros.imu.quaternion[count_quat];
+            };
 
             std::vector<geometry_msgs::msg::WrenchStamped> feet_forces;
             for (size_t k = 0; k < 4; k++)
@@ -377,7 +290,7 @@ int main(int argc, char **argv)
             }
             pub_wireless_remote->publish(remote_array);
 
-            update_dof_state(low_state_ros, agent);
+            update_dof_state(low_state_ros, agent,node);
 
             if (motiontime >= 0)
             {
@@ -404,8 +317,9 @@ int main(int argc, char **argv)
 
                     for (size_t k = 0; k < 12; k++)
                     {
-                        double default_joint_angles = agent.params.default_dof_pos[0][k].item<double>();
+                        float default_joint_angles = agent.params.default_dof_pos[0][k].item<float>();
                         qDes[k] = jointLinearInterpolation(qInit[k], default_joint_angles, rate);
+                        std::cout << "k: " << k << ", qDes[k]: " << qDes[k] << std::endl; // Добавляем вывод
                     }
                 }
 
@@ -435,6 +349,7 @@ int main(int argc, char **argv)
                         pub_obs->publish(obs_msg);
                         
                         agent.obs.actions = agent.act();
+
                         // Publish action vector
                         std_msgs::msg::Float64MultiArray action_msg;
                         action_msg.data.resize(agent.obs.actions.size(1));
@@ -460,7 +375,7 @@ int main(int argc, char **argv)
 
                         for (size_t k = 0; k < 12; k++)
                         {
-                            float action = actions_accessor[0][net2joint_indexes[k]]; // Получаем значение как float
+                            float action = actions_accessor[0][net2joint_indexes[k]]; 
                             qDes[k] = action;
                         }
                     }

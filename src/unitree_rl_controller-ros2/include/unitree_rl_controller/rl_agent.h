@@ -7,15 +7,13 @@
 #include "std_msgs/msg/string.hpp"
 
 #include <yaml-cpp/yaml.h>
-//#define CONFIG_PATH  "/home/ruben/workhop_rl/src/unitree_rl_controller-ros2/weights/config.yaml"
+
 
 struct Observations
-{
-    //torch::Tensor lin_vel;           
+{         
     torch::Tensor ang_vel;      
     torch::Tensor gravity_vec;
     torch::Tensor time;
-    //torch::Tensor commands;          
     torch::Tensor base_quat;   
     torch::Tensor dof_pos;           
     torch::Tensor dof_vel;           
@@ -26,40 +24,33 @@ struct ModelParams
 {
     std::string model_name;
     int num_observations;
-    double hip_scale_reduction;
+    float hip_scale_reduction;
     std::vector<int> hip_scale_reduction_indices;
     int num_of_dofs;
-    double action_scale;
-    //double lin_vel_scale;
-    double ang_vel_scale;
-    double dof_pos_scale;
-    double dof_vel_scale;
-    double clip_obs;
-    double clip_actions;
-    //std::vector<double> default_joint_angles;
-    //torch::Tensor commands_scale;
+    float action_scale;
+    float ang_vel_scale;
+    float dof_pos_scale;
+    float dof_vel_scale;
+    float clip_obs;
+    float clip_actions;
     torch::Tensor rl_kp;
     torch::Tensor rl_kd;
     torch::Tensor torque_limits;
     torch::Tensor default_dof_pos;
-    //std::vector<std::string> default_dof_pos;
     std::vector<std::string> joint_names;
 };
 
 
 class Agent
 {
-
+    private:
+        torch::jit::script::Module module;
     public:
         ModelParams params;
         Observations obs;
 
-        //torch::Tensor get_observations();
-
-        Agent();
         bool load_model(std::string model_path);
         torch::Tensor act();
-        torch::Tensor output_torques;
         torch::Tensor output_dof_pos;
         void ReadYaml(std::string robot_name,std::string config_path);
         torch::Tensor quat_rotate_inverse(torch::Tensor q, torch::Tensor v);
@@ -69,7 +60,6 @@ class Agent
         torch::Tensor ComputePosition(torch::Tensor actions);
         torch::Tensor ComputeObservation();
         torch::Tensor Forward();
-    private:
-        torch::jit::script::Module module;
+
 };
 

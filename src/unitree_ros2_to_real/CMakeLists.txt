@@ -15,7 +15,6 @@ find_library( TORCH_LIBRARIES libtorch_cpu.so libc10.so:
               PATHS
               /home/ruben/libtorch/lib/
               NO_DEFAULT_PATH )
-## set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${TORCH_CXX_FLAGS}")
 
 include_directories(
  include
@@ -46,11 +45,6 @@ install(
 
 
 link_directories(${CMAKE_SOURCE_DIR}/unitree_legged_sdk/lib)
-
-
-## add_executable(ros2_udp src/ros2_udp.cpp)
-## target_link_libraries(ros2_udp ${EXTRA_LIBS})
-## ament_target_dependencies(ros2_udp rclcpp ros2_unitree_legged_msgs)
 
 add_executable(lcm_server unitree_legged_sdk/examples/lcm_server.cpp)
 target_link_libraries(lcm_server ${EXTRA_LIBS})
