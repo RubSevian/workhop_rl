@@ -42,13 +42,13 @@ class Agent
         ModelParams params;
         Observations obs;
 
-        bool Load_model(std::string model_path);
+        bool Load_model(std::string &model_path);
         torch::Tensor Act();
-        void ReadYaml(std::string robot_name,std::string config_path);
-        torch::Tensor Quat_rotate_inverse(torch::Tensor q, torch::Tensor v);
+        void ReadYaml(std::string &robot_name,std::string &config_path);
+        torch::Tensor Quat_rotate_inverse(torch::Tensor &q, torch::Tensor &v);
         void InitObservations();
         void InitOutputs();
-        torch::Tensor ComputePosition(torch::Tensor actions);
+        torch::Tensor ComputePosition(torch::Tensor &actions);
         torch::Tensor ComputeObservation();
         torch::Tensor Forward();
         torch::Tensor output_dof_pos;

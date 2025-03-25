@@ -25,8 +25,6 @@
 
 #define DIMENSION 3
 
-#define ROBOT_NAME "go1"
-
 using namespace UNITREE_LEGGED_SDK;
 
 enum CONTROL_MODE
@@ -46,6 +44,7 @@ enum ROBOT_STATE
 
 // Глобальные константы (теперь инициализируются позже)
 std::vector<std::string> joint_names;
+std::string ROBOT_NAME = "go1";
 std::string CONFIG_PATH = std::string(CONFIG_BASE_DIR) + "/weights/" + ROBOT_NAME + "/config.yaml";
 std::string model_path =std::string(CONFIG_BASE_DIR) + "/weights/" + ROBOT_NAME + + "/Mar14_13-45-05_model_400.pt"; 
 const std::vector<int> net2joint_indexes = {

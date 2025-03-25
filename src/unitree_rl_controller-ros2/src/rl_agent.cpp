@@ -3,7 +3,7 @@
 #include <map>
 #include "std_msgs/msg/string.hpp"
 
-torch::Tensor Agent::Quat_rotate_inverse(torch::Tensor q, torch::Tensor v) {
+torch::Tensor Agent::Quat_rotate_inverse(torch::Tensor &q, torch::Tensor &v) {
     c10::IntArrayRef shape = q.sizes();
     torch::Tensor q_w = q.index({torch::indexing::Slice(), -1});
     torch::Tensor q_vec = q.index({torch::indexing::Slice(), torch::indexing::Slice(0, 3)});
@@ -13,7 +13,7 @@ torch::Tensor Agent::Quat_rotate_inverse(torch::Tensor q, torch::Tensor v) {
     return a - b + c;
 }
 
-bool Agent::Load_model(std::string model_path)
+bool Agent::Load_model(std::string &model_path)
 {
     try {
         // Deserialize the ScriptModule from a file using torch::jit::load().
@@ -51,7 +51,7 @@ void Agent::InitOutputs()
     output_dof_pos = torch::zeros({1, 12});
 }
 
-torch::Tensor Agent::ComputePosition(torch::Tensor actions)
+torch::Tensor Agent::ComputePosition(torch::Tensor &actions)
 {
     torch::Tensor actions_scaled = actions * this->params.action_scale;
     return actions_scaled + this->params.default_dof_pos;
@@ -74,7 +74,7 @@ std::vector<T> ReadVectorFromYaml(const YAML::Node& node)
     return values;
 }
 
-void Agent::ReadYaml(std::string robot_name,std::string config_path)
+void Agent::ReadYaml(std::string &robot_name,std::string &config_path)
 {
 
 	YAML::Node config;
@@ -122,11 +122,7 @@ torch::Tensor Agent::Forward()
     
     torch::Tensor obs = this->ComputeObservation();
 
-    std::cout << obs << std::endl;
-
-    torch::Tensor actor_input = torch::cat({obs}, 1);
-
-    torch::Tensor action = this->module.forward({actor_input}).toTensor();
+    torch::Tensor action = this->module.forward({obs}).toTensor();
 
     this->obs.actions = action;
     torch::Tensor clamped = torch::clamp(action, -this->params.clip_actions, this->params.clip_actions);
