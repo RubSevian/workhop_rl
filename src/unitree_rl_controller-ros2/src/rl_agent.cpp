@@ -3,7 +3,7 @@
 #include <map>
 #include "std_msgs/msg/string.hpp"
 
-torch::Tensor Agent::quat_rotate_inverse(torch::Tensor q, torch::Tensor v) {
+torch::Tensor Agent::Quat_rotate_inverse(torch::Tensor q, torch::Tensor v) {
     c10::IntArrayRef shape = q.sizes();
     torch::Tensor q_w = q.index({torch::indexing::Slice(), -1});
     torch::Tensor q_vec = q.index({torch::indexing::Slice(), torch::indexing::Slice(0, 3)});
@@ -13,7 +13,7 @@ torch::Tensor Agent::quat_rotate_inverse(torch::Tensor q, torch::Tensor v) {
     return a - b + c;
 }
 
-bool Agent::load_model(std::string model_path)
+bool Agent::Load_model(std::string model_path)
 {
     try {
         // Deserialize the ScriptModule from a file using torch::jit::load().
@@ -25,7 +25,7 @@ bool Agent::load_model(std::string model_path)
     return true;
 }
 
-torch::Tensor Agent::act()
+torch::Tensor Agent::Act()
 {
     torch::Tensor actions = this->Forward();
 
@@ -89,19 +89,12 @@ void Agent::ReadYaml(std::string robot_name,std::string config_path)
 	}
 
     this->params.model_name = config["model_name"].as<std::string>();
-    this->params.num_observations = config["num_observations"].as<int>();
     this->params.clip_obs = config["clip_obs"].as<float>();
     this->params.clip_actions = config["clip_actions"].as<float>();
     this->params.action_scale = config["action_scale"].as<float>();
-    this->params.hip_scale_reduction = config["hip_scale_reduction"].as<float>();
-    this->params.hip_scale_reduction_indices = ReadVectorFromYaml<int>(config["hip_scale_reduction_indices"]);
-    this->params.num_of_dofs = config["num_of_dofs"].as<int>();
     this->params.ang_vel_scale = config["ang_vel_scale"].as<float>();
     this->params.dof_pos_scale = config["dof_pos_scale"].as<float>();
     this->params.dof_vel_scale = config["dof_vel_scale"].as<float>();
-    this->params.rl_kp = torch::tensor(ReadVectorFromYaml<float>(config["rl_kp"])).view({1, -1});
-    this->params.rl_kd = torch::tensor(ReadVectorFromYaml<float>(config["rl_kd"])).view({1, -1});
-    this->params.torque_limits = torch::tensor(ReadVectorFromYaml<float>(config["torque_limits"])).view({1, -1});
     this->params.default_dof_pos = torch::tensor(ReadVectorFromYaml<float>(config["default_dof_pos"])).view({1, -1});
    // std::cout << "this->params.default_dof_pos.scalar_type(): " << this->params.default_dof_pos.scalar_type() << std::endl;
     this->params.joint_names = ReadVectorFromYaml<std::string>(config["joint_names"]);
@@ -110,7 +103,7 @@ void Agent::ReadYaml(std::string robot_name,std::string config_path)
 torch::Tensor Agent::ComputeObservation()
 {
     torch::Tensor obs = torch::cat({this->obs.ang_vel * this->params.ang_vel_scale,
-                                    this->quat_rotate_inverse(this->obs.base_quat, this->obs.gravity_vec),
+                                    this->Quat_rotate_inverse(this->obs.base_quat, this->obs.gravity_vec),
                                     this->obs.time,
                                     (this->obs.dof_pos - this->params.default_dof_pos) * this->params.dof_pos_scale,
                                     this->obs.dof_vel * this->params.dof_vel_scale,

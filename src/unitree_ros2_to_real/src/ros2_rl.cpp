@@ -162,7 +162,7 @@ int main(int argc, char **argv)
 
     auto pub = node->create_publisher<ros2_unitree_legged_msgs::msg::LowCmd>("low_cmd", 1000);
 
-    if (!agent.load_model(model_path))
+    if (!agent.Load_model(model_path))
         RCLCPP_ERROR(node->get_logger(), "Error loading the model\n");
     else
         RCLCPP_INFO(node->get_logger(), "Model loaded successfully\n");
@@ -332,7 +332,7 @@ int main(int argc, char **argv)
                         }
                         pub_obs->publish(obs_msg);
                         
-                        agent.obs.actions = agent.act();
+                        agent.obs.actions = agent.Act();
 
                         // Publish action vector
                         std_msgs::msg::Float64MultiArray action_msg;

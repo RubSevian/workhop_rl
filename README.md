@@ -20,8 +20,8 @@ sudo apt install ros-$ROS_DISTRO-teleop-twist-keyboard ros-$ROS_DISTRO-ros2-cont
 
 ```bash
 cd /path/to/your/libtorch
-wget https://download.pytorch.org/libtorch/cpu/libtorch-cxx11-abi-shared-with-deps-2.0.1%2Bcpu.zip
-unzip libtorch-cxx11-abi-shared-with-deps-2.0.1+cpu.zip -d ./
+wget https://download.pytorch.org/libtorch/cpu/libtorch-cxx11-abi-shared-with-deps-2.1.1%2Bcpu.zip
+unzip libtorch-cxx11-abi-shared-with-deps-2.1.1+cpu.zip -d ./
 echo 'export Torch_DIR=/path/to/your/libtorch' >> ~/.bashrc
 source ~/.bashrc
 ```
