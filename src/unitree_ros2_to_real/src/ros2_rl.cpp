@@ -1,4 +1,3 @@
-#include <iostream> 
 #include "rclcpp/rclcpp.hpp"
 #include "ros2_unitree_legged_msgs/msg/high_cmd.hpp"
 #include "ros2_unitree_legged_msgs/msg/high_state.hpp"
@@ -18,12 +17,12 @@
 #include "geometry_msgs/msg/wrench_stamped.hpp"
 #include "geometry_msgs/msg/twist.hpp"
 #include "std_msgs/msg/u_int8_multi_array.hpp"
-#include "std_msgs/msg/float64_multi_array.hpp"
 
 #include <mean_smoothing.h>
 #include <map>
 
 #define DIMENSION 3
+
 
 using namespace UNITREE_LEGGED_SDK;
 
@@ -42,59 +41,77 @@ enum ROBOT_STATE
     STATE_FALLEN
 };
 
-// Глобальные константы (теперь инициализируются позже)
-std::vector<std::string> joint_names;
-std::string ROBOT_NAME = "go1";
-std::string CONFIG_PATH = std::string(CONFIG_BASE_DIR) + "/weights/" + ROBOT_NAME + "/config.yaml";
-std::string model_path =std::string(CONFIG_BASE_DIR) + "/weights/" + ROBOT_NAME + + "/Mar25_16-22-14_500.pt"; 
+// const std::vector<std::string> joint_names = {
+//     "FR_hip", "FR_thigh", "FR_calf",
+//     "FL_hip", "FL_thigh", "FL_calf",
+//     "RR_hip", "RR_thigh", "RR_calf",
+//     "RL_hip", "RL_thigh", "RL_calf"};
+
+const std::vector<double> default_joint_angles = {
+    -0., 0.8, -1.3,
+    0., 0.8, -1.3,
+    -0.0, 0.8, -1.3,
+    0.0, 0.8, -1.3};
+
 const std::vector<int> net2joint_indexes = {
     3, 4, 5,
     0, 1, 2,
     9, 10, 11,
     6, 7, 8};
-const std::vector<int> orient_quat_index = {1 , 2 , 3 , 0}; //quaternion : w x y z to x y z w
-const std::vector<float> stiffness = {
+
+const std::vector<double> stiffness = {
     20., 20., 20.,
     20., 20., 20.,
     20., 20., 20.,
     20., 20., 20.};
 
-const std::vector<float> damping = {
+const std::vector<double> damping = {
     0.5, 0.5, 0.5,
     0.5, 0.5, 0.5,
     0.5, 0.5, 0.5,
     0.5, 0.5, 0.5};
 
-
 const std::vector<std::string> urdf_feet_names = {"FR_foot", "FL_foot", "RR_foot", "RL_foot"};
 
+//Agent agent;
 
-float jointLinearInterpolation(float &initPos, float &targetPos, float &rate)
+
+// std::map<std::string, std::string> model_paths = {
+//             { "trotting", "/home/ruben/Desktop/old_workshop/workhop_rl/src/unitree_rl_controller-ros2/weights/go1/Mar25_16-22-14_500.pt"},
+//             { "gallop", "/home/a/ros2_ws/src/unitree_rl_controller/weights/policy_gallop_v21_10.pt"}
+//         };
+//std::string model_path = "/home/ruben/Desktop/old_workshop/workhop_rl/src/unitree_rl_controller-ros2/weights/go1/Mar25_16-22-14_500.pt" ;
+std::vector<std::string> joint_names;
+std::string ROBOT_NAME = "go1";
+std::string CONFIG_PATH = std::string(CONFIG_BASE_DIR) + "/weights/" + ROBOT_NAME + "/config.yaml";
+std::string model_path =std::string(CONFIG_BASE_DIR) + "/weights/" + ROBOT_NAME + + "/Mar25_16-22-14_500.pt"; 
+double jointLinearInterpolation(double initPos, double targetPos, double rate)
 {
-    float p;
-    rate = std::min(std::max(rate, 0.0f), 1.0f);
+    double p;
+    rate = std::min(std::max(rate, 0.0), 1.0);
     p = initPos * (1 - rate) + targetPos * rate;
     return p;
 }
 
-void update_dof_state(const ros2_unitree_legged_msgs::msg::LowState &state, Agent &agent,rclcpp::Node::SharedPtr &node)
+void update_dof_state(const ros2_unitree_legged_msgs::msg::LowState &state, Agent &agent)
 {
-    
-    auto dof_ang_accessor = agent.obs.dof_vel.accessor<float, 2>();
-    auto dof_vel_accessor = agent.obs.dof_vel.accessor<float, 2>();
-    for (int i = 0; i < net2joint_indexes.size(); ++i) {
-        int motor_index = net2joint_indexes[i];
-
-        dof_ang_accessor[0][i] = state.motor_state[motor_index].q;
-        dof_vel_accessor[0][i] = state.motor_state[motor_index].dq;
+    for (int i = 0; i < 12; i++)
+    {
+        agent.obs.dof_pos.index({net2joint_indexes[i]}) = state.motor_state[i].q - default_joint_angles[i];
+        agent.obs.dof_vel.index({net2joint_indexes[i]}) = state.motor_state[i].dq;
     }
 }
 
+// void update_commands(const geometry_msgs::msg::Twist commands, Agent &agent)
+//     {
+//         agent.obs.commands.index({0}) = commands.linear.x;
+//         agent.obs.commands.index({1}) = commands.linear.y;
+//         agent.obs.commands.index({2}) = commands.angular.z;
+//     }
 
 int main(int argc, char **argv)
 {
     Agent agent;
-
     try {
         agent.ReadYaml(ROBOT_NAME,CONFIG_PATH);
 
@@ -102,8 +119,8 @@ int main(int argc, char **argv)
         std::cerr << "Error: " << e.what() << std::endl;
         return 1;
     }
-    agent.InitObservations();
-    agent.InitOutputs();
+    // agent.InitObservations();
+    // agent.InitOutputs();
     joint_names = agent.params.joint_names;
     rclcpp::init(argc, argv);
 
@@ -147,11 +164,6 @@ int main(int argc, char **argv)
 
     rclcpp::Publisher<sensor_msgs::msg::Imu>::SharedPtr pub_imu_filter;
     pub_imu_filter = node->create_publisher<sensor_msgs::msg::Imu>("/go1/imu0_filter", 1000);
-    rclcpp::Publisher<std_msgs::msg::Float64MultiArray>::SharedPtr pub_obs;
-    pub_obs = node->create_publisher<std_msgs::msg::Float64MultiArray>("/go1/observation_vector", 100);
-
-    rclcpp::Publisher<std_msgs::msg::Float64MultiArray>::SharedPtr pub_actions;
-    pub_actions = node->create_publisher<std_msgs::msg::Float64MultiArray>("/go1/action_vector", 100);
 
     rclcpp::Publisher<geometry_msgs::msg::WrenchStamped>::SharedPtr pub_FL_force, pub_FR_force, pub_RL_force, pub_RR_force;
     pub_FR_force = node->create_publisher<geometry_msgs::msg::WrenchStamped>("/go1/legFR/force_torque_states", 1000);
@@ -159,12 +171,19 @@ int main(int argc, char **argv)
     pub_RR_force = node->create_publisher<geometry_msgs::msg::WrenchStamped>("/go1/legRR/force_torque_states", 1000);
     pub_RL_force = node->create_publisher<geometry_msgs::msg::WrenchStamped>("/go1/legRL/force_torque_states", 1000);
 
+    rclcpp::Publisher<std_msgs::msg::UInt8MultiArray>::SharedPtr pub_wireless_remote;
+    pub_wireless_remote = node->create_publisher<std_msgs::msg::UInt8MultiArray>("/go1/remote", 100);
+
     auto pub = node->create_publisher<ros2_unitree_legged_msgs::msg::LowCmd>("low_cmd", 1000);
 
-    if (!agent.Load_model(model_path))
+    if (!agent.load_model(model_path))
         RCLCPP_ERROR(node->get_logger(), "Error loading the model\n");
     else
         RCLCPP_INFO(node->get_logger(), "Model loaded successfully\n");
+
+
+    //rclcpp::Subscription<geometry_msgs::msg::Twist>::SharedPtr commands_sub;
+    //commands_sub = node->create_subscription<geometry_msgs::msg::Twist>("/cmd_vel", 10, std::bind(update_commands, std::placeholders::_1));
 
     bool initiated_flag = false; // initiate need time
     int count = 0;
@@ -174,14 +193,14 @@ int main(int argc, char **argv)
     for (int i = 0; i < 12; i++)
     {
         low_cmd_ros.motor_cmd[i].mode = 0x0A;  // motor switch to servo (PMSM) mode
-        low_cmd_ros.motor_cmd[i].q = PosStopF; // Forbidden position 
+        low_cmd_ros.motor_cmd[i].q = PosStopF; // 禁止位置环
         low_cmd_ros.motor_cmd[i].kp = 0;
-        low_cmd_ros.motor_cmd[i].dq = VelStopF; // Forbidden speed 
+        low_cmd_ros.motor_cmd[i].dq = VelStopF; // 禁止速度环
         low_cmd_ros.motor_cmd[i].kd = 0;
         low_cmd_ros.motor_cmd[i].tau = 0;
     }
 
-    mean_smoothing<float, DIMENSION> meansmth; 
+    mean_smoothing<double, DIMENSION> meansmth; 
 
     while (rclcpp::ok())
     {
@@ -223,9 +242,9 @@ int main(int argc, char **argv)
             imu_state.angular_velocity.z = low_state_ros.imu.gyroscope[2];
             pub_imu->publish(imu_state);
 
-            es_vec<float, DIMENSION> curr_query;
+            es_vec<double, DIMENSION> curr_query;
             for (size_t i = 0; i < DIMENSION; ++i) curr_query[i] = low_state_ros.imu.accelerometer[i];
-            es_vec<float, DIMENSION> acc_filter = meansmth.push_to_pop(curr_query);
+            es_vec<double, DIMENSION> acc_filter = meansmth.push_to_pop(curr_query);
 
             sensor_msgs::msg::Imu imu_state_filter;
             imu_state_filter.header.stamp = node->get_clock()->now();
@@ -242,16 +261,17 @@ int main(int argc, char **argv)
             imu_state_filter.angular_velocity.z = low_state_ros.imu.gyroscope[2];
             pub_imu_filter->publish(imu_state_filter);
 
-            auto ang_vel_accessor = agent.obs.ang_vel.accessor<float, 2>();
-            auto base_quat_accessor = agent.obs.base_quat.accessor<float, 2>();
-            for (int i = 0; i < 3; ++i) {
-                ang_vel_accessor[0][i] = low_state_ros.imu.gyroscope[i];
-            }                 
-            
-            for (int i = 0; i < orient_quat_index.size(); ++i){
-                int count_quat = orient_quat_index[i];
-                base_quat_accessor[0][i] = low_state_ros.imu.quaternion[count_quat];
-            };
+            agent.obs.base_linear_acceleration.index({0}) = acc_filter[0];
+            agent.obs.base_linear_acceleration.index({1}) = acc_filter[1];
+            agent.obs.base_linear_acceleration.index({2}) = acc_filter[2];
+
+            agent.obs.base_angular_velocity.index({0}) = low_state_ros.imu.gyroscope[0];
+            agent.obs.base_angular_velocity.index({1}) = low_state_ros.imu.gyroscope[1];
+            agent.obs.base_angular_velocity.index({2}) = low_state_ros.imu.gyroscope[2];
+            agent.obs.orientation.index({0}) = low_state_ros.imu.quaternion[1];
+            agent.obs.orientation.index({1}) = low_state_ros.imu.quaternion[2];
+            agent.obs.orientation.index({2}) = low_state_ros.imu.quaternion[3];
+            agent.obs.orientation.index({3}) = low_state_ros.imu.quaternion[0];
 
             std::vector<geometry_msgs::msg::WrenchStamped> feet_forces;
             for (size_t k = 0; k < 4; k++)
@@ -273,7 +293,15 @@ int main(int argc, char **argv)
             pub_RR_force->publish(feet_forces[2]);
             pub_RL_force->publish(feet_forces[3]);
 
-            update_dof_state(low_state_ros, agent,node);
+            std_msgs::msg::UInt8MultiArray remote_array;
+            remote_array.data.clear();
+            for (size_t k = 0; k < low_state_ros.wireless_remote.size(); k++)
+            {
+                remote_array.data.push_back(low_state_ros.wireless_remote[k]);
+            }
+            pub_wireless_remote->publish(remote_array);
+
+            update_dof_state(low_state_ros, agent);
 
             if (motiontime >= 0)
             {
@@ -290,7 +318,7 @@ int main(int argc, char **argv)
                 if (motiontime >= 1 && motiontime < 1000)
                 {
                     rate_count++;
-                    float rate = rate_count / (1000.0 - 1.0);
+                    double rate = rate_count / (1000.0 - 1.0);
 
                     for (size_t k = 0; k < 12; k++)
                     {
@@ -300,8 +328,7 @@ int main(int argc, char **argv)
 
                     for (size_t k = 0; k < 12; k++)
                     {
-                        float default_joint_angles = agent.params.default_dof_pos[0][k].item<float>();
-                        qDes[k] = jointLinearInterpolation(qInit[k], default_joint_angles, rate);
+                        qDes[k] = jointLinearInterpolation(qInit[k], default_joint_angles[k], rate);
                         std::cout << "k: " << k << ", qDes[k]: " << qDes[k] << std::endl; // Добавляем вывод
                     }
                 }
@@ -316,34 +343,13 @@ int main(int argc, char **argv)
                     robot_state = STATE_READY;
                 }
 
+                torch::Tensor actions;
                 if (motiontime > 3000)
                 {
                     if (motiontime % (rate_value / net_rate_value) == 0)
                     {
-                        // Get observation
-                        torch::Tensor obs = agent.ComputeObservation();
-
-                        // Publish observation vector
-                        std_msgs::msg::Float64MultiArray obs_msg;
-                        obs_msg.data.resize(obs.size(1));
-                        for (int i = 0; i < obs.size(1); ++i) {
-                            obs_msg.data[i] = obs[0][i].item<float>();
-                        }
-                        pub_obs->publish(obs_msg);
-                        
-                        agent.obs.actions = agent.Act();
-
-                        // Publish action vector
-                        std_msgs::msg::Float64MultiArray action_msg;
-                        action_msg.data.resize(agent.obs.actions.size(1));
-                        for (int i = 0; i < agent.obs.actions.size(1); ++i) {
-                        action_msg.data[i] = agent.obs.actions[0][i].item<float>();
-                        }
-                        pub_actions->publish(action_msg);
-                        auto actions_accessor = agent.obs.actions.accessor<float, 2>();
-                        auto gravity_vec_accessor = agent.obs.gravity_vec.accessor<float, 2>();
-
-                        if (gravity_vec_accessor[0][2] >= -0.7)
+                        auto actions = agent.act();
+                        if (agent.obs._gravity_vector.index({2}).item().to<double>() >= -0.7)
                             robot_state = STATE_FALLEN;
                         else if (robot_state == STATE_FALLEN)
                             robot_state = STATE_WAITING;
@@ -352,19 +358,30 @@ int main(int argc, char **argv)
                         if (robot_state == STATE_WAITING && (motiontime - fallen_pause_time > 1000))
                             robot_state = STATE_READY;
 
-                        // if (robot_state == STATE_FALLEN) {
-                        //     agent.obs.actions.zero_();  // Обнуляем значения, а не пересоздаем тензор
-                        // }
+                        // if (robot_state == STATE_FALLEN)
+                        //     actions = torch::tensor({0.,
+                        //                              0.,
+                        //                              0.,
+                        //                              0.,
+                        //                              0.,
+                        //                              0.,
+                        //                              0.,
+                        //                              0.,
+                        //                              0.,
+                        //                              0.,
+                        //                              0.,
+                        //                              -0.});
 
+                        //std::cout << "actions " << actions << std::endl;
+                    
                         for (size_t k = 0; k < 12; k++)
                         {
-                            float action = actions_accessor[0][net2joint_indexes[k]]; 
-                            qDes[k] = action;
+                            qDes[k] = default_joint_angles[k] + actions.index({net2joint_indexes[k]}).item().to<double>();
+                            // qDes[k] = default_joint_angles[k];
+                      
                         }
                     }
                 }
-
-
                 if (currentControlMode != CM_POSTITION)
                 {
                     currentControlMode = CM_POSTITION;
@@ -397,3 +414,4 @@ int main(int argc, char **argv)
 
     return 0;
 }
+
