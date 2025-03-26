@@ -104,7 +104,6 @@ torch::Tensor Agent::ComputeObservation()
 {
     torch::Tensor obs = torch::cat({this->obs.ang_vel * this->params.ang_vel_scale,
                                     this->Quat_rotate_inverse(this->obs.base_quat, this->obs.gravity_vec),
-                                    this->obs.time,
                                     (this->obs.dof_pos - this->params.default_dof_pos) * this->params.dof_pos_scale,
                                     this->obs.dof_vel * this->params.dof_vel_scale,
                                     this->obs.actions},

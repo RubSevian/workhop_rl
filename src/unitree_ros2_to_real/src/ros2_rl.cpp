@@ -46,7 +46,7 @@ enum ROBOT_STATE
 std::vector<std::string> joint_names;
 std::string ROBOT_NAME = "go1";
 std::string CONFIG_PATH = std::string(CONFIG_BASE_DIR) + "/weights/" + ROBOT_NAME + "/config.yaml";
-std::string model_path =std::string(CONFIG_BASE_DIR) + "/weights/" + ROBOT_NAME + + "/Mar14_13-45-05_model_400.pt"; 
+std::string model_path =std::string(CONFIG_BASE_DIR) + "/weights/" + ROBOT_NAME + + "/Mar25_16-22-14_500.pt"; 
 const std::vector<int> net2joint_indexes = {
     3, 4, 5,
     0, 1, 2,
