@@ -13,17 +13,22 @@ torch::Tensor quat_rotate_inverse(torch::Tensor q, torch::Tensor v) {
     return a - b + c;
 }
 
+
 Agent::Agent()
+{
+    InitObservations();
+}   
+
+void Agent::InitObservations()
 {
     obs.dof_pos = torch::zeros({12});
     obs.dof_vel = torch::zeros({12});
-    obs.base_linear_velocity = torch::zeros({3});
     obs.base_angular_velocity = torch::zeros({3});
-    obs.base_linear_acceleration = torch::zeros({3});
     obs.orientation = torch::tensor({0.0, 0.0, 0.0, 1.0});
-    obs.commands = torch::zeros({3});
-    obs._gravity_vector = torch::tensor({0.0, 0.0, -1.0});
-}   
+    obs.gravity_vector = torch::tensor({0.0, 0.0, -1.0});
+    obs.action = torch::zeros({12});
+}
+
 
 
 bool Agent::load_model(std::string model_path)
@@ -39,37 +44,53 @@ bool Agent::load_model(std::string model_path)
 }
 
 
-torch::Tensor Agent::get_observations()
-{
-    //obs.projected_gravity = quat_rotate_inverse(obs.orientation, obs._gravity_vector);
-    torch::Tensor observations = torch::cat({
-        obs.base_angular_velocity * params.ang_vel_scale,
-        quat_rotate_inverse(obs.orientation, obs._gravity_vector),
-        obs.dof_pos * params.dof_pos_scale,
-        obs.dof_vel * params.dof_vel_scale,
-        _previous_actions
-    });
-
-    //std::cout << "observations " << observations << std::endl;
-    return observations;
-}
 
 torch::Tensor Agent::act()
 {
-    torch::Tensor observations = get_observations();
-    std::cout << "OBS" << observations << std::endl;
-    // std::cout << "GRAVITY: " << projected_gravity << std::endl;
-    // Create a vector of inputs.
-    std::vector<torch::jit::IValue> inputs;
-    inputs.push_back(observations);
-    // Execute the model and turn its output into a tensor.
-   // std::cout << "mode " << mode << std::endl;
-   //std::cout << "OBS" << inputs << std::endl;
-    torch::Tensor output = module.forward(inputs).toTensor();
-    // Save the output to use as previous_actions.
-    _previous_actions = output;
-    std::cout << "ACT" << output << std::endl;
-    return output * params.action_scale;
+
+    this->obs.action = this->Forward();
+
+    output_dof_pos = this->ComputePosition(obs.action);
+
+    return output_dof_pos;
+}
+
+torch::Tensor Agent::ComputePosition(torch::Tensor actions)
+{
+    torch::Tensor actions_scaled = actions * this->params.action_scale;
+    return actions_scaled + this->params.default_dof_pos;
+}
+
+torch::Tensor Agent::ComputeObservation()
+{
+    // std::cout << "this->obs.dof_pos.sizes(): " << this->obs.dof_pos.sizes() << std::endl;
+    // std::cout << "this->params.default_dof_pos.sizes(): " << this->params.default_dof_pos.sizes() << std::endl;
+    // std::cout << "this->params.dof_pos_scale: " << this->params.dof_pos_scale << std::endl;
+    torch::Tensor obs = torch::cat({
+        this->obs.base_angular_velocity * this->params.ang_vel_scale,
+        quat_rotate_inverse(this->obs.orientation, this->obs.gravity_vector),
+        (this->obs.dof_pos - this->params.default_dof_pos) * this->params.dof_pos_scale,
+        this->obs.dof_vel * this->params.dof_vel_scale,
+        this->obs.action
+    });       
+    obs = torch::clamp(obs, -this->params.clip_obs, this->params.clip_obs);
+    return obs;
+}
+
+torch::Tensor Agent::Forward()
+{
+    // this->obs.time += 0.02;
+    // this->obs.time = torch::clip(this->obs.time, 0., 3.);
+    
+    torch::Tensor obs = this->ComputeObservation();
+    std::cout<<"Obs"<<obs<<std::endl;
+    torch::Tensor action = this->module.forward({obs}).toTensor();
+
+    //this->obs.actions = action;
+    std::cout<<"Action"<<action<<std::endl;
+    torch::Tensor clamped = torch::clamp(action, -this->params.clip_actions, this->params.clip_actions); 
+
+    return clamped;
 }
 
 template<typename T>
@@ -110,7 +131,8 @@ void Agent::ReadYaml(std::string &robot_name,std::string &config_path)
     this->params.ang_vel_scale = config["ang_vel_scale"].as<float>();
     this->params.dof_pos_scale = config["dof_pos_scale"].as<float>();
     this->params.dof_vel_scale = config["dof_vel_scale"].as<float>();
-    this->params.default_dof_pos = torch::tensor(ReadVectorFromYaml<float>(config["default_dof_pos"])).view({1, -1});
-   // std::cout << "this->params.default_dof_pos.scalar_type(): " << this->params.default_dof_pos.scalar_type() << std::endl;
+    this->params.default_dof_pos = torch::tensor(ReadVectorFromYaml<float>(config["default_dof_pos"]));
+    // std::cout << "this->params.default_dof_pos.scalar_type(): " << this->params.default_dof_pos.scalar_type() << std::endl;
+    // std::cout << "this->params.default_dof_pos.scalar_type(): " << this->params.default_dof_pos << std::endl;
     this->params.joint_names = ReadVectorFromYaml<std::string>(config["joint_names"]);
 }

@@ -41,17 +41,12 @@ enum ROBOT_STATE
     STATE_FALLEN
 };
 
-// const std::vector<std::string> joint_names = {
-//     "FR_hip", "FR_thigh", "FR_calf",
-//     "FL_hip", "FL_thigh", "FL_calf",
-//     "RR_hip", "RR_thigh", "RR_calf",
-//     "RL_hip", "RL_thigh", "RL_calf"};
 
-const std::vector<double> default_joint_angles = {
-    -0., 0.8, -1.3,
-    0., 0.8, -1.3,
-    -0.0, 0.8, -1.3,
-    0.0, 0.8, -1.3};
+// const std::vector<float> default_joint_angles = {
+//     -0., 0.8, -1.3,
+//     0., 0.8, -1.3,
+//     -0.0, 0.8, -1.3,
+//     0.0, 0.8, -1.3};
 
 const std::vector<int> net2joint_indexes = {
     3, 4, 5,
@@ -59,13 +54,13 @@ const std::vector<int> net2joint_indexes = {
     9, 10, 11,
     6, 7, 8};
 
-const std::vector<double> stiffness = {
+const std::vector<float> stiffness = {
     20., 20., 20.,
     20., 20., 20.,
     20., 20., 20.,
     20., 20., 20.};
 
-const std::vector<double> damping = {
+const std::vector<float> damping = {
     0.5, 0.5, 0.5,
     0.5, 0.5, 0.5,
     0.5, 0.5, 0.5,
@@ -73,22 +68,14 @@ const std::vector<double> damping = {
 
 const std::vector<std::string> urdf_feet_names = {"FR_foot", "FL_foot", "RR_foot", "RL_foot"};
 
-//Agent agent;
-
-
-// std::map<std::string, std::string> model_paths = {
-//             { "trotting", "/home/ruben/Desktop/old_workshop/workhop_rl/src/unitree_rl_controller-ros2/weights/go1/Mar25_16-22-14_500.pt"},
-//             { "gallop", "/home/a/ros2_ws/src/unitree_rl_controller/weights/policy_gallop_v21_10.pt"}
-//         };
-//std::string model_path = "/home/ruben/Desktop/old_workshop/workhop_rl/src/unitree_rl_controller-ros2/weights/go1/Mar25_16-22-14_500.pt" ;
 std::vector<std::string> joint_names;
 std::string ROBOT_NAME = "go1";
 std::string CONFIG_PATH = std::string(CONFIG_BASE_DIR) + "/weights/" + ROBOT_NAME + "/config.yaml";
 std::string model_path =std::string(CONFIG_BASE_DIR) + "/weights/" + ROBOT_NAME + + "/Mar25_16-22-14_500.pt"; 
-double jointLinearInterpolation(double initPos, double targetPos, double rate)
+float jointLinearInterpolation(float initPos, float targetPos, float rate)
 {
-    double p;
-    rate = std::min(std::max(rate, 0.0), 1.0);
+    float p;
+    rate = std::min(std::max(rate, 0.0f), 1.0f);
     p = initPos * (1 - rate) + targetPos * rate;
     return p;
 }
@@ -97,17 +84,11 @@ void update_dof_state(const ros2_unitree_legged_msgs::msg::LowState &state, Agen
 {
     for (int i = 0; i < 12; i++)
     {
-        agent.obs.dof_pos.index({net2joint_indexes[i]}) = state.motor_state[i].q - default_joint_angles[i];
+        agent.obs.dof_pos.index({net2joint_indexes[i]}) = state.motor_state[i].q ; //- default_joint_angles[i];
         agent.obs.dof_vel.index({net2joint_indexes[i]}) = state.motor_state[i].dq;
     }
 }
 
-// void update_commands(const geometry_msgs::msg::Twist commands, Agent &agent)
-//     {
-//         agent.obs.commands.index({0}) = commands.linear.x;
-//         agent.obs.commands.index({1}) = commands.linear.y;
-//         agent.obs.commands.index({2}) = commands.angular.z;
-//     }
 
 int main(int argc, char **argv)
 {
@@ -182,8 +163,6 @@ int main(int argc, char **argv)
         RCLCPP_INFO(node->get_logger(), "Model loaded successfully\n");
 
 
-    //rclcpp::Subscription<geometry_msgs::msg::Twist>::SharedPtr commands_sub;
-    //commands_sub = node->create_subscription<geometry_msgs::msg::Twist>("/cmd_vel", 10, std::bind(update_commands, std::placeholders::_1));
 
     bool initiated_flag = false; // initiate need time
     int count = 0;
@@ -200,7 +179,7 @@ int main(int argc, char **argv)
         low_cmd_ros.motor_cmd[i].tau = 0;
     }
 
-    mean_smoothing<double, DIMENSION> meansmth; 
+    mean_smoothing<float, DIMENSION> meansmth; 
 
     while (rclcpp::ok())
     {
@@ -242,9 +221,9 @@ int main(int argc, char **argv)
             imu_state.angular_velocity.z = low_state_ros.imu.gyroscope[2];
             pub_imu->publish(imu_state);
 
-            es_vec<double, DIMENSION> curr_query;
+            es_vec<float, DIMENSION> curr_query;
             for (size_t i = 0; i < DIMENSION; ++i) curr_query[i] = low_state_ros.imu.accelerometer[i];
-            es_vec<double, DIMENSION> acc_filter = meansmth.push_to_pop(curr_query);
+            es_vec<float, DIMENSION> acc_filter = meansmth.push_to_pop(curr_query);
 
             sensor_msgs::msg::Imu imu_state_filter;
             imu_state_filter.header.stamp = node->get_clock()->now();
@@ -260,10 +239,6 @@ int main(int argc, char **argv)
             imu_state_filter.angular_velocity.y = low_state_ros.imu.gyroscope[1];
             imu_state_filter.angular_velocity.z = low_state_ros.imu.gyroscope[2];
             pub_imu_filter->publish(imu_state_filter);
-
-            agent.obs.base_linear_acceleration.index({0}) = acc_filter[0];
-            agent.obs.base_linear_acceleration.index({1}) = acc_filter[1];
-            agent.obs.base_linear_acceleration.index({2}) = acc_filter[2];
 
             agent.obs.base_angular_velocity.index({0}) = low_state_ros.imu.gyroscope[0];
             agent.obs.base_angular_velocity.index({1}) = low_state_ros.imu.gyroscope[1];
@@ -308,7 +283,7 @@ int main(int argc, char **argv)
                 // Get record initial position
                 if (motiontime >= 0 && motiontime < 10)
                 {
-                    for (size_t k = 0; k < 12; k++)
+                    for (int k = 0; k < 12; k++)
                     {
                         qInit[k] = low_state_ros.motor_state[k].q;
                     }
@@ -318,17 +293,18 @@ int main(int argc, char **argv)
                 if (motiontime >= 1 && motiontime < 1000)
                 {
                     rate_count++;
-                    double rate = rate_count / (1000.0 - 1.0);
+                    float rate = rate_count / (1000.0 - 1.0);
 
-                    for (size_t k = 0; k < 12; k++)
+                    for (int k = 0; k < 12; k++)
                     {
                         Kp[k] = 50.0;
                         Kd[k] = 2.0;
                     }
 
-                    for (size_t k = 0; k < 12; k++)
+                    for (int k = 0; k < 12; k++)
                     {
-                        qDes[k] = jointLinearInterpolation(qInit[k], default_joint_angles[k], rate);
+
+                        qDes[k] = jointLinearInterpolation(qInit[k], agent.params.default_dof_pos.index({k}).item<float>(), rate);
                         std::cout << "k: " << k << ", qDes[k]: " << qDes[k] << std::endl; // Добавляем вывод
                     }
                 }
@@ -349,7 +325,7 @@ int main(int argc, char **argv)
                     if (motiontime % (rate_value / net_rate_value) == 0)
                     {
                         auto actions = agent.act();
-                        if (agent.obs._gravity_vector.index({2}).item().to<double>() >= -0.7)
+                        if (agent.obs.gravity_vector.index({2}).item().to<float>() >= -0.7)
                             robot_state = STATE_FALLEN;
                         else if (robot_state == STATE_FALLEN)
                             robot_state = STATE_WAITING;
@@ -358,25 +334,10 @@ int main(int argc, char **argv)
                         if (robot_state == STATE_WAITING && (motiontime - fallen_pause_time > 1000))
                             robot_state = STATE_READY;
 
-                        // if (robot_state == STATE_FALLEN)
-                        //     actions = torch::tensor({0.,
-                        //                              0.,
-                        //                              0.,
-                        //                              0.,
-                        //                              0.,
-                        //                              0.,
-                        //                              0.,
-                        //                              0.,
-                        //                              0.,
-                        //                              0.,
-                        //                              0.,
-                        //                              -0.});
-
-                        //std::cout << "actions " << actions << std::endl;
                     
                         for (size_t k = 0; k < 12; k++)
                         {
-                            qDes[k] = default_joint_angles[k] + actions.index({net2joint_indexes[k]}).item().to<double>();
+                            qDes[k] = actions.index({net2joint_indexes[k]}).item().to<float>();//default_joint_angles[k] + actions.index({net2joint_indexes[k]}).item().to<double>();
                             // qDes[k] = default_joint_angles[k];
                       
                         }
