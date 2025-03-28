@@ -41,13 +41,6 @@ enum ROBOT_STATE
     STATE_FALLEN
 };
 
-
-// const std::vector<float> default_joint_angles = {
-//     -0., 0.8, -1.3,
-//     0., 0.8, -1.3,
-//     -0.0, 0.8, -1.3,
-//     0.0, 0.8, -1.3};
-
 const std::vector<int> net2joint_indexes = {
     3, 4, 5,
     0, 1, 2,
@@ -84,7 +77,7 @@ void update_dof_state(const ros2_unitree_legged_msgs::msg::LowState &state, Agen
 {
     for (int i = 0; i < 12; i++)
     {
-        agent.obs.dof_pos.index({net2joint_indexes[i]}) = state.motor_state[i].q ; //- default_joint_angles[i];
+        agent.obs.dof_pos.index({net2joint_indexes[i]}) = state.motor_state[i].q ;
         agent.obs.dof_vel.index({net2joint_indexes[i]}) = state.motor_state[i].dq;
     }
 }
@@ -100,8 +93,6 @@ int main(int argc, char **argv)
         std::cerr << "Error: " << e.what() << std::endl;
         return 1;
     }
-    // agent.InitObservations();
-    // agent.InitOutputs();
     joint_names = agent.params.joint_names;
     rclcpp::init(argc, argv);
 
@@ -118,7 +109,6 @@ int main(int argc, char **argv)
 
     int currentControlMode = CM_UNDEFINED;
     int robot_state = STATE_INIT;
-    bool fallen = true;
     long fallen_pause_time;
 
     long motiontime = 0;
@@ -146,15 +136,6 @@ int main(int argc, char **argv)
     rclcpp::Publisher<sensor_msgs::msg::Imu>::SharedPtr pub_imu_filter;
     pub_imu_filter = node->create_publisher<sensor_msgs::msg::Imu>("/go1/imu0_filter", 1000);
 
-    rclcpp::Publisher<geometry_msgs::msg::WrenchStamped>::SharedPtr pub_FL_force, pub_FR_force, pub_RL_force, pub_RR_force;
-    pub_FR_force = node->create_publisher<geometry_msgs::msg::WrenchStamped>("/go1/legFR/force_torque_states", 1000);
-    pub_FL_force = node->create_publisher<geometry_msgs::msg::WrenchStamped>("/go1/legFL/force_torque_states", 1000);
-    pub_RR_force = node->create_publisher<geometry_msgs::msg::WrenchStamped>("/go1/legRR/force_torque_states", 1000);
-    pub_RL_force = node->create_publisher<geometry_msgs::msg::WrenchStamped>("/go1/legRL/force_torque_states", 1000);
-
-    rclcpp::Publisher<std_msgs::msg::UInt8MultiArray>::SharedPtr pub_wireless_remote;
-    pub_wireless_remote = node->create_publisher<std_msgs::msg::UInt8MultiArray>("/go1/remote", 100);
-
     auto pub = node->create_publisher<ros2_unitree_legged_msgs::msg::LowCmd>("low_cmd", 1000);
 
     if (!agent.load_model(model_path))
@@ -172,9 +153,9 @@ int main(int argc, char **argv)
     for (int i = 0; i < 12; i++)
     {
         low_cmd_ros.motor_cmd[i].mode = 0x0A;  // motor switch to servo (PMSM) mode
-        low_cmd_ros.motor_cmd[i].q = PosStopF; // 禁止位置环
+        low_cmd_ros.motor_cmd[i].q = PosStopF; // Forbidden position
         low_cmd_ros.motor_cmd[i].kp = 0;
-        low_cmd_ros.motor_cmd[i].dq = VelStopF; // 禁止速度环
+        low_cmd_ros.motor_cmd[i].dq = VelStopF; // Forbidden speed 
         low_cmd_ros.motor_cmd[i].kd = 0;
         low_cmd_ros.motor_cmd[i].tau = 0;
     }
@@ -240,41 +221,13 @@ int main(int argc, char **argv)
             imu_state_filter.angular_velocity.z = low_state_ros.imu.gyroscope[2];
             pub_imu_filter->publish(imu_state_filter);
 
-            agent.obs.base_angular_velocity.index({0}) = low_state_ros.imu.gyroscope[0];
-            agent.obs.base_angular_velocity.index({1}) = low_state_ros.imu.gyroscope[1];
-            agent.obs.base_angular_velocity.index({2}) = low_state_ros.imu.gyroscope[2];
-            agent.obs.orientation.index({0}) = low_state_ros.imu.quaternion[1];
-            agent.obs.orientation.index({1}) = low_state_ros.imu.quaternion[2];
-            agent.obs.orientation.index({2}) = low_state_ros.imu.quaternion[3];
-            agent.obs.orientation.index({3}) = low_state_ros.imu.quaternion[0];
-
-            std::vector<geometry_msgs::msg::WrenchStamped> feet_forces;
-            for (size_t k = 0; k < 4; k++)
-            {
-                geometry_msgs::msg::WrenchStamped msg;
-                msg.header.frame_id = urdf_feet_names[k];
-                msg.header.stamp = node->get_clock()->now();
-                msg.wrench.force.x = 0;
-                msg.wrench.force.y = 0;
-                msg.wrench.force.z = low_state_ros.foot_force[k] * 0.1; // Unitree foot pressure units is unknown. x0.1 makes it looks like newtons
-                msg.wrench.torque.x = 0;
-                msg.wrench.torque.y = 0;
-                msg.wrench.torque.z = 0;
-                feet_forces.push_back(msg);
-            }
-
-            pub_FR_force->publish(feet_forces[0]);
-            pub_FL_force->publish(feet_forces[1]);
-            pub_RR_force->publish(feet_forces[2]);
-            pub_RL_force->publish(feet_forces[3]);
-
-            std_msgs::msg::UInt8MultiArray remote_array;
-            remote_array.data.clear();
-            for (size_t k = 0; k < low_state_ros.wireless_remote.size(); k++)
-            {
-                remote_array.data.push_back(low_state_ros.wireless_remote[k]);
-            }
-            pub_wireless_remote->publish(remote_array);
+            agent.obs.ang_vel.index({0}) = low_state_ros.imu.gyroscope[0];
+            agent.obs.ang_vel.index({1}) = low_state_ros.imu.gyroscope[1];
+            agent.obs.ang_vel.index({2}) = low_state_ros.imu.gyroscope[2];
+            agent.obs.base_quat.index({0}) = low_state_ros.imu.quaternion[1];
+            agent.obs.base_quat.index({1}) = low_state_ros.imu.quaternion[2];
+            agent.obs.base_quat.index({2}) = low_state_ros.imu.quaternion[3];
+            agent.obs.base_quat.index({3}) = low_state_ros.imu.quaternion[0];
 
             update_dof_state(low_state_ros, agent);
 
@@ -319,13 +272,14 @@ int main(int argc, char **argv)
                     robot_state = STATE_READY;
                 }
 
-                torch::Tensor actions;
+                //torch::Tensor actions;
                 if (motiontime > 3000)
                 {
                     if (motiontime % (rate_value / net_rate_value) == 0)
                     {
-                        auto actions = agent.act();
-                        if (agent.obs.gravity_vector.index({2}).item().to<float>() >= -0.7)
+                        
+                        torch::Tensor actions = agent.Act();
+                        if (agent.obs.gravity_vec.index({2}).item().to<float>() >= -0.7)
                             robot_state = STATE_FALLEN;
                         else if (robot_state == STATE_FALLEN)
                             robot_state = STATE_WAITING;
@@ -334,11 +288,9 @@ int main(int argc, char **argv)
                         if (robot_state == STATE_WAITING && (motiontime - fallen_pause_time > 1000))
                             robot_state = STATE_READY;
 
-                    
                         for (size_t k = 0; k < 12; k++)
                         {
-                            qDes[k] = actions.index({net2joint_indexes[k]}).item().to<float>();//default_joint_angles[k] + actions.index({net2joint_indexes[k]}).item().to<double>();
-                            // qDes[k] = default_joint_angles[k];
+                            qDes[k] = actions.index({net2joint_indexes[k]}).item().to<float>();
                       
                         }
                     }

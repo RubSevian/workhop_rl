@@ -4,7 +4,7 @@
 #include "std_msgs/msg/string.hpp"
 
 
-torch::Tensor quat_rotate_inverse(torch::Tensor q, torch::Tensor v) {
+torch::Tensor Quat_rotate_inverse(torch::Tensor q, torch::Tensor v) {
     torch::Tensor q_w = q.index({3});
     torch::Tensor q_vec = q.index({torch::indexing::Slice(torch::indexing::None, 3)});
     torch::Tensor a = v * (2.0 * q_w * q_w - 1.0);
@@ -12,7 +12,6 @@ torch::Tensor quat_rotate_inverse(torch::Tensor q, torch::Tensor v) {
     torch::Tensor c = q_vec * torch::matmul(q_vec.view({1, 3}), v.view({3, 1})).squeeze(-1) * 2.0;
     return a - b + c;
 }
-
 
 Agent::Agent()
 {
@@ -23,13 +22,11 @@ void Agent::InitObservations()
 {
     obs.dof_pos = torch::zeros({12});
     obs.dof_vel = torch::zeros({12});
-    obs.base_angular_velocity = torch::zeros({3});
-    obs.orientation = torch::tensor({0.0, 0.0, 0.0, 1.0});
-    obs.gravity_vector = torch::tensor({0.0, 0.0, -1.0});
+    obs.ang_vel = torch::zeros({3});
+    obs.base_quat = torch::tensor({0.0, 0.0, 0.0, 1.0});
+    obs.gravity_vec = torch::tensor({0.0, 0.0, -1.0});
     obs.action = torch::zeros({12});
 }
-
-
 
 bool Agent::load_model(std::string model_path)
 {
@@ -43,9 +40,7 @@ bool Agent::load_model(std::string model_path)
     return true;
 }
 
-
-
-torch::Tensor Agent::act()
+torch::Tensor Agent::Act()
 {
 
     this->obs.action = this->Forward();
@@ -63,25 +58,20 @@ torch::Tensor Agent::ComputePosition(torch::Tensor actions)
 
 torch::Tensor Agent::ComputeObservation()
 {
-    // std::cout << "this->obs.dof_pos.sizes(): " << this->obs.dof_pos.sizes() << std::endl;
-    // std::cout << "this->params.default_dof_pos.sizes(): " << this->params.default_dof_pos.sizes() << std::endl;
-    // std::cout << "this->params.dof_pos_scale: " << this->params.dof_pos_scale << std::endl;
     torch::Tensor obs = torch::cat({
-        this->obs.base_angular_velocity * this->params.ang_vel_scale,
-        quat_rotate_inverse(this->obs.orientation, this->obs.gravity_vector),
+        this->obs.ang_vel * this->params.ang_vel_scale,
+        Quat_rotate_inverse(this->obs.base_quat, this->obs.gravity_vec),
         (this->obs.dof_pos - this->params.default_dof_pos) * this->params.dof_pos_scale,
         this->obs.dof_vel * this->params.dof_vel_scale,
         this->obs.action
     });       
+    
     obs = torch::clamp(obs, -this->params.clip_obs, this->params.clip_obs);
     return obs;
 }
 
 torch::Tensor Agent::Forward()
 {
-    // this->obs.time += 0.02;
-    // this->obs.time = torch::clip(this->obs.time, 0., 3.);
-    
     torch::Tensor obs = this->ComputeObservation();
     std::cout<<"Obs"<<obs<<std::endl;
     torch::Tensor action = this->module.forward({obs}).toTensor();
@@ -132,7 +122,5 @@ void Agent::ReadYaml(std::string &robot_name,std::string &config_path)
     this->params.dof_pos_scale = config["dof_pos_scale"].as<float>();
     this->params.dof_vel_scale = config["dof_vel_scale"].as<float>();
     this->params.default_dof_pos = torch::tensor(ReadVectorFromYaml<float>(config["default_dof_pos"]));
-    // std::cout << "this->params.default_dof_pos.scalar_type(): " << this->params.default_dof_pos.scalar_type() << std::endl;
-    // std::cout << "this->params.default_dof_pos.scalar_type(): " << this->params.default_dof_pos << std::endl;
     this->params.joint_names = ReadVectorFromYaml<std::string>(config["joint_names"]);
 }
