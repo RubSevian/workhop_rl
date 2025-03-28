@@ -28,7 +28,7 @@ void Agent::InitObservations()
     obs.action = torch::zeros({12});
 }
 
-bool Agent::load_model(std::string model_path)
+bool Agent::load_model(std::string &model_path)
 {
     try {
         // Deserialize the ScriptModule from a file using torch::jit::load().
@@ -50,7 +50,7 @@ torch::Tensor Agent::Act()
     return output_dof_pos;
 }
 
-torch::Tensor Agent::ComputePosition(torch::Tensor actions)
+torch::Tensor Agent::ComputePosition(torch::Tensor &actions)
 {
     torch::Tensor actions_scaled = actions * this->params.action_scale;
     return actions_scaled + this->params.default_dof_pos;
@@ -75,8 +75,6 @@ torch::Tensor Agent::Forward()
     torch::Tensor obs = this->ComputeObservation();
     std::cout<<"Obs"<<obs<<std::endl;
     torch::Tensor action = this->module.forward({obs}).toTensor();
-
-    //this->obs.actions = action;
     std::cout<<"Action"<<action<<std::endl;
     torch::Tensor clamped = torch::clamp(action, -this->params.clip_actions, this->params.clip_actions); 
 

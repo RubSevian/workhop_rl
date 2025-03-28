@@ -143,8 +143,6 @@ int main(int argc, char **argv)
     else
         RCLCPP_INFO(node->get_logger(), "Model loaded successfully\n");
 
-
-
     bool initiated_flag = false; // initiate need time
     int count = 0;
 
@@ -233,6 +231,13 @@ int main(int argc, char **argv)
 
             if (motiontime >= 0)
             {
+
+                if (currentControlMode != CM_POSTITION)
+                {
+                    currentControlMode = CM_POSTITION;
+                    std::cout << "ros2real switching to POSITION control" << std::endl;
+                }
+
                 // Get record initial position
                 if (motiontime >= 0 && motiontime < 10)
                 {
@@ -272,12 +277,10 @@ int main(int argc, char **argv)
                     robot_state = STATE_READY;
                 }
 
-                //torch::Tensor actions;
                 if (motiontime > 3000)
                 {
                     if (motiontime % (rate_value / net_rate_value) == 0)
                     {
-                        
                         torch::Tensor actions = agent.Act();
                         if (agent.obs.gravity_vec.index({2}).item().to<float>() >= -0.7)
                             robot_state = STATE_FALLEN;
@@ -295,11 +298,7 @@ int main(int argc, char **argv)
                         }
                     }
                 }
-                if (currentControlMode != CM_POSTITION)
-                {
-                    currentControlMode = CM_POSTITION;
-                    std::cout << "ros2real switching to POSITION control" << std::endl;
-                }
+
                 for (size_t k = 0; k < 12; k++)
                 {
 
