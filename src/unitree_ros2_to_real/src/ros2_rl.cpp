@@ -108,6 +108,7 @@ int main(int argc, char **argv)
 
     int rate_value = 1000;
     int net_rate_value = 50;
+    int control_period = rate_value / net_rate_value;
     rclcpp::WallRate loop_rate(rate_value);
 
     int currentControlMode = CM_UNDEFINED;
@@ -162,6 +163,12 @@ int main(int argc, char **argv)
     }
 
     mean_smoothing<float, DIMENSION> meansmth; 
+    // Switch to POSITION control mode only once at the beginning
+    
+    if (currentControlMode != CM_POSTITION) {
+        currentControlMode = CM_POSTITION;
+        std::cout << "ros2real switching to POSITION control" << std::endl;
+    }
 
     while (rclcpp::ok())
     {
@@ -231,78 +238,69 @@ int main(int argc, char **argv)
             agent.obs.base_quat.index({3}) = low_state_ros.imu.quaternion[0];
 
             update_dof_state(low_state_ros, agent);
+            
 
-            if (motiontime >= 0)
+            // Get record initial position
+            if (motiontime >= 0 && motiontime < 10)
             {
-
-                if (currentControlMode != CM_POSTITION)
+                for (int k = 0; k < 12; k++)
                 {
-                    currentControlMode = CM_POSTITION;
-                    std::cout << "ros2real switching to POSITION control" << std::endl;
+                    qInit[k] = low_state_ros.motor_state[k].q;
+                }
+            }
+
+            // Move to the origin point with soft Kp/Kd
+            if (motiontime >= 1 && motiontime < 1000)
+            {
+                rate_count++;
+                float rate = rate_count / (1000.0 - 1.0);
+
+                for (int k = 0; k < 12; k++)
+                {
+                    Kp[k] = 50.0;
+                    Kd[k] = 2.0;
                 }
 
-                // Get record initial position
-                if (motiontime >= 0 && motiontime < 10)
+                for (int k = 0; k < 12; k++)
                 {
-                    for (int k = 0; k < 12; k++)
-                    {
-                        qInit[k] = low_state_ros.motor_state[k].q;
-                    }
+
+                    qDes[k] = jointLinearInterpolation(qInit[k], agent.params.default_dof_pos.index({k}).item<float>(), rate);
+                    std::cout << "k: " << k << ", qDes[k]: " << qDes[k] << std::endl; // Добавляем вывод
                 }
+            }
 
-                // Move to the origin point with soft Kp/Kd
-                if (motiontime >= 1 && motiontime < 1000)
-                {
-                    rate_count++;
-                    float rate = rate_count / (1000.0 - 1.0);
-
-                    for (int k = 0; k < 12; k++)
-                    {
-                        Kp[k] = 50.0;
-                        Kd[k] = 2.0;
-                    }
-
-                    for (int k = 0; k < 12; k++)
-                    {
-
-                        qDes[k] = jointLinearInterpolation(qInit[k], agent.params.default_dof_pos.index({k}).item<float>(), rate);
-                        std::cout << "k: " << k << ", qDes[k]: " << qDes[k] << std::endl; // Добавляем вывод
-                    }
-                }
-
-                if (motiontime == 1000)
-                {
-                    for (size_t k = 0; k < 12; k++)
-                    {
-                        Kp[k] = stiffness[k];
-                        Kd[k] = damping[k];
-                    }
-                    robot_state = STATE_READY;
-                }
-
-                if (motiontime > 3000)
-                {
-                    if (motiontime % (rate_value / net_rate_value) == 0)
-                    {
-                        torch::Tensor actions = agent.Act();
-                        
-                        for (size_t k = 0; k < 12; k++)
-                        {
-                            qDes[k] = actions.index({net2joint_indexes[k]}).item().to<float>();
-                      
-                        }
-                    }
-                }
-
+            if (motiontime == 1000)
+            {
                 for (size_t k = 0; k < 12; k++)
                 {
-
-                    low_cmd_ros.motor_cmd[k].q = qDes[k];
-                    low_cmd_ros.motor_cmd[k].dq = 0; // dqDes[k]; // Seems that Unitree doesn't need the velocity value here in position control mode
-                    low_cmd_ros.motor_cmd[k].kp = Kp[k];
-                    low_cmd_ros.motor_cmd[k].kd = Kd[k];
-                    low_cmd_ros.motor_cmd[k].tau = 0.0f;
+                    Kp[k] = stiffness[k];
+                    Kd[k] = damping[k];
                 }
+                robot_state = STATE_READY;
+            }
+
+            if (motiontime > 3000)
+            {
+                if (motiontime % (control_period) == 0)
+                {
+                    torch::Tensor actions = agent.Act();
+                    
+                    for (size_t k = 0; k < 12; k++)
+                    {
+                        qDes[k] = actions.index({net2joint_indexes[k]}).item().to<float>();
+                    
+                    }
+                }
+            }
+
+            for (size_t k = 0; k < 12; k++)
+            {
+
+                low_cmd_ros.motor_cmd[k].q = qDes[k];
+                low_cmd_ros.motor_cmd[k].dq = 0; // dqDes[k]; // Seems that Unitree doesn't need the velocity value here in position control mode
+                low_cmd_ros.motor_cmd[k].kp = Kp[k];
+                low_cmd_ros.motor_cmd[k].kd = Kd[k];
+                low_cmd_ros.motor_cmd[k].tau = 0.0f;
             }
         }
         cmd = rosMsg2Cmd(low_cmd_ros);
