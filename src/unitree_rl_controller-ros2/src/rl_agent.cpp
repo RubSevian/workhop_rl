@@ -4,7 +4,7 @@
 #include "std_msgs/msg/string.hpp"
 
 
-torch::Tensor Quat_rotate_inverse(torch::Tensor q, torch::Tensor v) {
+torch::Tensor Agent::QuatRotateInverse(torch::Tensor q, torch::Tensor v) {
     torch::Tensor q_w = q.index({3});
     torch::Tensor q_vec = q.index({torch::indexing::Slice(torch::indexing::None, 3)});
     torch::Tensor a = v * (2.0 * q_w * q_w - 1.0);
@@ -28,7 +28,7 @@ void Agent::InitObservations()
     obs.action = torch::zeros({12});
 }
 
-bool Agent::load_model(std::string &model_path)
+bool Agent::Load_Model(const std::string &model_path)
 {
     try {
         // Deserialize the ScriptModule from a file using torch::jit::load().
@@ -60,7 +60,7 @@ torch::Tensor Agent::ComputeObservation()
 {
     torch::Tensor obs = torch::cat({
         this->obs.ang_vel * this->params.ang_vel_scale,
-        Quat_rotate_inverse(this->obs.base_quat, this->obs.gravity_vec),
+        QuatRotateInverse(this->obs.base_quat, this->obs.gravity_vec),
         (this->obs.dof_pos - this->params.default_dof_pos) * this->params.dof_pos_scale,
         this->obs.dof_vel * this->params.dof_vel_scale,
         this->obs.action
@@ -98,7 +98,7 @@ std::vector<T> ReadVectorFromYaml(const YAML::Node& node)
     return values;
 }
 
-void Agent::ReadYaml(std::string &robot_name,std::string &config_path)
+void Agent::ReadYaml(const std::string &robot_name,const std::string &config_path)
 {
 
 	YAML::Node config;

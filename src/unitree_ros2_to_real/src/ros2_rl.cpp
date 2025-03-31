@@ -61,10 +61,6 @@ const std::vector<float> damping = {
 
 const std::vector<std::string> urdf_feet_names = {"FR_foot", "FL_foot", "RR_foot", "RL_foot"};
 
-std::vector<std::string> joint_names;
-std::string ROBOT_NAME = "go1";
-std::string CONFIG_PATH = std::string(CONFIG_BASE_DIR) + "/weights/" + ROBOT_NAME + "/config.yaml";
-std::string model_path =std::string(CONFIG_BASE_DIR) + "/weights/" + ROBOT_NAME + + "/Mar25_16-22-14_500.pt"; 
 float jointLinearInterpolation(float initPos, float targetPos, float rate)
 {
     float p;
@@ -86,6 +82,9 @@ void update_dof_state(const ros2_unitree_legged_msgs::msg::LowState &state, Agen
 int main(int argc, char **argv)
 {
     Agent agent;
+    const std::string ROBOT_NAME = "go1";
+
+    const std::string CONFIG_PATH = std::string(CONFIG_BASE_DIR) + "/weights/" + ROBOT_NAME + "/config.yaml";
     try {
         agent.ReadYaml(ROBOT_NAME,CONFIG_PATH);
 
@@ -93,7 +92,13 @@ int main(int argc, char **argv)
         std::cerr << "Error: " << e.what() << std::endl;
         return 1;
     }
+
+    std::vector<std::string> joint_names;
+
+    const std::string model_path =std::string(CONFIG_BASE_DIR) + "/weights/" + ROBOT_NAME + "/" + std::string(agent.params.model_name); 
+
     joint_names = agent.params.joint_names;
+    
     rclcpp::init(argc, argv);
 
     std::cout << "Communication level is set to LOW-level." << std::endl
@@ -138,7 +143,7 @@ int main(int argc, char **argv)
 
     auto pub = node->create_publisher<ros2_unitree_legged_msgs::msg::LowCmd>("low_cmd", 1000);
 
-    if (!agent.load_model(model_path))
+    if (!agent.Load_Model(model_path))
         RCLCPP_ERROR(node->get_logger(), "Error loading the model\n");
     else
         RCLCPP_INFO(node->get_logger(), "Model loaded successfully\n");

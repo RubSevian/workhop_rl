@@ -39,14 +39,15 @@ class Agent
         void InitObservations();
         torch::Tensor ComputePosition(torch::Tensor &actions);
         torch::Tensor Forward();
+        torch::Tensor QuatRotateInverse(torch::Tensor q, torch::Tensor v);
 
     public:
         ModelParams params;
         Observations obs;
         Agent();
-        bool load_model(std::string &model_path);
+        bool Load_Model(const std::string &model_path);
         torch::Tensor Act();
-        void ReadYaml(std::string &robot_name,std::string &config_path);
+        void ReadYaml(const std::string &robot_name,const std::string &config_path);
 
 };
 
