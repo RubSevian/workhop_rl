@@ -32,52 +32,52 @@ UNITREE_LEGGED_SDK::BmsCmd rosMsg2Cmd(const ros2_unitree_legged_msgs::msg::BmsCm
     return cmd;
 }
 
-UNITREE_LEGGED_SDK::HighCmd rosMsg2Cmd(const ros2_unitree_legged_msgs::msg::HighCmd::SharedPtr &msg)
-{
-    UNITREE_LEGGED_SDK::HighCmd cmd;
+// UNITREE_LEGGED_SDK::HighCmd rosMsg2Cmd(const ros2_unitree_legged_msgs::msg::HighCmd::SharedPtr &msg)
+// {
+//     UNITREE_LEGGED_SDK::HighCmd cmd;
 
-    for (int i(0); i < 2; i++)
-    {
-        // cmd.head[i] = msg->head[i];
-        // cmd.SN[i] = msg->sn[i];
-        // cmd.version[i] = msg->version[i];
-        cmd.postion[i] = msg->position[i];
-        cmd.velocity[i] = msg->velocity[i];
-    }
+//     for (int i(0); i < 2; i++)
+//     {
+//         // cmd.head[i] = msg->head[i];
+//         // cmd.SN[i] = msg->sn[i];
+//         // cmd.version[i] = msg->version[i];
+//         cmd.postion[i] = msg->position[i];
+//         cmd.velocity[i] = msg->velocity[i];
+//     }
 
-    for (int i(0); i < 3; i++)
-    {
-        cmd.euler[i] = msg->euler[i];
-    }
+//     for (int i(0); i < 3; i++)
+//     {
+//         cmd.euler[i] = msg->euler[i];
+//     }
 
-    for (int i(0); i < 4; i++)
-    {
-        cmd.led[i].r = msg->led[i].r;
-        cmd.led[i].g = msg->led[i].g;
-        cmd.led[i].b = msg->led[i].b;
-    }
+//     for (int i(0); i < 4; i++)
+//     {
+//         cmd.led[i].r = msg->led[i].r;
+//         cmd.led[i].g = msg->led[i].g;
+//         cmd.led[i].b = msg->led[i].b;
+//     }
 
-    for (int i(0); i < 40; i++)
-    {
-        cmd.wirelessRemote[i] = msg->wireless_remote[i];
-    }
+//     for (int i(0); i < 40; i++)
+//     {
+//         cmd.wirelessRemote[i] = msg->wireless_remote[i];
+//     }
 
-    cmd.levelFlag = msg->level_flag;
-    // cmd.frameReserve = msg->frame_reserve;
-    cmd.bandWidth = msg->band_width;
-    cmd.mode = msg->mode;
-    cmd.gaitType = msg->gait_type;
-    cmd.speedLevel = msg->speed_level;
-    cmd.footRaiseHeight = msg->foot_raise_height;
-    cmd.bodyHeight = msg->body_height;
-    cmd.yawSpeed = msg->yaw_speed;
-    cmd.reserve = msg->reserve;
-    cmd.crc = msg->crc;
+//     cmd.levelFlag = msg->level_flag;
+//     // cmd.frameReserve = msg->frame_reserve;
+//     cmd.bandWidth = msg->band_width;
+//     cmd.mode = msg->mode;
+//     cmd.gaitType = msg->gait_type;
+//     cmd.speedLevel = msg->speed_level;
+//     cmd.footRaiseHeight = msg->foot_raise_height;
+//     cmd.bodyHeight = msg->body_height;
+//     cmd.yawSpeed = msg->yaw_speed;
+//     cmd.reserve = msg->reserve;
+//     cmd.crc = msg->crc;
 
-    cmd.bms = rosMsg2Cmd(msg->bms);
+//     cmd.bms = rosMsg2Cmd(msg->bms);
 
-    return cmd;
-}
+//     return cmd;
+// }
 
 UNITREE_LEGGED_SDK::MotorCmd rosMsg2Cmd(const ros2_unitree_legged_msgs::msg::MotorCmd &msg)
 {
@@ -234,70 +234,70 @@ ros2_unitree_legged_msgs::msg::LowState state2rosMsg(UNITREE_LEGGED_SDK::LowStat
     return ros_msg;
 }
 
-ros2_unitree_legged_msgs::msg::Cartesian state2rosMsg(UNITREE_LEGGED_SDK::Cartesian &state)
-{
-    ros2_unitree_legged_msgs::msg::Cartesian ros_msg;
+// ros2_unitree_legged_msgs::msg::Cartesian state2rosMsg(UNITREE_LEGGED_SDK::Cartesian &state)
+// {
+//     ros2_unitree_legged_msgs::msg::Cartesian ros_msg;
 
-    ros_msg.x = state.x;
-    ros_msg.y = state.y;
-    ros_msg.z = state.z;
+//     ros_msg.x = state.x;
+//     ros_msg.y = state.y;
+//     ros_msg.z = state.z;
 
-    return ros_msg;
-}
+//     return ros_msg;
+// }
 
-ros2_unitree_legged_msgs::msg::HighState state2rosMsg(UNITREE_LEGGED_SDK::HighState &state)
-{
-    ros2_unitree_legged_msgs::msg::HighState ros_msg;
+// ros2_unitree_legged_msgs::msg::HighState state2rosMsg(UNITREE_LEGGED_SDK::HighState &state)
+// {
+//     ros2_unitree_legged_msgs::msg::HighState ros_msg;
 
-    // for (int i(0); i < 2; i++)
-    // {
-    //     ros_msg.head[i] = state.head[i];
-    //     ros_msg.sn[i] = state.SN[i];
-    //     ros_msg.version[i] = state.version[i];
-    // }
+//     // for (int i(0); i < 2; i++)
+//     // {
+//     //     ros_msg.head[i] = state.head[i];
+//     //     ros_msg.sn[i] = state.SN[i];
+//     //     ros_msg.version[i] = state.version[i];
+//     // }
 
-    for (int i(0); i < 4; i++)
-    {
-        ros_msg.foot_force[i] = state.footForce[i];
-        ros_msg.foot_force_est[i] = state.footForceEst[i];
-        // ros_msg.range_obstacle[i] = state.rangeObstacle[i];
-        ros_msg.foot_position2body[i] = state2rosMsg(state.footPosition2Body[i]);
-        ros_msg.foot_speed2body[i] = state2rosMsg(state.footSpeed2Body[i]);
-    }
+//     for (int i(0); i < 4; i++)
+//     {
+//         ros_msg.foot_force[i] = state.footForce[i];
+//         ros_msg.foot_force_est[i] = state.footForceEst[i];
+//         // ros_msg.range_obstacle[i] = state.rangeObstacle[i];
+//         ros_msg.foot_position2body[i] = state2rosMsg(state.footPosition2Body[i]);
+//         ros_msg.foot_speed2body[i] = state2rosMsg(state.footSpeed2Body[i]);
+//     }
 
-    for (int i(0); i < 3; i++)
-    {
-        ros_msg.position[i] = state.position[i];
-        ros_msg.velocity[i] = state.velocity[i];
-    }
+//     for (int i(0); i < 3; i++)
+//     {
+//         ros_msg.position[i] = state.position[i];
+//         ros_msg.velocity[i] = state.velocity[i];
+//     }
 
-    for (int i(0); i < 40; i++)
-    {
-        ros_msg.wireless_remote[i] = state.wirelessRemote[i];
-    }
+//     for (int i(0); i < 40; i++)
+//     {
+//         ros_msg.wireless_remote[i] = state.wirelessRemote[i];
+//     }
 
-    // for (int i(0); i < 20; i++)
-    // {
-    //     ros_msg.motor_state[i] = state2rosMsg(state.motorState[i]);
-    // }
+//     // for (int i(0); i < 20; i++)
+//     // {
+//     //     ros_msg.motor_state[i] = state2rosMsg(state.motorState[i]);
+//     // }
 
-    ros_msg.imu = state2rosMsg(state.imu);
+//     ros_msg.imu = state2rosMsg(state.imu);
 
-    ros_msg.bms = state2rosMsg(state.bms);
+//     ros_msg.bms = state2rosMsg(state.bms);
 
-    ros_msg.level_flag = state.levelFlag;
-    // ros_msg.frame_reserve = state.frameReserve;
-    ros_msg.band_width = state.bandWidth;
-    ros_msg.mode = state.mode;
-    ros_msg.progress = state.progress;
-    ros_msg.gait_type = state.gaitType;
-    ros_msg.foot_raise_height = state.footRaiseHeight;
-    ros_msg.body_height = state.bodyHeight;
-    ros_msg.yaw_speed = state.yawSpeed;
-    ros_msg.reserve = state.reserve;
-    ros_msg.crc = state.crc;
+//     ros_msg.level_flag = state.levelFlag;
+//     // ros_msg.frame_reserve = state.frameReserve;
+//     ros_msg.band_width = state.bandWidth;
+//     ros_msg.mode = state.mode;
+//     ros_msg.progress = state.progress;
+//     ros_msg.gait_type = state.gaitType;
+//     ros_msg.foot_raise_height = state.footRaiseHeight;
+//     ros_msg.body_height = state.bodyHeight;
+//     ros_msg.yaw_speed = state.yawSpeed;
+//     ros_msg.reserve = state.reserve;
+//     ros_msg.crc = state.crc;
 
-    return ros_msg;
-}
+//     return ros_msg;
+// }
 
 #endif // _CONVERT_H_

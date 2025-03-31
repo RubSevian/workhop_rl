@@ -1,6 +1,4 @@
 #include "rclcpp/rclcpp.hpp"
-#include "ros2_unitree_legged_msgs/msg/high_cmd.hpp"
-#include "ros2_unitree_legged_msgs/msg/high_state.hpp"
 #include "ros2_unitree_legged_msgs/msg/low_cmd.hpp"
 #include "ros2_unitree_legged_msgs/msg/low_state.hpp"
 #include "unitree_legged_sdk/unitree_legged_sdk.h"
@@ -10,7 +8,6 @@
 #include <torch/torch.h>
 #include "rl_agent.h"
 
-
 #include "std_msgs/msg/string.hpp"
 #include "sensor_msgs/msg/joint_state.hpp"
 #include "sensor_msgs/msg/imu.hpp"
@@ -18,7 +15,6 @@
 #include "geometry_msgs/msg/twist.hpp"
 #include "std_msgs/msg/u_int8_multi_array.hpp"
 
-#include <mean_smoothing.h>
 #include <map>
 
 
