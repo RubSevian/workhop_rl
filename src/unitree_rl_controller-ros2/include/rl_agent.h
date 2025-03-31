@@ -3,6 +3,7 @@
 #include <iostream>
 #include <memory>
 #include <map>
+#include <filesystem>
 #include "std_msgs/msg/string.hpp"
 #include <yaml-cpp/yaml.h>
 

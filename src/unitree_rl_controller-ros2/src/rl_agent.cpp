@@ -30,6 +30,11 @@ void Agent::InitObservations()
 
 bool Agent::Load_Model(const std::string &model_path)
 {
+    if (!std::filesystem::exists(model_path)) {
+        std::cerr << "Error: Model file in path not found: " << model_path << std::endl;
+        return false;
+    }
+
     try {
         // Deserialize the ScriptModule from a file using torch::jit::load().
         module = torch::jit::load(model_path);
@@ -100,8 +105,14 @@ std::vector<T> ReadVectorFromYaml(const YAML::Node& node)
 
 void Agent::ReadYaml(const std::string &robot_name,const std::string &config_path)
 {
+    if(!std::filesystem::exists(config_path))
+    {
+        std::cout<< "Error: Config file" << config_path << std::endl;
+        return;
+    }
 
 	YAML::Node config;
+
 	try
 	{
 		config = YAML::LoadFile(config_path)[robot_name];
