@@ -8,7 +8,7 @@
 #include <cmath>
 
 #include <torch/torch.h>
-#include "unitree_rl_controller/rl_agent.h"
+#include "rl_agent.h"
 
 
 #include "std_msgs/msg/string.hpp"

@@ -1,8 +1,6 @@
 cmake_minimum_required(VERSION 3.5)
 project(unitree_rl_controller)
 
-set(CONFIG_BASE_DIR "${CMAKE_CURRENT_SOURCE_DIR}")
-
 # Default to C++14
 if(NOT CMAKE_CXX_STANDARD)
   set(CMAKE_CXX_STANDARD 14)
@@ -31,14 +29,8 @@ include_directories(
   ${TORCH_INCLUDE_DIRS}
 )
 
-
 # Создаём библиотеку
 add_library(${PROJECT_NAME} SHARED src/rl_agent.cpp)
-
-target_compile_definitions(${PROJECT_NAME}
-    PRIVATE
-    "CONFIG_BASE_DIR=\"${CONFIG_BASE_DIR}\""
-)
 
 # Линкуем с библиотеками
 target_link_libraries(${PROJECT_NAME} ${TORCH_LIBRARIES} yaml-cpp)  
@@ -46,7 +38,7 @@ target_link_libraries(${PROJECT_NAME} ${TORCH_LIBRARIES} yaml-cpp)
 ament_target_dependencies(${PROJECT_NAME} std_msgs rclcpp)
 
 ament_export_dependencies(rclcpp ros2_unitree_legged_msgs geometry_msgs std_msgs yaml-cpp)
-ament_export_include_directories(include/${PROJECT_NAME})
+ament_export_include_directories(include)
 ament_export_libraries(${PROJECT_NAME})
 
 # Установка библиотеки в `lib/`
@@ -55,9 +47,8 @@ install(TARGETS ${PROJECT_NAME}
 )
 
 # Установка заголовочных файлов
-install(DIRECTORY include/${PROJECT_NAME}
-  DESTINATION include/${PROJECT_NAME}
+install(DIRECTORY include/
+  DESTINATION include
 )
-
 
 ament_package()
