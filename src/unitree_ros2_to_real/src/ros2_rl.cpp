@@ -36,9 +36,7 @@ enum CONTROL_MODE
 enum ROBOT_STATE
 {
     STATE_INIT,
-    STATE_READY,
-    STATE_WAITING,
-    STATE_FALLEN
+    STATE_READY
 };
 
 const std::vector<int> net2joint_indexes = {
@@ -287,15 +285,7 @@ int main(int argc, char **argv)
                     if (motiontime % (rate_value / net_rate_value) == 0)
                     {
                         torch::Tensor actions = agent.Act();
-                        if (agent.obs.gravity_vec.index({2}).item().to<float>() >= -0.7)
-                            robot_state = STATE_FALLEN;
-                        else if (robot_state == STATE_FALLEN)
-                            robot_state = STATE_WAITING;
-                        fallen_pause_time = motiontime;
-
-                        if (robot_state == STATE_WAITING && (motiontime - fallen_pause_time > 1000))
-                            robot_state = STATE_READY;
-
+                        
                         for (size_t k = 0; k < 12; k++)
                         {
                             qDes[k] = actions.index({net2joint_indexes[k]}).item().to<float>();
