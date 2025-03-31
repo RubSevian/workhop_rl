@@ -51,7 +51,6 @@ const std::vector<float> damping = {
     0.5, 0.5, 0.5,
     0.5, 0.5, 0.5};
 
-const std::vector<std::string> urdf_feet_names = {"FR_foot", "FL_foot", "RR_foot", "RL_foot"};
 
 float jointLinearInterpolation(float initPos, float targetPos, float rate)
 {
@@ -125,9 +124,6 @@ int main(int argc, char **argv)
     LowState state = {0};
     state_udp.InitCmdData(cmd);
    
-    rclcpp::Publisher<sensor_msgs::msg::JointState>::SharedPtr pub_jointstates;
-    pub_jointstates = node->create_publisher<sensor_msgs::msg::JointState>("/go1/joint_states", 1000);
-
     rclcpp::Publisher<sensor_msgs::msg::Imu>::SharedPtr pub_imu;
     pub_imu = node->create_publisher<sensor_msgs::msg::Imu>("/go1/imu0", 1000);
 
@@ -169,21 +165,6 @@ int main(int argc, char **argv)
         if (initiated_flag == true)
         {
             motiontime ++;
-
-            auto joint_state = sensor_msgs::msg::JointState();
-            joint_state.header.stamp = node->get_clock()->now();
-            joint_state.name.resize(joint_names.size());
-            joint_state.position.resize(joint_names.size());
-            joint_state.velocity.resize(joint_names.size());
-            for (size_t i = 0; i < joint_names.size(); i++)
-                {
-                    size_t j = net2joint_indexes[i];
-                    joint_state.name[j] = joint_names[j];
-                    joint_state.position[j] = low_state_ros.motor_state[i].q; // Position here is a servo angle in rads
-                    joint_state.velocity[j] = low_state_ros.motor_state[i].dq;
-                }
-
-            pub_jointstates->publish(joint_state);
 
             sensor_msgs::msg::Imu imu_state;
             imu_state.header.stamp = node->get_clock()->now();
