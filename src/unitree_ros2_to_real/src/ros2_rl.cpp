@@ -21,8 +21,6 @@
 #include <mean_smoothing.h>
 #include <map>
 
-#define DIMENSION 3
-
 
 using namespace UNITREE_LEGGED_SDK;
 
@@ -137,9 +135,6 @@ int main(int argc, char **argv)
     rclcpp::Publisher<sensor_msgs::msg::Imu>::SharedPtr pub_imu;
     pub_imu = node->create_publisher<sensor_msgs::msg::Imu>("/go1/imu0", 1000);
 
-    rclcpp::Publisher<sensor_msgs::msg::Imu>::SharedPtr pub_imu_filter;
-    pub_imu_filter = node->create_publisher<sensor_msgs::msg::Imu>("/go1/imu0_filter", 1000);
-
     auto pub = node->create_publisher<ros2_unitree_legged_msgs::msg::LowCmd>("low_cmd", 1000);
 
     if (!agent.Load_Model(model_path))
@@ -162,7 +157,6 @@ int main(int argc, char **argv)
         low_cmd_ros.motor_cmd[i].tau = 0;
     }
 
-    mean_smoothing<float, DIMENSION> meansmth; 
     // Switch to POSITION control mode only once at the beginning
     
     if (currentControlMode != CM_POSTITION) {
@@ -209,25 +203,6 @@ int main(int argc, char **argv)
             imu_state.angular_velocity.y = low_state_ros.imu.gyroscope[1];
             imu_state.angular_velocity.z = low_state_ros.imu.gyroscope[2];
             pub_imu->publish(imu_state);
-
-            es_vec<float, DIMENSION> curr_query;
-            for (size_t i = 0; i < DIMENSION; ++i) curr_query[i] = low_state_ros.imu.accelerometer[i];
-            es_vec<float, DIMENSION> acc_filter = meansmth.push_to_pop(curr_query);
-
-            sensor_msgs::msg::Imu imu_state_filter;
-            imu_state_filter.header.stamp = node->get_clock()->now();
-            imu_state_filter.header.frame_id = "imu_link";
-            imu_state_filter.orientation.w = low_state_ros.imu.quaternion[0];
-            imu_state_filter.orientation.x = low_state_ros.imu.quaternion[1];
-            imu_state_filter.orientation.y = low_state_ros.imu.quaternion[2];
-            imu_state_filter.orientation.z = low_state_ros.imu.quaternion[3];
-            imu_state_filter.linear_acceleration.x = acc_filter[0];
-            imu_state_filter.linear_acceleration.y = acc_filter[1];
-            imu_state_filter.linear_acceleration.z = acc_filter[2];
-            imu_state_filter.angular_velocity.x = low_state_ros.imu.gyroscope[0];
-            imu_state_filter.angular_velocity.y = low_state_ros.imu.gyroscope[1];
-            imu_state_filter.angular_velocity.z = low_state_ros.imu.gyroscope[2];
-            pub_imu_filter->publish(imu_state_filter);
 
             agent.obs.ang_vel.index({0}) = low_state_ros.imu.gyroscope[0];
             agent.obs.ang_vel.index({1}) = low_state_ros.imu.gyroscope[1];
