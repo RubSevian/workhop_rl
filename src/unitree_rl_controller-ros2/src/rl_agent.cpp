@@ -50,7 +50,8 @@ torch::Tensor Agent::Act()
 
     this->obs.action = this->Forward();
 
-    output_dof_pos = this->ComputePosition(obs.action);
+    output_dof_pos = this->ComputePosition(this->obs.action);
+    std::cout<<"Action_output"<<output_dof_pos<<std::endl;
 
     return output_dof_pos;
 }
@@ -65,11 +66,11 @@ torch::Tensor Agent::ComputeObservation()
 {
     torch::Tensor obs = torch::cat({
         this->obs.ang_vel * this->params.ang_vel_scale,
-        QuatRotateInverse(this->obs.base_quat, this->obs.gravity_vec),
+        this->QuatRotateInverse(this->obs.base_quat, this->obs.gravity_vec),
         (this->obs.dof_pos - this->params.default_dof_pos) * this->params.dof_pos_scale,
         this->obs.dof_vel * this->params.dof_vel_scale,
         this->obs.action
-    });       
+    },0);       
     
     obs = torch::clamp(obs, -this->params.clip_obs, this->params.clip_obs);
     return obs;
