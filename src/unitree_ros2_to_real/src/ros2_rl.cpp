@@ -116,7 +116,9 @@ int main(int argc, char **argv)
     float Kp[12] = {0};
     float Kd[12] = {0};
 
+    // Объект для хранения команд, которые будут отправлены роботу 
     ros2_unitree_legged_msgs::msg::LowCmd low_cmd_ros;
+    //Объект для хранения информации о состоянии робота
     ros2_unitree_legged_msgs::msg::LowState low_state_ros;
 
     UDP state_udp(LOWLEVEL);
@@ -124,9 +126,12 @@ int main(int argc, char **argv)
     LowState state = {0};
     state_udp.InitCmdData(cmd);
    
+    // Обьявляем указатель на Publisher для сообщений типа IMU , используем умный указатель SharedPtr для автоматического управления памятью
     rclcpp::Publisher<sensor_msgs::msg::Imu>::SharedPtr pub_imu;
+
     pub_imu = node->create_publisher<sensor_msgs::msg::Imu>("/go1/imu0", 1000);
 
+    //Создание паблишера для отправки сообщений IMU на топик "/go1/imu0" с размером очереди 1000
     auto pub = node->create_publisher<ros2_unitree_legged_msgs::msg::LowCmd>("low_cmd", 1000);
 
     if (!agent.Load_Model(model_path))
@@ -166,10 +171,10 @@ int main(int argc, char **argv)
         {
             motiontime ++;
 
-            sensor_msgs::msg::Imu imu_state;
-            imu_state.header.stamp = node->get_clock()->now();
-            imu_state.header.frame_id = "imu_link";
-            imu_state.orientation.w = low_state_ros.imu.quaternion[0];
+            sensor_msgs::msg::Imu imu_state; // Обьект imu_state типа sensor_msgs::msg::Imu 
+            imu_state.header.stamp = node->get_clock()->now();// временная метка сообщения на текущее время с помощью метода now() объекта clock
+            imu_state.header.frame_id = "imu_link";// идентификатор фрейма, к которому относится IMU, в данном случае "imu_link"
+            imu_state.orientation.w = low_state_ros.imu.quaternion[0];// заполняем ориентацию IMU, используя кватернионы из объекта low_state_ros
             imu_state.orientation.x = low_state_ros.imu.quaternion[1];
             imu_state.orientation.y = low_state_ros.imu.quaternion[2];
             imu_state.orientation.z = low_state_ros.imu.quaternion[3];
@@ -179,7 +184,7 @@ int main(int argc, char **argv)
             imu_state.angular_velocity.x = low_state_ros.imu.gyroscope[0];
             imu_state.angular_velocity.y = low_state_ros.imu.gyroscope[1];
             imu_state.angular_velocity.z = low_state_ros.imu.gyroscope[2];
-            pub_imu->publish(imu_state);
+            pub_imu->publish(imu_state); // Публикация сообщения IMU
 
             agent.obs.ang_vel.index({0}) = low_state_ros.imu.gyroscope[0];
             agent.obs.ang_vel.index({1}) = low_state_ros.imu.gyroscope[1];
@@ -233,16 +238,16 @@ int main(int argc, char **argv)
 
             if (motiontime > 3000)
             {
-                if (motiontime % (control_period) == 0)
-                {
-                    torch::Tensor actions = agent.Act();
+                // if (motiontime % (control_period) == 0)
+                // {
+                //     torch::Tensor actions = agent.Act();
                     
-                    for (size_t k = 0; k < 12; k++)
-                    {
-                        qDes[k] = actions.index({net2joint_indexes[k]}).item().to<float>();
+                //     for (size_t k = 0; k < 12; k++)
+                //     {
+                //         qDes[k] = actions.index({net2joint_indexes[k]}).item().to<float>();
                     
-                    }
-                }
+                //     }
+                // }
             }
 
             for (size_t k = 0; k < 12; k++)

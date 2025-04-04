@@ -30,61 +30,61 @@ void Agent::InitObservations()
 
 bool Agent::Load_Model(const std::string &model_path)
 {
-    if (!std::filesystem::exists(model_path)) {
-        std::cerr << "Error: Model file in path not found: " << model_path << std::endl;
-        return false;
-    }
+    // if (!std::filesystem::exists(model_path)) {
+    //     std::cerr << "Error: Model file in path not found: " << model_path << std::endl;
+    //     return false;
+    // }
 
-    try {
-        // Deserialize the ScriptModule from a file using torch::jit::load().
-        module = torch::jit::load(model_path);
-    }
-    catch (const c10::Error& e) {
-        return false;
-    }
-    return true;
+    // try {
+    //     // Deserialize the ScriptModule from a file using torch::jit::load().
+    //     module = torch::jit::load(model_path);
+    // }
+    // catch (const c10::Error& e) {
+    //     return false;
+    // }
+    // return true;
 }
 
 torch::Tensor Agent::Act()
 {
 
-    this->obs.action = this->Forward();
+    // this->obs.action = this->Forward();
 
-    output_dof_pos = this->ComputePosition(this->obs.action);
-    std::cout<<"Action_output"<<output_dof_pos<<std::endl;
+    // output_dof_pos = this->ComputePosition(this->obs.action);
+    // std::cout<<"Action_output"<<output_dof_pos<<std::endl;
 
-    return output_dof_pos;
+    // return output_dof_pos;
 }
 
 torch::Tensor Agent::ComputePosition(torch::Tensor &actions)
 {
-    torch::Tensor actions_scaled = actions * this->params.action_scale;
-    return actions_scaled + this->params.default_dof_pos;
+    // torch::Tensor actions_scaled = actions * this->params.action_scale;
+    // return actions_scaled + this->params.default_dof_pos;
 }
 
 torch::Tensor Agent::ComputeObservation()
 {
-    torch::Tensor obs = torch::cat({
-        this->obs.ang_vel * this->params.ang_vel_scale,
-        this->QuatRotateInverse(this->obs.base_quat, this->obs.gravity_vec),
-        (this->obs.dof_pos - this->params.default_dof_pos) * this->params.dof_pos_scale,
-        this->obs.dof_vel * this->params.dof_vel_scale,
-        this->obs.action
-    },0);       
+    // torch::Tensor obs = torch::cat({
+    //     this->obs.ang_vel * this->params.ang_vel_scale,
+    //     this->QuatRotateInverse(this->obs.base_quat, this->obs.gravity_vec),
+    //     (this->obs.dof_pos - this->params.default_dof_pos) * this->params.dof_pos_scale,
+    //     this->obs.dof_vel * this->params.dof_vel_scale,
+    //     this->obs.action
+    // },0);       
     
-    obs = torch::clamp(obs, -this->params.clip_obs, this->params.clip_obs);
-    return obs;
+    // obs = torch::clamp(obs, -this->params.clip_obs, this->params.clip_obs);
+    // return obs;
 }
 
 torch::Tensor Agent::Forward()
 {
-    torch::Tensor obs = this->ComputeObservation();
-    std::cout<<"Obs"<<obs<<std::endl;
-    torch::Tensor action = this->module.forward({obs}).toTensor();
-    std::cout<<"Action"<<action<<std::endl;
-    torch::Tensor clamped = torch::clamp(action, -this->params.clip_actions, this->params.clip_actions); 
+    // torch::Tensor obs = this->ComputeObservation();
+    // std::cout<<"Obs"<<obs<<std::endl;
+    // torch::Tensor action = this->module.forward({obs}).toTensor();
+    // std::cout<<"Action"<<action<<std::endl;
+    // torch::Tensor clamped = torch::clamp(action, -this->params.clip_actions, this->params.clip_actions); 
 
-    return clamped;
+    // return clamped;
 }
 
 template<typename T>
