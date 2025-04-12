@@ -1,3 +1,7 @@
+#include <iostream>
+#include <stdio.h>
+#include <stdint.h>
+#include <math.h>
 #include "rclcpp/rclcpp.hpp"
 #include "ros2_unitree_legged_msgs/msg/low_cmd.hpp"
 #include "ros2_unitree_legged_msgs/msg/low_state.hpp"
@@ -7,6 +11,17 @@
 
 #include <torch/torch.h>
 #include "rl_agent.h"
+#include <unitree/robot/channel/channel_publisher.hpp>
+#include <unitree/robot/channel/channel_subscriber.hpp>
+#include <unitree/idl/go2/LowState_.hpp>
+#include <unitree/idl/go2/LowCmd_.hpp>
+#include <unitree/idl/go2/WirelessController_.hpp>
+#include <unitree/robot/client/client.hpp>
+#include <unitree/common/time/time_tool.hpp>
+#include <unitree/common/thread/thread.hpp>
+#include <unitree/robot/go2/robot_state/robot_state_client.hpp>
+
+
 
 #include "std_msgs/msg/string.hpp"
 #include "sensor_msgs/msg/joint_state.hpp"
@@ -16,6 +31,18 @@
 #include "std_msgs/msg/u_int8_multi_array.hpp"
 
 #include <map>
+
+
+// using namespace unitree::common;
+// using namespace unitree::robot;
+
+// #define TOPIC_LOWCMD "rt/lowcmd"
+// #define TOPIC_LOWSTATE "rt/lowstate"
+
+// constexpr double PosStopF = (2.146E+9f);
+// constexpr double VelStopF = (16000.0f);
+
+
 
 
 using namespace UNITREE_LEGGED_SDK;
@@ -231,19 +258,19 @@ int main(int argc, char **argv)
                 robot_state = STATE_READY;
             }
 
-            if (motiontime > 3000)
-            {
-                if (motiontime % (control_period) == 0)
-                {
-                    torch::Tensor actions = agent.Act();
+            // if (motiontime > 3000)
+            // {
+            //     if (motiontime % (control_period) == 0)
+            //     {
+            //         torch::Tensor actions = agent.Act();
                     
-                    for (size_t k = 0; k < 12; k++)
-                    {
-                        qDes[k] = actions.index({net2joint_indexes[k]}).item().to<float>();
+            //         for (size_t k = 0; k < 12; k++)
+            //         {
+            //             qDes[k] = actions.index({net2joint_indexes[k]}).item().to<float>();
                     
-                    }
-                }
-            }
+            //         }
+            //     }
+            // }
 
             for (size_t k = 0; k < 12; k++)
             {
