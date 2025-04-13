@@ -33,16 +33,6 @@
 #include <map>
 
 
-// using namespace unitree::common;
-// using namespace unitree::robot;
-
-// #define TOPIC_LOWCMD "rt/lowcmd"
-// #define TOPIC_LOWSTATE "rt/lowstate"
-
-// constexpr double PosStopF = (2.146E+9f);
-// constexpr double VelStopF = (16000.0f);
-
-
 
 
 using namespace UNITREE_LEGGED_SDK;
