@@ -30,6 +30,38 @@ source ~/.bashrc
 ```bash
 sudo apt install liblcm-dev libyaml-cpp-dev
 ```
+
+## Compilation for SIM2SIM on Mujoco
+1. Compile in the root directory of the project
+
+```bash
+source ./env_setup.sh  # in first time error (install/setup.bash: No such file or directory) - normal
+
+colcon build 
+
+source ./env_setup.sh  #(without errors)
+```
+2. Export path to libtorch
+
+```bash
+export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/home/ruben/workhop_rl/src/libtorch/lib/ #change to your libtorch path
+```
+3. Start code in terminal with (source ./env_setup.sh) you need 2 treminals
+
+3.1. First Terminal (run Mujoco)
+
+```bash
+sudo ./build/unitree_mujoco/unitree_mujoco 
+
+```
+3.2. Second Terminal (run statnd_up)
+
+```bash
+ros2 run stand_go2 stand_go2
+```
+
+
+
 ## Compilation
 
 1. Compile in the root directory of the project
@@ -52,5 +84,10 @@ ros2 run unitree_legged_real ros2_rl
 
 ```
 
+### ISSUE
 
 
+1. Error : selected interface "lo" is not multicast-capable: disabling multicast
+```bash
+sudo ip link set lo multicast on # fix
+```
