@@ -15,6 +15,8 @@ source /opt/ros/humble/setup.bash
 sudo apt update
 sudo apt install ros-humble-std-msgs
 sudo apt install ros-$ROS_DISTRO-teleop-twist-keyboard ros-$ROS_DISTRO-ros2-control ros-$ROS_DISTRO-ros2-controllers ros-$ROS_DISTRO-control-toolbox ros-$ROS_DISTRO-robot-state-publisher ros-$ROS_DISTRO-joint-state-publisher-gui ros-$ROS_DISTRO-gazebo-ros2-control ros-$ROS_DISTRO-gazebo-ros-pkgs ros-$ROS_DISTRO-xacro
+sudo apt install ros-foxy-rmw-cyclonedds-cpp
+sudo apt install ros-foxy-rosidl-generator-dds-idl
 ```
 5. Download and deploy `libtorch` at any location
 
@@ -29,6 +31,15 @@ source ~/.bashrc
 
 ```bash
 sudo apt install liblcm-dev libyaml-cpp-dev
+```
+
+## If your verison ros2 foxy , change version rmw_cyclonedds to foxy / humble
+
+```bash
+cd ~/unitree_ros2/cyclonedds_ws/src
+git clone https://github.com/ros2/rmw_cyclonedds -b foxy
+git clone https://github.com/eclipse-cyclonedds/cyclonedds -b releases/0.10.x 
+cd ..
 ```
 
 ## Compilation for SIM2SIM on Mujoco
