@@ -96,7 +96,8 @@
         "__tree": "cpp",
         "queue": "cpp",
         "stack": "cpp",
-        "__node_handle": "cpp"
+        "__node_handle": "cpp",
+        "rope": "cpp"
     },
     "ros.distro": "humble"
 

@@ -34,6 +34,19 @@ include_directories(
  ${TORCH_INCLUDE_DIRS}
 )
 
+find_package(unitree_go REQUIRED)
+find_package(unitree_api REQUIRED)
+find_package(rclcpp REQUIRED)
+find_package(std_msgs REQUIRED)
+
+set (
+  DEPENDENCY_LIST
+  unitree_go
+  rclcpp
+  std_msgs
+)
+
+
 message("-- CMAKE_SYSTEM_PROCESSOR: ${CMAKE_SYSTEM_PROCESSOR}")
 if("${CMAKE_SYSTEM_PROCESSOR}" MATCHES "x86_64.*")
   set(ARCH amd64)
@@ -78,6 +91,11 @@ add_executable(ros2_rl src/ros2_rl.cpp)
 target_link_libraries(ros2_rl ${UNITREE_GO2_LIBS} ${EXTRA_LIBS} ${TORCH_LIBRARIES})
 ament_target_dependencies(ros2_rl rclcpp ros2_unitree_legged_msgs unitree_rl_controller sensor_msgs)
 
+
+add_executable(mujoco_sim src/mujoco_sim.cpp src/motor_crc.cpp)
+target_link_libraries(ros2_rl ${UNITREE_GO2_LIBS} ${EXTRA_LIBS} ${TORCH_LIBRARIES} )
+ament_target_dependencies(mujoco_sim rclcpp ros2_unitree_legged_msgs unitree_rl_controller sensor_msgs ${DEPENDENCY_LIST})
+
 add_executable(ros2_rl_go2 src/ros2_rl_go2.cpp)
 target_link_libraries(ros2_rl_go2 ${UNITREE_GO2_LIBS} ${EXTRA_LIBS} ${TORCH_LIBRARIES})
 ament_target_dependencies(ros2_rl_go2 rclcpp unitree_rl_controller sensor_msgs)
@@ -85,8 +103,12 @@ ament_target_dependencies(ros2_rl_go2 rclcpp unitree_rl_controller sensor_msgs)
 set(CONFIG_BASE_DIR "${CMAKE_CURRENT_SOURCE_DIR}")
 target_compile_definitions(ros2_rl PRIVATE "CONFIG_BASE_DIR=\"${CONFIG_BASE_DIR}\"")
 
+
+
+
 install(TARGETS
     ros2_rl
+    mujoco_sim
     ros2_rl_go2
     lcm_server
     DESTINATION lib/${PROJECT_NAME}
