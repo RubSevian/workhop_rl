@@ -97,7 +97,22 @@
         "queue": "cpp",
         "stack": "cpp",
         "__node_handle": "cpp",
-        "rope": "cpp"
+        "rope": "cpp",
+        "csetjmp": "cpp",
+        "barrier": "cpp",
+        "charconv": "cpp",
+        "coroutine": "cpp",
+        "cuchar": "cpp",
+        "netfwd": "cpp",
+        "source_location": "cpp",
+        "hash_map": "cpp",
+        "hash_set": "cpp",
+        "slist": "cpp",
+        "latch": "cpp",
+        "ranges": "cpp",
+        "scoped_allocator": "cpp",
+        "span": "cpp",
+        "syncstream": "cpp"
     },
     "ros.distro": "humble"
 
