@@ -103,11 +103,11 @@ sudo ./build/unitree_mujoco/unitree_mujoco
 ```bash
 ros2 run stand_go2 stand_go2
 ```
-## Results WORK
+## Results WORK (with RL policy in mujoco sim)
 ![alt text](img/Screenshot%20from%202025-06-07%2000-52-52.png)
 
 
-## Compilation
+## Compilation for Real Robot
 
 1. Compile in the root directory of the project
 
