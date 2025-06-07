@@ -27,6 +27,9 @@ public:
     std::string get_robot_name() const;
     int get_num_motors() const;
 
+private:
+    Agent agent;
+
     enum StateID {
         STATE_INIT,
         STATE_READY
@@ -46,9 +49,6 @@ public:
     const std::vector<int> net2joint_indexes;
     const std::vector<float> stiffness;
     const std::vector<float> damping;
-
-private:
-    Agent agent;
 };
 
 class InterfaceRos : public rclcpp::Node {
