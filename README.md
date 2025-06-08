@@ -34,7 +34,7 @@ sudo apt install liblcm-dev libyaml-cpp-dev
 ```
 
 ## Install mujoco
-Current version is tested in mujoco-3.3.1
+Current version is tested in mujoco-3.3.1 check in original repo mujoco this version
 ```bash
 sudo apt install libglfw3-dev libxinerama-dev libxcursor-dev libxi-dev
 ```
@@ -56,7 +56,9 @@ simulate
 To build your own application with the SDK, you can install the unitree_sdk2 to your system directory:
 
 ```bash
-cd /src/unitree_ros2_to_real/library/unitree_sdk2/
+cd src/unitree_ros2_to_real/library/
+git clone https://github.com/unitreerobotics/unitree_sdk2.git
+cd unitree_sdk2/
 mkdir build
 cd build
 cmake ..
@@ -67,10 +69,14 @@ sudo make install
 ## If your verison ros2 foxy , change version rmw_cyclonedds to foxy / humble
 
 ```bash
+sudo apt install ros-humble-rmw-cyclonedds-cpp -y
+sudo apt install ros-humble-rosidl-generator-dds-idl
 cd src/unitree_ros2/cyclonedds_ws/src
 git clone https://github.com/ros2/rmw_cyclonedds -b humble
 git clone https://github.com/eclipse-cyclonedds/cyclonedds -b releases/0.10.x 
-cd ..
+cd .. && cd ..
+colcon build --packages-select cyclonedds
+cd .. && cd .. && cd ..
 ```
 
 ## Compilation for SIM2SIM on Mujoco
@@ -78,8 +84,6 @@ cd ..
 
 ```bash
 source ./env_setup.sh  # in first time error (install/setup.bash: No such file or directory) - normal
-
-
 
 colcon build 
 
