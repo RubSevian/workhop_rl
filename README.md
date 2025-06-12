@@ -105,7 +105,7 @@ sudo ./build/unitree_mujoco/unitree_mujoco
 3.2. Second Terminal (run statnd_up)
 
 ```bash
-ros2 run stand_go2 stand_go2
+ros2 run unitree_legged_real mujoco_sim 
 ```
 ## Results WORK (with RL policy in mujoco sim)
 ![alt text](img/Screenshot%20from%202025-06-07%2000-52-52.png)
@@ -129,7 +129,7 @@ export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/home/ruben/workhop_rl/src/libtorch/lib/
 ```
 3. Start code in terminal with (source install/setup.bash)
 ```bash
-ros2 run unitree_legged_real ros2_rl
+ros2 run unitree_legged_real ros2_rl_go2
 
 ```
 

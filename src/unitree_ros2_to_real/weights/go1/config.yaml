@@ -1,5 +1,5 @@
 go1:
-  model_name: "Mar25_16-22-14_500.pt"
+  model_name: "policy_1.pt" #"Mar25_16-22-14_500.pt"
   clip_obs: 100.0
   clip_actions: 100.0
   action_scale: 0.25
