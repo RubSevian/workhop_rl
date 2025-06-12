@@ -20,9 +20,11 @@ Agent::Agent()
 
 void Agent::InitObservations()
 {
+    obs.lin_vel = torch::zeros({12});
     obs.dof_pos = torch::zeros({12});
     obs.dof_vel = torch::zeros({12});
     obs.ang_vel = torch::zeros({3});
+    obs.command = torch::zeros({3});
     obs.base_quat = torch::tensor({0.0, 0.0, 0.0, 1.0});
     obs.gravity_vec = torch::tensor({0.0, 0.0, -1.0});
     obs.action = torch::zeros({12});
@@ -64,14 +66,40 @@ torch::Tensor Agent::ComputePosition(torch::Tensor &actions)
 
 torch::Tensor Agent::ComputeObservation()
 {
-    torch::Tensor obs = torch::cat({
-        this->obs.ang_vel * this->params.ang_vel_scale,
-        this->QuatRotateInverse(this->obs.base_quat, this->obs.gravity_vec),
-        (this->obs.dof_pos - this->params.default_dof_pos) * this->params.dof_pos_scale,
-        this->obs.dof_vel * this->params.dof_vel_scale,
-        this->obs.action
-    },0);       
-    
+    std::vector<torch::Tensor> obs_model_list;
+
+    for (const std::string &obs_name : this->params.obs_model){
+        if (obs_name == "lin_vel")
+        {
+            obs_model_list.push_back(this->obs.lin_vel * this->params.lin_vel_scale);
+        }
+        else if (obs_name == "ang_vel")
+        {
+            obs_model_list.push_back(this->obs.ang_vel * this->params.ang_vel_scale);
+        }
+        else if (obs_name == "gravity_vec")
+        {
+            obs_model_list.push_back(this->QuatRotateInverse(this->obs.base_quat, this->obs.gravity_vec));
+        }
+        else if (obs_name == "command")
+        {
+            obs_model_list.push_back(this->obs.command * this->params.command_scale);
+        }
+        else if (obs_name == "dof_pos")
+        {
+            obs_model_list.push_back((this->obs.dof_pos - this->params.default_dof_pos) * this->params.dof_pos_scale);
+        }
+        else if (obs_name == "dof_vel")
+        {
+            obs_model_list.push_back(this->obs.dof_vel * this->params.dof_vel_scale);
+        }
+        else if (obs_name == "action")
+        {
+            obs_model_list.push_back(this->obs.action);
+        }
+
+    }
+    torch::Tensor obs = torch::cat({obs_model_list},0);       
     obs = torch::clamp(obs, -this->params.clip_obs, this->params.clip_obs);
     return obs;
 }
@@ -131,6 +159,10 @@ void Agent::ReadYaml(const std::string &robot_name,const std::string &config_pat
     this->params.ang_vel_scale = config["ang_vel_scale"].as<float>();
     this->params.dof_pos_scale = config["dof_pos_scale"].as<float>();
     this->params.dof_vel_scale = config["dof_vel_scale"].as<float>();
+    this->params.decimation = config["decimation"].as<int>();
+    this->params.lin_vel_scale = config["lin_vel_scale"].as<float>();
+    this->params.obs_model = ReadVectorFromYaml<std::string>(config["observations"]);
+    this->params.command_scale = torch::tensor(ReadVectorFromYaml<float>(config["command_scale"]));
     this->params.default_dof_pos = torch::tensor(ReadVectorFromYaml<float>(config["default_dof_pos"]));
     this->params.joint_names = ReadVectorFromYaml<std::string>(config["joint_names"]);
 }

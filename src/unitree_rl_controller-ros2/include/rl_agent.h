@@ -11,6 +11,8 @@
 struct Observations
 {
     torch::Tensor ang_vel;
+    torch::Tensor lin_vel;
+    torch::Tensor command;
     torch::Tensor gravity_vec;
     torch::Tensor base_quat;
     torch::Tensor dof_pos;
@@ -22,12 +24,16 @@ struct ModelParams
 {
     std::string model_name;
     float action_scale;
+    float lin_vel_scale;
+    int decimation;
     float ang_vel_scale;
     float dof_pos_scale;
     float dof_vel_scale;
     float clip_obs;
     float clip_actions;
     torch::Tensor default_dof_pos;
+    torch::Tensor command_scale;
+    std::vector<std::string> obs_model;
     std::vector<std::string> joint_names;
 };
 
