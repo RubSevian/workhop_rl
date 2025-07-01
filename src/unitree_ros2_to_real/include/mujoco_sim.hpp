@@ -15,6 +15,10 @@
 #include "rl_agent.h"
 #include "motor_crc.h"
 
+//keyboard
+
+#include <GLFW/glfw3.h>
+
 class RobotController {
 public:
     RobotController();
@@ -26,6 +30,7 @@ public:
     std::string get_model_name() const;
     std::string get_robot_name() const;
     int get_num_motors() const;
+    void set_command(float x, float y, float z);
     enum StateID {
         STATE_INIT,
         STATE_READY
@@ -54,6 +59,7 @@ private:
 class InterfaceRos : public rclcpp::Node {
 public:
     InterfaceRos();
+    ~InterfaceRos();
 private:
     void LowStateHandler(const unitree_go::msg::LowState::SharedPtr msg);
     void timer_callback_cmd();
@@ -61,6 +67,9 @@ private:
     void init_cmd();
     void publish_imu(const unitree_go::msg::IMUState& imu_state);
     void publish_motor_state(const std::array<unitree_go::msg::MotorState, 20>& motor_state);
+
+    void init_glfw();
+    static void key_callback(GLFWwindow* window , int key , int scancode, int action , int mods);
 
     rclcpp::TimerBase::SharedPtr timer_;
     rclcpp::Publisher<unitree_go::msg::LowCmd>::SharedPtr cmd_puber;
@@ -71,6 +80,15 @@ private:
     unitree_go::msg::LowCmd low_cmd;
     unitree_go::msg::LowState::SharedPtr latest_state;
     RobotController controller;
+
+    GLFWwindow * window ;
+struct KeyboardState {
+        bool w_pressed = false;
+        bool s_pressed = false;
+        bool a_pressed = false;
+        bool d_pressed = false;
+    } keyboard_state;
+
 };
 
 

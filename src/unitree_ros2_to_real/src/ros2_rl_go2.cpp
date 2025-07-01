@@ -1,7 +1,7 @@
 /**
  * This example demonstrates how to use ROS2 to send low-level motor commands to Unitree Go2 robot
  */
-#include "mujoco_sim.hpp"
+#include "ros2_rl_go2.hpp"
 #include <algorithm>
 #include <iostream>
 #include <sstream>

@@ -162,7 +162,7 @@ void Agent::ReadYaml(const std::string &robot_name,const std::string &config_pat
     this->params.decimation = config["decimation"].as<int>();
     this->params.lin_vel_scale = config["lin_vel_scale"].as<float>();
     this->params.obs_model = ReadVectorFromYaml<std::string>(config["observations"]);
-    this->params.command_scale = torch::tensor(ReadVectorFromYaml<float>(config["command_scale"]));
+    this->params.command_scale = torch::tensor(ReadVectorFromYaml<float>(config["commands_scale"]));
     this->params.default_dof_pos = torch::tensor(ReadVectorFromYaml<float>(config["default_dof_pos"]));
     this->params.joint_names = ReadVectorFromYaml<std::string>(config["joint_names"]);
 }

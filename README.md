@@ -13,6 +13,7 @@ source /opt/ros/humble/setup.bash
 4.  Install this packages
 ```bash
 sudo apt update
+sudo apt install libglfw3-dev
 sudo apt install ros-humble-std-msgs
 sudo apt install ros-$ROS_DISTRO-teleop-twist-keyboard ros-$ROS_DISTRO-ros2-control ros-$ROS_DISTRO-ros2-controllers ros-$ROS_DISTRO-control-toolbox ros-$ROS_DISTRO-robot-state-publisher ros-$ROS_DISTRO-joint-state-publisher-gui ros-$ROS_DISTRO-gazebo-ros2-control ros-$ROS_DISTRO-gazebo-ros-pkgs ros-$ROS_DISTRO-xacro
 sudo apt install ros-$ROS_DISTRO-rmw-cyclonedds-cpp

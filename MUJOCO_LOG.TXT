@@ -4,3 +4,6 @@ ERROR: Headers and library have different versions
 Sat May 31 15:58:37 2025
 ERROR: Headers and library have different versions
 
+Tue Jul  1 20:03:53 2025
+WARNING: Nan, Inf or huge value in QACC at DOF 0. The simulation is unstable. Time = 30.3580.
+

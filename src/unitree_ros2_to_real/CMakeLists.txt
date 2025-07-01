@@ -21,6 +21,7 @@ find_package(std_srvs REQUIRED)
 find_package(ros2_unitree_legged_msgs REQUIRED)
 find_package(unitree_rl_controller REQUIRED)
 find_package(unitree_sdk2  REQUIRED)
+find_package(glfw3 REQUIRED)
 
 list(APPEND CMAKE_PREFIX_PATH "/home/ruben/libtorch/")
 find_package(Torch REQUIRED)
@@ -93,7 +94,7 @@ target_link_libraries(lcm_server ${EXTRA_LIBS})
 
 
 add_executable(mujoco_sim src/mujoco_sim.cpp src/motor_crc.cpp)
-target_link_libraries(mujoco_sim ${UNITREE_GO2_LIBS} ${EXTRA_LIBS} ${TORCH_LIBRARIES} )
+target_link_libraries(mujoco_sim ${UNITREE_GO2_LIBS} ${EXTRA_LIBS} ${TORCH_LIBRARIES} glfw)
 ament_target_dependencies(mujoco_sim rclcpp  unitree_rl_controller sensor_msgs ${DEPENDENCY_LIST})
 
 add_executable(ros2_rl_go2 src/ros2_rl_go2.cpp src/motor_crc.cpp)

@@ -14,13 +14,13 @@ using std::placeholders::_1; //Для использования placeholders в
 
 RobotController::RobotController():
     init_count(0),motiontime(0),runing_time(0.0),robot_state(STATE_INIT),
-    dt(0.005),Go2_NUM_MOTOR(12),ROBOT_NAME("go1"),
+    dt(0.02),Go2_NUM_MOTOR(12),ROBOT_NAME("go1"),
     net2joint_indexes({3, 4, 5, 0, 1, 2, 9, 10, 11, 6, 7, 8}),
-    stiffness(12, 20.0f), damping(12, 0.5f) {
+    stiffness(12, 30.0f), damping(12, 1.f) {
     std::fill(std::begin(qInit), std::end(qInit), 0.0f);
     std::fill(std::begin(qDes), std::end(qDes), 0.0f);
-    std::fill(std::begin(Kp), std::end(Kp), 50.0f);
-    std::fill(std::begin(Kd), std::end(Kd), 2.0f);
+    std::fill(std::begin(Kp), std::end(Kp), 45.0f);
+    std::fill(std::begin(Kd), std::end(Kd), 1.0f);
     }
 std::string RobotController::get_model_name() const {
     return std::string(agent.params.model_name);
@@ -28,6 +28,11 @@ std::string RobotController::get_model_name() const {
 std::string RobotController::get_robot_name() const {
     return ROBOT_NAME;
 }
+
+void RobotController::set_command(float x, float y, float z) {
+    agent.obs.command = torch::tensor({x, y, z});
+}
+
 void RobotController::initializeRL(const std::string& config_path, const std::string& model_path) {
     try {
         if (!config_path.empty()) {
@@ -49,6 +54,7 @@ unitree_go::msg::LowCmd RobotController::update(const unitree_go::msg::LowState&
     initial_positions(state.motor_state);
     update_dof_state(state.motor_state);
 
+    
     agent.obs.ang_vel.index({0}) = state.imu_state.gyroscope[0];
     agent.obs.ang_vel.index({1}) = state.imu_state.gyroscope[1];
     agent.obs.ang_vel.index({2}) = state.imu_state.gyroscope[2];
@@ -57,8 +63,8 @@ unitree_go::msg::LowCmd RobotController::update(const unitree_go::msg::LowState&
     agent.obs.base_quat.index({2}) = state.imu_state.quaternion[3];
     agent.obs.base_quat.index({3}) = state.imu_state.quaternion[0];
 
-    if (motiontime < 1000) {
-        float rate = motiontime / 1000.0f;
+    if (motiontime < 500) {
+        float rate = motiontime / 500.0f;
         for (int i = 0; i < Go2_NUM_MOTOR; i++) {
             qDes[i] = jointLinearInterpolation(qInit[i], agent.params.default_dof_pos.index({i}).item<float>(), rate);
             cmd.motor_cmd[i].q = qDes[i];
@@ -111,8 +117,9 @@ InterfaceRos::InterfaceRos() : Node("low_level_cmd_sender") {
     motor_state_pub = create_publisher<sensor_msgs::msg::JointState>("go2/motor_state", 10);
     state_sub = create_subscription<unitree_go::msg::LowState>(
         "lowstate", 10, std::bind(&InterfaceRos::LowStateHandler, this, std::placeholders::_1));
-    timer_ = create_wall_timer(std::chrono::milliseconds(int(0.005 * 1000)), std::bind(&InterfaceRos::timer_callback_cmd, this));
+    timer_ = create_wall_timer(std::chrono::milliseconds(20), std::bind(&InterfaceRos::timer_callback_cmd, this));
     init_cmd();
+    init_glfw();
     try {
         std::string CONFIG_PATH = std::string(CONFIG_BASE_DIR) + "/weights/" + controller.get_robot_name() + "/config.yaml";
         controller.initializeRL(CONFIG_PATH, "");
@@ -124,6 +131,42 @@ InterfaceRos::InterfaceRos() : Node("low_level_cmd_sender") {
         RCLCPP_ERROR(this->get_logger(), "Error initializing RL: %s", e.what());
     }
 }
+
+InterfaceRos::~InterfaceRos() {
+    if (window) {
+        glfwDestroyWindow(window);
+        glfwTerminate();
+    }
+}
+
+void InterfaceRos::init_glfw() {
+    if (!glfwInit()) {
+        RCLCPP_ERROR(this->get_logger(), "Failed to initialize GLFW");
+        throw std::runtime_error("GLFW initialization failed");
+    }
+
+    window = glfwCreateWindow(640, 480, "MuJoCo Simulation - Keyboard Control", NULL, NULL);
+    if (!window) {
+        glfwTerminate();
+        RCLCPP_ERROR(this->get_logger(), "Failed to create GLFW window");
+        throw std::runtime_error("GLFW window creation failed");
+    }
+
+    glfwMakeContextCurrent(window);
+    glfwSetWindowUserPointer(window, &keyboard_state);
+    glfwSetKeyCallback(window, key_callback);
+}
+
+void InterfaceRos::key_callback(GLFWwindow* window, int key, int scancode, int action, int mods) {
+    KeyboardState* state = static_cast<KeyboardState*>(glfwGetWindowUserPointer(window));
+    bool pressed = (action == GLFW_PRESS || action == GLFW_REPEAT);
+
+    if (key == GLFW_KEY_W) state->w_pressed = pressed;
+    if (key == GLFW_KEY_S) state->s_pressed = pressed;
+    if (key == GLFW_KEY_A) state->a_pressed = pressed;
+    if (key == GLFW_KEY_D) state->d_pressed = pressed;
+}
+
 void InterfaceRos::init_cmd() {
     low_cmd.head[0] = 0xFE;
     low_cmd.head[1] = 0xEF;
@@ -154,8 +197,18 @@ void InterfaceRos::timer_callback_cmd() {
         RCLCPP_WARN(this->get_logger(), "Waiting for first 10 iterations to initialize");
         return;
     }
+
+    float x = 0.0f, y= 0.0f;
+    if (keyboard_state.w_pressed) x += 0.5f;
+    if (keyboard_state.s_pressed) x -= 0.5f;
+    if (keyboard_state.a_pressed) y += 0.5f;
+    if (keyboard_state.d_pressed) y -= 0.5f;
+    controller.set_command(x, y, 0.0f);
+    RCLCPP_INFO(this->get_logger(), "Command: x=%f, y=%f", x, y);
+
     low_cmd = controller.update(*latest_state);
     send_command(low_cmd);
+    glfwPollEvents();
 }
 void InterfaceRos::publish_imu(const unitree_go::msg::IMUState& imu_state) {
     sensor_msgs::msg::Imu msg;

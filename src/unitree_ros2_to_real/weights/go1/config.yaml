@@ -1,6 +1,6 @@
 go1:
-  model_name: "policy_1.pt" #"Mar25_16-22-14_500.pt"
-  observations: ["ang_vel" ,"gravity_vec","dof_pos","dof_vel","action"] #Full_OBS if need another check your obs in legged_gym
+  model_name: "policy_4.pt" #"Mar25_16-22-14_500.pt"
+  observations: ["ang_vel" ,"gravity_vec","command","dof_pos","dof_vel","action"] #Full_OBS if need another check your obs in legged_gym
   #["lin_vel" ,"ang_vel" ,"gravity_vec" ,"command","dof_pos","dof_vel","action"]
   clip_obs: 100.0
   clip_actions: 100.0
@@ -11,10 +11,10 @@ go1:
   dof_vel_scale: 0.05
   decimation: 4
   commands_scale: [2.0, 2.0, 0.25]
-  default_dof_pos: [ 0.0, 0.8, -1.3, # FL
-                    -0.0, 0.8, -1.3, # FR
-                     0.0, 0.8, -1.3, # RL
-                    -0.0, 0.8, -1.3] # RR
+  default_dof_pos: [ 0.0, 0.8, -1.5, # FL
+                    -0.0, 0.8, -1.5, # FR
+                     0.0, 1.1, -1.7, # RL
+                    -0.0, 1.1, -1.7] # RR
   joint_names: ["FL_hip", "FL_thigh", "FL_calf",
                 "FR_hip", "FR_thigh", "FR_calf",
                 "RL_hip", "RL_thigh", "RL_calf",
