@@ -31,6 +31,8 @@ struct ModelParams
     float dof_vel_scale;
     float clip_obs;
     float clip_actions;
+    float damping;
+    float stiffness;
     torch::Tensor default_dof_pos;
     torch::Tensor command_scale;
     std::vector<std::string> obs_model;

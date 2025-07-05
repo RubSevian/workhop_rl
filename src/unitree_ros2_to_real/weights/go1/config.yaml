@@ -10,11 +10,17 @@ go1:
   dof_pos_scale: 1.0
   dof_vel_scale: 0.05
   decimation: 4
+  stiffness: 30
+  damping: 1.0
   commands_scale: [2.0, 2.0, 0.25]
   default_dof_pos: [ 0.0, 0.8, -1.5, # FL
                     -0.0, 0.8, -1.5, # FR
                      0.0, 1.1, -1.7, # RL
                     -0.0, 1.1, -1.7] # RR
+                   # [ 0.0, 0.8, -1.5, # FL
+                   # -0.0, 0.8, -1.5, # FR
+                   #  0.0, 1.1, -1.7, # RL
+                   # -0.0, 1.1, -1.7] # RR
   joint_names: ["FL_hip", "FL_thigh", "FL_calf",
                 "FR_hip", "FR_thigh", "FR_calf",
                 "RL_hip", "RL_thigh", "RL_calf",

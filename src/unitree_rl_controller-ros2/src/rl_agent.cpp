@@ -156,6 +156,8 @@ void Agent::ReadYaml(const std::string &robot_name,const std::string &config_pat
     this->params.clip_obs = config["clip_obs"].as<float>();
     this->params.clip_actions = config["clip_actions"].as<float>();
     this->params.action_scale = config["action_scale"].as<float>();
+    this->params.damping= config["damping"].as<float>();
+    this->params.stiffness= config["stiffness"].as<float>();
     this->params.ang_vel_scale = config["ang_vel_scale"].as<float>();
     this->params.dof_pos_scale = config["dof_pos_scale"].as<float>();
     this->params.dof_vel_scale = config["dof_vel_scale"].as<float>();

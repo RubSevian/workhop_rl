@@ -15,8 +15,7 @@ using std::placeholders::_1; //Для использования placeholders в
 RobotController::RobotController():
     init_count(0),motiontime(0),runing_time(0.0),robot_state(STATE_INIT),
     dt(0.02),Go2_NUM_MOTOR(12),ROBOT_NAME("go1"),
-    net2joint_indexes({3, 4, 5, 0, 1, 2, 9, 10, 11, 6, 7, 8}),
-    stiffness(12, 30.0f), damping(12, 1.f) {
+    net2joint_indexes({3, 4, 5, 0, 1, 2, 9, 10, 11, 6, 7, 8}) {
     std::fill(std::begin(qInit), std::end(qInit), 0.0f);
     std::fill(std::begin(qDes), std::end(qDes), 0.0f);
     std::fill(std::begin(Kp), std::end(Kp), 45.0f);
@@ -79,8 +78,8 @@ unitree_go::msg::LowCmd RobotController::update(const unitree_go::msg::LowState&
         for (int i = 0; i < Go2_NUM_MOTOR; i++) {
             cmd.motor_cmd[i].q = actions.index({net2joint_indexes[i]}).item<float>();
             cmd.motor_cmd[i].dq = 0;
-            cmd.motor_cmd[i].kp = stiffness[i];
-            cmd.motor_cmd[i].kd = damping[i];
+            cmd.motor_cmd[i].kp = agent.params.stiffness;
+            cmd.motor_cmd[i].kd = agent.params.damping;
             cmd.motor_cmd[i].tau = 0;
         }
     }
