@@ -31,8 +31,11 @@ struct ModelParams
     float dof_vel_scale;
     float clip_obs;
     float clip_actions;
-    float damping;
-    float stiffness;
+    torch::Tensor rl_kp;     // [12] для моментов
+    torch::Tensor rl_kd;     // [12] для моментов
+    torch::Tensor torque_limits; // [12] пределы моментов
+    torch::Tensor fixed_kp;  // [12] для начальной фазы
+    torch::Tensor fixed_kd;  // [12] для начальной фазы
     torch::Tensor default_dof_pos;
     torch::Tensor command_scale;
     std::vector<std::string> obs_model;
@@ -43,10 +46,12 @@ class Agent
 {
     private:
         torch::Tensor output_dof_pos = torch::zeros({12});
+        torch::Tensor output_dof_tau= torch::zeros({12}); // [12] для моментов
         torch::jit::script::Module module;
         torch::Tensor ComputeObservation();
         void InitObservations();
         torch::Tensor ComputePosition(torch::Tensor &actions);
+        torch::Tensor ComputeTorque(const torch::Tensor &actions_scaled);
         torch::Tensor Forward();
         torch::Tensor QuatRotateInverse(torch::Tensor q, torch::Tensor v);
 

@@ -18,8 +18,6 @@ RobotController::RobotController() :
     {
     std::fill(std::begin(qInit), std::end(qInit), 0.0f);
     std::fill(std::begin(qDes), std::end(qDes), 0.0f);
-    std::fill(std::begin(Kp), std::end(Kp), 50.0f);
-    std::fill(std::begin(Kd), std::end(Kd), 2.0f);
 }
 
 std::string RobotController::get_model_name() const {
@@ -96,8 +94,8 @@ unitree_go::msg::LowCmd RobotController::update(const unitree_go::msg::LowState&
             cmd.motor_cmd[i].mode = 0x01; // Torque mode
             cmd.motor_cmd[i].q = qDes[i];
             cmd.motor_cmd[i].dq = 0;
-            cmd.motor_cmd[i].kp = Kp[i];
-            cmd.motor_cmd[i].kd = Kd[i];
+            cmd.motor_cmd[i].kp = agent.params.fixed_kp.index({i}).item<float>();
+            cmd.motor_cmd[i].kd = agent.params.fixed_kd.index({i}).item<float>();
             cmd.motor_cmd[i].tau = 0;
         }
         if (motiontime % 100 == 0) {
@@ -113,9 +111,9 @@ unitree_go::msg::LowCmd RobotController::update(const unitree_go::msg::LowState&
             cmd.motor_cmd[i].mode = 0x01; // Torque mode
             cmd.motor_cmd[i].q = actions.index({net2joint_indexes[i]}).item<float>();
             cmd.motor_cmd[i].dq = 0;
-            cmd.motor_cmd[i].kp = agent.params.stiffness;
-            cmd.motor_cmd[i].kd = agent.params.damping;
-            cmd.motor_cmd[i].tau = 0;
+            cmd.motor_cmd[i].kp = agent.params.rl_kp.index({i}).item<float>();
+            cmd.motor_cmd[i].kd = agent.params.rl_kd.index({i}).item<float>();
+            cmd.motor_cmd[i].tau = 0;//actions.index({net2joint_indexes[i]}).item<float>();
         }
         if (motiontime % 100 == 0) {
             std::stringstream ss;

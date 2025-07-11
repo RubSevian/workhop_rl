@@ -78,8 +78,6 @@ public:
     const std::string ROBOT_NAME;
     float qInit[12];
     float qDes[12];
-    float Kp[12];
-    float Kd[12];
     const std::vector<int> net2joint_indexes;
     const std::vector<float> stiffness;
     const std::vector<float> damping;

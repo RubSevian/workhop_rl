@@ -18,8 +18,6 @@ RobotController::RobotController():
     net2joint_indexes({3, 4, 5, 0, 1, 2, 9, 10, 11, 6, 7, 8}) {
     std::fill(std::begin(qInit), std::end(qInit), 0.0f);
     std::fill(std::begin(qDes), std::end(qDes), 0.0f);
-    std::fill(std::begin(Kp), std::end(Kp), 45.0f);
-    std::fill(std::begin(Kd), std::end(Kd), 1.0f);
     }
 std::string RobotController::get_model_name() const {
     return std::string(agent.params.model_name);
@@ -68,8 +66,8 @@ unitree_go::msg::LowCmd RobotController::update(const unitree_go::msg::LowState&
             qDes[i] = jointLinearInterpolation(qInit[i], agent.params.default_dof_pos.index({i}).item<float>(), rate);
             cmd.motor_cmd[i].q = qDes[i];
             cmd.motor_cmd[i].dq = 0;
-            cmd.motor_cmd[i].kp = Kp[i];
-            cmd.motor_cmd[i].kd = Kd[i];
+            cmd.motor_cmd[i].kp = agent.params.fixed_kp.index({i}).item<float>();
+            cmd.motor_cmd[i].kd = agent.params.fixed_kd.index({i}).item<float>();
             cmd.motor_cmd[i].tau = 0;
         }
     } else {
@@ -78,9 +76,17 @@ unitree_go::msg::LowCmd RobotController::update(const unitree_go::msg::LowState&
         for (int i = 0; i < Go2_NUM_MOTOR; i++) {
             cmd.motor_cmd[i].q = actions.index({net2joint_indexes[i]}).item<float>();
             cmd.motor_cmd[i].dq = 0;
-            cmd.motor_cmd[i].kp = agent.params.stiffness;
-            cmd.motor_cmd[i].kd = agent.params.damping;
+            cmd.motor_cmd[i].kp = agent.params.rl_kp.index({i}).item<float>();
+            cmd.motor_cmd[i].kd = agent.params.rl_kd.index({i}).item<float>();
             cmd.motor_cmd[i].tau = 0;
+        }
+        if (motiontime % 100 == 0) {
+            std::stringstream ss;
+            ss << "Actions: ";
+            for (int i = 0; i < Go2_NUM_MOTOR; i++) {
+                ss << actions.index({net2joint_indexes[i]}).item<float>() << " ";
+            }
+            std::cout << ss.str() << std::endl;
         }
     }
 
@@ -164,6 +170,7 @@ void InterfaceRos::key_callback(GLFWwindow* window, int key, int scancode, int a
     if (key == GLFW_KEY_S) state->s_pressed = pressed;
     if (key == GLFW_KEY_A) state->a_pressed = pressed;
     if (key == GLFW_KEY_D) state->d_pressed = pressed;
+    if (key == GLFW_KEY_SPACE) state->space_pressed = pressed;
 }
 
 void InterfaceRos::init_cmd() {
@@ -196,18 +203,55 @@ void InterfaceRos::timer_callback_cmd() {
         RCLCPP_WARN(this->get_logger(), "Waiting for first 10 iterations to initialize");
         return;
     }
+// Обновляем команду только при активных клавишах или сбросе
+    bool command_changed = false;
+    float x = last_command[0];
+    float y = last_command[1];
+    float z = last_command[2];
 
-    float x = 0.0f, y= 0.0f;
-    if (keyboard_state.w_pressed) x += 0.5f;
-    if (keyboard_state.s_pressed) x -= 0.5f;
-    if (keyboard_state.a_pressed) y += 0.5f;
-    if (keyboard_state.d_pressed) y -= 0.5f;
-    controller.set_command(x, y, 0.0f);
-    RCLCPP_INFO(this->get_logger(), "Command: x=%f, y=%f", x, y);
+    if (keyboard_state.w_pressed) {
+        x = 1.0f;
+        command_changed = true;
+    } else if (keyboard_state.s_pressed) {
+        x = -1.0f;
+        command_changed = true;
+    }
+    if (keyboard_state.a_pressed) {
+        y = 1.0f;
+        command_changed = true;
+    } else if (keyboard_state.d_pressed) {
+        y = -1.0f;
+        command_changed = true;
+    }
+    if (keyboard_state.space_pressed) {
+        x = 0.0f;
+        y = 0.0f;
+        z = 0.0f;
+        command_changed = true;
+    }
+
+    // Сохраняем команду, если она изменилась
+    if (command_changed) {
+        last_command = {x, y, z};
+        controller.set_command(x, y, z);
+        RCLCPP_INFO(this->get_logger(), "Command updated: x=%f, y=%f, z=%f", x, y, z);
+    }
 
     low_cmd = controller.update(*latest_state);
     send_command(low_cmd);
+
     glfwPollEvents();
+    // float x = 0.0f, y= 0.0f;
+    // if (keyboard_state.w_pressed) x += 0.5f;
+    // if (keyboard_state.s_pressed) x -= 0.5f;
+    // if (keyboard_state.a_pressed) y += 0.5f;
+    // if (keyboard_state.d_pressed) y -= 0.5f;
+    // controller.set_command(x, y, 0.0f);
+    // RCLCPP_INFO(this->get_logger(), "Command: x=%f, y=%f", x, y);
+
+    // low_cmd = controller.update(*latest_state);
+    // send_command(low_cmd);
+    // glfwPollEvents();
 }
 void InterfaceRos::publish_imu(const unitree_go::msg::IMUState& imu_state) {
     sensor_msgs::msg::Imu msg;

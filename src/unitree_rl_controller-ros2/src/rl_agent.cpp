@@ -53,9 +53,10 @@ torch::Tensor Agent::Act()
     this->obs.action = this->Forward();
 
     output_dof_pos = this->ComputePosition(this->obs.action);
-    std::cout<<"Action_output"<<output_dof_pos<<std::endl;
-
-    return output_dof_pos;
+    std::cout << "Action_output before clamp: " << output_dof_pos << std::endl;
+    torch::Tensor clamped_output = torch::clamp(output_dof_pos, -2.3, 2.3); // Ручной клиппинг [-3, 3]
+    std::cout << "Action_output after clamp: " << clamped_output << std::endl;
+    return clamped_output;
 }
 
 torch::Tensor Agent::ComputePosition(torch::Tensor &actions)
@@ -115,6 +116,14 @@ torch::Tensor Agent::Forward()
     return clamped;
 }
 
+torch::Tensor Agent::ComputeTorque(const torch::Tensor &actions_scaled) {
+    torch::Tensor target_pos = actions_scaled * this->params.action_scale + this->params.default_dof_pos;
+    torch::Tensor output_dof_tau = this->params.rl_kp * (target_pos - this->obs.dof_pos) - this->params.rl_kd * this->obs.dof_vel;
+    std::cout << "Agent::ComputeTorque before clamp: " << output_dof_tau << std::endl;
+    output_dof_tau = torch::clamp(output_dof_tau, -this->params.torque_limits, this->params.torque_limits);
+    return output_dof_tau;
+}
+
 template<typename T>
 std::vector<T> ReadVectorFromYaml(const YAML::Node& node)
 {
@@ -156,8 +165,11 @@ void Agent::ReadYaml(const std::string &robot_name,const std::string &config_pat
     this->params.clip_obs = config["clip_obs"].as<float>();
     this->params.clip_actions = config["clip_actions"].as<float>();
     this->params.action_scale = config["action_scale"].as<float>();
-    this->params.damping= config["damping"].as<float>();
-    this->params.stiffness= config["stiffness"].as<float>();
+    this->params.rl_kp =  torch::tensor(ReadVectorFromYaml<float>(config["rl_kp"]));
+    this->params.rl_kd =  torch::tensor(ReadVectorFromYaml<float>(config["rl_kd"]));
+    this->params.fixed_kp =  torch::tensor(ReadVectorFromYaml<float>(config["fixed_kp"]));
+    this->params.fixed_kd =  torch::tensor(ReadVectorFromYaml<float>(config["fixed_kd"]));
+    this->params.torque_limits =  torch::tensor(ReadVectorFromYaml<float>(config["ftorque_limits"]));
     this->params.ang_vel_scale = config["ang_vel_scale"].as<float>();
     this->params.dof_pos_scale = config["dof_pos_scale"].as<float>();
     this->params.dof_vel_scale = config["dof_vel_scale"].as<float>();

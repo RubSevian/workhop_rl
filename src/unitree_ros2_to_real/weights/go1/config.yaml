@@ -1,5 +1,5 @@
 go1:
-  model_name: "policy_4.pt" #"Mar25_16-22-14_500.pt"
+  model_name: "policy_10000_new.pt" # "policy_6400_new_walk_11_07.pt" # "10_23_43.pt" #"policy_new_param.pt" #"policy_new_walk.pt" #"policy_test.pt" #"Mar25_16-22-14_500.pt"
   observations: ["ang_vel" ,"gravity_vec","command","dof_pos","dof_vel","action"] #Full_OBS if need another check your obs in legged_gym
   #["lin_vel" ,"ang_vel" ,"gravity_vec" ,"command","dof_pos","dof_vel","action"]
   clip_obs: 100.0
@@ -10,8 +10,26 @@ go1:
   dof_pos_scale: 1.0
   dof_vel_scale: 0.05
   decimation: 4
-  stiffness: 30
-  damping: 1.0
+  torque_limits: [33.5, 33.5, 33.5,
+                  33.5, 33.5, 33.5,
+                  33.5, 33.5, 33.5,
+                  33.5, 33.5, 33.5]
+  rl_kp: [25, 25, 25,
+          25, 25, 25,
+          25, 25, 25,
+          25, 25, 25]
+  rl_kd: [1, 1, 1,
+          1, 1, 1,
+          1, 1, 1,
+          1, 1, 1]
+  fixed_kp: [40, 40, 40,
+             40, 40, 40,
+             40, 40, 40, 
+             40, 40, 40]
+  fixed_kd: [1, 1, 1,
+             1, 1, 1,
+             1, 1, 1,
+             1, 1, 1]
   commands_scale: [2.0, 2.0, 0.25]
   default_dof_pos: [ 0.0, 0.8, -1.5, # FL
                     -0.0, 0.8, -1.5, # FR
