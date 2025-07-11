@@ -48,7 +48,7 @@ void RobotController::initializeRL(const std::string& config_path, const std::st
     }
 }
 
-unitree_go::msg::LowCmd RobotController::update(const unitree_go::msg::LowState& state, const unitree_go::msg::dds_::WirelessController_& joystick,const xKeySwitchUnion& joy) {
+unitree_go::msg::LowCmd RobotController::update(const unitree_go::msg::LowState& state,const unitree_go::msg::WirelessController& joystick) {
     unitree_go::msg::LowCmd cmd;
     initial_positions(state.motor_state);
     update_dof_state(state.motor_state);
@@ -67,28 +67,17 @@ unitree_go::msg::LowCmd RobotController::update(const unitree_go::msg::LowState&
     agent.obs.base_quat.index({2}) = state.imu_state.quaternion[3]; // z
     agent.obs.base_quat.index({3}) = state.imu_state.quaternion[0]; // w
 
-        // Обработка данных джойстика
-    if (joystick.lx() != 0.0f || joystick.ly() != 0.0f || joystick.rx() != 0.0f || joy.components.X) {
-        agent.obs.command.index({0}) = joystick.ly();
-        agent.obs.command.index({1}) = -joystick.rx();
-        agent.obs.command.index({2}) = -joystick.lx(); 
-        if (joy.components.X) {
-            agent.obs.command.index({0}) = 0.0f;       
-            agent.obs.command.index({1}) = 0.0f;
-            agent.obs.command.index({2}) = 0.0f;
-        }
-        std::cout << "Command: ly=" << agent.obs.command.index({0}).item<float>()
-                  << ", -rx=" << agent.obs.command.index({1}).item<float>()
-                  << ", -lx=" << agent.obs.command.index({2}).item<float>() << std::endl;
-    } else {
-        agent.obs.command.index({0}) = 0.0f;             
-        agent.obs.command.index({1}) = 0.0f;
-        agent.obs.command.index({2}) = 0.0f;
-        std::cout << "No joystick data, stopping: command=[0, 0, 0]" << std::endl;
-    }
+        
+    // Обработка данных джойстика
+    agent.obs.command.index({0}) = joystick.ly;
+    agent.obs.command.index({1}) = -joystick.rx;
+    agent.obs.command.index({2}) = -joystick.lx;
+    std::cout << "Command: ly=" << agent.obs.command.index({0}).item<float>()
+              << ", -rx=" << agent.obs.command.index({1}).item<float>()
+              << ", -lx=" << agent.obs.command.index({2}).item<float>() << std::endl;
 
-    if (motiontime < 2000) {
-        float rate = motiontime / 2000.0f;
+    if (motiontime < 500) {
+        float rate = motiontime / 500.0f;
         for (int i = 0; i < Go2_NUM_MOTOR; i++) {
             qDes[i] = jointLinearInterpolation(qInit[i], agent.params.default_dof_pos.index({i}).item<float>(), rate);
             cmd.motor_cmd[i].mode = 0x01; // Torque mode
@@ -163,8 +152,8 @@ InterfaceRos::InterfaceRos(const std::string& network_interface) : Node("low_lev
     motor_state_pub = create_publisher<sensor_msgs::msg::JointState>("go2/motor_state", 10);
     state_sub = create_subscription<unitree_go::msg::LowState>(
         "lowstate", 10, std::bind(&InterfaceRos::LowStateHandler, this, _1));
-    joystick_sub.reset(new ChannelSubscriber<unitree_go::msg::dds_::WirelessController_>("rt/wirelesscontroller"));
-    joystick_sub->InitChannel(std::bind(&InterfaceRos::JoystickHandler, this, std::placeholders::_1), 1);
+    joystick_sub = create_subscription<unitree_go::msg::WirelessController>(
+        "/wirelesscontroller", 10, std::bind(&InterfaceRos::JoystickHandler, this, _1));
     timer_ = create_wall_timer(std::chrono::milliseconds(20), std::bind(&InterfaceRos::timer_callback_cmd, this));
     init_cmd();
     try {
@@ -183,13 +172,11 @@ InterfaceRos::~InterfaceRos() {
     
 }
 
-void InterfaceRos::JoystickHandler(const void* msg){
-    joystick = *(unitree_go::msg::dds_::WirelessController_ *)msg;
-    this->unitree_joy.value = joystick.keys();
-     RCLCPP_INFO(this->get_logger(), "Joystick: lx=%f, ly=%f, rx=%f, btn_x=%d",
-                joystick.ly(),joystick.rx(),joystick.lx(), unitree_joy.components.X);
-
+void InterfaceRos::JoystickHandler(const unitree_go::msg::WirelessController::SharedPtr msg) {
+    joystick = *msg;
+    RCLCPP_INFO(this->get_logger(), "Joystick: ly=%f, -rx=%f, -lx=%f", joystick.ly, -joystick.rx, -joystick.lx);
 }
+
 
 
 void InterfaceRos::init_cmd() {
@@ -241,7 +228,7 @@ void InterfaceRos::timer_callback_cmd() {
         RCLCPP_WARN(this->get_logger(), "Waiting for first state message");
         return;
     }
-    low_cmd = controller.update(*latest_state,joystick, unitree_joy);
+    low_cmd = controller.update(*latest_state,joystick);
     send_command(low_cmd);
 }
 
@@ -292,16 +279,12 @@ int main(int argc, char** argv) {
     // auto node = std::make_shared<InterfaceRos>();
     // rclcpp::spin(node);
     // rclcpp::shutdown();
-    if (argc < 2) {
-        std::cerr << "Usage: " << argv[0] << " networkInterface" << std::endl;
-        return -1;
-    }
-    ChannelFactory::Instance()->Init(0, argv[1]);
-    RCLCPP_INFO(rclcpp::get_logger("main"), "ChannelFactory initialized");
+    rclcpp::init(argc, argv);
+    std::string network_interface = (argc < 2) ? "enp3s0" : argv[1]; // Фиксированный интерфейс по умолчанию
+    RCLCPP_INFO(rclcpp::get_logger("main"), "ChannelFactory initialized with interface: %s", network_interface.c_str());
     std::cout << "Press enter to start";
     std::cin.get();
-    rclcpp::init(argc, argv);
-    auto node = std::make_shared<InterfaceRos>(argv[1]);
+    auto node = std::make_shared<InterfaceRos>(network_interface);
     rclcpp::spin(node);
     rclcpp::shutdown();
     return 0;
