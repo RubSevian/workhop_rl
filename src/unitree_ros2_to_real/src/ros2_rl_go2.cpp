@@ -77,7 +77,7 @@ unitree_go::msg::LowCmd RobotController::update(const unitree_go::msg::LowState&
               << ", -lx=" << agent.obs.command.index({2}).item<float>() << std::endl;
 
     if (motiontime < 500) {
-        float rate = motiontime / 500.0f;
+        float rate = motiontime / 400.0f;
         for (int i = 0; i < Go2_NUM_MOTOR; i++) {
             qDes[i] = jointLinearInterpolation(qInit[i], agent.params.default_dof_pos.index({i}).item<float>(), rate);
             cmd.motor_cmd[i].mode = 0x01; // Torque mode

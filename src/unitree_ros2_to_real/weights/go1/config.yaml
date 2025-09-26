@@ -1,5 +1,5 @@
 go1:
-  model_name: "policy_10000_new.pt" # "policy_6400_new_walk_11_07.pt" # "10_23_43.pt" #"policy_new_param.pt" #"policy_new_walk.pt" #"policy_test.pt" #"Mar25_16-22-14_500.pt"
+  model_name: "policy_1.pt" # "policy_6400_new_walk_11_07.pt" # "10_23_43.pt" #"policy_new_param.pt" #"policy_new_walk.pt" #"policy_test.pt" #"Mar25_16-22-14_500.pt"
   observations: ["ang_vel" ,"gravity_vec","command","dof_pos","dof_vel","action"] #Full_OBS if need another check your obs in legged_gym
   #["lin_vel" ,"ang_vel" ,"gravity_vec" ,"command","dof_pos","dof_vel","action"]
   clip_obs: 100.0
@@ -18,10 +18,10 @@ go1:
           25, 25, 25,
           25, 25, 25,
           25, 25, 25]
-  rl_kd: [1, 1, 1,
-          1, 1, 1,
-          1, 1, 1,
-          1, 1, 1]
+  rl_kd: [1.5, 1.5, 1.5,
+          1.5, 1.5, 1.5,
+          1.5, 1.5, 1.5,
+          1.5, 1.5, 1.5]
   fixed_kp: [40, 40, 40,
              40, 40, 40,
              40, 40, 40, 
