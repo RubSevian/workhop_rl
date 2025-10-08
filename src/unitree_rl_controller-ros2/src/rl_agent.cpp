@@ -63,7 +63,7 @@ torch::Tensor Agent::Act()
 
     output_dof_pos = this->ComputePosition(this->obs.action);
     std::cout << "Action_output before clamp: " << output_dof_pos << std::endl;
-    torch::Tensor clamped_output = torch::clamp(output_dof_pos, -9, 9); // Ручной клиппинг [-3, 3]
+    torch::Tensor clamped_output = torch::clamp(output_dof_pos, -3.5, 3.5); // Ручной клиппинг [-3, 3]
     std::cout << "Action_output after clamp: " << clamped_output << std::endl;
     return clamped_output;
 }

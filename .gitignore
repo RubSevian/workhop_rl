@@ -3,3 +3,4 @@ install/
 log/
 src/libtorch
 .vscode/
+src/unitree_ros2_to_real/library/unitree_sdk2
