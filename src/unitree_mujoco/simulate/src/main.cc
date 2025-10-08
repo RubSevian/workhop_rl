@@ -69,7 +69,7 @@ namespace
   struct SimulationConfig
   {
     std::string robot = "go2";
-    std::string robot_scene = "scene.xml";
+    std::string robot_scene = "scene_terrain.xml";
 
     int domain_id = 1;
     std::string interface = "lo";
@@ -667,7 +667,7 @@ int main(int argc, char **argv)
   std::filesystem::path parent_path = fs_path.parent_path();
 
   std::cout << "Path to main.cc: parent " << parent_path << std::endl;
-  string scene_path = std::string(parent_path) + "/unitree_robots/" + config.robot + "/" + config.robot_scene;
+  string scene_path = "/home/ruben/go2_deploy/workhop_rl/src/unitree_mujoco/unitree_robots/go2/scene_terrain.xml";
   const char *filename = nullptr;
   if (argc > 1)
   {

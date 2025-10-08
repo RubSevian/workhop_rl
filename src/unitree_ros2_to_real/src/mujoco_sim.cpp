@@ -61,7 +61,7 @@ unitree_go::msg::LowCmd RobotController::update(const unitree_go::msg::LowState&
     agent.obs.base_quat.index({3}) = state.imu_state.quaternion[0];
 
     if (motiontime < 500) {
-        float rate = motiontime / 500.0f;
+        float rate = motiontime / 300.0f;
         for (int i = 0; i < Go2_NUM_MOTOR; i++) {
             qDes[i] = jointLinearInterpolation(qInit[i], agent.params.default_dof_pos.index({i}).item<float>(), rate);
             cmd.motor_cmd[i].q = qDes[i];
@@ -72,6 +72,7 @@ unitree_go::msg::LowCmd RobotController::update(const unitree_go::msg::LowState&
         }
     } else {
         robot_state = STATE_READY;
+        agent.UpdatePhase(runing_time);
         torch::Tensor actions = agent.Act();
         for (int i = 0; i < Go2_NUM_MOTOR; i++) {
             cmd.motor_cmd[i].q = actions.index({net2joint_indexes[i]}).item<float>();

@@ -15,6 +15,7 @@
 #include "rl_agent.h"
 #include "motor_crc.h"
 
+
 //keyboard
 
 #include <GLFW/glfw3.h>
@@ -65,7 +66,6 @@ private:
     void init_cmd();
     void publish_imu(const unitree_go::msg::IMUState& imu_state);
     void publish_motor_state(const std::array<unitree_go::msg::MotorState, 20>& motor_state);
-
     void init_glfw();
     static void key_callback(GLFWwindow* window , int key , int scancode, int action , int mods);
 

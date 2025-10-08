@@ -28,6 +28,15 @@ void Agent::InitObservations()
     obs.base_quat = torch::tensor({0.0, 0.0, 0.0, 1.0});
     obs.gravity_vec = torch::tensor({0.0, 0.0, -1.0});
     obs.action = torch::zeros({12});
+    obs.sin=torch::zeros({1});
+    obs.cos=torch::zeros({1});
+}
+
+void Agent::UpdatePhase(float time) {
+    float phase = time / params.cycle_time; // Фаза в [0, 1] и далее (не ограничена)
+    float angle = 2 * M_PI * phase;
+    obs.sin.index({0}) = std::sin(angle);
+    obs.cos.index({0}) = std::cos(angle);
 }
 
 bool Agent::Load_Model(const std::string &model_path)
@@ -54,7 +63,7 @@ torch::Tensor Agent::Act()
 
     output_dof_pos = this->ComputePosition(this->obs.action);
     std::cout << "Action_output before clamp: " << output_dof_pos << std::endl;
-    torch::Tensor clamped_output = torch::clamp(output_dof_pos, -2.3, 2.3); // Ручной клиппинг [-3, 3]
+    torch::Tensor clamped_output = torch::clamp(output_dof_pos, -9, 9); // Ручной клиппинг [-3, 3]
     std::cout << "Action_output after clamp: " << clamped_output << std::endl;
     return clamped_output;
 }
@@ -97,6 +106,14 @@ torch::Tensor Agent::ComputeObservation()
         else if (obs_name == "action")
         {
             obs_model_list.push_back(this->obs.action);
+        }
+        else if (obs_name == "sin")
+        {
+            obs_model_list.push_back((this->obs.sin));
+        }
+        else if (obs_name == "cos")
+        {
+            obs_model_list.push_back((this->obs.cos));
         }
 
     }
@@ -174,6 +191,7 @@ void Agent::ReadYaml(const std::string &robot_name,const std::string &config_pat
     this->params.dof_pos_scale = config["dof_pos_scale"].as<float>();
     this->params.dof_vel_scale = config["dof_vel_scale"].as<float>();
     this->params.decimation = config["decimation"].as<int>();
+    this->params.cycle_time = config["cycle_time"].as<float>();
     this->params.lin_vel_scale = config["lin_vel_scale"].as<float>();
     this->params.obs_model = ReadVectorFromYaml<std::string>(config["observations"]);
     this->params.command_scale = torch::tensor(ReadVectorFromYaml<float>(config["commands_scale"]));
