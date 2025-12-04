@@ -95,6 +95,7 @@ unitree_go::msg::LowCmd RobotController::update(const unitree_go::msg::LowState&
         }
     } else {
         robot_state = STATE_READY;
+        agent.UpdatePhase(runing_time);
         torch::Tensor actions = agent.Act();
         for (int i = 0; i < Go2_NUM_MOTOR; i++) {
             cmd.motor_cmd[i].mode = 0x01; // Torque mode

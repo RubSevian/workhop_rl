@@ -7,7 +7,7 @@
 // Create a low_level_cmd_sender class for low state receive
 // Это комментарий, указывающий на цель создания класса `low_level_cmd_sender`.
 
-#define INFO_IMU 1   // Set 1 to info IMU states - Если установлено в 1, программа будет выводить информацию о состоянии IMU.
+#define INFO_IMU 0   // Set 1 to info IMU states - Если установлено в 1, программа будет выводить информацию о состоянии IMU.
 #define INFO_MOTOR 1 // Set 1 to info motor states - Если установлено в 1, программа будет выводить информацию о состоянии моторов.
 #define HIGH_FREQ 1  // Set 1 to subscribe to low states with high frequencies (500Hz) - Не используется в коде.  Предположительно, указывает на необходимость подписки на сообщения с высокой частотой.
 using std::placeholders::_1; //Для использования placeholders в лямбда-функциях (например, для std::bind)
@@ -95,6 +95,10 @@ unitree_go::msg::LowCmd RobotController::update(const unitree_go::msg::LowState&
     runing_time += dt;
     return cmd;
 }
+int RobotController::get_num_motors() const {
+    return Go2_NUM_MOTOR;
+}
+
 void RobotController::initial_positions(const std::array<unitree_go::msg::MotorState, 20>& motor_state) {
     if (init_count < 10) {
         for (int i = 0; i < Go2_NUM_MOTOR; i++) {
@@ -194,10 +198,20 @@ void InterfaceRos::LowStateHandler(const unitree_go::msg::LowState::SharedPtr ms
     publish_imu(msg->imu_state);
     publish_motor_state(msg->motor_state);
 
-    // RCLCPP_INFO(this->get_logger(), "IMU: gyro = [%f, %f, %f], quat = [%f, %f, %f, %f]",
-    //             msg->imu_state.gyroscope[0], msg->imu_state.gyroscope[1], msg->imu_state.gyroscope[2],
-    //             msg->imu_state.quaternion[0], msg->imu_state.quaternion[1],
-    //             msg->imu_state.quaternion[2], msg->imu_state.quaternion[3]);
+    if (INFO_IMU) {
+        RCLCPP_INFO(this->get_logger(), "IMU: gyro = [%f, %f, %f], quat = [%f, %f, %f, %f]",
+                    msg->imu_state.gyroscope[0], msg->imu_state.gyroscope[1], msg->imu_state.gyroscope[2],
+                    msg->imu_state.quaternion[0], msg->imu_state.quaternion[1],
+                    msg->imu_state.quaternion[2], msg->imu_state.quaternion[3]);
+    }
+    if (INFO_MOTOR) {
+        for (int i = 0; i < controller.get_num_motors(); i++) {
+            if(msg->motor_state[i].tau_est > 33.f){
+                RCLCPP_INFO(this->get_logger(), "Motor state -- num: %d; q: %f; dq: %f; tau: %f",
+                        i, msg->motor_state[i].q, msg->motor_state[i].dq, msg->motor_state[i].tau_est);
+            }
+        }
+    }
 }
 void InterfaceRos::timer_callback_cmd() {
     if (!latest_state) {
