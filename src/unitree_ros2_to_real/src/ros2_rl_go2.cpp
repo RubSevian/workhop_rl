@@ -77,9 +77,10 @@ unitree_go::msg::LowCmd RobotController::update(const unitree_go::msg::LowState&
               << ", -lx=" << agent.obs.command.index({2}).item<float>() << std::endl;
     
     if (!rl_inited_) {
-    agent.InitRL();
-    rl_inited_ = true;
-}
+        agent.InitRL();      // создаст history_obs_buf и заполнит reset(...) текущим obs [file:22]
+        rl_inited_ = true;
+    }
+
     if (motiontime < 500) {
         float rate = motiontime / 400.0f;
         for (int i = 0; i < Go2_NUM_MOTOR; i++) {
