@@ -15,6 +15,7 @@ using std::placeholders::_1; //Для использования placeholders в
 RobotController::RobotController():
     init_count(0),motiontime(0),runing_time(0.0),robot_state(STATE_INIT),
     dt(0.02),Go2_NUM_MOTOR(12),ROBOT_NAME("go1"),
+    rl_inited_(false) ,
     net2joint_indexes({3, 4, 5, 0, 1, 2, 9, 10, 11, 6, 7, 8}) {
     std::fill(std::begin(qInit), std::end(qInit), 0.0f);
     std::fill(std::begin(qDes), std::end(qDes), 0.0f);
@@ -59,6 +60,11 @@ unitree_go::msg::LowCmd RobotController::update(const unitree_go::msg::LowState&
     agent.obs.base_quat.index({1}) = state.imu_state.quaternion[2];
     agent.obs.base_quat.index({2}) = state.imu_state.quaternion[3];
     agent.obs.base_quat.index({3}) = state.imu_state.quaternion[0];
+
+    if (!rl_inited_) {
+        agent.InitRL();      // создаст history_obs_buf и заполнит reset(...) текущим obs [file:22]
+        rl_inited_ = true;
+    }
 
     if (motiontime < 500) {
         float rate = motiontime / 300.0f;
@@ -117,7 +123,12 @@ float RobotController::jointLinearInterpolation(float initPos, float targetPos, 
     rate = std::min(std::max(rate, 0.0f), 1.0f);
     return initPos * (1 - rate) + targetPos * rate;
 }
-
+void RobotController::set_heightmap(const std::array<float, 17*11>& hm)
+{
+  // <<<<<< ЭТО МЕСТО, ГДЕ МЫ ЗАПОЛНЯЕМ ТЕНЗОР ДЛЯ ПОЛИТИКИ
+  // clone() чтобы тензор владел памятью, а не ссылался на буфер heightmap_
+  agent.obs.height_map = torch::from_blob((void*)hm.data(), {17 * 11}, torch::kFloat32).clone();
+}
 
 // InterfaceRos implementation
 InterfaceRos::InterfaceRos() : Node("low_level_cmd_sender") {
@@ -127,6 +138,9 @@ InterfaceRos::InterfaceRos() : Node("low_level_cmd_sender") {
     motor_state_pub = create_publisher<sensor_msgs::msg::JointState>("go2/motor_state", 10);
     state_sub = create_subscription<unitree_go::msg::LowState>(
         "lowstate", 10, std::bind(&InterfaceRos::LowStateHandler, this, std::placeholders::_1));
+    // subscribe to heightmap image from real robot node
+    heightmap_sub = create_subscription<sensor_msgs::msg::Image>(
+    "/height_map/image", 10, std::bind(&InterfaceRos::HeightmapImageHandler, this, _1));
     timer_ = create_wall_timer(std::chrono::milliseconds(20), std::bind(&InterfaceRos::timer_callback_cmd, this));
     init_cmd();
     init_glfw();
@@ -193,6 +207,43 @@ void InterfaceRos::init_cmd() {
     }
     low_cmd.crc = 0;
 }
+
+void InterfaceRos::HeightmapImageHandler(const sensor_msgs::msg::Image::SharedPtr msg)
+{
+  if (msg->encoding != "mono8") {
+    RCLCPP_WARN_THROTTLE(this->get_logger(), *this->get_clock(), 2000,
+                         "Heightmap encoding: %s (expected mono8)", msg->encoding.c_str());
+    return;
+  }
+
+  if (msg->height != HM_NX || msg->width != HM_NY) {
+    RCLCPP_WARN_THROTTLE(this->get_logger(), *this->get_clock(), 2000,
+                         "Heightmap size: %ux%u (expected %dx%d)",
+                         msg->height, msg->width, HM_NX, HM_NY);
+    return;
+  }
+
+  if (msg->data.size() < static_cast<size_t>(HM_NX * HM_NY)) {
+    RCLCPP_WARN_THROTTLE(this->get_logger(), *this->get_clock(), 2000,
+                         "Heightmap data too small: %zu", msg->data.size());
+    return;
+  }
+
+  float denom = (hm_max_ - hm_min_);
+  if (denom <= 1e-6f) denom = 1.0f;
+
+  for (int i = 0; i < HM_N; ++i) {
+    float norm = static_cast<float>(msg->data[static_cast<size_t>(i)]) / 255.0f;
+    heightmap_[static_cast<size_t>(i)] = hm_min_ + norm * denom;
+  }
+
+  heightmap_ready_ = true;
+
+  // <<<<<< ВОТ ЗДЕСЬ МЫ ПЕРЕДАЁМ ДАННЫЕ В ПОЛИТИКУ (через controller -> agent.obs.height_map)
+  controller.set_heightmap(heightmap_);
+
+}
+
 void InterfaceRos::LowStateHandler(const unitree_go::msg::LowState::SharedPtr msg) {
     latest_state = msg;
     publish_imu(msg->imu_state);

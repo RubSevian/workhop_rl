@@ -30,8 +30,30 @@ void Agent::InitObservations()
     obs.action = torch::zeros({12});
     obs.sin=torch::zeros({1});
     obs.cos=torch::zeros({1});
+    obs.height_map = torch::zeros({187});
 }
+void Agent::InitRL()
+{
+    if (this->params.observations_history.empty())
+        return;
 
+    // 1) compute obs once to fill obs_dims [file:28]
+    torch::Tensor clamped_obs = this->ComputeObservation();
+
+    // 2) history length [file:28]
+    int history_length =
+        *std::max_element(this->params.observations_history.begin(),
+                          this->params.observations_history.end()) + 1;
+
+    // 3) create buffer [file:22]
+    this->history_obs_buf = ObservationBuffer(
+        1, this->obs_dims, history_length, this->params.observations_history_priority
+    );
+
+    // 4) fill history with current obs so first steps are not zeros [file:22]
+    this->history_obs_buf.reset({0}, clamped_obs.view({1, -1}));
+
+}
 void Agent::UpdatePhase(float time) {
     float phase = time / params.cycle_time; // Фаза в [0, 1] и далее (не ограничена)
     float angle = 2 * M_PI * phase;
@@ -115,22 +137,52 @@ torch::Tensor Agent::ComputeObservation()
         {
             obs_model_list.push_back((this->obs.cos));
         }
+        else if (obs_name == "height_map")
+        {
+            obs_model_list.push_back(this->obs.height_map);
+        }
 
     }
-    torch::Tensor obs = torch::cat({obs_model_list},0);       
+
+    this->obs_dims.clear();
+    for (const auto& t : obs_model_list) {
+        this->obs_dims.push_back((int)t.numel());
+    }
+
+    // keep your original 1D layout 
+    torch::Tensor obs = torch::cat(obs_model_list, 0);
     obs = torch::clamp(obs, -this->params.clip_obs, this->params.clip_obs);
-    return obs;
+    return obs; // [N]
+    // torch::Tensor obs = torch::cat({obs_model_list},0);       
+    // obs = torch::clamp(obs, -this->params.clip_obs, this->params.clip_obs);
+    // return obs;
 }
 
 torch::Tensor Agent::Forward()
 {
-    torch::Tensor obs = this->ComputeObservation();
-    std::cout<<"Obs"<<obs<<std::endl;
-    torch::Tensor action = this->module.forward({obs}).toTensor();
-    std::cout<<"Action"<<action<<std::endl;
-    torch::Tensor clamped = torch::clamp(action, -this->params.clip_actions, this->params.clip_actions); 
+    torch::Tensor obs = this->ComputeObservation(); // [N]
 
-    return clamped;
+    torch::Tensor actions;
+    if (!this->params.observations_history.empty())
+    {
+        this->history_obs_buf.insert(obs.view({1, -1}));
+        torch::Tensor hist = this->history_obs_buf.get_obs_vec(this->params.observations_history);
+        actions = this->module.forward({hist}).toTensor();
+    }
+    else
+    {
+        actions = this->module.forward({obs}).toTensor();
+    }
+
+    actions = actions.squeeze(0);
+    return torch::clamp(actions, -this->params.clip_actions, this->params.clip_actions);
+    // torch::Tensor obs = this->ComputeObservation();
+    // std::cout<<"Obs"<<obs<<std::endl;
+    // torch::Tensor action = this->module.forward({obs}).toTensor();
+    // std::cout<<"Action"<<action<<std::endl;
+    // torch::Tensor clamped = torch::clamp(action, -this->params.clip_actions, this->params.clip_actions); 
+
+    // return clamped;
 }
 
 torch::Tensor Agent::ComputeTorque(const torch::Tensor &actions_scaled) {
@@ -177,6 +229,16 @@ void Agent::ReadYaml(const std::string &robot_name,const std::string &config_pat
 		std::cout << "The file '" << config_path << "' does not exist" << std::endl;
 		return;
 	}
+    // history params (optional)
+    if (config["observations_history"] && config["observations_history"].IsSequence())
+        this->params.observations_history = ReadVectorFromYaml<int>(config["observations_history"]);
+    else
+        this->params.observations_history.clear();
+
+    if (config["observations_history_priority"])
+        this->params.observations_history_priority = config["observations_history_priority"].as<std::string>();
+    else
+        this->params.observations_history_priority = "time";
 
     this->params.model_name = config["model_name"].as<std::string>();
     this->params.clip_obs = config["clip_obs"].as<float>();

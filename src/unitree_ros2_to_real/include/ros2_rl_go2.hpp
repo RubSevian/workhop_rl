@@ -55,6 +55,7 @@ public:
     const std::vector<int> net2joint_indexes;
     const std::vector<float> stiffness;
     const std::vector<float> damping;
+    bool rl_inited_ = false;
 
 private:
     Agent agent;

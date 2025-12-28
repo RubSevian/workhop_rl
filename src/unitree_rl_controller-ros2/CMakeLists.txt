@@ -30,8 +30,7 @@ include_directories(
 )
 
 # Создаём библиотеку
-add_library(${PROJECT_NAME} SHARED src/rl_agent.cpp)
-
+add_library(${PROJECT_NAME} SHARED src/rl_agent.cpp src/observation_buffer.cpp)
 # Линкуем с библиотеками
 target_link_libraries(${PROJECT_NAME} ${TORCH_LIBRARIES} yaml-cpp)  
 

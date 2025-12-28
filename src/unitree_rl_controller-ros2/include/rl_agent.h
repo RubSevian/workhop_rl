@@ -6,7 +6,8 @@
 #include <filesystem>
 #include "std_msgs/msg/string.hpp"
 #include <yaml-cpp/yaml.h>
-
+#include "observation_buffer.hpp"
+#include <algorithm> 
 
 struct Observations
 {
@@ -20,6 +21,7 @@ struct Observations
     torch::Tensor action;
     torch::Tensor sin;
     torch::Tensor cos;
+    torch::Tensor height_map;
 };
 
 struct ModelParams
@@ -34,6 +36,8 @@ struct ModelParams
     float dof_vel_scale;
     float clip_obs;
     float clip_actions;
+    std::vector<int> observations_history;
+    std::string observations_history_priority;
     torch::Tensor rl_kp;     // [12] для моментов
     torch::Tensor rl_kd;     // [12] для моментов
     torch::Tensor torque_limits; // [12] пределы моментов
@@ -58,11 +62,16 @@ class Agent
         torch::Tensor ComputeTorque(const torch::Tensor &actions_scaled);
         torch::Tensor Forward();
         torch::Tensor QuatRotateInverse(torch::Tensor q, torch::Tensor v);
-        
+        // history state
+        ObservationBuffer history_obs_buf;
+        std::vector<int> obs_dims;      // dims каждого терма наблюдений (как в RL SDK)
+        bool use_obs_history = false;
+        bool history_initialized = false;
     public:
         ModelParams params;
         Observations obs;
         Agent();
+        void InitRL();
         bool Load_Model(const std::string &model_path);
         torch::Tensor Act();
         void ReadYaml(const std::string &robot_name,const std::string &config_path);

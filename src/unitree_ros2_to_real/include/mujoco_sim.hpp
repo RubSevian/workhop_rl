@@ -2,6 +2,7 @@
 #include <std_msgs/msg/string.hpp>
 #include <sensor_msgs/msg/joint_state.hpp>
 #include <sensor_msgs/msg/imu.hpp>
+#include "sensor_msgs/msg/image.hpp"
 #include <geometry_msgs/msg/wrench_stamped.hpp>
 #include <geometry_msgs/msg/twist.hpp>
 #include <std_msgs/msg/u_int8_multi_array.hpp>
@@ -32,6 +33,7 @@ public:
     std::string get_robot_name() const;
     int get_num_motors() const;
     void set_command(float x, float y, float z);
+    void set_heightmap(const std::array<float, 17*11>& hm);
     enum StateID {
         STATE_INIT,
         STATE_READY
@@ -49,6 +51,7 @@ public:
     const std::vector<int> net2joint_indexes;
     const std::vector<float> stiffness;
     const std::vector<float> damping;
+    bool rl_inited_ = false; 
 
 private:
     Agent agent;
@@ -68,6 +71,8 @@ private:
     void publish_motor_state(const std::array<unitree_go::msg::MotorState, 20>& motor_state);
     void init_glfw();
     static void key_callback(GLFWwindow* window , int key , int scancode, int action , int mods);
+      // heightmap from real robot (published by go2_heightmap_node)
+    void HeightmapImageHandler(const sensor_msgs::msg::Image::SharedPtr msg);
 
     rclcpp::TimerBase::SharedPtr timer_;
     rclcpp::Publisher<unitree_go::msg::LowCmd>::SharedPtr cmd_puber;
@@ -77,6 +82,7 @@ private:
     rclcpp::Subscription<unitree_go::msg::LowState>::SharedPtr state_sub;
     unitree_go::msg::LowCmd low_cmd;
     unitree_go::msg::LowState::SharedPtr latest_state;
+    rclcpp::Subscription<sensor_msgs::msg::Image>::SharedPtr heightmap_sub;
     RobotController controller;
 
     GLFWwindow * window ;
@@ -89,6 +95,20 @@ private:
     } keyboard_state;
     std::array<float, 3> last_command = {0.0f, 0.0f, 0.0f}; // Храним последнюю команду
 
+
+    // heightmap buffer (17x11 = 187)
+    static constexpr int HM_NX = 17;
+    static constexpr int HM_NY = 11;
+    static constexpr int HM_N  = HM_NX * HM_NY;
+
+    std::array<float, HM_N> heightmap_;
+    bool heightmap_ready_;
+
+    // these must match the normalization used when you created /height_map/image
+    float hm_min_;
+    float hm_max_;
+
+    
 };
 
 

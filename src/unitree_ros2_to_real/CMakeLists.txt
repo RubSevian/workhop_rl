@@ -40,11 +40,17 @@ find_package(unitree_api REQUIRED)
 find_package(rclcpp REQUIRED)
 find_package(std_msgs REQUIRED)
 
+find_package(tf2 REQUIRED)
+find_package(tf2_ros REQUIRED)
+find_package(tf2_sensor_msgs REQUIRED)
+
 set (
   DEPENDENCY_LIST
   unitree_go
   rclcpp
   std_msgs
+  tf2
+  tf2_ros
 )
 
 
@@ -97,6 +103,19 @@ add_executable(mujoco_sim src/mujoco_sim.cpp src/motor_crc.cpp)
 target_link_libraries(mujoco_sim ${UNITREE_GO2_LIBS} ${EXTRA_LIBS} ${TORCH_LIBRARIES} glfw)
 ament_target_dependencies(mujoco_sim rclcpp  unitree_rl_controller sensor_msgs ${DEPENDENCY_LIST})
 
+add_executable(go2_heightmap_node
+  src/go2_heightmap_node.cpp
+)
+
+ament_target_dependencies(go2_heightmap_node
+  rclcpp
+  sensor_msgs
+  tf2
+  tf2_ros
+  tf2_sensor_msgs
+)
+
+
 add_executable(ros2_rl_go2 src/ros2_rl_go2.cpp src/motor_crc.cpp)
 target_link_libraries(ros2_rl_go2 ${UNITREE_GO2_LIBS} ${EXTRA_LIBS} ${TORCH_LIBRARIES})
 ament_target_dependencies(ros2_rl_go2 rclcpp unitree_rl_controller sensor_msgs ${DEPENDENCY_LIST})
@@ -111,6 +130,7 @@ target_compile_definitions(mujoco_sim PRIVATE "CONFIG_BASE_DIR=\"${CONFIG_BASE_D
 install(TARGETS
     ros2_rl_go2 
     mujoco_sim
+    go2_heightmap_node
     lcm_server
     DESTINATION lib/${PROJECT_NAME}
 )
