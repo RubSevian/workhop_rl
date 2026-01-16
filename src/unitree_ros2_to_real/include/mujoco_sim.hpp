@@ -91,9 +91,11 @@ private:
         bool s_pressed = false;
         bool a_pressed = false;
         bool d_pressed = false;
+        bool q_pressed = false;
+        bool e_pressed = false;
         bool space_pressed = false; // Для сброса команды
     } keyboard_state;
-    std::array<float, 3> last_command = {0.0f, 0.0f, 0.0f}; // Храним последнюю команду
+    // std::array<float, 3> last_command = {0.0f, 0.0f, 0.0f}; // Храним последнюю команду
 
 
     // heightmap buffer (17x11 = 187)

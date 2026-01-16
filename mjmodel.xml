@@ -16,7 +16,7 @@
   <default>
     <default class="go2">
       <joint armature="0.01" damping="0.1" frictionloss="0.2"/>
-      <geom condim="1" friction="0.9" margin="0.001"/>
+      <geom condim="1" friction="0.3" margin="0.001"/>
       <general ctrlrange="-23.7 23.7"/>
       <default class="abduction">
         <joint range="-1.0472 1.0472"/>
@@ -39,7 +39,7 @@
       <default class="collision">
         <geom group="3"/>
         <default class="foot">
-          <geom size="0.022 0 0" condim="6" priority="1" friction="0.9 0.02 0.01"/>
+          <geom size="0.022 0 0" condim="6" priority="1" friction="0.3 0.02 0.01"/>
         </default>
       </default>
     </default>

@@ -189,6 +189,8 @@ void InterfaceRos::key_callback(GLFWwindow* window, int key, int scancode, int a
     if (key == GLFW_KEY_S) state->s_pressed = pressed;
     if (key == GLFW_KEY_A) state->a_pressed = pressed;
     if (key == GLFW_KEY_D) state->d_pressed = pressed;
+    if (key == GLFW_KEY_Q) state->q_pressed = pressed;
+    if (key == GLFW_KEY_E) state->e_pressed = pressed;
     if (key == GLFW_KEY_SPACE) state->space_pressed = pressed;
 }
 
@@ -270,39 +272,50 @@ void InterfaceRos::timer_callback_cmd() {
         return;
     }
 // Обновляем команду только при активных клавишах или сбросе
-    bool command_changed = false;
-    float x = last_command[0];
-    float y = last_command[1];
-    float z = last_command[2];
+    // bool command_changed = false;
+    // float x = last_command[0];
+    // float y = last_command[1];
+    // float z = last_command[2];
 
-    if (keyboard_state.w_pressed) {
-        x = 1.0f;
-        command_changed = true;
-    } else if (keyboard_state.s_pressed) {
-        x = -1.0f;
-        command_changed = true;
-    }
-    if (keyboard_state.a_pressed) {
-        y = 1.0f;
-        command_changed = true;
-    } else if (keyboard_state.d_pressed) {
-        y = -1.0f;
-        command_changed = true;
-    }
-    if (keyboard_state.space_pressed) {
-        x = 0.0f;
-        y = 0.0f;
-        z = 0.0f;
-        command_changed = true;
-    }
+    // if (keyboard_state.w_pressed) {
+    //     x = 1.0f;
+    //     command_changed = true;
+    // } else if (keyboard_state.s_pressed) {
+    //     x = -1.0f;
+    //     command_changed = true;
+    // }
+    // if (keyboard_state.a_pressed) {
+    //     y = 1.0f;
+    //     command_changed = true;
+    // } else if (keyboard_state.d_pressed) {
+    //     y = -1.0f;
+    //     command_changed = true;
+    // }
+    // if (keyboard_state.space_pressed) {
+    //     x = 0.0f;
+    //     y = 0.0f;
+    //     z = 0.0f;
+    //     command_changed = true;
+    // }
 
-    // Сохраняем команду, если она изменилась
-    if (command_changed) {
-        last_command = {x, y, z};
-        controller.set_command(x, y, z);
-        RCLCPP_INFO(this->get_logger(), "Command updated: x=%f, y=%f, z=%f", x, y, z);
-    }
+    // // Сохраняем команду, если она изменилась
+    // if (command_changed) {
+    //     last_command = {x, y, z};
+    //     controller.set_command(x, y, z);
+    //     RCLCPP_INFO(this->get_logger(), "Command updated: x=%f, y=%f, z=%f", x, y, z);
+    // }
+    float x = 0.0f, y = 0.0f, z = 0.0f;
 
+    if (keyboard_state.w_pressed) x += 0.5f;
+    if (keyboard_state.s_pressed) x -= 0.5f;
+    if (keyboard_state.a_pressed) y += 0.5f;
+    if (keyboard_state.d_pressed) y -= 0.5f;
+    if (keyboard_state.q_pressed) z += 1.f;
+    if (keyboard_state.e_pressed) z -= 1.f;
+
+    if (keyboard_state.space_pressed) { x = 0.0f; y = 0.0f; z = 0.0f; };
+    controller.set_command(x, y, z);
+    RCLCPP_INFO(this->get_logger(), "Command: x=%f, y=%f", x, y);
     low_cmd = controller.update(*latest_state);
     send_command(low_cmd);
 
