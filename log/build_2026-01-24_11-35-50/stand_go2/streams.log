@@ -1,0 +1,73 @@
+[0.010s] Invoking command in '/home/ruben/go2_deploy/workhop_rl/build/stand_go2': AMENT_PREFIX_PATH=/home/ruben/go2_deploy/workhop_rl/install/unitree_go:/home/ruben/go2_deploy/workhop_rl/install/unitree_api:${AMENT_PREFIX_PATH} CMAKE_PREFIX_PATH=/home/ruben/go2_deploy/workhop_rl/install/unitree_go:/home/ruben/go2_deploy/workhop_rl/install/unitree_api:/opt/ros/humble LD_LIBRARY_PATH=/home/ruben/go2_deploy/workhop_rl/install/unitree_go/lib:/home/ruben/go2_deploy/workhop_rl/install/unitree_api/lib:${LD_LIBRARY_PATH} PYTHONPATH=/home/ruben/go2_deploy/workhop_rl/install/unitree_go/local/lib/python3.10/dist-packages:/home/ruben/go2_deploy/workhop_rl/install/unitree_api/local/lib/python3.10/dist-packages:${PYTHONPATH} /usr/bin/cmake /home/ruben/go2_deploy/workhop_rl/src/unitree_mujoco/example/ros2 -DCMAKE_INSTALL_PREFIX=/home/ruben/go2_deploy/workhop_rl/install/stand_go2
+[0.055s] -- The C compiler identification is GNU 11.4.0
+[0.145s] -- The CXX compiler identification is GNU 11.4.0
+[0.150s] -- Detecting C compiler ABI info
+[0.300s] -- Detecting C compiler ABI info - done
+[0.304s] -- Check for working C compiler: /usr/bin/cc - skipped
+[0.305s] -- Detecting C compile features
+[0.305s] -- Detecting C compile features - done
+[0.306s] -- Detecting CXX compiler ABI info
+[0.419s] -- Detecting CXX compiler ABI info - done
+[0.424s] -- Check for working CXX compiler: /usr/bin/c++ - skipped
+[0.424s] -- Detecting CXX compile features
+[0.425s] -- Detecting CXX compile features - done
+[0.426s] -- Found ament_cmake: 1.3.12 (/opt/ros/humble/share/ament_cmake/cmake)
+[0.545s] -- Found Python3: /usr/bin/python3 (found version "3.10.12") found components: Interpreter 
+[0.631s] -- Found unitree_go: 0.0.0 (/home/ruben/go2_deploy/workhop_rl/install/unitree_go/share/unitree_go/cmake)
+[0.661s] -- Found rosidl_generator_c: 3.1.7 (/opt/ros/humble/share/rosidl_generator_c/cmake)
+[0.664s] -- Found rosidl_adapter: 3.1.7 (/opt/ros/humble/share/rosidl_adapter/cmake)
+[0.668s] -- Found rosidl_generator_cpp: 3.1.7 (/opt/ros/humble/share/rosidl_generator_cpp/cmake)
+[0.674s] -- Using all available rosidl_typesupport_c: rosidl_typesupport_fastrtps_c;rosidl_typesupport_introspection_c
+[0.683s] -- Using all available rosidl_typesupport_cpp: rosidl_typesupport_fastrtps_cpp;rosidl_typesupport_introspection_cpp
+[0.713s] -- Found unitree_api: 0.0.0 (/home/ruben/go2_deploy/workhop_rl/install/unitree_api/share/unitree_api/cmake)
+[0.721s] -- Found rclcpp: 16.0.16 (/opt/ros/humble/share/rclcpp/cmake)
+[0.741s] -- Found rmw_implementation_cmake: 6.1.2 (/opt/ros/humble/share/rmw_implementation_cmake/cmake)
+[0.742s] -- Found rmw_cyclonedds_cpp: 1.3.4 (/opt/ros/humble/share/rmw_cyclonedds_cpp/cmake)
+[0.754s] -- Using RMW implementation 'rmw_cyclonedds_cpp' as default
+[0.759s] -- Looking for pthread.h
+[0.903s] -- Looking for pthread.h - found
+[0.904s] -- Performing Test CMAKE_HAVE_LIBC_PTHREAD
+[1.027s] -- Performing Test CMAKE_HAVE_LIBC_PTHREAD - Success
+[1.028s] -- Found Threads: TRUE  
+[1.058s] -- Found rosbag2_cpp: 0.15.15 (/opt/ros/humble/share/rosbag2_cpp/cmake)
+[1.168s] -- Found ament_lint_auto: 0.12.14 (/opt/ros/humble/share/ament_lint_auto/cmake)
+[1.253s] -- Added test 'copyright' to check source files copyright and LICENSE
+[1.254s] -- Added test 'cppcheck' to perform static code analysis on C / C++ code
+[1.254s] -- Configured cppcheck include dirs: /home/ruben/go2_deploy/workhop_rl/src/unitree_mujoco/example/ros2/include
+[1.254s] -- Configured cppcheck exclude dirs and/or files: 
+[1.255s] -- Added test 'cpplint' to check C / C++ code against the Google style
+[1.255s] -- Configured cpplint exclude dirs and/or files: 
+[1.255s] -- Added test 'lint_cmake' to check CMake code style
+[1.256s] -- Added test 'uncrustify' to check C / C++ code style
+[1.256s] -- Configured uncrustify additional arguments: 
+[1.257s] -- Added test 'xmllint' to check XML markup files
+[1.258s] -- Configuring done
+[1.268s] -- Generating done
+[1.272s] -- Build files have been written to: /home/ruben/go2_deploy/workhop_rl/build/stand_go2
+[1.287s] Invoked command in '/home/ruben/go2_deploy/workhop_rl/build/stand_go2' returned '0': AMENT_PREFIX_PATH=/home/ruben/go2_deploy/workhop_rl/install/unitree_go:/home/ruben/go2_deploy/workhop_rl/install/unitree_api:${AMENT_PREFIX_PATH} CMAKE_PREFIX_PATH=/home/ruben/go2_deploy/workhop_rl/install/unitree_go:/home/ruben/go2_deploy/workhop_rl/install/unitree_api:/opt/ros/humble LD_LIBRARY_PATH=/home/ruben/go2_deploy/workhop_rl/install/unitree_go/lib:/home/ruben/go2_deploy/workhop_rl/install/unitree_api/lib:${LD_LIBRARY_PATH} PYTHONPATH=/home/ruben/go2_deploy/workhop_rl/install/unitree_go/local/lib/python3.10/dist-packages:/home/ruben/go2_deploy/workhop_rl/install/unitree_api/local/lib/python3.10/dist-packages:${PYTHONPATH} /usr/bin/cmake /home/ruben/go2_deploy/workhop_rl/src/unitree_mujoco/example/ros2 -DCMAKE_INSTALL_PREFIX=/home/ruben/go2_deploy/workhop_rl/install/stand_go2
+[1.288s] Invoking command in '/home/ruben/go2_deploy/workhop_rl/build/stand_go2': AMENT_PREFIX_PATH=/home/ruben/go2_deploy/workhop_rl/install/unitree_go:/home/ruben/go2_deploy/workhop_rl/install/unitree_api:${AMENT_PREFIX_PATH} CMAKE_PREFIX_PATH=/home/ruben/go2_deploy/workhop_rl/install/unitree_go:/home/ruben/go2_deploy/workhop_rl/install/unitree_api:/opt/ros/humble LD_LIBRARY_PATH=/home/ruben/go2_deploy/workhop_rl/install/unitree_go/lib:/home/ruben/go2_deploy/workhop_rl/install/unitree_api/lib:${LD_LIBRARY_PATH} PYTHONPATH=/home/ruben/go2_deploy/workhop_rl/install/unitree_go/local/lib/python3.10/dist-packages:/home/ruben/go2_deploy/workhop_rl/install/unitree_api/local/lib/python3.10/dist-packages:${PYTHONPATH} /usr/bin/cmake --build /home/ruben/go2_deploy/workhop_rl/build/stand_go2 -- -j22 -l22
+[1.343s] [ 33%] [32mBuilding CXX object CMakeFiles/stand_go2.dir/src/stand_go2.cpp.o[0m
+[1.358s] [ 66%] [32mBuilding CXX object CMakeFiles/stand_go2.dir/src/motor_crc.cpp.o[0m
+[6.040s] [100%] [32m[1mLinking CXX executable stand_go2[0m
+[6.668s] [100%] Built target stand_go2
+[6.701s] Invoked command in '/home/ruben/go2_deploy/workhop_rl/build/stand_go2' returned '0': AMENT_PREFIX_PATH=/home/ruben/go2_deploy/workhop_rl/install/unitree_go:/home/ruben/go2_deploy/workhop_rl/install/unitree_api:${AMENT_PREFIX_PATH} CMAKE_PREFIX_PATH=/home/ruben/go2_deploy/workhop_rl/install/unitree_go:/home/ruben/go2_deploy/workhop_rl/install/unitree_api:/opt/ros/humble LD_LIBRARY_PATH=/home/ruben/go2_deploy/workhop_rl/install/unitree_go/lib:/home/ruben/go2_deploy/workhop_rl/install/unitree_api/lib:${LD_LIBRARY_PATH} PYTHONPATH=/home/ruben/go2_deploy/workhop_rl/install/unitree_go/local/lib/python3.10/dist-packages:/home/ruben/go2_deploy/workhop_rl/install/unitree_api/local/lib/python3.10/dist-packages:${PYTHONPATH} /usr/bin/cmake --build /home/ruben/go2_deploy/workhop_rl/build/stand_go2 -- -j22 -l22
+[6.703s] Invoking command in '/home/ruben/go2_deploy/workhop_rl/build/stand_go2': AMENT_PREFIX_PATH=/home/ruben/go2_deploy/workhop_rl/install/unitree_go:/home/ruben/go2_deploy/workhop_rl/install/unitree_api:${AMENT_PREFIX_PATH} CMAKE_PREFIX_PATH=/home/ruben/go2_deploy/workhop_rl/install/unitree_go:/home/ruben/go2_deploy/workhop_rl/install/unitree_api:/opt/ros/humble LD_LIBRARY_PATH=/home/ruben/go2_deploy/workhop_rl/install/unitree_go/lib:/home/ruben/go2_deploy/workhop_rl/install/unitree_api/lib:${LD_LIBRARY_PATH} PYTHONPATH=/home/ruben/go2_deploy/workhop_rl/install/unitree_go/local/lib/python3.10/dist-packages:/home/ruben/go2_deploy/workhop_rl/install/unitree_api/local/lib/python3.10/dist-packages:${PYTHONPATH} /usr/bin/cmake --install /home/ruben/go2_deploy/workhop_rl/build/stand_go2
+[6.722s] -- Install configuration: ""
+[6.722s] -- Installing: /home/ruben/go2_deploy/workhop_rl/install/stand_go2/lib/stand_go2/stand_go2
+[6.725s] -- Set runtime path of "/home/ruben/go2_deploy/workhop_rl/install/stand_go2/lib/stand_go2/stand_go2" to ""
+[6.725s] -- Installing: /home/ruben/go2_deploy/workhop_rl/install/stand_go2/share/ament_index/resource_index/package_run_dependencies/stand_go2
+[6.725s] -- Installing: /home/ruben/go2_deploy/workhop_rl/install/stand_go2/share/ament_index/resource_index/parent_prefix_path/stand_go2
+[6.726s] -- Installing: /home/ruben/go2_deploy/workhop_rl/install/stand_go2/share/stand_go2/environment/ament_prefix_path.sh
+[6.726s] -- Installing: /home/ruben/go2_deploy/workhop_rl/install/stand_go2/share/stand_go2/environment/ament_prefix_path.dsv
+[6.726s] -- Installing: /home/ruben/go2_deploy/workhop_rl/install/stand_go2/share/stand_go2/environment/path.sh
+[6.727s] -- Installing: /home/ruben/go2_deploy/workhop_rl/install/stand_go2/share/stand_go2/environment/path.dsv
+[6.727s] -- Installing: /home/ruben/go2_deploy/workhop_rl/install/stand_go2/share/stand_go2/local_setup.bash
+[6.727s] -- Installing: /home/ruben/go2_deploy/workhop_rl/install/stand_go2/share/stand_go2/local_setup.sh
+[6.728s] -- Installing: /home/ruben/go2_deploy/workhop_rl/install/stand_go2/share/stand_go2/local_setup.zsh
+[6.728s] -- Installing: /home/ruben/go2_deploy/workhop_rl/install/stand_go2/share/stand_go2/local_setup.dsv
+[6.729s] -- Installing: /home/ruben/go2_deploy/workhop_rl/install/stand_go2/share/stand_go2/package.dsv
+[6.729s] -- Installing: /home/ruben/go2_deploy/workhop_rl/install/stand_go2/share/ament_index/resource_index/packages/stand_go2
+[6.730s] -- Installing: /home/ruben/go2_deploy/workhop_rl/install/stand_go2/share/stand_go2/cmake/stand_go2Config.cmake
+[6.730s] -- Installing: /home/ruben/go2_deploy/workhop_rl/install/stand_go2/share/stand_go2/cmake/stand_go2Config-version.cmake
+[6.730s] -- Installing: /home/ruben/go2_deploy/workhop_rl/install/stand_go2/share/stand_go2/package.xml
+[6.735s] Invoked command in '/home/ruben/go2_deploy/workhop_rl/build/stand_go2' returned '0': AMENT_PREFIX_PATH=/home/ruben/go2_deploy/workhop_rl/install/unitree_go:/home/ruben/go2_deploy/workhop_rl/install/unitree_api:${AMENT_PREFIX_PATH} CMAKE_PREFIX_PATH=/home/ruben/go2_deploy/workhop_rl/install/unitree_go:/home/ruben/go2_deploy/workhop_rl/install/unitree_api:/opt/ros/humble LD_LIBRARY_PATH=/home/ruben/go2_deploy/workhop_rl/install/unitree_go/lib:/home/ruben/go2_deploy/workhop_rl/install/unitree_api/lib:${LD_LIBRARY_PATH} PYTHONPATH=/home/ruben/go2_deploy/workhop_rl/install/unitree_go/local/lib/python3.10/dist-packages:/home/ruben/go2_deploy/workhop_rl/install/unitree_api/local/lib/python3.10/dist-packages:${PYTHONPATH} /usr/bin/cmake --install /home/ruben/go2_deploy/workhop_rl/build/stand_go2

@@ -1,0 +1,602 @@
+[0.008s] Invoking command in '/home/ruben/go2_deploy/workhop_rl/build/cyclonedds': CMAKE_PREFIX_PATH=/opt/ros/humble /usr/bin/cmake /home/ruben/go2_deploy/workhop_rl/src/unitree_ros2/cyclonedds_ws/src/cyclonedds -DBUILD_IDLC=AUTO -DCMAKE_INSTALL_PREFIX=/home/ruben/go2_deploy/workhop_rl/install/cyclonedds
+[0.054s] -- The C compiler identification is GNU 11.4.0
+[0.058s] -- Detecting C compiler ABI info
+[0.174s] -- Detecting C compiler ABI info - done
+[0.181s] -- Check for working C compiler: /usr/bin/cc - skipped
+[0.181s] -- Detecting C compile features
+[0.181s] -- Detecting C compile features - done
+[0.182s] -- Setting build type to 'RelWithDebInfo' as none was specified.
+[0.185s] -- Looking for getopt.h
+[0.266s] -- Looking for getopt.h - found
+[0.303s] -- Building with OpenSSL support
+[0.308s] -- Looking for stdint.h
+[0.364s] -- Looking for stdint.h - found
+[0.364s] -- Looking for inttypes.h
+[0.463s] -- Looking for inttypes.h - found
+[0.463s] -- Looking for sys/types.h
+[0.570s] -- Looking for sys/types.h - found
+[0.570s] -- Looking for stdint.h
+[0.672s] -- Looking for stdint.h - found
+[0.673s] -- Looking for stddef.h
+[0.788s] -- Looking for stddef.h - found
+[0.788s] -- Check size of intmax_t
+[0.890s] -- Check size of intmax_t - done
+[0.890s] -- Looking for stpcpy
+[0.987s] -- Looking for stpcpy - found
+[0.987s] -- Looking for strlcpy
+[1.011s] -- Looking for strlcpy - not found
+[1.011s] -- Looking for strlcat
+[1.037s] -- Looking for strlcat - not found
+[1.039s] -- Performing Test COMPILER_HAS_HIDDEN_VISIBILITY
+[1.090s] -- Performing Test COMPILER_HAS_HIDDEN_VISIBILITY - Success
+[1.090s] -- Performing Test COMPILER_HAS_HIDDEN_INLINE_VISIBILITY
+[1.138s] -- Performing Test COMPILER_HAS_HIDDEN_INLINE_VISIBILITY - Failed
+[1.138s] -- Performing Test COMPILER_HAS_DEPRECATED_ATTR
+[1.187s] -- Performing Test COMPILER_HAS_DEPRECATED_ATTR - Success
+[1.192s] -- Looking for gethostname
+[1.250s] -- Looking for gethostname - found
+[1.250s] -- Looking for inet_ntop
+[1.368s] -- Looking for inet_ntop - found
+[1.368s] -- Looking for inet_pton
+[1.421s] -- Looking for inet_pton - found
+[1.421s] -- Looking for getaddrinfo
+[1.497s] -- Looking for getaddrinfo - found
+[1.498s] -- Looking for gethostbyname_r
+[1.579s] -- Looking for gethostbyname_r - found
+[1.579s] -- Check size of struct sockaddr_in6
+[1.683s] -- Check size of struct sockaddr_in6 - done
+[1.684s] -- Looking for pthread.h
+[1.740s] -- Looking for pthread.h - found
+[1.740s] -- Performing Test CMAKE_HAVE_LIBC_PTHREAD
+[1.820s] -- Performing Test CMAKE_HAVE_LIBC_PTHREAD - Success
+[1.821s] -- Found Threads: TRUE  
+[1.821s] -- Looking for clock_gettime in c
+[1.926s] -- Looking for clock_gettime in c - found
+[2.349s] -- Configuring done
+[2.386s] -- Generating done
+[2.398s] -- Build files have been written to: /home/ruben/go2_deploy/workhop_rl/build/cyclonedds
+[2.404s] Invoked command in '/home/ruben/go2_deploy/workhop_rl/build/cyclonedds' returned '0': CMAKE_PREFIX_PATH=/opt/ros/humble /usr/bin/cmake /home/ruben/go2_deploy/workhop_rl/src/unitree_ros2/cyclonedds_ws/src/cyclonedds -DBUILD_IDLC=AUTO -DCMAKE_INSTALL_PREFIX=/home/ruben/go2_deploy/workhop_rl/install/cyclonedds
+[2.406s] Invoking command in '/home/ruben/go2_deploy/workhop_rl/build/cyclonedds': CMAKE_PREFIX_PATH=/opt/ros/humble /usr/bin/cmake --build /home/ruben/go2_deploy/workhop_rl/build/cyclonedds -- -j22 -l22
+[2.435s] [  1%] [34m[1mGenerating include/idl/md5.h[0m
+[2.436s] [  1%] [34m[1mGenerating include/idl/endian.h[0m
+[2.436s] [  1%] [34m[1mGenerating include/idl/misc.h[0m
+[2.436s] [  1%] [34m[1mGenerating src/md5.c[0m
+[2.436s] [  2%] [34m[1mGenerating include/idl/attributes.h[0m
+[2.442s] [  2%] Built target _confgen
+[2.445s] [  3%] [32mBuilding C object src/tools/idlpp/CMakeFiles/idlpp.dir/src/directive.c.o[0m
+[2.446s] [  3%] [32mBuilding C object src/tools/idlpp/CMakeFiles/idlpp.dir/src/eval.c.o[0m
+[2.449s] [  5%] [32mBuilding C object src/tools/idlpp/CMakeFiles/idlpp.dir/src/support.c.o[0m
+[2.449s] [  5%] [32mBuilding C object src/ddsrt/CMakeFiles/ddsrt-internal.dir/src/log.c.o[0m
+[2.449s] [  4%] [32mBuilding C object src/tools/idlpp/CMakeFiles/idlpp.dir/src/expand.c.o[0m
+[2.449s] [  5%] [32mBuilding C object src/ddsrt/CMakeFiles/ddsrt-internal.dir/src/strtod.c.o[0m
+[2.450s] [  5%] [32mBuilding C object src/tools/idlpp/CMakeFiles/idlpp.dir/src/main.c.o[0m
+[2.450s] [  5%] [32mBuilding C object src/tools/idlpp/CMakeFiles/idlpp.dir/src/mbchar.c.o[0m
+[2.450s] [  5%] [32mBuilding C object src/ddsrt/CMakeFiles/ddsrt-internal.dir/src/mh3.c.o[0m
+[2.453s] [  7%] [32mBuilding C object src/ddsrt/CMakeFiles/ddsrt-internal.dir/src/strtol.c.o[0m
+[2.453s] [  7%] [32mBuilding C object src/ddsrt/CMakeFiles/ddsrt-internal.dir/src/retcode.c.o[0m
+[2.453s] [  8%] [32mBuilding C object src/ddsrt/CMakeFiles/ddsrt-internal.dir/src/atomics.c.o[0m
+[2.453s] [  8%] [32mBuilding C object src/tools/idlpp/CMakeFiles/idlpp.dir/src/system.c.o[0m
+[2.453s] [  9%] [32mBuilding C object src/ddsrt/CMakeFiles/ddsrt-internal.dir/src/environ.c.o[0m
+[2.453s] [  9%] [32mBuilding C object src/ddsrt/CMakeFiles/ddsrt-internal.dir/src/bswap.c.o[0m
+[2.453s] [  9%] [32mBuilding C object src/ddsrt/CMakeFiles/ddsrt-internal.dir/src/avl.c.o[0m
+[2.457s] [  9%] [32mBuilding C object src/ddsrt/CMakeFiles/ddsrt-internal.dir/src/fibheap.c.o[0m
+[2.457s] [  9%] [32mBuilding C object src/ddsrt/CMakeFiles/ddsrt-internal.dir/src/hopscotch.c.o[0m
+[2.459s] [  9%] [32mBuilding C object src/ddsrt/CMakeFiles/ddsrt-internal.dir/src/io.c.o[0m
+[2.459s] [ 10%] [32mBuilding C object src/ddsrt/CMakeFiles/ddsrt-internal.dir/src/expand_vars.c.o[0m
+[2.478s] [ 10%] [32mBuilding C object src/idl/CMakeFiles/idl.dir/src/symbol.c.o[0m
+[2.490s] [ 10%] [32mBuilding C object src/core/CMakeFiles/ddsc.dir/ddsi/src/ddsi_eth.c.o[0m
+[2.557s] [ 10%] [32mBuilding C object src/ddsrt/CMakeFiles/ddsrt-internal.dir/src/threads.c.o[0m
+[2.557s] [ 11%] [32mBuilding C object src/ddsrt/CMakeFiles/ddsrt-internal.dir/src/string.c.o[0m
+[2.558s] [ 11%] [32mBuilding C object src/idl/CMakeFiles/idl.dir/src/expression.c.o[0m
+[2.559s] [ 12%] [32mBuilding C object src/ddsrt/CMakeFiles/ddsrt-internal.dir/src/circlist.c.o[0m
+[2.560s] [ 13%] [32mBuilding C object src/idl/CMakeFiles/idl.dir/src/directive.c.o[0m
+[2.562s] [ 14%] [32mBuilding C object src/core/CMakeFiles/ddsc.dir/ddsi/src/ddsi_ssl.c.o[0m
+[2.573s] [ 14%] [32mBuilding C object src/ddsrt/CMakeFiles/ddsrt-internal.dir/src/md5.c.o[0m
+[2.577s] [ 14%] [32mBuilding C object src/ddsrt/CMakeFiles/ddsrt-internal.dir/src/sockets.c.o[0m
+[2.582s] [ 14%] [32mBuilding C object src/core/CMakeFiles/ddsc.dir/ddsi/src/ddsi_tcp.c.o[0m
+[2.585s] [ 15%] [32mBuilding C object src/ddsrt/CMakeFiles/ddsrt-internal.dir/src/xmlparser.c.o[0m
+[2.663s] [ 15%] [32mBuilding C object src/core/CMakeFiles/ddsc.dir/ddsi/src/ddsi_tran.c.o[0m
+[2.663s] [ 15%] [32mBuilding C object src/idl/CMakeFiles/idl.dir/src/file.c.o[0m
+[2.672s] [ 15%] [32mBuilding C object src/ddsrt/CMakeFiles/ddsrt-internal.dir/src/ifaddrs.c.o[0m
+[2.684s] [ 15%] [32mBuilding C object src/core/CMakeFiles/ddsc.dir/ddsi/src/ddsi_raweth.c.o[0m
+[2.684s] [ 16%] [32mBuilding C object src/core/CMakeFiles/ddsc.dir/ddsi/src/ddsi_udp.c.o[0m
+[2.706s] [ 17%] [32mBuilding C object src/idl/CMakeFiles/idl.dir/src/processor.c.o[0m
+[2.706s] [ 18%] [32mBuilding C object src/idl/CMakeFiles/idl.dir/src/string.c.o[0m
+[2.712s] [ 18%] [32mBuilding C object src/idl/CMakeFiles/idl.dir/src/scanner.c.o[0m
+[2.721s] [ 18%] [32mBuilding C object src/core/CMakeFiles/ddsc.dir/ddsi/src/ddsi_vnet.c.o[0m
+[2.731s] [ 19%] [32mBuilding C object src/ddsrt/CMakeFiles/ddsrt-internal.dir/src/cdtors.c.o[0m
+[2.731s] [ 19%] [32mBuilding C object src/idl/CMakeFiles/idl.dir/src/annotation.c.o[0m
+[2.769s] [ 19%] [32mBuilding C object src/ddsrt/CMakeFiles/ddsrt-internal.dir/src/random.c.o[0m
+[2.781s] [ 19%] [32mBuilding C object src/idl/CMakeFiles/idl.dir/src/scope.c.o[0m
+[2.871s] [ 19%] [32mBuilding C object src/idl/CMakeFiles/idl.dir/src/visit.c.o[0m
+[2.871s] [ 19%] [32mBuilding C object src/ddsrt/CMakeFiles/ddsrt-internal.dir/src/time.c.o[0m
+[2.880s] [ 19%] [32mBuilding C object src/idl/CMakeFiles/idl.dir/src/print.c.o[0m
+[2.880s] [ 19%] [32mBuilding C object src/idl/CMakeFiles/idl.dir/src/hashid.c.o[0m
+[2.881s] [ 20%] [32mBuilding C object src/idl/CMakeFiles/idl.dir/src/tree.c.o[0m
+[2.883s] [ 21%] [32mBuilding C object src/idl/CMakeFiles/idl.dir/src/keylist.c.o[0m
+[2.892s] [ 22%] [32mBuilding C object src/ddsrt/CMakeFiles/ddsrt-internal.dir/src/ifaddrs/posix/ifaddrs.c.o[0m
+[2.897s] [ 23%] [32mBuilding C object src/idl/CMakeFiles/idl.dir/src/parser.c.o[0m
+[2.923s] [ 23%] [32mBuilding C object src/ddsrt/CMakeFiles/ddsrt-internal.dir/src/sockets/posix/socket.c.o[0m
+[2.942s] [ 24%] [32mBuilding C object src/core/CMakeFiles/ddsc.dir/ddsi/src/ddsi_ipaddr.c.o[0m
+[2.992s] [ 24%] [32mBuilding C object src/core/CMakeFiles/ddsc.dir/ddsi/src/ddsi_mcgroup.c.o[0m
+[2.998s] [ 25%] [32mBuilding C object src/core/CMakeFiles/ddsc.dir/ddsi/src/ddsi_security_util.c.o[0m
+[3.000s] [ 26%] [32mBuilding C object src/ddsrt/CMakeFiles/ddsrt-internal.dir/src/heap/posix/heap.c.o[0m
+[3.002s] [ 26%] [32mBuilding C object src/ddsrt/CMakeFiles/ddsrt-internal.dir/src/dynlib/posix/dynlib.c.o[0m
+[3.009s] [ 26%] [32mBuilding C object src/ddsrt/CMakeFiles/ddsrt-internal.dir/src/sockets/posix/gethostname.c.o[0m
+[3.018s] [ 26%] [32mBuilding C object src/idl/CMakeFiles/idl.dir/src/md5.c.o[0m
+[3.031s] [ 26%] [32mBuilding C object src/core/CMakeFiles/ddsc.dir/ddsi/src/ddsi_security_omg.c.o[0m
+[3.032s] [ 26%] [32mBuilding C object src/core/CMakeFiles/ddsc.dir/ddsi/src/ddsi_portmapping.c.o[0m
+[3.099s] [ 27%] [32mBuilding C object src/ddsrt/CMakeFiles/ddsrt-internal.dir/src/environ/posix/environ.c.o[0m
+[3.100s] [ 27%] [32mBuilding C object src/ddsrt/CMakeFiles/ddsrt-internal.dir/src/process/posix/process.c.o[0m
+[3.105s] [ 28%] [32mBuilding C object src/core/CMakeFiles/ddsc.dir/ddsi/src/ddsi_handshake.c.o[0m
+[3.108s] [ 28%] [32mBuilding C object src/ddsrt/CMakeFiles/ddsrt-internal.dir/src/sync/posix/sync.c.o[0m
+[3.112s] [ 29%] [32mBuilding C object src/ddsrt/CMakeFiles/ddsrt-internal.dir/src/random/posix/random.c.o[0m
+[3.114s] [ 29%] [32mBuilding C object src/ddsrt/CMakeFiles/ddsrt-internal.dir/src/filesystem/posix/filesystem.c.o[0m
+[3.132s] [ 29%] [32mBuilding C object src/core/CMakeFiles/ddsc.dir/ddsi/src/ddsi_serdata.c.o[0m
+[3.156s] [ 29%] [32mBuilding C object src/ddsrt/CMakeFiles/ddsrt-internal.dir/src/threads/posix/threads.c.o[0m
+[3.164s] [ 29%] [32mBuilding C object src/core/CMakeFiles/ddsc.dir/ddsi/src/ddsi_serdata_default.c.o[0m
+[3.225s] [ 30%] [32mBuilding C object src/core/CMakeFiles/ddsc.dir/ddsi/src/ddsi_serdata_pserop.c.o[0m
+[3.225s] [ 31%] [32mBuilding C object src/ddsrt/CMakeFiles/ddsrt-internal.dir/src/rusage/posix/rusage.c.o[0m
+[3.227s] [ 31%] [32mBuilding C object src/core/CMakeFiles/ddsc.dir/ddsi/src/ddsi_sertype_default.c.o[0m
+[3.227s] [ 31%] [32mBuilding C object src/core/CMakeFiles/ddsc.dir/ddsi/src/ddsi_sertype_pserop.c.o[0m
+[3.233s] [ 31%] [32mBuilding C object src/core/CMakeFiles/ddsc.dir/ddsi/src/ddsi_serdata_plist.c.o[0m
+[3.236s] [ 32%] [32mBuilding C object src/core/CMakeFiles/ddsc.dir/ddsi/src/ddsi_sertype.c.o[0m
+[3.236s] [ 33%] [32mBuilding C object src/ddsrt/CMakeFiles/ddsrt-internal.dir/src/netstat/linux/netstat.c.o[0m
+[3.239s] [ 34%] [32mBuilding C object src/core/CMakeFiles/ddsc.dir/ddsi/src/ddsi_sertype_plist.c.o[0m
+[3.240s] [ 34%] [32mBuilding C object src/core/CMakeFiles/ddsc.dir/ddsi/src/ddsi_sertopic.c.o[0m
+[3.243s] [ 34%] [32mBuilding C object src/ddsrt/CMakeFiles/ddsrt-internal.dir/src/time/posix/time.c.o[0m
+[3.298s] [ 35%] [32mBuilding C object src/core/CMakeFiles/ddsc.dir/ddsi/src/ddsi_statistics.c.o[0m
+[3.320s] [ 35%] [32mBuilding C object src/core/CMakeFiles/ddsc.dir/ddsi/src/ddsi_iid.c.o[0m
+[3.328s] [ 35%] [32mBuilding C object src/core/CMakeFiles/ddsc.dir/ddsi/src/ddsi_tkmap.c.o[0m
+[3.335s] [ 36%] [32mBuilding C object src/core/CMakeFiles/ddsc.dir/ddsi/src/ddsi_vendor.c.o[0m
+[3.340s] [ 36%] [32mBuilding C object src/core/CMakeFiles/ddsc.dir/ddsi/src/ddsi_threadmon.c.o[0m
+[3.346s] [ 37%] [32m[1mLinking C static library ../../../lib/libidlpp.a[0m
+[3.430s] [ 37%] [32mBuilding C object src/core/CMakeFiles/ddsc.dir/ddsi/src/ddsi_rhc.c.o[0m
+[3.430s] [ 37%] [32mBuilding C object src/core/CMakeFiles/ddsc.dir/ddsi/src/ddsi_entity_index.c.o[0m
+[3.437s] [ 37%] [32m[1mLinking C static library ../../lib/libddsrt-internal.a[0m
+[3.439s] [ 38%] [32mBuilding C object src/core/CMakeFiles/ddsc.dir/ddsi/src/ddsi_pmd.c.o[0m
+[3.440s] [ 39%] [32mBuilding C object src/core/CMakeFiles/ddsc.dir/ddsi/src/ddsi_deadline.c.o[0m
+[3.469s] [ 39%] [32mBuilding C object src/core/CMakeFiles/ddsc.dir/ddsi/src/ddsi_deliver_locally.c.o[0m
+[3.469s] [ 39%] [32mBuilding C object src/core/CMakeFiles/ddsc.dir/ddsi/src/ddsi_plist.c.o[0m
+[3.486s] [ 40%] [32mBuilding C object src/core/CMakeFiles/ddsc.dir/ddsi/src/ddsi_cdrstream.c.o[0m
+[3.497s] [ 40%] [32mBuilding C object src/core/CMakeFiles/ddsc.dir/ddsi/src/ddsi_config.c.o[0m
+[3.507s] [ 40%] [32mBuilding C object src/core/CMakeFiles/ddsc.dir/ddsi/src/ddsi_time.c.o[0m
+[3.530s] [ 41%] [32mBuilding C object src/core/CMakeFiles/ddsc.dir/ddsi/src/ddsi_ownip.c.o[0m
+[3.560s] [ 42%] [32mBuilding C object src/core/CMakeFiles/ddsc.dir/ddsi/src/ddsi_list_genptr.c.o[0m
+[3.566s] [ 42%] [32mBuilding C object src/core/CMakeFiles/ddsc.dir/ddsi/src/ddsi_acknack.c.o[0m
+[3.570s] [ 42%] [32mBuilding C object src/core/CMakeFiles/ddsc.dir/ddsi/src/ddsi_wraddrset.c.o[0m
+[3.600s] [ 43%] [32mBuilding C object src/core/CMakeFiles/ddsc.dir/ddsi/src/ddsi_entity.c.o[0m
+[3.602s] [ 43%] [32mBuilding C object src/core/CMakeFiles/ddsc.dir/ddsi/src/ddsi_typelib.c.o[0m
+[3.604s] [ 43%] [32mBuilding C object src/core/CMakeFiles/ddsc.dir/ddsi/src/ddsi_entity_match.c.o[0m
+[3.633s] [ 44%] [32mBuilding C object src/core/CMakeFiles/ddsc.dir/ddsi/src/ddsi_participant.c.o[0m
+[3.683s] [ 44%] [32mBuilding C object src/core/CMakeFiles/ddsc.dir/ddsi/src/ddsi_proxy_participant.c.o[0m
+[3.684s] [ 44%] Built target idlpp
+[3.709s] [ 45%] [32mBuilding C object src/core/CMakeFiles/ddsc.dir/ddsi/src/ddsi_endpoint.c.o[0m
+[3.710s] [ 45%] [32mBuilding C object src/core/CMakeFiles/ddsc.dir/ddsi/src/ddsi_proxy_endpoint.c.o[0m
+[3.714s] [ 45%] [32mBuilding C object src/core/CMakeFiles/ddsc.dir/ddsi/src/ddsi_topic.c.o[0m
+[3.753s] [ 46%] [32mBuilding C object src/core/CMakeFiles/ddsc.dir/ddsi/src/q_bitset_inlines.c.o[0m
+[3.770s] [ 46%] [32mBuilding C object src/core/CMakeFiles/ddsc.dir/ddsi/src/q_addrset.c.o[0m
+[3.780s] [ 46%] Built target ddsrt-internal
+[3.800s] [ 46%] [32mBuilding C object src/core/CMakeFiles/ddsc.dir/ddsi/src/q_bswap.c.o[0m
+[3.804s] [ 47%] [32mBuilding C object src/core/CMakeFiles/ddsc.dir/ddsi/src/q_ddsi_discovery.c.o[0m
+[3.812s] [ 47%] [32mBuilding C object src/core/CMakeFiles/ddsc.dir/ddsi/src/q_gc.c.o[0m
+[3.829s] [ 47%] [32mBuilding C object src/core/CMakeFiles/ddsc.dir/ddsi/src/q_debmon.c.o[0m
+[3.863s] [ 47%] [32m[1mLinking C shared library ../../lib/libcycloneddsidl.so[0m
+[3.892s] [ 48%] [32mBuilding C object src/core/CMakeFiles/ddsc.dir/ddsi/src/q_init.c.o[0m
+[3.913s] [ 48%] [32mBuilding C object src/core/CMakeFiles/ddsc.dir/ddsi/src/q_lat_estim.c.o[0m
+[3.916s] [ 49%] [32mBuilding C object src/core/CMakeFiles/ddsc.dir/ddsi/src/q_lease.c.o[0m
+[3.956s] [ 49%] [32mBuilding C object src/core/CMakeFiles/ddsc.dir/ddsi/src/q_misc.c.o[0m
+[4.016s] [ 49%] [32mBuilding C object src/core/CMakeFiles/ddsc.dir/ddsi/src/q_pcap.c.o[0m
+[4.035s] [ 50%] [32mBuilding C object src/core/CMakeFiles/ddsc.dir/ddsi/src/q_qosmatch.c.o[0m
+[4.118s] [ 50%] Built target idl
+[4.127s] [ 50%] [32mBuilding C object src/core/CMakeFiles/ddsc.dir/ddsi/src/q_radmin.c.o[0m
+[4.134s] [ 50%] [32mBuilding C object src/core/CMakeFiles/ddsc.dir/ddsi/src/q_receive.c.o[0m
+[4.208s] [ 51%] [32mBuilding C object src/core/CMakeFiles/ddsc.dir/ddsi/src/q_sockwaitset.c.o[0m
+[4.208s] [ 51%] [32mBuilding C object src/core/CMakeFiles/ddsc.dir/ddsi/src/q_thread.c.o[0m
+[4.208s] [ 52%] [32mBuilding C object src/core/CMakeFiles/ddsc.dir/ddsi/src/q_transmit.c.o[0m
+[4.215s] [ 52%] [32mBuilding C object src/core/CMakeFiles/ddsc.dir/ddsi/src/q_inverse_uint32_set.c.o[0m
+[4.291s] [ 52%] [32mBuilding C object src/core/CMakeFiles/ddsc.dir/ddsi/src/q_whc.c.o[0m
+[4.297s] [ 52%] [32mBuilding C object src/core/CMakeFiles/ddsc.dir/ddsi/src/q_xmsg.c.o[0m
+[4.298s] [ 53%] [32mBuilding C object src/core/CMakeFiles/ddsc.dir/ddsi/src/q_xevent.c.o[0m
+[4.354s] [ 53%] [32mBuilding C object src/core/CMakeFiles/ddsc.dir/ddsi/src/q_freelist.c.o[0m
+[4.365s] [ 54%] [32mBuilding C object src/core/CMakeFiles/ddsc.dir/ddsi/src/sysdeps.c.o[0m
+[4.394s] [ 54%] [32mBuilding C object src/core/CMakeFiles/ddsc.dir/ddsi/src/ddsi_lifespan.c.o[0m
+[4.402s] [ 54%] [32mBuilding C object src/core/CMakeFiles/ddsc.dir/ddsi/src/ddsi_xt_typelookup.c.o[0m
+[4.404s] [ 55%] [32mBuilding C object src/core/CMakeFiles/ddsc.dir/ddsi/src/ddsi_xt_typeinfo.c.o[0m
+[4.473s] [ 55%] [32mBuilding C object src/core/CMakeFiles/ddsc.dir/ddsi/src/ddsi_xt_typemap.c.o[0m
+[4.493s] [ 55%] [32mBuilding C object src/core/CMakeFiles/ddsc.dir/ddsi/src/ddsi_typewrap.c.o[0m
+[4.499s] [ 56%] [32mBuilding C object src/core/CMakeFiles/ddsc.dir/ddsi/src/ddsi_typebuilder.c.o[0m
+[4.507s] [ 56%] [32mBuilding C object src/core/CMakeFiles/ddsc.dir/ddsi/src/ddsi_security_msg.c.o[0m
+[4.510s] [ 57%] [32mBuilding C object src/core/CMakeFiles/ddsc.dir/ddsi/src/ddsi_typelookup.c.o[0m
+[4.597s] [ 57%] [32mBuilding C object src/core/CMakeFiles/ddsc.dir/ddsc/src/dds_alloc.c.o[0m
+[4.597s] [ 57%] [32mBuilding C object src/core/CMakeFiles/ddsc.dir/ddsi/defconfig.c.o[0m
+[4.597s] [ 58%] [32mBuilding C object src/core/CMakeFiles/ddsc.dir/ddsi/src/ddsi_shm_transport.c.o[0m
+[4.597s] [ 59%] [32mBuilding C object src/core/CMakeFiles/ddsc.dir/ddsc/src/dds_builtin.c.o[0m
+[4.601s] [ 59%] [32mBuilding C object src/core/CMakeFiles/ddsc.dir/ddsi/src/ddsi_security_exchange.c.o[0m
+[4.687s] [ 59%] [32mBuilding C object src/core/CMakeFiles/ddsc.dir/ddsc/src/dds_coherent.c.o[0m
+[4.759s] [ 60%] [32mBuilding C object src/core/CMakeFiles/ddsc.dir/ddsc/src/dds_participant.c.o[0m
+[4.792s] [ 60%] [32mBuilding C object src/core/CMakeFiles/ddsc.dir/ddsc/src/dds_writer.c.o[0m
+[4.794s] [ 61%] [32mBuilding C object src/core/CMakeFiles/ddsc.dir/ddsc/src/dds_init.c.o[0m
+[4.829s] [ 61%] [32mBuilding C object src/core/CMakeFiles/ddsc.dir/ddsc/src/dds_reader.c.o[0m
+[4.951s] [ 61%] [32mBuilding C object src/core/CMakeFiles/ddsc.dir/ddsc/src/dds_rhc.c.o[0m
+[4.963s] [ 62%] [32mBuilding C object src/core/CMakeFiles/ddsc.dir/ddsc/src/dds_rhc_default.c.o[0m
+[4.965s] [ 62%] [32mBuilding C object src/core/CMakeFiles/ddsc.dir/ddsc/src/dds_domain.c.o[0m
+[4.989s] [ 62%] [32mBuilding C object src/core/CMakeFiles/ddsc.dir/ddsc/src/dds_publisher.c.o[0m
+[5.034s] [ 63%] [32mBuilding C object src/core/CMakeFiles/ddsc.dir/ddsc/src/dds_instance.c.o[0m
+[5.046s] [ 63%] [32mBuilding C object src/core/CMakeFiles/ddsc.dir/ddsc/src/dds_qos.c.o[0m
+[5.070s] [ 64%] [32mBuilding C object src/core/CMakeFiles/ddsc.dir/ddsc/src/dds_entity.c.o[0m
+[5.081s] [ 64%] [32mBuilding C object src/core/CMakeFiles/ddsc.dir/ddsc/src/dds_handles.c.o[0m
+[5.159s] [ 64%] [32mBuilding C object src/core/CMakeFiles/ddsc.dir/ddsc/src/dds_matched.c.o[0m
+[5.212s] [ 65%] [32mBuilding C object src/core/CMakeFiles/ddsc.dir/ddsc/src/dds_querycond.c.o[0m
+[5.340s] [ 65%] [32mBuilding C object src/core/CMakeFiles/ddsc.dir/ddsc/src/dds_topic.c.o[0m
+[5.405s] [ 66%] [32mBuilding C object src/core/CMakeFiles/ddsc.dir/ddsc/src/dds_read.c.o[0m
+[5.422s] [ 66%] [32mBuilding C object src/core/CMakeFiles/ddsc.dir/ddsc/src/dds_listener.c.o[0m
+[5.463s] [ 66%] [32mBuilding C object src/core/CMakeFiles/ddsc.dir/ddsc/src/dds_waitset.c.o[0m
+[5.547s] [ 66%] [32mBuilding C object src/core/CMakeFiles/ddsc.dir/ddsc/src/dds_readcond.c.o[0m
+[5.600s] [ 67%] [32mBuilding C object src/core/CMakeFiles/ddsc.dir/ddsc/src/dds_guardcond.c.o[0m
+[5.707s] [ 67%] [32mBuilding C object src/core/CMakeFiles/ddsc.dir/ddsc/src/dds_statistics.c.o[0m
+[5.709s] [ 67%] [32mBuilding C object src/core/CMakeFiles/ddsc.dir/ddsc/src/dds_write.c.o[0m
+[5.724s] [ 68%] [32mBuilding C object src/core/CMakeFiles/ddsc.dir/ddsc/src/dds_subscriber.c.o[0m
+[5.811s] [ 68%] [32mBuilding C object src/core/CMakeFiles/ddsc.dir/ddsc/src/dds_whc.c.o[0m
+[5.933s] [ 69%] [32mBuilding C object src/core/CMakeFiles/ddsc.dir/ddsc/src/dds_whc_builtintopic.c.o[0m
+[5.951s] [ 69%] [32mBuilding C object src/core/CMakeFiles/ddsc.dir/ddsc/src/dds_serdata_builtintopic.c.o[0m
+[5.958s] [ 70%] [32mBuilding C object src/core/CMakeFiles/ddsc.dir/ddsc/src/dds_sertype_builtintopic.c.o[0m
+[5.985s] [ 70%] [32mBuilding C object src/core/CMakeFiles/ddsc.dir/ddsc/src/dds_data_allocator.c.o[0m
+[6.011s] [ 70%] [32mBuilding C object src/core/CMakeFiles/ddsc.dir/ddsc/src/dds_loan.c.o[0m
+[6.117s] [ 71%] [32mBuilding C object src/core/CMakeFiles/ddsc.dir/ddsc/src/shm_monitor.c.o[0m
+[6.121s] [ 71%] [32mBuilding C object src/core/CMakeFiles/ddsc.dir/__/security/core/src/dds_security_serialize.c.o[0m
+[6.182s] [ 71%] [32mBuilding C object src/core/CMakeFiles/ddsc.dir/__/security/core/src/dds_security_utils.c.o[0m
+[6.203s] [ 72%] [32mBuilding C object src/core/CMakeFiles/ddsc.dir/__/security/core/src/dds_security_plugins.c.o[0m
+[6.269s] [ 72%] [32mBuilding C object src/core/CMakeFiles/ddsc.dir/__/security/core/src/shared_secret.c.o[0m
+[6.323s] [ 72%] [32mBuilding C object src/core/CMakeFiles/ddsc.dir/__/security/core/src/dds_security_timed_cb.c.o[0m
+[6.337s] [ 73%] [32mBuilding C object src/core/CMakeFiles/ddsc.dir/__/security/core/src/dds_security_fsm.c.o[0m
+[6.347s] [ 73%] [32mBuilding C object src/core/CMakeFiles/ddsc.dir/__/ddsrt/src/atomics.c.o[0m
+[6.426s] [ 73%] [32mBuilding C object src/core/CMakeFiles/ddsc.dir/__/ddsrt/src/io.c.o[0m
+[6.435s] [ 74%] [32mBuilding C object src/core/CMakeFiles/ddsc.dir/__/ddsrt/src/avl.c.o[0m
+[6.446s] [ 74%] [32mBuilding C object src/core/CMakeFiles/ddsc.dir/__/ddsrt/src/bswap.c.o[0m
+[6.500s] [ 75%] [32mBuilding C object src/core/CMakeFiles/ddsc.dir/__/ddsrt/src/log.c.o[0m
+[6.579s] [ 75%] [32mBuilding C object src/core/CMakeFiles/ddsc.dir/__/ddsrt/src/retcode.c.o[0m
+[6.597s] [ 76%] [32mBuilding C object src/core/CMakeFiles/ddsc.dir/__/ddsrt/src/strtod.c.o[0m
+[6.646s] [ 76%] [32mBuilding C object src/core/CMakeFiles/ddsc.dir/__/ddsrt/src/strtol.c.o[0m
+[6.648s] [ 76%] [32mBuilding C object src/core/CMakeFiles/ddsc.dir/__/ddsrt/src/mh3.c.o[0m
+[6.696s] [ 77%] [32mBuilding C object src/core/CMakeFiles/ddsc.dir/__/ddsrt/src/environ.c.o[0m
+[6.731s] [ 77%] [32mBuilding C object src/core/CMakeFiles/ddsc.dir/__/ddsrt/src/expand_vars.c.o[0m
+[6.774s] [ 78%] [32mBuilding C object src/core/CMakeFiles/ddsc.dir/__/ddsrt/src/fibheap.c.o[0m
+[6.814s] [ 78%] [32mBuilding C object src/core/CMakeFiles/ddsc.dir/__/ddsrt/src/string.c.o[0m
+[6.814s] [ 78%] [32mBuilding C object src/core/CMakeFiles/ddsc.dir/__/ddsrt/src/hopscotch.c.o[0m
+[6.820s] [ 79%] [32mBuilding C object src/core/CMakeFiles/ddsc.dir/__/ddsrt/src/circlist.c.o[0m
+[6.820s] [ 79%] [32mBuilding C object src/core/CMakeFiles/ddsc.dir/__/ddsrt/src/threads.c.o[0m
+[6.919s] [ 79%] [32mBuilding C object src/core/CMakeFiles/ddsc.dir/__/ddsrt/src/sockets.c.o[0m
+[6.929s] [ 80%] [32mBuilding C object src/core/CMakeFiles/ddsc.dir/__/ddsrt/src/md5.c.o[0m
+[6.983s] [ 80%] [32mBuilding C object src/core/CMakeFiles/ddsc.dir/__/ddsrt/src/xmlparser.c.o[0m
+[7.019s] [ 81%] [32mBuilding C object src/core/CMakeFiles/ddsc.dir/__/ddsrt/src/ifaddrs.c.o[0m
+[7.022s] [ 81%] [32mBuilding C object src/core/CMakeFiles/ddsc.dir/__/ddsrt/src/cdtors.c.o[0m
+[7.037s] [ 81%] [32mBuilding C object src/core/CMakeFiles/ddsc.dir/__/ddsrt/src/random.c.o[0m
+[7.037s] [ 82%] [32mBuilding C object src/core/CMakeFiles/ddsc.dir/__/ddsrt/src/time.c.o[0m
+[7.121s] [ 82%] [32mBuilding C object src/core/CMakeFiles/ddsc.dir/__/ddsrt/src/ifaddrs/posix/ifaddrs.c.o[0m
+[7.131s] [ 82%] [32mBuilding C object src/core/CMakeFiles/ddsc.dir/__/ddsrt/src/sockets/posix/socket.c.o[0m
+[7.229s] [ 83%] [32mBuilding C object src/core/CMakeFiles/ddsc.dir/__/ddsrt/src/heap/posix/heap.c.o[0m
+[7.231s] [ 83%] [32mBuilding C object src/core/CMakeFiles/ddsc.dir/__/ddsrt/src/sockets/posix/gethostname.c.o[0m
+[7.251s] [ 84%] [32mBuilding C object src/core/CMakeFiles/ddsc.dir/__/ddsrt/src/dynlib/posix/dynlib.c.o[0m
+[7.251s] [ 84%] [32mBuilding C object src/core/CMakeFiles/ddsc.dir/__/ddsrt/src/environ/posix/environ.c.o[0m
+[7.327s] [ 84%] [32mBuilding C object src/core/CMakeFiles/ddsc.dir/__/ddsrt/src/filesystem/posix/filesystem.c.o[0m
+[7.336s] [ 84%] [32mBuilding C object src/core/CMakeFiles/ddsc.dir/__/ddsrt/src/random/posix/random.c.o[0m
+[7.336s] [ 85%] [32mBuilding C object src/core/CMakeFiles/ddsc.dir/__/ddsrt/src/sync/posix/sync.c.o[0m
+[7.343s] [ 86%] [32mBuilding C object src/core/CMakeFiles/ddsc.dir/__/ddsrt/src/process/posix/process.c.o[0m
+[7.343s] [ 86%] [32mBuilding C object src/core/CMakeFiles/ddsc.dir/__/ddsrt/src/threads/posix/threads.c.o[0m
+[7.365s] [ 86%] [32mBuilding C object src/core/CMakeFiles/ddsc.dir/__/ddsrt/src/netstat/linux/netstat.c.o[0m
+[7.401s] [ 87%] [32mBuilding C object src/core/CMakeFiles/ddsc.dir/__/ddsrt/src/time/posix/time.c.o[0m
+[7.444s] [ 87%] [32mBuilding C object src/core/CMakeFiles/ddsc.dir/__/ddsrt/src/rusage/posix/rusage.c.o[0m
+[9.025s] [ 87%] [32m[1mLinking C shared library ../../lib/libddsc.so[0m
+[10.371s] [ 87%] Built target ddsc
+[10.420s] [ 88%] [32mBuilding C object src/tools/idlc/CMakeFiles/idlc.dir/src/idlc.c.o[0m
+[10.421s] [ 88%] [32mBuilding C object src/security/builtin_plugins/authentication/CMakeFiles/dds_security_auth.dir/src/authentication.c.o[0m
+[10.429s] [ 88%] [32mBuilding C object src/tools/idlc/CMakeFiles/idlc.dir/src/descriptor.c.o[0m
+[10.432s] [ 89%] [32mBuilding C object src/security/builtin_plugins/cryptographic/CMakeFiles/dds_security_crypto.dir/src/crypto_cipher.c.o[0m
+[10.432s] [ 90%] [32mBuilding C object src/security/builtin_plugins/cryptographic/CMakeFiles/dds_security_crypto.dir/src/crypto_objects.c.o[0m
+[10.434s] [ 91%] [32mBuilding C object src/tools/idlc/CMakeFiles/idlc.dir/src/options.c.o[0m
+[10.434s] [ 91%] [32mBuilding C object src/security/builtin_plugins/cryptographic/CMakeFiles/dds_security_crypto.dir/src/crypto_key_exchange.c.o[0m
+[10.437s] [ 91%] [32mBuilding C object src/security/builtin_plugins/cryptographic/CMakeFiles/dds_security_crypto.dir/src/crypto_transform.c.o[0m
+[10.437s] [ 91%] [32mBuilding C object src/tools/idlc/CMakeFiles/idlc.dir/src/generator.c.o[0m
+[10.444s] [ 92%] [32mBuilding C object src/security/builtin_plugins/cryptographic/CMakeFiles/dds_security_crypto.dir/src/crypto_utils.c.o[0m
+[10.447s] [ 91%] [32mBuilding C object src/security/builtin_plugins/authentication/CMakeFiles/dds_security_auth.dir/__/__/openssl/src/openssl_support.c.o[0m
+[10.448s] [ 92%] [32mBuilding C object src/tools/idlc/CMakeFiles/idlc.dir/src/descriptor_type_meta.c.o[0m
+[10.448s] [ 92%] [32mBuilding C object src/security/builtin_plugins/cryptographic/CMakeFiles/dds_security_crypto.dir/src/crypto_key_factory.c.o[0m
+[10.450s] [ 93%] [32mBuilding C object src/tools/idlc/CMakeFiles/idlc.dir/src/types.c.o[0m
+[10.452s] [ 92%] [32mBuilding C object src/security/builtin_plugins/access_control/CMakeFiles/dds_security_ac.dir/src/access_control_parser.c.o[0m
+[10.454s] [ 94%] [32mBuilding C object src/security/builtin_plugins/authentication/CMakeFiles/dds_security_auth.dir/src/auth_utils.c.o[0m
+[10.454s] [ 94%] [32mBuilding C object src/security/builtin_plugins/cryptographic/CMakeFiles/dds_security_crypto.dir/src/cryptography.c.o[0m
+[10.456s] [ 95%] [32mBuilding C object src/security/builtin_plugins/access_control/CMakeFiles/dds_security_ac.dir/src/access_control_utils.c.o[0m
+[10.458s] [ 95%] [32mBuilding C object src/security/builtin_plugins/access_control/CMakeFiles/dds_security_ac.dir/src/access_control_objects.c.o[0m
+[10.474s] [ 95%] [32mBuilding C object src/security/builtin_plugins/access_control/CMakeFiles/dds_security_ac.dir/src/access_control.c.o[0m
+[10.478s] [ 95%] [32mBuilding C object src/security/builtin_plugins/cryptographic/CMakeFiles/dds_security_crypto.dir/__/__/openssl/src/openssl_support.c.o[0m
+[10.508s] [ 95%] [32mBuilding C object src/tools/idlc/CMakeFiles/idlc.dir/src/plugin.c.o[0m
+[10.702s] [ 95%] [32mBuilding C object src/security/builtin_plugins/access_control/CMakeFiles/dds_security_ac.dir/__/__/openssl/src/openssl_support.c.o[0m
+[11.815s] [ 95%] [32m[1mLinking C executable ../../../bin/idlc[0m
+[11.958s] [ 96%] [32m[1mLinking C shared library ../../../../lib/libdds_security_crypto.so[0m
+[11.993s] [ 96%] [32m[1mLinking C shared library ../../../../lib/libdds_security_auth.so[0m
+[12.098s] [ 96%] Built target dds_security_crypto
+[12.122s] [ 96%] Built target idlc
+[12.154s] [ 96%] Built target dds_security_auth
+[12.154s] [ 96%] [34m[1mGenerating ddsperf_types.c, ddsperf_types.h[0m
+[12.180s] [ 96%] Built target ddsperf_types_generate
+[12.195s] [ 96%] [32mBuilding C object src/tools/ddsperf/CMakeFiles/ddsperf.dir/ddsperf.c.o[0m
+[12.196s] [ 97%] [32mBuilding C object src/tools/ddsperf/CMakeFiles/ddsperf.dir/cputime.c.o[0m
+[12.199s] [ 97%] [32mBuilding C object src/tools/ddsperf/CMakeFiles/ddsperf.dir/netload.c.o[0m
+[12.201s] [ 98%] [32mBuilding C object src/tools/ddsperf/CMakeFiles/ddsperf.dir/ddsperf_types.c.o[0m
+[12.201s] [ 98%] [32mBuilding C object src/tools/ddsperf/CMakeFiles/ddsperf.dir/async_listener.c.o[0m
+[12.395s] [ 99%] [32m[1mLinking C shared library ../../../../lib/libdds_security_ac.so[0m
+[12.827s] [ 99%] Built target dds_security_ac
+[13.089s] [ 99%] [32m[1mLinking C executable ../../../bin/ddsperf[0m
+[13.334s] [100%] Built target ddsperf
+[13.438s] Invoked command in '/home/ruben/go2_deploy/workhop_rl/build/cyclonedds' returned '0': CMAKE_PREFIX_PATH=/opt/ros/humble /usr/bin/cmake --build /home/ruben/go2_deploy/workhop_rl/build/cyclonedds -- -j22 -l22
+[13.467s] Invoking command in '/home/ruben/go2_deploy/workhop_rl/build/cyclonedds': CMAKE_PREFIX_PATH=/opt/ros/humble /usr/bin/cmake --install /home/ruben/go2_deploy/workhop_rl/build/cyclonedds
+[13.492s] -- Install configuration: "RelWithDebInfo"
+[13.495s] -- Installing: /home/ruben/go2_deploy/workhop_rl/install/cyclonedds/lib/cmake/CycloneDDS/CycloneDDSConfig.cmake
+[13.495s] -- Installing: /home/ruben/go2_deploy/workhop_rl/install/cyclonedds/lib/cmake/CycloneDDS/CycloneDDSConfigVersion.cmake
+[13.495s] -- Installing: /home/ruben/go2_deploy/workhop_rl/install/cyclonedds/lib/cmake/CycloneDDS/CycloneDDSTargets.cmake
+[13.495s] -- Installing: /home/ruben/go2_deploy/workhop_rl/install/cyclonedds/lib/cmake/CycloneDDS/CycloneDDSTargets-relwithdebinfo.cmake
+[13.495s] -- Installing: /home/ruben/go2_deploy/workhop_rl/install/cyclonedds/lib/pkgconfig/CycloneDDS.pc
+[13.495s] -- Installing: /home/ruben/go2_deploy/workhop_rl/install/cyclonedds/include/idlc
+[13.495s] -- Installing: /home/ruben/go2_deploy/workhop_rl/install/cyclonedds/include/idlc/options.h
+[13.495s] -- Installing: /home/ruben/go2_deploy/workhop_rl/install/cyclonedds/include/idlc/generator.h
+[13.495s] -- Installing: /home/ruben/go2_deploy/workhop_rl/install/cyclonedds/bin/idlc
+[13.506s] -- Set runtime path of "/home/ruben/go2_deploy/workhop_rl/install/cyclonedds/bin/idlc" to "$ORIGIN/../lib"
+[13.506s] -- Installing: /home/ruben/go2_deploy/workhop_rl/install/cyclonedds/lib/cmake/CycloneDDS/idlc/Generate.cmake
+[13.506s] -- Installing: /home/ruben/go2_deploy/workhop_rl/install/cyclonedds/bin/ddsperf
+[13.511s] -- Set runtime path of "/home/ruben/go2_deploy/workhop_rl/install/cyclonedds/bin/ddsperf" to "$ORIGIN/../lib"
+[13.512s] -- Up-to-date: /home/ruben/go2_deploy/workhop_rl/install/cyclonedds/include
+[13.512s] -- Installing: /home/ruben/go2_deploy/workhop_rl/install/cyclonedds/include/dds
+[13.512s] -- Installing: /home/ruben/go2_deploy/workhop_rl/install/cyclonedds/include/dds/ddsrt
+[13.512s] -- Installing: /home/ruben/go2_deploy/workhop_rl/install/cyclonedds/include/dds/ddsrt/sync.h
+[13.512s] -- Installing: /home/ruben/go2_deploy/workhop_rl/install/cyclonedds/include/dds/ddsrt/ifaddrs.h
+[13.512s] -- Installing: /home/ruben/go2_deploy/workhop_rl/install/cyclonedds/include/dds/ddsrt/sockets
+[13.512s] -- Installing: /home/ruben/go2_deploy/workhop_rl/install/cyclonedds/include/dds/ddsrt/sockets/windows.h
+[13.512s] -- Installing: /home/ruben/go2_deploy/workhop_rl/install/cyclonedds/include/dds/ddsrt/sockets/posix.h
+[13.513s] -- Installing: /home/ruben/go2_deploy/workhop_rl/install/cyclonedds/include/dds/ddsrt/random.h
+[13.513s] -- Installing: /home/ruben/go2_deploy/workhop_rl/install/cyclonedds/include/dds/ddsrt/retcode.h
+[13.513s] -- Installing: /home/ruben/go2_deploy/workhop_rl/install/cyclonedds/include/dds/ddsrt/circlist.h
+[13.513s] -- Installing: /home/ruben/go2_deploy/workhop_rl/install/cyclonedds/include/dds/ddsrt/xmlparser.h
+[13.513s] -- Installing: /home/ruben/go2_deploy/workhop_rl/install/cyclonedds/include/dds/ddsrt/filesystem
+[13.513s] -- Installing: /home/ruben/go2_deploy/workhop_rl/install/cyclonedds/include/dds/ddsrt/filesystem/windows.h
+[13.513s] -- Installing: /home/ruben/go2_deploy/workhop_rl/install/cyclonedds/include/dds/ddsrt/filesystem/posix.h
+[13.514s] -- Installing: /home/ruben/go2_deploy/workhop_rl/install/cyclonedds/include/dds/ddsrt/fibheap.h
+[13.514s] -- Installing: /home/ruben/go2_deploy/workhop_rl/install/cyclonedds/include/dds/ddsrt/iovec.h
+[13.514s] -- Installing: /home/ruben/go2_deploy/workhop_rl/install/cyclonedds/include/dds/ddsrt/cdtors.h
+[13.514s] -- Installing: /home/ruben/go2_deploy/workhop_rl/install/cyclonedds/include/dds/ddsrt/types.h
+[13.514s] -- Installing: /home/ruben/go2_deploy/workhop_rl/install/cyclonedds/include/dds/ddsrt/arch.h
+[13.514s] -- Installing: /home/ruben/go2_deploy/workhop_rl/install/cyclonedds/include/dds/ddsrt/log.h
+[13.520s] -- Installing: /home/ruben/go2_deploy/workhop_rl/install/cyclonedds/include/dds/ddsrt/sockets.h
+[13.520s] -- Installing: /home/ruben/go2_deploy/workhop_rl/install/cyclonedds/include/dds/ddsrt/bswap.h
+[13.520s] -- Installing: /home/ruben/go2_deploy/workhop_rl/install/cyclonedds/include/dds/ddsrt/atomics
+[13.520s] -- Installing: /home/ruben/go2_deploy/workhop_rl/install/cyclonedds/include/dds/ddsrt/atomics/sun.h
+[13.520s] -- Installing: /home/ruben/go2_deploy/workhop_rl/install/cyclonedds/include/dds/ddsrt/atomics/gcc.h
+[13.520s] -- Installing: /home/ruben/go2_deploy/workhop_rl/install/cyclonedds/include/dds/ddsrt/atomics/msvc.h
+[13.520s] -- Installing: /home/ruben/go2_deploy/workhop_rl/install/cyclonedds/include/dds/ddsrt/atomics/arm.h
+[13.520s] -- Installing: /home/ruben/go2_deploy/workhop_rl/install/cyclonedds/include/dds/ddsrt/mh3.h
+[13.520s] -- Installing: /home/ruben/go2_deploy/workhop_rl/install/cyclonedds/include/dds/ddsrt/threads.h
+[13.520s] -- Installing: /home/ruben/go2_deploy/workhop_rl/install/cyclonedds/include/dds/ddsrt/misc.h
+[13.521s] -- Installing: /home/ruben/go2_deploy/workhop_rl/install/cyclonedds/include/dds/ddsrt/hopscotch.h
+[13.521s] -- Installing: /home/ruben/go2_deploy/workhop_rl/install/cyclonedds/include/dds/ddsrt/filesystem.h
+[13.521s] -- Installing: /home/ruben/go2_deploy/workhop_rl/install/cyclonedds/include/dds/ddsrt/threads
+[13.521s] -- Installing: /home/ruben/go2_deploy/workhop_rl/install/cyclonedds/include/dds/ddsrt/threads/windows.h
+[13.521s] -- Installing: /home/ruben/go2_deploy/workhop_rl/install/cyclonedds/include/dds/ddsrt/threads/posix.h
+[13.521s] -- Installing: /home/ruben/go2_deploy/workhop_rl/install/cyclonedds/include/dds/ddsrt/threads/freertos.h
+[13.521s] -- Installing: /home/ruben/go2_deploy/workhop_rl/install/cyclonedds/include/dds/ddsrt/endian.h
+[13.525s] -- Installing: /home/ruben/go2_deploy/workhop_rl/install/cyclonedds/include/dds/ddsrt/static_assert.h
+[13.525s] -- Installing: /home/ruben/go2_deploy/workhop_rl/install/cyclonedds/include/dds/ddsrt/process.h
+[13.525s] -- Installing: /home/ruben/go2_deploy/workhop_rl/install/cyclonedds/include/dds/ddsrt/time
+[13.525s] -- Installing: /home/ruben/go2_deploy/workhop_rl/install/cyclonedds/include/dds/ddsrt/time/freertos.h
+[13.525s] -- Installing: /home/ruben/go2_deploy/workhop_rl/install/cyclonedds/include/dds/ddsrt/io.h
+[13.530s] -- Installing: /home/ruben/go2_deploy/workhop_rl/install/cyclonedds/include/dds/ddsrt/rusage.h
+[13.530s] -- Installing: /home/ruben/go2_deploy/workhop_rl/install/cyclonedds/include/dds/ddsrt/expand_vars.h
+[13.530s] -- Installing: /home/ruben/go2_deploy/workhop_rl/install/cyclonedds/include/dds/ddsrt/heap.h
+[13.530s] -- Installing: /home/ruben/go2_deploy/workhop_rl/install/cyclonedds/include/dds/ddsrt/types
+[13.531s] -- Installing: /home/ruben/go2_deploy/workhop_rl/install/cyclonedds/include/dds/ddsrt/types/windows.h
+[13.531s] -- Installing: /home/ruben/go2_deploy/workhop_rl/install/cyclonedds/include/dds/ddsrt/types/vxworks.h
+[13.531s] -- Installing: /home/ruben/go2_deploy/workhop_rl/install/cyclonedds/include/dds/ddsrt/types/posix.h
+[13.531s] -- Installing: /home/ruben/go2_deploy/workhop_rl/install/cyclonedds/include/dds/ddsrt/time.h
+[13.531s] -- Installing: /home/ruben/go2_deploy/workhop_rl/install/cyclonedds/include/dds/ddsrt/atomics.h
+[13.531s] -- Installing: /home/ruben/go2_deploy/workhop_rl/install/cyclonedds/include/dds/ddsrt/environ.h
+[13.532s] -- Installing: /home/ruben/go2_deploy/workhop_rl/install/cyclonedds/include/dds/ddsrt/countargs.h
+[13.532s] -- Installing: /home/ruben/go2_deploy/workhop_rl/install/cyclonedds/include/dds/ddsrt/md5.h
+[13.532s] -- Installing: /home/ruben/go2_deploy/workhop_rl/install/cyclonedds/include/dds/ddsrt/string.h
+[13.532s] -- Installing: /home/ruben/go2_deploy/workhop_rl/install/cyclonedds/include/dds/ddsrt/attributes.h
+[13.532s] -- Installing: /home/ruben/go2_deploy/workhop_rl/install/cyclonedds/include/dds/ddsrt/strtol.h
+[13.532s] -- Installing: /home/ruben/go2_deploy/workhop_rl/install/cyclonedds/include/dds/ddsrt/strtod.h
+[13.532s] -- Installing: /home/ruben/go2_deploy/workhop_rl/install/cyclonedds/include/dds/ddsrt/netstat.h
+[13.533s] -- Installing: /home/ruben/go2_deploy/workhop_rl/install/cyclonedds/include/dds/ddsrt/avl.h
+[13.533s] -- Installing: /home/ruben/go2_deploy/workhop_rl/install/cyclonedds/include/dds/ddsrt/sched.h
+[13.533s] -- Installing: /home/ruben/go2_deploy/workhop_rl/install/cyclonedds/include/dds/ddsrt/sync
+[13.533s] -- Installing: /home/ruben/go2_deploy/workhop_rl/install/cyclonedds/include/dds/ddsrt/sync/windows.h
+[13.533s] -- Installing: /home/ruben/go2_deploy/workhop_rl/install/cyclonedds/include/dds/ddsrt/sync/posix.h
+[13.533s] -- Installing: /home/ruben/go2_deploy/workhop_rl/install/cyclonedds/include/dds/ddsrt/sync/freertos.h
+[13.533s] -- Installing: /home/ruben/go2_deploy/workhop_rl/install/cyclonedds/include/dds/ddsrt/dynlib.h
+[13.544s] -- Installing: /home/ruben/go2_deploy/workhop_rl/install/cyclonedds/include/dds/ddsrt/align.h
+[13.544s] -- Up-to-date: /home/ruben/go2_deploy/workhop_rl/install/cyclonedds/include
+[13.544s] -- Up-to-date: /home/ruben/go2_deploy/workhop_rl/install/cyclonedds/include/dds
+[13.544s] -- Installing: /home/ruben/go2_deploy/workhop_rl/install/cyclonedds/include/dds/features.h
+[13.544s] -- Installing: /home/ruben/go2_deploy/workhop_rl/install/cyclonedds/include/dds/config.h
+[13.544s] -- Installing: /home/ruben/go2_deploy/workhop_rl/install/cyclonedds/include/dds/version.h
+[13.544s] -- Installing: /home/ruben/go2_deploy/workhop_rl/install/cyclonedds/include/idl
+[13.544s] -- Installing: /home/ruben/go2_deploy/workhop_rl/install/cyclonedds/include/idl/retcode.h
+[13.546s] -- Installing: /home/ruben/go2_deploy/workhop_rl/install/cyclonedds/include/idl/tree.h
+[13.546s] -- Installing: /home/ruben/go2_deploy/workhop_rl/install/cyclonedds/include/idl/scope.h
+[13.548s] -- Installing: /home/ruben/go2_deploy/workhop_rl/install/cyclonedds/include/idl/file.h
+[13.548s] -- Installing: /home/ruben/go2_deploy/workhop_rl/install/cyclonedds/include/idl/string.h
+[13.548s] -- Installing: /home/ruben/go2_deploy/workhop_rl/install/cyclonedds/include/idl/visit.h
+[13.548s] -- Installing: /home/ruben/go2_deploy/workhop_rl/install/cyclonedds/include/idl/stream.h
+[13.548s] -- Installing: /home/ruben/go2_deploy/workhop_rl/install/cyclonedds/include/idl/symbol.h
+[13.548s] -- Installing: /home/ruben/go2_deploy/workhop_rl/install/cyclonedds/include/idl/expression.h
+[13.549s] -- Installing: /home/ruben/go2_deploy/workhop_rl/install/cyclonedds/include/idl/processor.h
+[13.549s] -- Installing: /home/ruben/go2_deploy/workhop_rl/install/cyclonedds/include/idl/print.h
+[13.549s] -- Up-to-date: /home/ruben/go2_deploy/workhop_rl/install/cyclonedds/include/idl
+[13.549s] -- Installing: /home/ruben/go2_deploy/workhop_rl/install/cyclonedds/include/idl/misc.h
+[13.549s] -- Installing: /home/ruben/go2_deploy/workhop_rl/install/cyclonedds/include/idl/endian.h
+[13.550s] -- Installing: /home/ruben/go2_deploy/workhop_rl/install/cyclonedds/include/idl/md5.h
+[13.550s] -- Installing: /home/ruben/go2_deploy/workhop_rl/install/cyclonedds/include/idl/attributes.h
+[13.550s] -- Installing: /home/ruben/go2_deploy/workhop_rl/install/cyclonedds/include/idl/export.h
+[13.550s] -- Installing: /home/ruben/go2_deploy/workhop_rl/install/cyclonedds/include/idl/version.h
+[13.550s] -- Installing: /home/ruben/go2_deploy/workhop_rl/install/cyclonedds/lib/libcycloneddsidl.so.0.10.5
+[13.551s] -- Installing: /home/ruben/go2_deploy/workhop_rl/install/cyclonedds/lib/libcycloneddsidl.so.0
+[13.551s] -- Set runtime path of "/home/ruben/go2_deploy/workhop_rl/install/cyclonedds/lib/libcycloneddsidl.so.0.10.5" to "$ORIGIN/../lib"
+[13.552s] -- Installing: /home/ruben/go2_deploy/workhop_rl/install/cyclonedds/lib/libcycloneddsidl.so
+[13.552s] -- Up-to-date: /home/ruben/go2_deploy/workhop_rl/install/cyclonedds/include
+[13.553s] -- Up-to-date: /home/ruben/go2_deploy/workhop_rl/install/cyclonedds/include/dds
+[13.553s] -- Installing: /home/ruben/go2_deploy/workhop_rl/install/cyclonedds/include/dds/security
+[13.553s] -- Installing: /home/ruben/go2_deploy/workhop_rl/install/cyclonedds/include/dds/security/dds_security_api_access_control.h
+[13.556s] -- Installing: /home/ruben/go2_deploy/workhop_rl/install/cyclonedds/include/dds/security/dds_security_api_defs.h
+[13.556s] -- Installing: /home/ruben/go2_deploy/workhop_rl/install/cyclonedds/include/dds/security/dds_security_api.h
+[13.556s] -- Installing: /home/ruben/go2_deploy/workhop_rl/install/cyclonedds/include/dds/security/dds_security_api_cryptography.h
+[13.556s] -- Installing: /home/ruben/go2_deploy/workhop_rl/install/cyclonedds/include/dds/security/dds_security_api_types.h
+[13.556s] -- Installing: /home/ruben/go2_deploy/workhop_rl/install/cyclonedds/include/dds/security/dds_security_api_err.h
+[13.556s] -- Installing: /home/ruben/go2_deploy/workhop_rl/install/cyclonedds/include/dds/security/dds_security_api_authentication.h
+[13.556s] -- Installing: /home/ruben/go2_deploy/workhop_rl/install/cyclonedds/include/dds/security/core/
+[13.559s] -- Installing: /home/ruben/go2_deploy/workhop_rl/install/cyclonedds/include/dds/security/core//dds_security_serialize.h
+[13.562s] -- Installing: /home/ruben/go2_deploy/workhop_rl/install/cyclonedds/include/dds/security/core//dds_security_utils.h
+[13.562s] -- Installing: /home/ruben/go2_deploy/workhop_rl/install/cyclonedds/include/dds/security/core//dds_security_plugins.h
+[13.562s] -- Installing: /home/ruben/go2_deploy/workhop_rl/install/cyclonedds/include/dds/security/core//shared_secret.h
+[13.562s] -- Installing: /home/ruben/go2_deploy/workhop_rl/install/cyclonedds/include/dds/security/core//dds_security_types.h
+[13.562s] -- Installing: /home/ruben/go2_deploy/workhop_rl/install/cyclonedds/include/dds/security/core//dds_security_fsm.h
+[13.562s] -- Installing: /home/ruben/go2_deploy/workhop_rl/install/cyclonedds/include/dds/security/core//dds_security_timed_cb.h
+[13.563s] -- Installing: /home/ruben/go2_deploy/workhop_rl/install/cyclonedds/lib/libdds_security_ac.so
+[13.564s] -- Set runtime path of "/home/ruben/go2_deploy/workhop_rl/install/cyclonedds/lib/libdds_security_ac.so" to "$ORIGIN/../lib"
+[13.564s] -- Installing: /home/ruben/go2_deploy/workhop_rl/install/cyclonedds/lib/libdds_security_auth.so
+[13.565s] -- Set runtime path of "/home/ruben/go2_deploy/workhop_rl/install/cyclonedds/lib/libdds_security_auth.so" to "$ORIGIN/../lib"
+[13.565s] -- Installing: /home/ruben/go2_deploy/workhop_rl/install/cyclonedds/lib/libdds_security_crypto.so
+[13.567s] -- Set runtime path of "/home/ruben/go2_deploy/workhop_rl/install/cyclonedds/lib/libdds_security_crypto.so" to "$ORIGIN/../lib"
+[13.567s] -- Up-to-date: /home/ruben/go2_deploy/workhop_rl/install/cyclonedds/include
+[13.567s] -- Up-to-date: /home/ruben/go2_deploy/workhop_rl/install/cyclonedds/include/dds
+[13.568s] -- Installing: /home/ruben/go2_deploy/workhop_rl/install/cyclonedds/include/dds/ddsi
+[13.572s] -- Installing: /home/ruben/go2_deploy/workhop_rl/install/cyclonedds/include/dds/ddsi/ddsi_portmapping.h
+[13.572s] -- Installing: /home/ruben/go2_deploy/workhop_rl/install/cyclonedds/include/dds/ddsi/ddsi_xt_impl.h
+[13.572s] -- Installing: /home/ruben/go2_deploy/workhop_rl/install/cyclonedds/include/dds/ddsi/ddsi_deliver_locally.h
+[13.572s] -- Installing: /home/ruben/go2_deploy/workhop_rl/install/cyclonedds/include/dds/ddsi/ddsi_entity.h
+[13.572s] -- Installing: /home/ruben/go2_deploy/workhop_rl/install/cyclonedds/include/dds/ddsi/ddsi_vendor.h
+[13.572s] -- Installing: /home/ruben/go2_deploy/workhop_rl/install/cyclonedds/include/dds/ddsi/q_xevent.h
+[13.572s] -- Installing: /home/ruben/go2_deploy/workhop_rl/install/cyclonedds/include/dds/ddsi/ddsi_tran.h
+[13.572s] -- Installing: /home/ruben/go2_deploy/workhop_rl/install/cyclonedds/include/dds/ddsi/ddsi_xt_typelookup.idl
+[13.572s] -- Installing: /home/ruben/go2_deploy/workhop_rl/install/cyclonedds/include/dds/ddsi/q_bitset.h
+[13.572s] -- Installing: /home/ruben/go2_deploy/workhop_rl/install/cyclonedds/include/dds/ddsi/ddsi_plist.h
+[13.572s] -- Installing: /home/ruben/go2_deploy/workhop_rl/install/cyclonedds/include/dds/ddsi/ddsi_config.h
+[13.572s] -- Installing: /home/ruben/go2_deploy/workhop_rl/install/cyclonedds/include/dds/ddsi/q_qosmatch.h
+[13.573s] -- Installing: /home/ruben/go2_deploy/workhop_rl/install/cyclonedds/include/dds/ddsi/ddsi_raweth.h
+[13.573s] -- Installing: /home/ruben/go2_deploy/workhop_rl/install/cyclonedds/include/dds/ddsi/ddsi_ipaddr.h
+[13.573s] -- Installing: /home/ruben/go2_deploy/workhop_rl/install/cyclonedds/include/dds/ddsi/q_protocol.h
+[13.577s] -- Installing: /home/ruben/go2_deploy/workhop_rl/install/cyclonedds/include/dds/ddsi/ddsi_proxy_endpoint.h
+[13.581s] -- Installing: /home/ruben/go2_deploy/workhop_rl/install/cyclonedds/include/dds/ddsi/ddsi_plist_generic.h
+[13.581s] -- Installing: /home/ruben/go2_deploy/workhop_rl/install/cyclonedds/include/dds/ddsi/q_init.h
+[13.581s] -- Installing: /home/ruben/go2_deploy/workhop_rl/install/cyclonedds/include/dds/ddsi/q_pcap.h
+[13.581s] -- Installing: /home/ruben/go2_deploy/workhop_rl/install/cyclonedds/include/dds/ddsi/ddsi_time.h
+[13.581s] -- Installing: /home/ruben/go2_deploy/workhop_rl/install/cyclonedds/include/dds/ddsi/ddsi_serdata_default.h
+[13.581s] -- Installing: /home/ruben/go2_deploy/workhop_rl/install/cyclonedds/include/dds/ddsi/ddsi_xt_typeinfo.idl
+[13.581s] -- Installing: /home/ruben/go2_deploy/workhop_rl/install/cyclonedds/include/dds/ddsi/ddsi_iid.h
+[13.581s] -- Installing: /home/ruben/go2_deploy/workhop_rl/install/cyclonedds/include/dds/ddsi/ddsi_xt_typeinfo.h
+[13.581s] -- Installing: /home/ruben/go2_deploy/workhop_rl/install/cyclonedds/include/dds/ddsi/q_lat_estim.h
+[13.581s] -- Installing: /home/ruben/go2_deploy/workhop_rl/install/cyclonedds/include/dds/ddsi/ddsi_security_omg.h
+[13.581s] -- Installing: /home/ruben/go2_deploy/workhop_rl/install/cyclonedds/include/dds/ddsi/ddsi_locator.h
+[13.581s] -- Installing: /home/ruben/go2_deploy/workhop_rl/install/cyclonedds/include/dds/ddsi/q_xmsg.h
+[13.581s] -- Installing: /home/ruben/go2_deploy/workhop_rl/install/cyclonedds/include/dds/ddsi/ddsi_typelookup.h
+[13.581s] -- Installing: /home/ruben/go2_deploy/workhop_rl/install/cyclonedds/include/dds/ddsi/q_hbcontrol.h
+[13.581s] -- Installing: /home/ruben/go2_deploy/workhop_rl/install/cyclonedds/include/dds/ddsi/q_log.h
+[13.581s] -- Installing: /home/ruben/go2_deploy/workhop_rl/install/cyclonedds/include/dds/ddsi/q_debmon.h
+[13.582s] -- Installing: /home/ruben/go2_deploy/workhop_rl/install/cyclonedds/include/dds/ddsi/ddsi_serdata.h
+[13.582s] -- Installing: /home/ruben/go2_deploy/workhop_rl/install/cyclonedds/include/dds/ddsi/ddsi_cdrstream.h
+[13.582s] -- Installing: /home/ruben/go2_deploy/workhop_rl/install/cyclonedds/include/dds/ddsi/ddsi_xt_typemap.idl
+[13.582s] -- Installing: /home/ruben/go2_deploy/workhop_rl/install/cyclonedds/include/dds/ddsi/q_misc.h
+[13.584s] -- Installing: /home/ruben/go2_deploy/workhop_rl/install/cyclonedds/include/dds/ddsi/q_rtps.h
+[13.584s] -- Installing: /home/ruben/go2_deploy/workhop_rl/install/cyclonedds/include/dds/ddsi/q_bswap.h
+[13.584s] -- Installing: /home/ruben/go2_deploy/workhop_rl/install/cyclonedds/include/dds/ddsi/ddsi_udp.h
+[13.584s] -- Installing: /home/ruben/go2_deploy/workhop_rl/install/cyclonedds/include/dds/ddsi/ddsi_serdata_plist.h
+[13.584s] -- Installing: /home/ruben/go2_deploy/workhop_rl/install/cyclonedds/include/dds/ddsi/ddsi_mcgroup.h
+[13.584s] -- Installing: /home/ruben/go2_deploy/workhop_rl/install/cyclonedds/include/dds/ddsi/ddsi_typelib.h
+[13.585s] -- Installing: /home/ruben/go2_deploy/workhop_rl/install/cyclonedds/include/dds/ddsi/ddsi_ownip.h
+[13.585s] -- Installing: /home/ruben/go2_deploy/workhop_rl/install/cyclonedds/include/dds/ddsi/ddsi_security_util.h
+[13.585s] -- Installing: /home/ruben/go2_deploy/workhop_rl/install/cyclonedds/include/dds/ddsi/ddsi_acknack.h
+[13.585s] -- Installing: /home/ruben/go2_deploy/workhop_rl/install/cyclonedds/include/dds/ddsi/sysdeps.h
+[13.585s] -- Installing: /home/ruben/go2_deploy/workhop_rl/install/cyclonedds/include/dds/ddsi/ddsi_domaingv.h
+[13.585s] -- Installing: /home/ruben/go2_deploy/workhop_rl/install/cyclonedds/include/dds/ddsi/q_unused.h
+[13.586s] -- Installing: /home/ruben/go2_deploy/workhop_rl/install/cyclonedds/include/dds/ddsi/q_freelist.h
+[13.586s] -- Installing: /home/ruben/go2_deploy/workhop_rl/install/cyclonedds/include/dds/ddsi/ddsi_threadmon.h
+[13.586s] -- Installing: /home/ruben/go2_deploy/workhop_rl/install/cyclonedds/include/dds/ddsi/ddsi_pmd.h
+[13.586s] -- Installing: /home/ruben/go2_deploy/workhop_rl/install/cyclonedds/include/dds/ddsi/ddsi_security_exchange.h
+[13.586s] -- Installing: /home/ruben/go2_deploy/workhop_rl/install/cyclonedds/include/dds/ddsi/q_feature_check.h
+[13.586s] -- Installing: /home/ruben/go2_deploy/workhop_rl/install/cyclonedds/include/dds/ddsi/ddsi_list_tmpl.h
+[13.587s] -- Installing: /home/ruben/go2_deploy/workhop_rl/install/cyclonedds/include/dds/ddsi/ddsi_typewrap.h
+[13.587s] -- Installing: /home/ruben/go2_deploy/workhop_rl/install/cyclonedds/include/dds/ddsi/q_addrset.h
+[13.587s] -- Installing: /home/ruben/go2_deploy/workhop_rl/install/cyclonedds/include/dds/ddsi/ddsi_cfgunits.h
+[13.589s] -- Installing: /home/ruben/go2_deploy/workhop_rl/install/cyclonedds/include/dds/ddsi/q_sockwaitset.h
+[13.589s] -- Installing: /home/ruben/go2_deploy/workhop_rl/install/cyclonedds/include/dds/ddsi/q_thread.h
+[13.589s] -- Installing: /home/ruben/go2_deploy/workhop_rl/install/cyclonedds/include/dds/ddsi/ddsi_ssl.h
+[13.589s] -- Installing: /home/ruben/go2_deploy/workhop_rl/install/cyclonedds/include/dds/ddsi/ddsi_statistics.h
+[13.589s] -- Installing: /home/ruben/go2_deploy/workhop_rl/install/cyclonedds/include/dds/ddsi/ddsi_xqos.h
+[13.590s] -- Installing: /home/ruben/go2_deploy/workhop_rl/install/cyclonedds/include/dds/ddsi/ddsi_wraddrset.h
+[13.592s] -- Installing: /home/ruben/go2_deploy/workhop_rl/install/cyclonedds/include/dds/ddsi/ddsi_entity_match.h
+[13.592s] -- Installing: /home/ruben/go2_deploy/workhop_rl/install/cyclonedds/include/dds/ddsi/ddsi_tcp.h
+[13.593s] -- Installing: /home/ruben/go2_deploy/workhop_rl/install/cyclonedds/include/dds/ddsi/ddsi_lifespan.h
+[13.593s] -- Installing: /home/ruben/go2_deploy/workhop_rl/install/cyclonedds/include/dds/ddsi/ddsi_rhc.h
+[13.593s] -- Installing: /home/ruben/go2_deploy/workhop_rl/install/cyclonedds/include/dds/ddsi/ddsi_sertopic.h
+[13.593s] -- Installing: /home/ruben/go2_deploy/workhop_rl/install/cyclonedds/include/dds/ddsi/ddsi_builtin_topic_if.h
+[13.596s] -- Installing: /home/ruben/go2_deploy/workhop_rl/install/cyclonedds/include/dds/ddsi/q_ddsi_discovery.h
+[13.596s] -- Installing: /home/ruben/go2_deploy/workhop_rl/install/cyclonedds/include/dds/ddsi/ddsi_list_genptr.h
+[13.596s] -- Installing: /home/ruben/go2_deploy/workhop_rl/install/cyclonedds/include/dds/ddsi/ddsi_entity_index.h
+[13.596s] -- Installing: /home/ruben/go2_deploy/workhop_rl/install/cyclonedds/include/dds/ddsi/ddsi_keyhash.h
+[13.596s] -- Installing: /home/ruben/go2_deploy/workhop_rl/install/cyclonedds/include/dds/ddsi/ddsi_proxy_participant.h
+[13.596s] -- Installing: /home/ruben/go2_deploy/workhop_rl/install/cyclonedds/include/dds/ddsi/ddsi_config_impl.h
+[13.596s] -- Installing: /home/ruben/go2_deploy/workhop_rl/install/cyclonedds/include/dds/ddsi/ddsi_typebuilder.h
+[13.596s] -- Installing: /home/ruben/go2_deploy/workhop_rl/install/cyclonedds/include/dds/ddsi/ddsi_endpoint.h
+[13.596s] -- Installing: /home/ruben/go2_deploy/workhop_rl/install/cyclonedds/include/dds/ddsi/ddsi_cfgelems.h
+[13.596s] -- Installing: /home/ruben/go2_deploy/workhop_rl/install/cyclonedds/include/dds/ddsi/q_inverse_uint32_set.h
+[13.596s] -- Installing: /home/ruben/go2_deploy/workhop_rl/install/cyclonedds/include/dds/ddsi/ddsi_shm_transport.h
+[13.596s] -- Installing: /home/ruben/go2_deploy/workhop_rl/install/cyclonedds/include/dds/ddsi/ddsi_guid.h
+[13.596s] -- Installing: /home/ruben/go2_deploy/workhop_rl/install/cyclonedds/include/dds/ddsi/ddsi_serdata_pserop.h
+[13.597s] -- Installing: /home/ruben/go2_deploy/workhop_rl/install/cyclonedds/include/dds/ddsi/q_radmin.h
+[13.597s] -- Installing: /home/ruben/go2_deploy/workhop_rl/install/cyclonedds/include/dds/ddsi/q_whc.h
+[13.597s] -- Installing: /home/ruben/go2_deploy/workhop_rl/install/cyclonedds/include/dds/ddsi/ddsi_security_msg.h
+[13.597s] -- Installing: /home/ruben/go2_deploy/workhop_rl/install/cyclonedds/include/dds/ddsi/ddsi_participant.h
+[13.600s] -- Installing: /home/ruben/go2_deploy/workhop_rl/install/cyclonedds/include/dds/ddsi/ddsi_sertype.h
+[13.600s] -- Installing: /home/ruben/go2_deploy/workhop_rl/install/cyclonedds/include/dds/ddsi/q_lease.h
+[13.600s] -- Installing: /home/ruben/go2_deploy/workhop_rl/install/cyclonedds/include/dds/ddsi/q_gc.h
+[13.600s] -- Installing: /home/ruben/go2_deploy/workhop_rl/install/cyclonedds/include/dds/ddsi/ddsi_handshake.h
+[13.600s] -- Installing: /home/ruben/go2_deploy/workhop_rl/install/cyclonedds/include/dds/ddsi/ddsi_deadline.h
+[13.600s] -- Installing: /home/ruben/go2_deploy/workhop_rl/install/cyclonedds/include/dds/ddsi/ddsi_tkmap.h
+[13.602s] -- Installing: /home/ruben/go2_deploy/workhop_rl/install/cyclonedds/include/dds/ddsi/ddsi_vnet.h
+[13.602s] -- Installing: /home/ruben/go2_deploy/workhop_rl/install/cyclonedds/include/dds/ddsi/ddsi_topic.h
+[13.602s] -- Installing: /home/ruben/go2_deploy/workhop_rl/install/cyclonedds/include/dds/ddsi/q_transmit.h
+[13.602s] -- Installing: /home/ruben/go2_deploy/workhop_rl/install/cyclonedds/include/dds/ddsi/q_receive.h
+[13.602s] -- Installing: /home/ruben/go2_deploy/workhop_rl/install/cyclonedds/include/dds/ddsi/ddsi_xt_typelookup.h
+[13.602s] -- Installing: /home/ruben/go2_deploy/workhop_rl/install/cyclonedds/include/dds/ddsi/ddsi_xt_typemap.h
+[13.602s] -- Up-to-date: /home/ruben/go2_deploy/workhop_rl/install/cyclonedds/include
+[13.602s] -- Up-to-date: /home/ruben/go2_deploy/workhop_rl/install/cyclonedds/include/dds
+[13.602s] -- Installing: /home/ruben/go2_deploy/workhop_rl/install/cyclonedds/include/dds/ddsc
+[13.602s] -- Installing: /home/ruben/go2_deploy/workhop_rl/install/cyclonedds/include/dds/ddsc/dds_public_status.h
+[13.606s] -- Installing: /home/ruben/go2_deploy/workhop_rl/install/cyclonedds/include/dds/ddsc/dds_loan_api.h
+[13.606s] -- Installing: /home/ruben/go2_deploy/workhop_rl/install/cyclonedds/include/dds/ddsc/dds_public_qosdefs.h
+[13.606s] -- Installing: /home/ruben/go2_deploy/workhop_rl/install/cyclonedds/include/dds/ddsc/dds_statistics.h
+[13.606s] -- Installing: /home/ruben/go2_deploy/workhop_rl/install/cyclonedds/include/dds/ddsc/dds_basic_types.h
+[13.606s] -- Installing: /home/ruben/go2_deploy/workhop_rl/install/cyclonedds/include/dds/ddsc/dds_internal_api.h
+[13.606s] -- Installing: /home/ruben/go2_deploy/workhop_rl/install/cyclonedds/include/dds/ddsc/dds_public_listener.h
+[13.606s] -- Installing: /home/ruben/go2_deploy/workhop_rl/install/cyclonedds/include/dds/ddsc/dds_public_impl.h
+[13.607s] -- Installing: /home/ruben/go2_deploy/workhop_rl/install/cyclonedds/include/dds/ddsc/dds_public_error.h
+[13.607s] -- Installing: /home/ruben/go2_deploy/workhop_rl/install/cyclonedds/include/dds/ddsc/dds_opcodes.h
+[13.607s] -- Installing: /home/ruben/go2_deploy/workhop_rl/install/cyclonedds/include/dds/ddsc/dds_data_allocator.h
+[13.607s] -- Installing: /home/ruben/go2_deploy/workhop_rl/install/cyclonedds/include/dds/ddsc/dds_rhc.h
+[13.607s] -- Installing: /home/ruben/go2_deploy/workhop_rl/install/cyclonedds/include/dds/ddsc/dds_public_alloc.h
+[13.607s] -- Installing: /home/ruben/go2_deploy/workhop_rl/install/cyclonedds/include/dds/ddsc/dds_public_qos.h
+[13.607s] -- Installing: /home/ruben/go2_deploy/workhop_rl/install/cyclonedds/include/dds/dds.h
+[13.608s] -- Installing: /home/ruben/go2_deploy/workhop_rl/install/cyclonedds/include/ddsc
+[13.608s] -- Installing: /home/ruben/go2_deploy/workhop_rl/install/cyclonedds/include/ddsc/dds.h
+[13.608s] -- Up-to-date: /home/ruben/go2_deploy/workhop_rl/install/cyclonedds/include
+[13.609s] -- Up-to-date: /home/ruben/go2_deploy/workhop_rl/install/cyclonedds/include/dds
+[13.609s] -- Installing: /home/ruben/go2_deploy/workhop_rl/install/cyclonedds/include/dds/export.h
+[13.612s] -- Installing: /home/ruben/go2_deploy/workhop_rl/install/cyclonedds/lib/libddsc.so.0.10.5
+[13.625s] -- Installing: /home/ruben/go2_deploy/workhop_rl/install/cyclonedds/lib/libddsc.so.0
+[13.629s] -- Set runtime path of "/home/ruben/go2_deploy/workhop_rl/install/cyclonedds/lib/libddsc.so.0.10.5" to "$ORIGIN/../lib"
+[13.629s] -- Installing: /home/ruben/go2_deploy/workhop_rl/install/cyclonedds/lib/libddsc.so
+[13.631s] -- Installing: /home/ruben/go2_deploy/workhop_rl/install/cyclonedds/share/doc/CycloneDDS/CONTRIBUTING.md
+[13.631s] -- Installing: /home/ruben/go2_deploy/workhop_rl/install/cyclonedds/share/doc/CycloneDDS/CYCLONEDDS_QUALITY_DECLARATION.md
+[13.631s] -- Installing: /home/ruben/go2_deploy/workhop_rl/install/cyclonedds/share/doc/CycloneDDS/LICENSE
+[13.631s] -- Installing: /home/ruben/go2_deploy/workhop_rl/install/cyclonedds/share/doc/CycloneDDS/NOTICE.md
+[13.631s] -- Installing: /home/ruben/go2_deploy/workhop_rl/install/cyclonedds/share/doc/CycloneDDS/README.md
+[13.631s] -- Installing: /home/ruben/go2_deploy/workhop_rl/install/cyclonedds/share/doc/CycloneDDS/CHANGELOG.rst
+[13.639s] Invoked command in '/home/ruben/go2_deploy/workhop_rl/build/cyclonedds' returned '0': CMAKE_PREFIX_PATH=/opt/ros/humble /usr/bin/cmake --install /home/ruben/go2_deploy/workhop_rl/build/cyclonedds

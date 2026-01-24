@@ -1,0 +1,6 @@
+Invoking command in '/home/ruben/go2_deploy/workhop_rl/build/unitree_hg': CMAKE_PREFIX_PATH=/opt/ros/humble /usr/bin/cmake /home/ruben/go2_deploy/workhop_rl/src/unitree_ros2/cyclonedds_ws/src/unitree/unitree_hg -DCMAKE_INSTALL_PREFIX=/home/ruben/go2_deploy/workhop_rl/install/unitree_hg
+Invoked command in '/home/ruben/go2_deploy/workhop_rl/build/unitree_hg' returned '0': CMAKE_PREFIX_PATH=/opt/ros/humble /usr/bin/cmake /home/ruben/go2_deploy/workhop_rl/src/unitree_ros2/cyclonedds_ws/src/unitree/unitree_hg -DCMAKE_INSTALL_PREFIX=/home/ruben/go2_deploy/workhop_rl/install/unitree_hg
+Invoking command in '/home/ruben/go2_deploy/workhop_rl/build/unitree_hg': CMAKE_PREFIX_PATH=/opt/ros/humble /usr/bin/cmake --build /home/ruben/go2_deploy/workhop_rl/build/unitree_hg -- -j22 -l22
+Invoked command in '/home/ruben/go2_deploy/workhop_rl/build/unitree_hg' returned '0': CMAKE_PREFIX_PATH=/opt/ros/humble /usr/bin/cmake --build /home/ruben/go2_deploy/workhop_rl/build/unitree_hg -- -j22 -l22
+Invoking command in '/home/ruben/go2_deploy/workhop_rl/build/unitree_hg': CMAKE_PREFIX_PATH=/opt/ros/humble /usr/bin/cmake --install /home/ruben/go2_deploy/workhop_rl/build/unitree_hg
+Invoked command in '/home/ruben/go2_deploy/workhop_rl/build/unitree_hg' returned '0': CMAKE_PREFIX_PATH=/opt/ros/humble /usr/bin/cmake --install /home/ruben/go2_deploy/workhop_rl/build/unitree_hg

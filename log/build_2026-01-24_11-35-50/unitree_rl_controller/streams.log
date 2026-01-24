@@ -1,0 +1,71 @@
+[0.007s] Invoking command in '/home/ruben/go2_deploy/workhop_rl/build/unitree_rl_controller': AMENT_PREFIX_PATH=/home/ruben/go2_deploy/workhop_rl/install/ros2_unitree_legged_msgs:${AMENT_PREFIX_PATH} CMAKE_PREFIX_PATH=/home/ruben/go2_deploy/workhop_rl/install/ros2_unitree_legged_msgs:/opt/ros/humble LD_LIBRARY_PATH=/home/ruben/go2_deploy/workhop_rl/install/ros2_unitree_legged_msgs/lib:${LD_LIBRARY_PATH} PYTHONPATH=/home/ruben/go2_deploy/workhop_rl/install/ros2_unitree_legged_msgs/local/lib/python3.10/dist-packages:${PYTHONPATH} /usr/bin/cmake /home/ruben/go2_deploy/workhop_rl/src/unitree_rl_controller-ros2 -DCMAKE_INSTALL_PREFIX=/home/ruben/go2_deploy/workhop_rl/install/unitree_rl_controller
+[0.106s] -- The C compiler identification is GNU 11.4.0
+[0.208s] -- The CXX compiler identification is GNU 11.4.0
+[0.214s] -- Detecting C compiler ABI info
+[0.352s] -- Detecting C compiler ABI info - done
+[0.362s] -- Check for working C compiler: /usr/bin/cc - skipped
+[0.362s] -- Detecting C compile features
+[0.362s] -- Detecting C compile features - done
+[0.365s] -- Detecting CXX compiler ABI info
+[0.455s] -- Detecting CXX compiler ABI info - done
+[0.460s] -- Check for working CXX compiler: /usr/bin/c++ - skipped
+[0.460s] -- Detecting CXX compile features
+[0.461s] -- Detecting CXX compile features - done
+[0.462s] -- Found ament_cmake: 1.3.12 (/opt/ros/humble/share/ament_cmake/cmake)
+[0.609s] -- Found Python3: /usr/bin/python3 (found version "3.10.12") found components: Interpreter 
+[0.786s] -- Found rclcpp: 16.0.16 (/opt/ros/humble/share/rclcpp/cmake)
+[0.877s] -- Found rosidl_generator_c: 3.1.7 (/opt/ros/humble/share/rosidl_generator_c/cmake)
+[0.880s] -- Found rosidl_adapter: 3.1.7 (/opt/ros/humble/share/rosidl_adapter/cmake)
+[0.885s] -- Found rosidl_generator_cpp: 3.1.7 (/opt/ros/humble/share/rosidl_generator_cpp/cmake)
+[0.892s] -- Using all available rosidl_typesupport_c: rosidl_typesupport_fastrtps_c;rosidl_typesupport_introspection_c
+[0.901s] -- Using all available rosidl_typesupport_cpp: rosidl_typesupport_fastrtps_cpp;rosidl_typesupport_introspection_cpp
+[1.011s] -- Found rmw_implementation_cmake: 6.1.2 (/opt/ros/humble/share/rmw_implementation_cmake/cmake)
+[1.019s] -- Found rmw_cyclonedds_cpp: 1.3.4 (/opt/ros/humble/share/rmw_cyclonedds_cpp/cmake)
+[1.046s] -- Using RMW implementation 'rmw_cyclonedds_cpp' as default
+[1.147s] -- Looking for pthread.h
+[1.225s] -- Looking for pthread.h - found
+[1.225s] -- Performing Test CMAKE_HAVE_LIBC_PTHREAD
+[1.318s] -- Performing Test CMAKE_HAVE_LIBC_PTHREAD - Success
+[1.318s] -- Found Threads: TRUE  
+[1.532s] -- Found ros2_unitree_legged_msgs: 0.4.0 (/home/ruben/go2_deploy/workhop_rl/install/ros2_unitree_legged_msgs/share/ros2_unitree_legged_msgs/cmake)
+[1.538s] -- Found geometry_msgs: 4.9.0 (/opt/ros/humble/share/geometry_msgs/cmake)
+[1.632s] -- Found nav_msgs: 4.9.0 (/opt/ros/humble/share/nav_msgs/cmake)
+[1.897s] -- Found Torch: /home/ruben/libtorch/lib/libtorch.so  
+[1.948s] -- Configuring done
+[2.015s] -- Generating done
+[2.018s] -- Build files have been written to: /home/ruben/go2_deploy/workhop_rl/build/unitree_rl_controller
+[2.032s] Invoked command in '/home/ruben/go2_deploy/workhop_rl/build/unitree_rl_controller' returned '0': AMENT_PREFIX_PATH=/home/ruben/go2_deploy/workhop_rl/install/ros2_unitree_legged_msgs:${AMENT_PREFIX_PATH} CMAKE_PREFIX_PATH=/home/ruben/go2_deploy/workhop_rl/install/ros2_unitree_legged_msgs:/opt/ros/humble LD_LIBRARY_PATH=/home/ruben/go2_deploy/workhop_rl/install/ros2_unitree_legged_msgs/lib:${LD_LIBRARY_PATH} PYTHONPATH=/home/ruben/go2_deploy/workhop_rl/install/ros2_unitree_legged_msgs/local/lib/python3.10/dist-packages:${PYTHONPATH} /usr/bin/cmake /home/ruben/go2_deploy/workhop_rl/src/unitree_rl_controller-ros2 -DCMAKE_INSTALL_PREFIX=/home/ruben/go2_deploy/workhop_rl/install/unitree_rl_controller
+[2.033s] Invoking command in '/home/ruben/go2_deploy/workhop_rl/build/unitree_rl_controller': AMENT_PREFIX_PATH=/home/ruben/go2_deploy/workhop_rl/install/ros2_unitree_legged_msgs:${AMENT_PREFIX_PATH} CMAKE_PREFIX_PATH=/home/ruben/go2_deploy/workhop_rl/install/ros2_unitree_legged_msgs:/opt/ros/humble LD_LIBRARY_PATH=/home/ruben/go2_deploy/workhop_rl/install/ros2_unitree_legged_msgs/lib:${LD_LIBRARY_PATH} PYTHONPATH=/home/ruben/go2_deploy/workhop_rl/install/ros2_unitree_legged_msgs/local/lib/python3.10/dist-packages:${PYTHONPATH} /usr/bin/cmake --build /home/ruben/go2_deploy/workhop_rl/build/unitree_rl_controller -- -j22 -l22
+[2.069s] [ 33%] [32mBuilding CXX object CMakeFiles/unitree_rl_controller.dir/src/rl_agent.cpp.o[0m
+[2.071s] [ 66%] [32mBuilding CXX object CMakeFiles/unitree_rl_controller.dir/src/observation_buffer.cpp.o[0m
+[20.726s] [100%] [32m[1mLinking CXX shared library libunitree_rl_controller.so[0m
+[21.539s] [100%] Built target unitree_rl_controller
+[21.556s] Invoked command in '/home/ruben/go2_deploy/workhop_rl/build/unitree_rl_controller' returned '0': AMENT_PREFIX_PATH=/home/ruben/go2_deploy/workhop_rl/install/ros2_unitree_legged_msgs:${AMENT_PREFIX_PATH} CMAKE_PREFIX_PATH=/home/ruben/go2_deploy/workhop_rl/install/ros2_unitree_legged_msgs:/opt/ros/humble LD_LIBRARY_PATH=/home/ruben/go2_deploy/workhop_rl/install/ros2_unitree_legged_msgs/lib:${LD_LIBRARY_PATH} PYTHONPATH=/home/ruben/go2_deploy/workhop_rl/install/ros2_unitree_legged_msgs/local/lib/python3.10/dist-packages:${PYTHONPATH} /usr/bin/cmake --build /home/ruben/go2_deploy/workhop_rl/build/unitree_rl_controller -- -j22 -l22
+[21.557s] Invoking command in '/home/ruben/go2_deploy/workhop_rl/build/unitree_rl_controller': AMENT_PREFIX_PATH=/home/ruben/go2_deploy/workhop_rl/install/ros2_unitree_legged_msgs:${AMENT_PREFIX_PATH} CMAKE_PREFIX_PATH=/home/ruben/go2_deploy/workhop_rl/install/ros2_unitree_legged_msgs:/opt/ros/humble LD_LIBRARY_PATH=/home/ruben/go2_deploy/workhop_rl/install/ros2_unitree_legged_msgs/lib:${LD_LIBRARY_PATH} PYTHONPATH=/home/ruben/go2_deploy/workhop_rl/install/ros2_unitree_legged_msgs/local/lib/python3.10/dist-packages:${PYTHONPATH} /usr/bin/cmake --install /home/ruben/go2_deploy/workhop_rl/build/unitree_rl_controller
+[21.563s] -- Install configuration: ""
+[21.563s] -- Installing: /home/ruben/go2_deploy/workhop_rl/install/unitree_rl_controller/share/unitree_rl_controller/environment/library_path.sh
+[21.563s] -- Installing: /home/ruben/go2_deploy/workhop_rl/install/unitree_rl_controller/share/unitree_rl_controller/environment/library_path.dsv
+[21.563s] -- Installing: /home/ruben/go2_deploy/workhop_rl/install/unitree_rl_controller/lib/libunitree_rl_controller.so
+[21.564s] -- Set runtime path of "/home/ruben/go2_deploy/workhop_rl/install/unitree_rl_controller/lib/libunitree_rl_controller.so" to ""
+[21.564s] -- Installing: /home/ruben/go2_deploy/workhop_rl/install/unitree_rl_controller/include
+[21.564s] -- Installing: /home/ruben/go2_deploy/workhop_rl/install/unitree_rl_controller/include/rl_agent.h
+[21.564s] -- Installing: /home/ruben/go2_deploy/workhop_rl/install/unitree_rl_controller/include/observation_buffer.hpp
+[21.564s] -- Installing: /home/ruben/go2_deploy/workhop_rl/install/unitree_rl_controller/share/ament_index/resource_index/package_run_dependencies/unitree_rl_controller
+[21.564s] -- Installing: /home/ruben/go2_deploy/workhop_rl/install/unitree_rl_controller/share/ament_index/resource_index/parent_prefix_path/unitree_rl_controller
+[21.564s] -- Installing: /home/ruben/go2_deploy/workhop_rl/install/unitree_rl_controller/share/unitree_rl_controller/environment/ament_prefix_path.sh
+[21.564s] -- Installing: /home/ruben/go2_deploy/workhop_rl/install/unitree_rl_controller/share/unitree_rl_controller/environment/ament_prefix_path.dsv
+[21.564s] -- Installing: /home/ruben/go2_deploy/workhop_rl/install/unitree_rl_controller/share/unitree_rl_controller/environment/path.sh
+[21.564s] -- Installing: /home/ruben/go2_deploy/workhop_rl/install/unitree_rl_controller/share/unitree_rl_controller/environment/path.dsv
+[21.564s] -- Installing: /home/ruben/go2_deploy/workhop_rl/install/unitree_rl_controller/share/unitree_rl_controller/local_setup.bash
+[21.564s] -- Installing: /home/ruben/go2_deploy/workhop_rl/install/unitree_rl_controller/share/unitree_rl_controller/local_setup.sh
+[21.564s] -- Installing: /home/ruben/go2_deploy/workhop_rl/install/unitree_rl_controller/share/unitree_rl_controller/local_setup.zsh
+[21.564s] -- Installing: /home/ruben/go2_deploy/workhop_rl/install/unitree_rl_controller/share/unitree_rl_controller/local_setup.dsv
+[21.564s] -- Installing: /home/ruben/go2_deploy/workhop_rl/install/unitree_rl_controller/share/unitree_rl_controller/package.dsv
+[21.564s] -- Installing: /home/ruben/go2_deploy/workhop_rl/install/unitree_rl_controller/share/ament_index/resource_index/packages/unitree_rl_controller
+[21.564s] -- Installing: /home/ruben/go2_deploy/workhop_rl/install/unitree_rl_controller/share/unitree_rl_controller/cmake/ament_cmake_export_dependencies-extras.cmake
+[21.565s] -- Installing: /home/ruben/go2_deploy/workhop_rl/install/unitree_rl_controller/share/unitree_rl_controller/cmake/ament_cmake_export_include_directories-extras.cmake
+[21.565s] -- Installing: /home/ruben/go2_deploy/workhop_rl/install/unitree_rl_controller/share/unitree_rl_controller/cmake/ament_cmake_export_libraries-extras.cmake
+[21.565s] -- Installing: /home/ruben/go2_deploy/workhop_rl/install/unitree_rl_controller/share/unitree_rl_controller/cmake/unitree_rl_controllerConfig.cmake
+[21.565s] -- Installing: /home/ruben/go2_deploy/workhop_rl/install/unitree_rl_controller/share/unitree_rl_controller/cmake/unitree_rl_controllerConfig-version.cmake
+[21.565s] -- Installing: /home/ruben/go2_deploy/workhop_rl/install/unitree_rl_controller/share/unitree_rl_controller/package.xml
+[21.566s] Invoked command in '/home/ruben/go2_deploy/workhop_rl/build/unitree_rl_controller' returned '0': AMENT_PREFIX_PATH=/home/ruben/go2_deploy/workhop_rl/install/ros2_unitree_legged_msgs:${AMENT_PREFIX_PATH} CMAKE_PREFIX_PATH=/home/ruben/go2_deploy/workhop_rl/install/ros2_unitree_legged_msgs:/opt/ros/humble LD_LIBRARY_PATH=/home/ruben/go2_deploy/workhop_rl/install/ros2_unitree_legged_msgs/lib:${LD_LIBRARY_PATH} PYTHONPATH=/home/ruben/go2_deploy/workhop_rl/install/ros2_unitree_legged_msgs/local/lib/python3.10/dist-packages:${PYTHONPATH} /usr/bin/cmake --install /home/ruben/go2_deploy/workhop_rl/build/unitree_rl_controller
