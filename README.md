@@ -52,6 +52,38 @@ Test:
 simulate
 ```
 
+## Docker build arm64 (Raspberry Pi 5)
+
+1. Build docker image
+    ```
+    docker build -t workshop_rl:humble-dev .
+    ```
+
+2. Run docker image
+    ```
+    docker run -it --rm \
+    --net=host \
+    -v ~/workhop_rl:/ws \
+    workhop_rl:humble-dev
+    ```
+3. Save changes in docker container
+
+    ```
+    docker commit <container_id>workhop_rl:humble-dev-saved
+    ```
+4. Download libtorch image 1.9.0
+    ```
+    ```
+5. Build code workshop_rl
+
+    Build first : Installation unitree_ros2_sdk and rmw_cyclonedds 
+
+    After:
+
+    ```
+    colcon build  --packages-skip unitree_mujoco
+    ```
+
 ## Installation unitree_ros2_sdk
 
 To build your own application with the SDK, you can install the unitree_sdk2 to your system directory:
