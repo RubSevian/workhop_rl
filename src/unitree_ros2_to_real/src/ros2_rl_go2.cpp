@@ -72,9 +72,9 @@ unitree_go::msg::LowCmd RobotController::update(const unitree_go::msg::LowState&
     agent.obs.command.index({0}) = joystick.ly;
     agent.obs.command.index({1}) = -joystick.rx;
     agent.obs.command.index({2}) = -joystick.lx;
-    std::cout << "Command: ly=" << agent.obs.command.index({0}).item<float>()
-              << ", -rx=" << agent.obs.command.index({1}).item<float>()
-              << ", -lx=" << agent.obs.command.index({2}).item<float>() << std::endl;
+    // std::cout << "Command: ly=" << agent.obs.command.index({0}).item<float>()
+    //           << ", -rx=" << agent.obs.command.index({1}).item<float>()
+    //           << ", -lx=" << agent.obs.command.index({2}).item<float>() << std::endl;
     
     if (!rl_inited_) {
         agent.InitRL();      // создаст history_obs_buf и заполнит reset(...) текущим obs [file:22]
@@ -93,10 +93,10 @@ unitree_go::msg::LowCmd RobotController::update(const unitree_go::msg::LowState&
             cmd.motor_cmd[i].tau = 0;
         }
         if (motiontime % 100 == 0) {
-            std::stringstream ss;
-            ss << "Default_dof_pos: ";
-            for (int i = 0; i < Go2_NUM_MOTOR; i++) ss << agent.params.default_dof_pos.index({i}).item<float>() << " ";
-            std::cout << ss.str() << std::endl;
+            // std::stringstream ss;
+            // ss << "Default_dof_pos: ";
+            //for (int i = 0; i < Go2_NUM_MOTOR; i++) ss << agent.params.default_dof_pos.index({i}).item<float>() << " ";
+            //std::cout << ss.str() << std::endl;
         }
     } else {
         robot_state = STATE_READY;
@@ -111,12 +111,12 @@ unitree_go::msg::LowCmd RobotController::update(const unitree_go::msg::LowState&
             cmd.motor_cmd[i].tau = 0;//actions.index({net2joint_indexes[i]}).item<float>();
         }
         if (motiontime % 100 == 0) {
-            std::stringstream ss;
-            ss << "Actions: ";
-            for (int i = 0; i < Go2_NUM_MOTOR; i++) {
-                ss << actions.index({net2joint_indexes[i]}).item<float>() << " ";
-            }
-            std::cout << ss.str() << std::endl;
+            //std::stringstream ss;
+           // ss << "Actions: ";
+           // for (int i = 0; i < Go2_NUM_MOTOR; i++) {
+           //     ss << actions.index({net2joint_indexes[i]}).item<float>() << " ";
+           // }
+           // std::cout << ss.str() << std::endl;
         }
     }
 
@@ -205,28 +205,28 @@ void InterfaceRos::LowStateHandler(const unitree_go::msg::LowState::SharedPtr ms
     latest_state = msg;
     publish_imu(msg->imu_state);
     publish_motor_state(msg->motor_state);
-    if (INFO_IMU) {
-        RCLCPP_INFO(this->get_logger(), "IMU: gyro = [%f, %f, %f], quat = [%f, %f, %f, %f]",
-                    msg->imu_state.gyroscope[0], msg->imu_state.gyroscope[1], msg->imu_state.gyroscope[2],
-                    msg->imu_state.quaternion[0], msg->imu_state.quaternion[1],
-                    msg->imu_state.quaternion[2], msg->imu_state.quaternion[3]);
-    }
-    if (INFO_MOTOR) {
-        for (int i = 0; i < controller.get_num_motors(); i++) {
-            RCLCPP_INFO(this->get_logger(), "Motor state -- num: %d; q: %f; dq: %f; tau: %f",
-                        i, msg->motor_state[i].q, msg->motor_state[i].dq, msg->motor_state[i].tau_est);
-        }
-    }
-    if (INFO_FOOT_FORCE) {
-        for (int i = 0; i < 4; i++) {
-            RCLCPP_INFO(this->get_logger(), "Foot force -- foot%d: %d", i, msg->foot_force[i]);
-            RCLCPP_INFO(this->get_logger(), "Estimated foot force -- foot%d: %d", i, msg->foot_force_est[i]);
-        }
-    }
-    if (INFO_BATTERY) {
-        RCLCPP_INFO(this->get_logger(), "Battery state -- current: %f; voltage: %f",
-                    msg->power_a, msg->power_v);
-    }
+    // if (INFO_IMU) {
+    //     RCLCPP_INFO(this->get_logger(), "IMU: gyro = [%f, %f, %f], quat = [%f, %f, %f, %f]",
+    //                 msg->imu_state.gyroscope[0], msg->imu_state.gyroscope[1], msg->imu_state.gyroscope[2],
+    //                 msg->imu_state.quaternion[0], msg->imu_state.quaternion[1],
+    //                 msg->imu_state.quaternion[2], msg->imu_state.quaternion[3]);
+    // }
+    // if (INFO_MOTOR) {
+    //     for (int i = 0; i < controller.get_num_motors(); i++) {
+    //         RCLCPP_INFO(this->get_logger(), "Motor state -- num: %d; q: %f; dq: %f; tau: %f",
+    //                     i, msg->motor_state[i].q, msg->motor_state[i].dq, msg->motor_state[i].tau_est);
+    //     }
+    // }
+    // if (INFO_FOOT_FORCE) {
+    //     for (int i = 0; i < 4; i++) {
+    //         RCLCPP_INFO(this->get_logger(), "Foot force -- foot%d: %d", i, msg->foot_force[i]);
+    //         RCLCPP_INFO(this->get_logger(), "Estimated foot force -- foot%d: %d", i, msg->foot_force_est[i]);
+    //     }
+    // }
+    // if (INFO_BATTERY) {
+    //     RCLCPP_INFO(this->get_logger(), "Battery state -- current: %f; voltage: %f",
+    //                 msg->power_a, msg->power_v);
+    // }
 }
 
 void InterfaceRos::timer_callback_cmd() {

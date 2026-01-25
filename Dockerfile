@@ -28,10 +28,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     ros-humble-control-toolbox \
     ros-humble-robot-state-publisher \
     ros-humble-joint-state-publisher-gui \
-    ros-humble-gazebo-ros2-control \
-    ros-humble-gazebo-ros-pkgs \
     ros-humble-xacro \
     ros-humble-rmw-cyclonedds-cpp \
+    libopenblas-dev \
+    liblapack-dev \
     ros-humble-rosidl-generator-dds-idl \
     && rm -rf /var/lib/apt/lists/*
 
