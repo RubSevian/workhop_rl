@@ -23,17 +23,12 @@ find_package(unitree_rl_controller REQUIRED)
 find_package(unitree_sdk2  REQUIRED)
 find_package(glfw3 REQUIRED)
 
-list(APPEND CMAKE_PREFIX_PATH "/home/ruben/libtorch/")
+list(APPEND CMAKE_PREFIX_PATH "/ws/libtorch")
 find_package(Torch REQUIRED)
-find_library( TORCH_LIBRARIES libtorch_cpu.so libc10.so:
-              PATHS
-              /home/ruben/libtorch/lib/
-              NO_DEFAULT_PATH )
+message(STATUS "TORCH_FOUND: ${TORCH_FOUND}")
+message(STATUS "TORCH_INCLUDE_DIRS: ${TORCH_INCLUDE_DIRS}")
+message(STATUS "TORCH_LIBRARIES: ${TORCH_LIBRARIES}")
 
-include_directories(
- include
- ${TORCH_INCLUDE_DIRS}
-)
 
 find_package(unitree_go REQUIRED)
 find_package(unitree_api REQUIRED)
@@ -78,13 +73,13 @@ link_directories(${CMAKE_SOURCE_DIR}/unitree_legged_sdk/lib)
 
 # Unitree Go2
 include_directories(library/unitree_sdk2/include)
-link_directories(library/unitree_sdk2/lib/x86_64)
+link_directories(library/unitree_sdk2/lib/aarch64)
 include_directories(library/unitree_sdk2/thirdparty/include)
 include_directories(library/unitree_sdk2/thirdparty/include/ddscxx)
-link_directories(library/unitree_sdk2/thirdparty/lib/x86_64)
+link_directories(library/unitree_sdk2/thirdparty/lib/aarch64)
 set(UNITREE_GO2_LIBS -pthread unitree_sdk2 ddsc ddscxx)
-file(GLOB GLOB_UNITREE_SDK2 "${PROJECT_SOURCE_DIR}/library/unitree_sdk2/lib/x86_64/*.so")
-file(GLOB GLOB_UNITREE_SDK2_THIRDPARTY "${PROJECT_SOURCE_DIR}/library/unitree_sdk2/thirdparty/lib/x86_64/*.so")
+file(GLOB GLOB_UNITREE_SDK2 "${PROJECT_SOURCE_DIR}/library/unitree_sdk2/lib/aarch64/*.so")
+file(GLOB GLOB_UNITREE_SDK2_THIRDPARTY "${PROJECT_SOURCE_DIR}/library/unitree_sdk2/thirdparty/lib/aarch64/*.so")
 install(FILES
   ${GLOB_UNITREE_SDK2_THIRDPARTY}
   ${GLOB_UNITREE_SDK2_THIRDPARTY}
@@ -99,9 +94,9 @@ target_link_libraries(lcm_server ${EXTRA_LIBS})
 # ament_target_dependencies(ros2_rl rclcpp ros2_unitree_legged_msgs unitree_rl_controller sensor_msgs)
 
 
-add_executable(mujoco_sim src/mujoco_sim.cpp src/motor_crc.cpp)
-target_link_libraries(mujoco_sim ${UNITREE_GO2_LIBS} ${EXTRA_LIBS} ${TORCH_LIBRARIES} glfw)
-ament_target_dependencies(mujoco_sim rclcpp  unitree_rl_controller sensor_msgs ${DEPENDENCY_LIST})
+#add_executable(mujoco_sim src/mujoco_sim.cpp src/motor_crc.cpp)
+#target_link_libraries(mujoco_sim ${UNITREE_GO2_LIBS} ${EXTRA_LIBS} ${TORCH_LIBRARIES} glfw)
+#ament_target_dependencies(mujoco_sim rclcpp  unitree_rl_controller sensor_msgs ${DEPENDENCY_LIST})
 
 add_executable(go2_heightmap_node
   src/go2_heightmap_node.cpp
@@ -123,13 +118,13 @@ ament_target_dependencies(ros2_rl_go2 rclcpp unitree_rl_controller sensor_msgs $
 set(CONFIG_BASE_DIR "${CMAKE_CURRENT_SOURCE_DIR}")
 target_compile_definitions(ros2_rl_go2 PRIVATE "CONFIG_BASE_DIR=\"${CONFIG_BASE_DIR}\"")
 
-set(CONFIG_BASE_DIR "${CMAKE_CURRENT_SOURCE_DIR}")
-target_compile_definitions(mujoco_sim PRIVATE "CONFIG_BASE_DIR=\"${CONFIG_BASE_DIR}\"")
+# set(CONFIG_BASE_DIR "${CMAKE_CURRENT_SOURCE_DIR}")
+# target_compile_definitions(mujoco_sim PRIVATE "CONFIG_BASE_DIR=\"${CONFIG_BASE_DIR}\"")
 
 
 install(TARGETS
     ros2_rl_go2 
-    mujoco_sim
+    # mujoco_sim
     go2_heightmap_node
     lcm_server
     DESTINATION lib/${PROJECT_NAME}
