@@ -1,0 +1,190 @@
+-- The C compiler identification is GNU 11.4.0
+-- Detecting C compiler ABI info
+-- Detecting C compiler ABI info - done
+-- Check for working C compiler: /usr/bin/cc - skipped
+-- Detecting C compile features
+-- Detecting C compile features - done
+-- Setting build type to 'RelWithDebInfo' as none was specified.
+-- Looking for getopt.h
+-- Looking for getopt.h - found
+-- Building with OpenSSL support
+-- Looking for stdint.h
+-- Looking for stdint.h - found
+-- Looking for inttypes.h
+-- Looking for inttypes.h - found
+-- Looking for sys/types.h
+-- Looking for sys/types.h - found
+-- Looking for stdint.h
+-- Looking for stdint.h - found
+-- Looking for stddef.h
+-- Looking for stddef.h - found
+-- Check size of intmax_t
+-- Check size of intmax_t - done
+-- Looking for stpcpy
+-- Looking for stpcpy - found
+-- Looking for strlcpy
+-- Looking for strlcpy - not found
+-- Looking for strlcat
+-- Looking for strlcat - not found
+-- Performing Test COMPILER_HAS_HIDDEN_VISIBILITY
+-- Performing Test COMPILER_HAS_HIDDEN_VISIBILITY - Success
+-- Performing Test COMPILER_HAS_HIDDEN_INLINE_VISIBILITY
+-- Performing Test COMPILER_HAS_HIDDEN_INLINE_VISIBILITY - Failed
+-- Performing Test COMPILER_HAS_DEPRECATED_ATTR
+-- Performing Test COMPILER_HAS_DEPRECATED_ATTR - Success
+-- Looking for gethostname
+-- Looking for gethostname - found
+-- Looking for inet_ntop
+-- Looking for inet_ntop - found
+-- Looking for inet_pton
+-- Looking for inet_pton - found
+-- Looking for getaddrinfo
+-- Looking for getaddrinfo - found
+-- Looking for gethostbyname_r
+-- Looking for gethostbyname_r - found
+-- Check size of struct sockaddr_in6
+-- Check size of struct sockaddr_in6 - done
+-- Looking for pthread.h
+-- Looking for pthread.h - found
+-- Performing Test CMAKE_HAVE_LIBC_PTHREAD
+-- Performing Test CMAKE_HAVE_LIBC_PTHREAD - Success
+-- Found Threads: TRUE  
+-- Looking for clock_gettime in c
+-- Looking for clock_gettime in c - found
+-- Configuring done
+-- Generating done
+-- Build files have been written to: /ws/build/cyclonedds
+[  0%] [34m[1mGenerating src/md5.c[0m
+[  1%] [32mBuilding C object src/ddsrt/CMakeFiles/ddsrt-internal.dir/src/atomics.c.o[0m
+[  2%] [32mBuilding C object src/tools/idlpp/CMakeFiles/idlpp.dir/src/directive.c.o[0m
+[  2%] Built target _confgen
+[  3%] [34m[1mGenerating include/idl/attributes.h[0m
+[  3%] [34m[1mGenerating include/idl/endian.h[0m
+[  3%] [32mBuilding C object src/core/CMakeFiles/ddsc.dir/ddsi/src/ddsi_eth.c.o[0m
+[  4%] [34m[1mGenerating include/idl/md5.h[0m
+[  4%] [34m[1mGenerating include/idl/misc.h[0m
+[  5%] [32mBuilding C object src/core/CMakeFiles/ddsc.dir/ddsi/src/ddsi_ssl.c.o[0m
+[  5%] [32mBuilding C object src/idl/CMakeFiles/idl.dir/src/symbol.c.o[0m
+[  5%] [32mBuilding C object src/ddsrt/CMakeFiles/ddsrt-internal.dir/src/avl.c.o[0m
+[  6%] [32mBuilding C object src/idl/CMakeFiles/idl.dir/src/directive.c.o[0m
+[  6%] [32mBuilding C object src/core/CMakeFiles/ddsc.dir/ddsi/src/ddsi_tcp.c.o[0m
+[  6%] [32mBuilding C object src/idl/CMakeFiles/idl.dir/src/expression.c.o[0m
+[  6%] [32mBuilding C object src/tools/idlpp/CMakeFiles/idlpp.dir/src/eval.c.o[0m
+[  7%] [32mBuilding C object src/ddsrt/CMakeFiles/ddsrt-internal.dir/src/bswap.c.o[0m
+[  7%] [32mBuilding C object src/idl/CMakeFiles/idl.dir/src/file.c.o[0m
+[  7%] [32mBuilding C object src/ddsrt/CMakeFiles/ddsrt-internal.dir/src/io.c.o[0m
+[  7%] [32mBuilding C object src/ddsrt/CMakeFiles/ddsrt-internal.dir/src/log.c.o[0m
+[  7%] [32mBuilding C object src/core/CMakeFiles/ddsc.dir/ddsi/src/ddsi_tran.c.o[0m
+[  8%] [32mBuilding C object src/ddsrt/CMakeFiles/ddsrt-internal.dir/src/retcode.c.o[0m
+[  9%] [32mBuilding C object src/idl/CMakeFiles/idl.dir/src/processor.c.o[0m
+[  9%] [32mBuilding C object src/ddsrt/CMakeFiles/ddsrt-internal.dir/src/strtod.c.o[0m
+[ 10%] [32mBuilding C object src/ddsrt/CMakeFiles/ddsrt-internal.dir/src/strtol.c.o[0m
+[ 10%] [32mBuilding C object src/idl/CMakeFiles/idl.dir/src/scanner.c.o[0m
+[ 11%] [32mBuilding C object src/core/CMakeFiles/ddsc.dir/ddsi/src/ddsi_udp.c.o[0m
+[ 12%] [32mBuilding C object src/tools/idlpp/CMakeFiles/idlpp.dir/src/expand.c.o[0m
+[ 12%] [32mBuilding C object src/ddsrt/CMakeFiles/ddsrt-internal.dir/src/mh3.c.o[0m
+[ 12%] [32mBuilding C object src/ddsrt/CMakeFiles/ddsrt-internal.dir/src/environ.c.o[0m
+[ 13%] [32mBuilding C object src/idl/CMakeFiles/idl.dir/src/string.c.o[0m
+[ 14%] [32mBuilding C object src/ddsrt/CMakeFiles/ddsrt-internal.dir/src/expand_vars.c.o[0m
+[ 14%] [32mBuilding C object src/idl/CMakeFiles/idl.dir/src/annotation.c.o[0m
+[ 14%] [32mBuilding C object src/core/CMakeFiles/ddsc.dir/ddsi/src/ddsi_raweth.c.o[0m
+[ 14%] [32mBuilding C object src/ddsrt/CMakeFiles/ddsrt-internal.dir/src/fibheap.c.o[0m
+[ 14%] [32mBuilding C object src/ddsrt/CMakeFiles/ddsrt-internal.dir/src/hopscotch.c.o[0m
+[ 14%] [32mBuilding C object src/core/CMakeFiles/ddsc.dir/ddsi/src/ddsi_vnet.c.o[0m
+[ 14%] [32mBuilding C object src/idl/CMakeFiles/idl.dir/src/scope.c.o[0m
+[ 15%] [32mBuilding C object src/ddsrt/CMakeFiles/ddsrt-internal.dir/src/circlist.c.o[0m
+[ 16%] [32mBuilding C object src/idl/CMakeFiles/idl.dir/src/tree.c.o[0m
+[ 17%] [32mBuilding C object src/core/CMakeFiles/ddsc.dir/ddsi/src/ddsi_ipaddr.c.o[0m
+[ 17%] [32mBuilding C object src/ddsrt/CMakeFiles/ddsrt-internal.dir/src/threads.c.o[0m
+[ 18%] [32mBuilding C object src/ddsrt/CMakeFiles/ddsrt-internal.dir/src/string.c.o[0m
+[ 18%] [32mBuilding C object src/tools/idlpp/CMakeFiles/idlpp.dir/src/main.c.o[0m
+[ 18%] [32mBuilding C object src/core/CMakeFiles/ddsc.dir/ddsi/src/ddsi_mcgroup.c.o[0m
+[ 18%] [32mBuilding C object src/ddsrt/CMakeFiles/ddsrt-internal.dir/src/sockets.c.o[0m
+[ 18%] [32mBuilding C object src/ddsrt/CMakeFiles/ddsrt-internal.dir/src/md5.c.o[0m
+[ 18%] [32mBuilding C object src/tools/idlpp/CMakeFiles/idlpp.dir/src/mbchar.c.o[0m
+[ 19%] [32mBuilding C object src/ddsrt/CMakeFiles/ddsrt-internal.dir/src/xmlparser.c.o[0m
+[ 20%] [32mBuilding C object src/core/CMakeFiles/ddsc.dir/ddsi/src/ddsi_security_util.c.o[0m
+[ 21%] [32mBuilding C object src/tools/idlpp/CMakeFiles/idlpp.dir/src/support.c.o[0m
+[ 21%] [32mBuilding C object src/ddsrt/CMakeFiles/ddsrt-internal.dir/src/ifaddrs.c.o[0m
+[ 21%] [32mBuilding C object src/core/CMakeFiles/ddsc.dir/ddsi/src/ddsi_security_omg.c.o[0m
+[ 22%] [32mBuilding C object src/ddsrt/CMakeFiles/ddsrt-internal.dir/src/cdtors.c.o[0m
+[ 22%] [32mBuilding C object src/ddsrt/CMakeFiles/ddsrt-internal.dir/src/random.c.o[0m
+[ 22%] [32mBuilding C object src/idl/CMakeFiles/idl.dir/src/visit.c.o[0m
+[ 22%] [32mBuilding C object src/idl/CMakeFiles/idl.dir/src/print.c.o[0m
+[ 22%] [32mBuilding C object src/ddsrt/CMakeFiles/ddsrt-internal.dir/src/time.c.o[0m
+[ 23%] [32mBuilding C object src/ddsrt/CMakeFiles/ddsrt-internal.dir/src/ifaddrs/posix/ifaddrs.c.o[0m
+[ 24%] [32mBuilding C object src/idl/CMakeFiles/idl.dir/src/keylist.c.o[0m
+[ 24%] [32mBuilding C object src/ddsrt/CMakeFiles/ddsrt-internal.dir/src/sockets/posix/socket.c.o[0m
+[ 24%] [32mBuilding C object src/idl/CMakeFiles/idl.dir/src/hashid.c.o[0m
+[ 25%] [32mBuilding C object src/idl/CMakeFiles/idl.dir/src/parser.c.o[0m
+[ 25%] [32mBuilding C object src/ddsrt/CMakeFiles/ddsrt-internal.dir/src/sockets/posix/gethostname.c.o[0m
+[ 26%] [32mBuilding C object src/ddsrt/CMakeFiles/ddsrt-internal.dir/src/heap/posix/heap.c.o[0m
+[ 26%] [32mBuilding C object src/ddsrt/CMakeFiles/ddsrt-internal.dir/src/dynlib/posix/dynlib.c.o[0m
+[ 27%] [32mBuilding C object src/ddsrt/CMakeFiles/ddsrt-internal.dir/src/environ/posix/environ.c.o[0m
+[ 27%] [32mBuilding C object src/ddsrt/CMakeFiles/ddsrt-internal.dir/src/filesystem/posix/filesystem.c.o[0m
+[ 27%] [32mBuilding C object src/ddsrt/CMakeFiles/ddsrt-internal.dir/src/process/posix/process.c.o[0m
+[ 28%] [32mBuilding C object src/ddsrt/CMakeFiles/ddsrt-internal.dir/src/random/posix/random.c.o[0m
+[ 28%] [32mBuilding C object src/tools/idlpp/CMakeFiles/idlpp.dir/src/system.c.o[0m
+[ 28%] [32mBuilding C object src/ddsrt/CMakeFiles/ddsrt-internal.dir/src/sync/posix/sync.c.o[0m
+[ 28%] [32mBuilding C object src/ddsrt/CMakeFiles/ddsrt-internal.dir/src/threads/posix/threads.c.o[0m
+[ 29%] [32mBuilding C object src/ddsrt/CMakeFiles/ddsrt-internal.dir/src/netstat/linux/netstat.c.o[0m
+[ 29%] [32mBuilding C object src/ddsrt/CMakeFiles/ddsrt-internal.dir/src/time/posix/time.c.o[0m
+[ 30%] [32mBuilding C object src/ddsrt/CMakeFiles/ddsrt-internal.dir/src/rusage/posix/rusage.c.o[0m
+[ 30%] [32m[1mLinking C static library ../../lib/libddsrt-internal.a[0m
+[ 30%] Built target ddsrt-internal
+[ 30%] [32mBuilding C object src/core/CMakeFiles/ddsc.dir/ddsi/src/ddsi_portmapping.c.o[0m
+[ 31%] [32mBuilding C object src/core/CMakeFiles/ddsc.dir/ddsi/src/ddsi_handshake.c.o[0m
+[ 31%] [32mBuilding C object src/idl/CMakeFiles/idl.dir/src/md5.c.o[0m
+[ 32%] [32m[1mLinking C static library ../../../lib/libidlpp.a[0m
+[ 32%] [32m[1mLinking C shared library ../../lib/libcycloneddsidl.so[0m
+[ 32%] Built target idlpp
+[ 32%] Built target idl
+[ 33%] [32mBuilding C object src/core/CMakeFiles/ddsc.dir/ddsi/src/ddsi_serdata_pserop.c.o[0m
+[ 33%] [32mBuilding C object src/core/CMakeFiles/ddsc.dir/ddsi/src/ddsi_serdata_plist.c.o[0m
+[ 34%] [32mBuilding C object src/core/CMakeFiles/ddsc.dir/ddsi/src/ddsi_sertype.c.o[0m
+[ 34%] [32mBuilding C object src/core/CMakeFiles/ddsc.dir/ddsi/src/ddsi_sertype_default.c.o[0m
+[ 34%] [32mBuilding C object src/core/CMakeFiles/ddsc.dir/ddsi/src/ddsi_sertype_pserop.c.o[0m
+[ 35%] [32mBuilding C object src/core/CMakeFiles/ddsc.dir/ddsi/src/ddsi_sertype_plist.c.o[0m
+[ 35%] [32mBuilding C object src/core/CMakeFiles/ddsc.dir/ddsi/src/ddsi_sertopic.c.o[0m
+[ 36%] [32mBuilding C object src/core/CMakeFiles/ddsc.dir/ddsi/src/ddsi_statistics.c.o[0m
+[ 36%] [32mBuilding C object src/core/CMakeFiles/ddsc.dir/ddsi/src/ddsi_iid.c.o[0m
+[ 36%] [32mBuilding C object src/core/CMakeFiles/ddsc.dir/ddsi/src/ddsi_tkmap.c.o[0m
+[ 37%] [32mBuilding C object src/core/CMakeFiles/ddsc.dir/ddsi/src/ddsi_vendor.c.o[0m
+[ 37%] [32mBuilding C object src/core/CMakeFiles/ddsc.dir/ddsi/src/ddsi_threadmon.c.o[0m
+[ 37%] [32mBuilding C object src/core/CMakeFiles/ddsc.dir/ddsi/src/ddsi_rhc.c.o[0m
+[ 38%] [32mBuilding C object src/core/CMakeFiles/ddsc.dir/ddsi/src/ddsi_pmd.c.o[0m
+[ 38%] [32mBuilding C object src/core/CMakeFiles/ddsc.dir/ddsi/src/ddsi_entity_index.c.o[0m
+[ 39%] [32mBuilding C object src/core/CMakeFiles/ddsc.dir/ddsi/src/ddsi_deadline.c.o[0m
+[ 39%] [32mBuilding C object src/core/CMakeFiles/ddsc.dir/ddsi/src/ddsi_deliver_locally.c.o[0m
+[ 39%] [32mBuilding C object src/core/CMakeFiles/ddsc.dir/ddsi/src/ddsi_plist.c.o[0m
+[ 40%] [32mBuilding C object src/core/CMakeFiles/ddsc.dir/ddsi/src/ddsi_cdrstream.c.o[0m
+[ 40%] [32mBuilding C object src/core/CMakeFiles/ddsc.dir/ddsi/src/ddsi_config.c.o[0m
+[ 40%] [32mBuilding C object src/core/CMakeFiles/ddsc.dir/ddsi/src/ddsi_time.c.o[0m
+[ 41%] [32mBuilding C object src/core/CMakeFiles/ddsc.dir/ddsi/src/ddsi_ownip.c.o[0m
+[ 41%] [32mBuilding C object src/core/CMakeFiles/ddsc.dir/ddsi/src/ddsi_acknack.c.o[0m
+[ 42%] [32mBuilding C object src/core/CMakeFiles/ddsc.dir/ddsi/src/ddsi_list_genptr.c.o[0m
+[ 42%] [32mBuilding C object src/core/CMakeFiles/ddsc.dir/ddsi/src/ddsi_wraddrset.c.o[0m
+[ 42%] [32mBuilding C object src/core/CMakeFiles/ddsc.dir/ddsi/src/ddsi_typelib.c.o[0m
+[ 43%] [32mBuilding C object src/core/CMakeFiles/ddsc.dir/ddsi/src/ddsi_entity.c.o[0m
+[ 43%] [32mBuilding C object src/core/CMakeFiles/ddsc.dir/ddsi/src/ddsi_entity_match.c.o[0m
+[ 44%] [32mBuilding C object src/core/CMakeFiles/ddsc.dir/ddsi/src/ddsi_participant.c.o[0m
+[ 44%] [32mBuilding C object src/core/CMakeFiles/ddsc.dir/ddsi/src/ddsi_proxy_participant.c.o[0m
+[ 44%] [32mBuilding C object src/core/CMakeFiles/ddsc.dir/ddsi/src/ddsi_topic.c.o[0m
+[ 45%] [32mBuilding C object src/core/CMakeFiles/ddsc.dir/ddsi/src/ddsi_endpoint.c.o[0m
+[ 45%] [32mBuilding C object src/core/CMakeFiles/ddsc.dir/ddsi/src/ddsi_proxy_endpoint.c.o[0m
+[ 45%] [32mBuilding C object src/core/CMakeFiles/ddsc.dir/ddsi/src/q_addrset.c.o[0m
+[ 46%] [32mBuilding C object src/core/CMakeFiles/ddsc.dir/ddsi/src/q_bitset_inlines.c.o[0m
+[ 46%] [32mBuilding C object src/core/CMakeFiles/ddsc.dir/ddsi/src/q_bswap.c.o[0m
+[ 47%] [32mBuilding C object src/core/CMakeFiles/ddsc.dir/ddsi/src/q_ddsi_discovery.c.o[0m
+[ 47%] [32mBuilding C object src/core/CMakeFiles/ddsc.dir/ddsi/src/q_debmon.c.o[0m
+[ 47%] [32mBuilding C object src/core/CMakeFiles/ddsc.dir/ddsi/src/q_gc.c.o[0m
+[ 48%] [32mBuilding C object src/core/CMakeFiles/ddsc.dir/ddsi/src/q_init.c.o[0m
+[ 48%] [32mBuilding C object src/core/CMakeFiles/ddsc.dir/ddsi/src/q_lat_estim.c.o[0m
+[ 49%] [32mBuilding C object src/core/CMakeFiles/ddsc.dir/ddsi/src/q_lease.c.o[0m
+[ 49%] [32mBuilding C object src/core/CMakeFiles/ddsc.dir/ddsi/src/q_misc.c.o[0m
+[ 49%] [32mBuilding C object src/core/CMakeFiles/ddsc.dir/ddsi/src/q_pcap.c.o[0m
+[ 50%] [32mBuilding C object src/core/CMakeFiles/ddsc.dir/ddsi/src/q_qosmatch.c.o[0m
+[ 50%] [32mBuilding C object src/core/CMakeFiles/ddsc.dir/ddsi/src/q_radmin.c.o[0m
+[ 50%] [32mBuilding C object src/core/CMakeFiles/ddsc.dir/ddsi/src/q_receive.c.o[0m
+[ 51%] [32mBuilding C object src/core/CMakeFiles/ddsc.dir/ddsi/src/q_sockwaitset.c.o[0m
+[ 51%] [32mBuilding C object src/core/CMakeFiles/ddsc.dir/ddsi/src/q_thread.c.o[0m

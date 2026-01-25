@@ -1,0 +1,44 @@
+[0.034s] Invoking command in '/ws/build/unitree_ros2_example': AMENT_PREFIX_PATH=/ws/install/unitree_hg:/ws/install/unitree_go:/ws/install/unitree_api:${AMENT_PREFIX_PATH} CMAKE_PREFIX_PATH=/ws/install/unitree_hg:/ws/install/unitree_go:/ws/install/unitree_api:/ws/libtorch:/opt/ros/humble LD_LIBRARY_PATH=/ws/install/unitree_hg/lib:/ws/install/unitree_go/lib:/ws/install/unitree_api/lib:${LD_LIBRARY_PATH} PYTHONPATH=/ws/install/unitree_hg/local/lib/python3.10/dist-packages:/ws/install/unitree_go/local/lib/python3.10/dist-packages:/ws/install/unitree_api/local/lib/python3.10/dist-packages:${PYTHONPATH} /usr/bin/cmake --build /ws/build/unitree_ros2_example -- -j4 -l4
+[0.129s] [35m[1mConsolidate compiler generated dependencies of target g1_low_level_example[0m
+[0.139s] [35m[1mConsolidate compiler generated dependencies of target low_level_ctrl[0m
+[0.139s] [35m[1mConsolidate compiler generated dependencies of target low_level_ctrl_hg[0m
+[0.145s] [35m[1mConsolidate compiler generated dependencies of target read_low_state[0m
+[0.192s] [ 15%] Built target low_level_ctrl_hg
+[0.195s] [ 30%] Built target low_level_ctrl
+[0.200s] [ 45%] Built target g1_low_level_example
+[0.206s] [ 55%] Built target read_low_state
+[0.220s] [35m[1mConsolidate compiler generated dependencies of target read_low_state_hg[0m
+[0.227s] [35m[1mConsolidate compiler generated dependencies of target read_wireless_controller[0m
+[0.227s] [35m[1mConsolidate compiler generated dependencies of target read_motion_state[0m
+[0.257s] [35m[1mConsolidate compiler generated dependencies of target sport_mode_ctrl[0m
+[0.272s] [ 65%] Built target read_wireless_controller
+[0.279s] [ 75%] Built target read_low_state_hg
+[0.292s] [ 85%] Built target read_motion_state
+[0.310s] [100%] Built target sport_mode_ctrl
+[0.332s] Invoked command in '/ws/build/unitree_ros2_example' returned '0': AMENT_PREFIX_PATH=/ws/install/unitree_hg:/ws/install/unitree_go:/ws/install/unitree_api:${AMENT_PREFIX_PATH} CMAKE_PREFIX_PATH=/ws/install/unitree_hg:/ws/install/unitree_go:/ws/install/unitree_api:/ws/libtorch:/opt/ros/humble LD_LIBRARY_PATH=/ws/install/unitree_hg/lib:/ws/install/unitree_go/lib:/ws/install/unitree_api/lib:${LD_LIBRARY_PATH} PYTHONPATH=/ws/install/unitree_hg/local/lib/python3.10/dist-packages:/ws/install/unitree_go/local/lib/python3.10/dist-packages:/ws/install/unitree_api/local/lib/python3.10/dist-packages:${PYTHONPATH} /usr/bin/cmake --build /ws/build/unitree_ros2_example -- -j4 -l4
+[0.334s] Invoking command in '/ws/build/unitree_ros2_example': AMENT_PREFIX_PATH=/ws/install/unitree_hg:/ws/install/unitree_go:/ws/install/unitree_api:${AMENT_PREFIX_PATH} CMAKE_PREFIX_PATH=/ws/install/unitree_hg:/ws/install/unitree_go:/ws/install/unitree_api:/ws/libtorch:/opt/ros/humble LD_LIBRARY_PATH=/ws/install/unitree_hg/lib:/ws/install/unitree_go/lib:/ws/install/unitree_api/lib:${LD_LIBRARY_PATH} PYTHONPATH=/ws/install/unitree_hg/local/lib/python3.10/dist-packages:/ws/install/unitree_go/local/lib/python3.10/dist-packages:/ws/install/unitree_api/local/lib/python3.10/dist-packages:${PYTHONPATH} /usr/bin/cmake --install /ws/build/unitree_ros2_example
+[0.352s] -- Install configuration: ""
+[0.352s] -- Up-to-date: /ws/install/unitree_ros2_example/bin/low_level_ctrl
+[0.353s] -- Up-to-date: /ws/install/unitree_ros2_example/bin/low_level_ctrl_hg
+[0.353s] -- Up-to-date: /ws/install/unitree_ros2_example/bin/g1_low_level_example
+[0.353s] -- Up-to-date: /ws/install/unitree_ros2_example/bin/read_low_state
+[0.354s] -- Up-to-date: /ws/install/unitree_ros2_example/bin/read_low_state_hg
+[0.354s] -- Up-to-date: /ws/install/unitree_ros2_example/bin/read_motion_state
+[0.355s] -- Up-to-date: /ws/install/unitree_ros2_example/bin/read_wireless_controller
+[0.355s] -- Up-to-date: /ws/install/unitree_ros2_example/bin/sport_mode_ctrl
+[0.356s] -- Up-to-date: /ws/install/unitree_ros2_example/share/ament_index/resource_index/package_run_dependencies/unitree_ros2_example
+[0.356s] -- Up-to-date: /ws/install/unitree_ros2_example/share/ament_index/resource_index/parent_prefix_path/unitree_ros2_example
+[0.356s] -- Up-to-date: /ws/install/unitree_ros2_example/share/unitree_ros2_example/environment/ament_prefix_path.sh
+[0.356s] -- Up-to-date: /ws/install/unitree_ros2_example/share/unitree_ros2_example/environment/ament_prefix_path.dsv
+[0.356s] -- Up-to-date: /ws/install/unitree_ros2_example/share/unitree_ros2_example/environment/path.sh
+[0.356s] -- Up-to-date: /ws/install/unitree_ros2_example/share/unitree_ros2_example/environment/path.dsv
+[0.356s] -- Up-to-date: /ws/install/unitree_ros2_example/share/unitree_ros2_example/local_setup.bash
+[0.356s] -- Up-to-date: /ws/install/unitree_ros2_example/share/unitree_ros2_example/local_setup.sh
+[0.356s] -- Up-to-date: /ws/install/unitree_ros2_example/share/unitree_ros2_example/local_setup.zsh
+[0.356s] -- Up-to-date: /ws/install/unitree_ros2_example/share/unitree_ros2_example/local_setup.dsv
+[0.356s] -- Installing: /ws/install/unitree_ros2_example/share/unitree_ros2_example/package.dsv
+[0.356s] -- Up-to-date: /ws/install/unitree_ros2_example/share/ament_index/resource_index/packages/unitree_ros2_example
+[0.357s] -- Up-to-date: /ws/install/unitree_ros2_example/share/unitree_ros2_example/cmake/unitree_ros2_exampleConfig.cmake
+[0.357s] -- Up-to-date: /ws/install/unitree_ros2_example/share/unitree_ros2_example/cmake/unitree_ros2_exampleConfig-version.cmake
+[0.357s] -- Up-to-date: /ws/install/unitree_ros2_example/share/unitree_ros2_example/package.xml
+[0.361s] Invoked command in '/ws/build/unitree_ros2_example' returned '0': AMENT_PREFIX_PATH=/ws/install/unitree_hg:/ws/install/unitree_go:/ws/install/unitree_api:${AMENT_PREFIX_PATH} CMAKE_PREFIX_PATH=/ws/install/unitree_hg:/ws/install/unitree_go:/ws/install/unitree_api:/ws/libtorch:/opt/ros/humble LD_LIBRARY_PATH=/ws/install/unitree_hg/lib:/ws/install/unitree_go/lib:/ws/install/unitree_api/lib:${LD_LIBRARY_PATH} PYTHONPATH=/ws/install/unitree_hg/local/lib/python3.10/dist-packages:/ws/install/unitree_go/local/lib/python3.10/dist-packages:/ws/install/unitree_api/local/lib/python3.10/dist-packages:${PYTHONPATH} /usr/bin/cmake --install /ws/build/unitree_ros2_example

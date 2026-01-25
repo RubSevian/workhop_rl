@@ -1,0 +1,3 @@
+Invoking command in '/ws/build/unitree_go': CMAKE_PREFIX_PATH=/opt/ros/humble /usr/bin/cmake /ws/src/unitree_ros2/cyclonedds_ws/src/unitree/unitree_go -DCMAKE_INSTALL_PREFIX=/ws/install/unitree_go
+Invoked command in '/ws/build/unitree_go' returned '0': CMAKE_PREFIX_PATH=/opt/ros/humble /usr/bin/cmake /ws/src/unitree_ros2/cyclonedds_ws/src/unitree/unitree_go -DCMAKE_INSTALL_PREFIX=/ws/install/unitree_go
+Invoking command in '/ws/build/unitree_go': CMAKE_PREFIX_PATH=/opt/ros/humble /usr/bin/cmake --build /ws/build/unitree_go -- -j4 -l4

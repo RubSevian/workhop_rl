@@ -1,0 +1,4 @@
+Invoking command in '/ws/build/cyclonedds': CMAKE_PREFIX_PATH=${CMAKE_PREFIX_PATH}:/opt/ros/humble /usr/bin/cmake --build /ws/build/cyclonedds -- -j4 -l4
+Invoked command in '/ws/build/cyclonedds' returned '0': CMAKE_PREFIX_PATH=${CMAKE_PREFIX_PATH}:/opt/ros/humble /usr/bin/cmake --build /ws/build/cyclonedds -- -j4 -l4
+Invoking command in '/ws/build/cyclonedds': CMAKE_PREFIX_PATH=${CMAKE_PREFIX_PATH}:/opt/ros/humble /usr/bin/cmake --install /ws/build/cyclonedds
+Invoked command in '/ws/build/cyclonedds' returned '0': CMAKE_PREFIX_PATH=${CMAKE_PREFIX_PATH}:/opt/ros/humble /usr/bin/cmake --install /ws/build/cyclonedds

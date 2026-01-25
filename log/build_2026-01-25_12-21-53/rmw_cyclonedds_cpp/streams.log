@@ -1,0 +1,83 @@
+[0.037s] Invoking command in '/ws/build/rmw_cyclonedds_cpp': CMAKE_PREFIX_PATH=/ws/install/cyclonedds:/ws/libtorch:/opt/ros/humble LD_LIBRARY_PATH=/ws/install/cyclonedds/lib:${LD_LIBRARY_PATH} PATH=/ws/install/cyclonedds/bin:${PATH} PKG_CONFIG_PATH=/ws/install/cyclonedds/lib/aarch64-linux-gnu/pkgconfig:/ws/install/cyclonedds/lib/pkgconfig /usr/bin/cmake /ws/src/unitree_ros2/cyclonedds_ws/src/rmw_cyclonedds/rmw_cyclonedds_cpp -DCMAKE_INSTALL_PREFIX=/ws/install/rmw_cyclonedds_cpp
+[0.141s] -- The C compiler identification is GNU 11.4.0
+[0.243s] -- The CXX compiler identification is GNU 11.4.0
+[0.255s] -- Detecting C compiler ABI info
+[0.385s] -- Detecting C compiler ABI info - done
+[0.395s] -- Check for working C compiler: /usr/bin/cc - skipped
+[0.397s] -- Detecting C compile features
+[0.398s] -- Detecting C compile features - done
+[0.401s] -- Detecting CXX compiler ABI info
+[0.544s] -- Detecting CXX compiler ABI info - done
+[0.555s] -- Check for working CXX compiler: /usr/bin/c++ - skipped
+[0.555s] -- Detecting CXX compile features
+[0.558s] -- Detecting CXX compile features - done
+[0.563s] -- Found ament_cmake_ros: 0.10.0 (/opt/ros/humble/share/ament_cmake_ros/cmake)
+[0.840s] -- Found Python3: /usr/bin/python3 (found version "3.10.12") found components: Interpreter 
+[1.005s] -- Found rcutils: 5.1.8 (/opt/ros/humble/share/rcutils/cmake)
+[1.016s] -- Found rcpputils: 2.4.6 (/opt/ros/humble/share/rcpputils/cmake)
+[1.023s] -- Found tracetools: 4.1.1 (/opt/ros/humble/share/tracetools/cmake)
+[1.035s] -- Found rmw: 6.1.2 (/opt/ros/humble/share/rmw/cmake)
+[1.052s] -- Found rmw_dds_common: 1.6.0 (/opt/ros/humble/share/rmw_dds_common/cmake)
+[1.073s] -- Found rosidl_generator_c: 3.1.8 (/opt/ros/humble/share/rosidl_generator_c/cmake)
+[1.082s] -- Found rosidl_adapter: 3.1.8 (/opt/ros/humble/share/rosidl_adapter/cmake)
+[1.096s] -- Found rosidl_generator_cpp: 3.1.8 (/opt/ros/humble/share/rosidl_generator_cpp/cmake)
+[1.109s] -- Using all available rosidl_typesupport_c: rosidl_typesupport_fastrtps_c;rosidl_typesupport_introspection_c
+[1.128s] -- Using all available rosidl_typesupport_cpp: rosidl_typesupport_fastrtps_cpp;rosidl_typesupport_introspection_cpp
+[1.159s] -- Found ament_lint_auto: 0.12.14 (/opt/ros/humble/share/ament_lint_auto/cmake)
+[1.309s] -- Added test 'copyright' to check source files copyright and LICENSE
+[1.312s] -- Added test 'cppcheck' to perform static code analysis on C / C++ code
+[1.312s] -- Configured cppcheck include dirs: 
+[1.312s] -- Configured cppcheck exclude dirs and/or files: 
+[1.319s] -- Added test 'cpplint' to check C / C++ code against the Google style
+[1.319s] -- Configured cpplint exclude dirs and/or files: 
+[1.321s] -- Added test 'lint_cmake' to check CMake code style
+[1.324s] -- Added test 'uncrustify' to check C / C++ code style
+[1.325s] -- Configured uncrustify additional arguments: 
+[1.326s] -- Added test 'xmllint' to check XML markup files
+[1.330s] -- Configuring done
+[1.344s] -- Generating done
+[1.345s] -- Build files have been written to: /ws/build/rmw_cyclonedds_cpp
+[1.357s] Invoked command in '/ws/build/rmw_cyclonedds_cpp' returned '0': CMAKE_PREFIX_PATH=/ws/install/cyclonedds:/ws/libtorch:/opt/ros/humble LD_LIBRARY_PATH=/ws/install/cyclonedds/lib:${LD_LIBRARY_PATH} PATH=/ws/install/cyclonedds/bin:${PATH} PKG_CONFIG_PATH=/ws/install/cyclonedds/lib/aarch64-linux-gnu/pkgconfig:/ws/install/cyclonedds/lib/pkgconfig /usr/bin/cmake /ws/src/unitree_ros2/cyclonedds_ws/src/rmw_cyclonedds/rmw_cyclonedds_cpp -DCMAKE_INSTALL_PREFIX=/ws/install/rmw_cyclonedds_cpp
+[1.363s] Invoking command in '/ws/build/rmw_cyclonedds_cpp': CMAKE_PREFIX_PATH=/ws/install/cyclonedds:/ws/libtorch:/opt/ros/humble LD_LIBRARY_PATH=/ws/install/cyclonedds/lib:${LD_LIBRARY_PATH} PATH=/ws/install/cyclonedds/bin:${PATH} PKG_CONFIG_PATH=/ws/install/cyclonedds/lib/aarch64-linux-gnu/pkgconfig:/ws/install/cyclonedds/lib/pkgconfig /usr/bin/cmake --build /ws/build/rmw_cyclonedds_cpp -- -j4 -l4
+[1.454s] [  8%] [32mBuilding CXX object CMakeFiles/rmw_cyclonedds_cpp.dir/src/rmw_get_network_flow_endpoints.cpp.o[0m
+[1.574s] [ 16%] [32mBuilding CXX object CMakeFiles/rmw_cyclonedds_cpp.dir/src/serdes.cpp.o[0m
+[1.933s] [ 25%] [32mBuilding CXX object CMakeFiles/rmw_cyclonedds_cpp.dir/src/u16string.cpp.o[0m
+[2.287s] [ 33%] [32mBuilding CXX object CMakeFiles/rmw_cyclonedds_cpp.dir/src/exception.cpp.o[0m
+[2.754s] [ 41%] [32mBuilding CXX object CMakeFiles/rmw_cyclonedds_cpp.dir/src/demangle.cpp.o[0m
+[3.654s] [ 50%] [32mBuilding CXX object CMakeFiles/rmw_cyclonedds_cpp.dir/src/deserialization_exception.cpp.o[0m
+[4.046s] [ 58%] [32mBuilding CXX object CMakeFiles/rmw_cyclonedds_cpp.dir/src/Serialization.cpp.o[0m
+[6.178s] [ 66%] [32mBuilding CXX object CMakeFiles/rmw_cyclonedds_cpp.dir/src/TypeSupport2.cpp.o[0m
+[8.664s] [ 75%] [32mBuilding CXX object CMakeFiles/rmw_cyclonedds_cpp.dir/src/TypeSupport.cpp.o[0m
+[9.279s] [ 83%] [32mBuilding CXX object CMakeFiles/rmw_cyclonedds_cpp.dir/src/serdata.cpp.o[0m
+[16.650s] [ 91%] [32mBuilding CXX object CMakeFiles/rmw_cyclonedds_cpp.dir/src/rmw_node.cpp.o[0m
+[28.898s] [100%] [32m[1mLinking CXX shared library librmw_cyclonedds_cpp.so[0m
+[29.751s] [100%] Built target rmw_cyclonedds_cpp
+[29.784s] Invoked command in '/ws/build/rmw_cyclonedds_cpp' returned '0': CMAKE_PREFIX_PATH=/ws/install/cyclonedds:/ws/libtorch:/opt/ros/humble LD_LIBRARY_PATH=/ws/install/cyclonedds/lib:${LD_LIBRARY_PATH} PATH=/ws/install/cyclonedds/bin:${PATH} PKG_CONFIG_PATH=/ws/install/cyclonedds/lib/aarch64-linux-gnu/pkgconfig:/ws/install/cyclonedds/lib/pkgconfig /usr/bin/cmake --build /ws/build/rmw_cyclonedds_cpp -- -j4 -l4
+[29.785s] Invoking command in '/ws/build/rmw_cyclonedds_cpp': CMAKE_PREFIX_PATH=/ws/install/cyclonedds:/ws/libtorch:/opt/ros/humble LD_LIBRARY_PATH=/ws/install/cyclonedds/lib:${LD_LIBRARY_PATH} PATH=/ws/install/cyclonedds/bin:${PATH} PKG_CONFIG_PATH=/ws/install/cyclonedds/lib/aarch64-linux-gnu/pkgconfig:/ws/install/cyclonedds/lib/pkgconfig /usr/bin/cmake --install /ws/build/rmw_cyclonedds_cpp
+[29.802s] -- Install configuration: ""
+[29.804s] -- Installing: /ws/install/rmw_cyclonedds_cpp/share/ament_index/resource_index/rmw_typesupport_c/rmw_cyclonedds_cpp
+[29.806s] -- Installing: /ws/install/rmw_cyclonedds_cpp/share/ament_index/resource_index/rmw_typesupport_cpp/rmw_cyclonedds_cpp
+[29.806s] -- Installing: /ws/install/rmw_cyclonedds_cpp/share/ament_index/resource_index/rmw_typesupport/rmw_cyclonedds_cpp
+[29.806s] -- Installing: /ws/install/rmw_cyclonedds_cpp/share/ament_index/resource_index/package_run_dependencies/rmw_cyclonedds_cpp
+[29.807s] -- Installing: /ws/install/rmw_cyclonedds_cpp/share/ament_index/resource_index/parent_prefix_path/rmw_cyclonedds_cpp
+[29.811s] -- Installing: /ws/install/rmw_cyclonedds_cpp/share/rmw_cyclonedds_cpp/environment/ament_prefix_path.sh
+[29.813s] -- Installing: /ws/install/rmw_cyclonedds_cpp/share/rmw_cyclonedds_cpp/environment/ament_prefix_path.dsv
+[29.815s] -- Installing: /ws/install/rmw_cyclonedds_cpp/share/rmw_cyclonedds_cpp/environment/path.sh
+[29.815s] -- Installing: /ws/install/rmw_cyclonedds_cpp/share/rmw_cyclonedds_cpp/environment/path.dsv
+[29.815s] -- Installing: /ws/install/rmw_cyclonedds_cpp/share/rmw_cyclonedds_cpp/local_setup.bash
+[29.816s] -- Installing: /ws/install/rmw_cyclonedds_cpp/share/rmw_cyclonedds_cpp/local_setup.sh
+[29.820s] -- Installing: /ws/install/rmw_cyclonedds_cpp/share/rmw_cyclonedds_cpp/local_setup.zsh
+[29.822s] -- Installing: /ws/install/rmw_cyclonedds_cpp/share/rmw_cyclonedds_cpp/local_setup.dsv
+[29.822s] -- Installing: /ws/install/rmw_cyclonedds_cpp/share/rmw_cyclonedds_cpp/package.dsv
+[29.822s] -- Installing: /ws/install/rmw_cyclonedds_cpp/share/ament_index/resource_index/packages/rmw_cyclonedds_cpp
+[29.824s] -- Installing: /ws/install/rmw_cyclonedds_cpp/share/rmw_cyclonedds_cpp/cmake/export_rmw_cyclonedds_cppExport.cmake
+[29.824s] -- Installing: /ws/install/rmw_cyclonedds_cpp/share/rmw_cyclonedds_cpp/cmake/export_rmw_cyclonedds_cppExport-noconfig.cmake
+[29.824s] -- Installing: /ws/install/rmw_cyclonedds_cpp/share/rmw_cyclonedds_cpp/cmake/ament_cmake_export_dependencies-extras.cmake
+[29.826s] -- Installing: /ws/install/rmw_cyclonedds_cpp/share/rmw_cyclonedds_cpp/cmake/ament_cmake_export_targets-extras.cmake
+[29.826s] -- Installing: /ws/install/rmw_cyclonedds_cpp/share/rmw_cyclonedds_cpp/cmake/rmw_cyclonedds_cppConfig.cmake
+[29.827s] -- Installing: /ws/install/rmw_cyclonedds_cpp/share/rmw_cyclonedds_cpp/cmake/rmw_cyclonedds_cppConfig-version.cmake
+[29.827s] -- Installing: /ws/install/rmw_cyclonedds_cpp/share/rmw_cyclonedds_cpp/package.xml
+[29.829s] -- Installing: /ws/install/rmw_cyclonedds_cpp/lib/librmw_cyclonedds_cpp.so
+[29.836s] -- Set runtime path of "/ws/install/rmw_cyclonedds_cpp/lib/librmw_cyclonedds_cpp.so" to ""
+[29.836s] -- Installing: /ws/install/rmw_cyclonedds_cpp/share/ament_index/resource_index/rmw_output_patterns/rmw_cyclonedds_cpp
+[29.840s] Invoked command in '/ws/build/rmw_cyclonedds_cpp' returned '0': CMAKE_PREFIX_PATH=/ws/install/cyclonedds:/ws/libtorch:/opt/ros/humble LD_LIBRARY_PATH=/ws/install/cyclonedds/lib:${LD_LIBRARY_PATH} PATH=/ws/install/cyclonedds/bin:${PATH} PKG_CONFIG_PATH=/ws/install/cyclonedds/lib/aarch64-linux-gnu/pkgconfig:/ws/install/cyclonedds/lib/pkgconfig /usr/bin/cmake --install /ws/build/rmw_cyclonedds_cpp

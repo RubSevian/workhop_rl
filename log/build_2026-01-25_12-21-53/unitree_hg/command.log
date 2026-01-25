@@ -1,0 +1,4 @@
+Invoking command in '/ws/build/unitree_hg': CMAKE_PREFIX_PATH=${CMAKE_PREFIX_PATH}:/opt/ros/humble /usr/bin/cmake --build /ws/build/unitree_hg -- -j4 -l4
+Invoked command in '/ws/build/unitree_hg' returned '0': CMAKE_PREFIX_PATH=${CMAKE_PREFIX_PATH}:/opt/ros/humble /usr/bin/cmake --build /ws/build/unitree_hg -- -j4 -l4
+Invoking command in '/ws/build/unitree_hg': CMAKE_PREFIX_PATH=${CMAKE_PREFIX_PATH}:/opt/ros/humble /usr/bin/cmake --install /ws/build/unitree_hg
+Invoked command in '/ws/build/unitree_hg' returned '0': CMAKE_PREFIX_PATH=${CMAKE_PREFIX_PATH}:/opt/ros/humble /usr/bin/cmake --install /ws/build/unitree_hg

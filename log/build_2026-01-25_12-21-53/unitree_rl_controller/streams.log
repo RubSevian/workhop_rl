@@ -1,0 +1,53 @@
+[0.085s] Invoking command in '/ws/build/unitree_rl_controller': AMENT_PREFIX_PATH=/ws/install/ros2_unitree_legged_msgs:${AMENT_PREFIX_PATH} CMAKE_PREFIX_PATH=/ws/install/ros2_unitree_legged_msgs:/ws/libtorch:/opt/ros/humble LD_LIBRARY_PATH=/ws/install/ros2_unitree_legged_msgs/lib:${LD_LIBRARY_PATH} PYTHONPATH=/ws/install/ros2_unitree_legged_msgs/local/lib/python3.10/dist-packages:${PYTHONPATH} /usr/bin/cmake /ws/src/unitree_rl_controller-ros2 -DCMAKE_INSTALL_PREFIX=/ws/install/unitree_rl_controller
+[0.183s] -- Found ament_cmake: 1.3.12 (/opt/ros/humble/share/ament_cmake/cmake)
+[1.022s] -- Found rclcpp: 16.0.17 (/opt/ros/humble/share/rclcpp/cmake)
+[1.085s] -- Found rosidl_generator_c: 3.1.8 (/opt/ros/humble/share/rosidl_generator_c/cmake)
+[1.091s] -- Found rosidl_adapter: 3.1.8 (/opt/ros/humble/share/rosidl_adapter/cmake)
+[1.099s] -- Found rosidl_generator_cpp: 3.1.8 (/opt/ros/humble/share/rosidl_generator_cpp/cmake)
+[1.118s] -- Using all available rosidl_typesupport_c: rosidl_typesupport_fastrtps_c;rosidl_typesupport_introspection_c
+[1.139s] -- Using all available rosidl_typesupport_cpp: rosidl_typesupport_fastrtps_cpp;rosidl_typesupport_introspection_cpp
+[1.223s] -- Found rmw_implementation_cmake: 6.1.2 (/opt/ros/humble/share/rmw_implementation_cmake/cmake)
+[1.227s] -- Found rmw_fastrtps_cpp: 6.2.9 (/opt/ros/humble/share/rmw_fastrtps_cpp/cmake)
+[1.892s] -- Using RMW implementation 'rmw_fastrtps_cpp' as default
+[2.380s] -- Found ros2_unitree_legged_msgs: 0.4.0 (/ws/install/ros2_unitree_legged_msgs/share/ros2_unitree_legged_msgs/cmake)
+[2.441s] -- Found geometry_msgs: 4.9.0 (/opt/ros/humble/share/geometry_msgs/cmake)
+[2.549s] -- Found nav_msgs: 4.9.0 (/opt/ros/humble/share/nav_msgs/cmake)
+[2.854s] -- Found Torch: /ws/libtorch/lib/libtorch.so  
+[3.684s] -- Configuring done
+[3.770s] -- Generating done
+[3.806s] -- Build files have been written to: /ws/build/unitree_rl_controller
+[3.894s] Invoked command in '/ws/build/unitree_rl_controller' returned '0': AMENT_PREFIX_PATH=/ws/install/ros2_unitree_legged_msgs:${AMENT_PREFIX_PATH} CMAKE_PREFIX_PATH=/ws/install/ros2_unitree_legged_msgs:/ws/libtorch:/opt/ros/humble LD_LIBRARY_PATH=/ws/install/ros2_unitree_legged_msgs/lib:${LD_LIBRARY_PATH} PYTHONPATH=/ws/install/ros2_unitree_legged_msgs/local/lib/python3.10/dist-packages:${PYTHONPATH} /usr/bin/cmake /ws/src/unitree_rl_controller-ros2 -DCMAKE_INSTALL_PREFIX=/ws/install/unitree_rl_controller
+[3.894s] Invoking command in '/ws/build/unitree_rl_controller': AMENT_PREFIX_PATH=/ws/install/ros2_unitree_legged_msgs:${AMENT_PREFIX_PATH} CMAKE_PREFIX_PATH=/ws/install/ros2_unitree_legged_msgs:/ws/libtorch:/opt/ros/humble LD_LIBRARY_PATH=/ws/install/ros2_unitree_legged_msgs/lib:${LD_LIBRARY_PATH} PYTHONPATH=/ws/install/ros2_unitree_legged_msgs/local/lib/python3.10/dist-packages:${PYTHONPATH} /usr/bin/cmake --build /ws/build/unitree_rl_controller -- -j4 -l4
+[4.325s] [ 33%] [32mBuilding CXX object CMakeFiles/unitree_rl_controller.dir/src/observation_buffer.cpp.o[0m
+[4.370s] [ 66%] [32mBuilding CXX object CMakeFiles/unitree_rl_controller.dir/src/rl_agent.cpp.o[0m
+[62.079s] [100%] [32m[1mLinking CXX shared library libunitree_rl_controller.so[0m
+[63.644s] [100%] Built target unitree_rl_controller
+[63.673s] Invoked command in '/ws/build/unitree_rl_controller' returned '0': AMENT_PREFIX_PATH=/ws/install/ros2_unitree_legged_msgs:${AMENT_PREFIX_PATH} CMAKE_PREFIX_PATH=/ws/install/ros2_unitree_legged_msgs:/ws/libtorch:/opt/ros/humble LD_LIBRARY_PATH=/ws/install/ros2_unitree_legged_msgs/lib:${LD_LIBRARY_PATH} PYTHONPATH=/ws/install/ros2_unitree_legged_msgs/local/lib/python3.10/dist-packages:${PYTHONPATH} /usr/bin/cmake --build /ws/build/unitree_rl_controller -- -j4 -l4
+[63.675s] Invoking command in '/ws/build/unitree_rl_controller': AMENT_PREFIX_PATH=/ws/install/ros2_unitree_legged_msgs:${AMENT_PREFIX_PATH} CMAKE_PREFIX_PATH=/ws/install/ros2_unitree_legged_msgs:/ws/libtorch:/opt/ros/humble LD_LIBRARY_PATH=/ws/install/ros2_unitree_legged_msgs/lib:${LD_LIBRARY_PATH} PYTHONPATH=/ws/install/ros2_unitree_legged_msgs/local/lib/python3.10/dist-packages:${PYTHONPATH} /usr/bin/cmake --install /ws/build/unitree_rl_controller
+[63.693s] -- Install configuration: ""
+[63.693s] -- Installing: /ws/install/unitree_rl_controller/share/unitree_rl_controller/environment/library_path.sh
+[63.694s] -- Installing: /ws/install/unitree_rl_controller/share/unitree_rl_controller/environment/library_path.dsv
+[63.695s] -- Installing: /ws/install/unitree_rl_controller/lib/libunitree_rl_controller.so
+[63.696s] -- Set runtime path of "/ws/install/unitree_rl_controller/lib/libunitree_rl_controller.so" to ""
+[63.697s] -- Installing: /ws/install/unitree_rl_controller/include
+[63.697s] -- Installing: /ws/install/unitree_rl_controller/include/observation_buffer.hpp
+[63.698s] -- Installing: /ws/install/unitree_rl_controller/include/rl_agent.h
+[63.699s] -- Installing: /ws/install/unitree_rl_controller/share/ament_index/resource_index/package_run_dependencies/unitree_rl_controller
+[63.699s] -- Installing: /ws/install/unitree_rl_controller/share/ament_index/resource_index/parent_prefix_path/unitree_rl_controller
+[63.700s] -- Installing: /ws/install/unitree_rl_controller/share/unitree_rl_controller/environment/ament_prefix_path.sh
+[63.700s] -- Installing: /ws/install/unitree_rl_controller/share/unitree_rl_controller/environment/ament_prefix_path.dsv
+[63.701s] -- Installing: /ws/install/unitree_rl_controller/share/unitree_rl_controller/environment/path.sh
+[63.702s] -- Installing: /ws/install/unitree_rl_controller/share/unitree_rl_controller/environment/path.dsv
+[63.702s] -- Installing: /ws/install/unitree_rl_controller/share/unitree_rl_controller/local_setup.bash
+[63.703s] -- Installing: /ws/install/unitree_rl_controller/share/unitree_rl_controller/local_setup.sh
+[63.703s] -- Installing: /ws/install/unitree_rl_controller/share/unitree_rl_controller/local_setup.zsh
+[63.704s] -- Installing: /ws/install/unitree_rl_controller/share/unitree_rl_controller/local_setup.dsv
+[63.705s] -- Installing: /ws/install/unitree_rl_controller/share/unitree_rl_controller/package.dsv
+[63.706s] -- Installing: /ws/install/unitree_rl_controller/share/ament_index/resource_index/packages/unitree_rl_controller
+[63.707s] -- Installing: /ws/install/unitree_rl_controller/share/unitree_rl_controller/cmake/ament_cmake_export_dependencies-extras.cmake
+[63.707s] -- Installing: /ws/install/unitree_rl_controller/share/unitree_rl_controller/cmake/ament_cmake_export_include_directories-extras.cmake
+[63.708s] -- Installing: /ws/install/unitree_rl_controller/share/unitree_rl_controller/cmake/ament_cmake_export_libraries-extras.cmake
+[63.709s] -- Installing: /ws/install/unitree_rl_controller/share/unitree_rl_controller/cmake/unitree_rl_controllerConfig.cmake
+[63.709s] -- Installing: /ws/install/unitree_rl_controller/share/unitree_rl_controller/cmake/unitree_rl_controllerConfig-version.cmake
+[63.709s] -- Installing: /ws/install/unitree_rl_controller/share/unitree_rl_controller/package.xml
+[63.731s] Invoked command in '/ws/build/unitree_rl_controller' returned '0': AMENT_PREFIX_PATH=/ws/install/ros2_unitree_legged_msgs:${AMENT_PREFIX_PATH} CMAKE_PREFIX_PATH=/ws/install/ros2_unitree_legged_msgs:/ws/libtorch:/opt/ros/humble LD_LIBRARY_PATH=/ws/install/ros2_unitree_legged_msgs/lib:${LD_LIBRARY_PATH} PYTHONPATH=/ws/install/ros2_unitree_legged_msgs/local/lib/python3.10/dist-packages:${PYTHONPATH} /usr/bin/cmake --install /ws/build/unitree_rl_controller

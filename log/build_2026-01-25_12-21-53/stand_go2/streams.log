@@ -1,0 +1,75 @@
+[0.057s] Invoking command in '/ws/build/stand_go2': AMENT_PREFIX_PATH=/ws/install/unitree_go:/ws/install/unitree_api:${AMENT_PREFIX_PATH} CMAKE_PREFIX_PATH=/ws/install/unitree_go:/ws/install/unitree_api:/ws/libtorch:/opt/ros/humble LD_LIBRARY_PATH=/ws/install/unitree_go/lib:/ws/install/unitree_api/lib:${LD_LIBRARY_PATH} PYTHONPATH=/ws/install/unitree_go/local/lib/python3.10/dist-packages:/ws/install/unitree_api/local/lib/python3.10/dist-packages:${PYTHONPATH} /usr/bin/cmake /ws/src/unitree_mujoco/example/ros2 -DCMAKE_INSTALL_PREFIX=/ws/install/stand_go2
+[0.238s] -- The C compiler identification is GNU 11.4.0
+[0.403s] -- The CXX compiler identification is GNU 11.4.0
+[0.419s] -- Detecting C compiler ABI info
+[0.637s] -- Detecting C compiler ABI info - done
+[0.662s] -- Check for working C compiler: /usr/bin/cc - skipped
+[0.663s] -- Detecting C compile features
+[0.663s] -- Detecting C compile features - done
+[0.671s] -- Detecting CXX compiler ABI info
+[0.901s] -- Detecting CXX compiler ABI info - done
+[0.915s] -- Check for working CXX compiler: /usr/bin/c++ - skipped
+[0.917s] -- Detecting CXX compile features
+[0.917s] -- Detecting CXX compile features - done
+[0.923s] -- Found ament_cmake: 1.3.12 (/opt/ros/humble/share/ament_cmake/cmake)
+[1.271s] -- Found Python3: /usr/bin/python3 (found version "3.10.12") found components: Interpreter 
+[1.507s] -- Found unitree_go: 0.0.0 (/ws/install/unitree_go/share/unitree_go/cmake)
+[1.583s] -- Found rosidl_generator_c: 3.1.8 (/opt/ros/humble/share/rosidl_generator_c/cmake)
+[1.596s] -- Found rosidl_adapter: 3.1.8 (/opt/ros/humble/share/rosidl_adapter/cmake)
+[1.607s] -- Found rosidl_generator_cpp: 3.1.8 (/opt/ros/humble/share/rosidl_generator_cpp/cmake)
+[1.634s] -- Using all available rosidl_typesupport_c: rosidl_typesupport_fastrtps_c;rosidl_typesupport_introspection_c
+[1.661s] -- Using all available rosidl_typesupport_cpp: rosidl_typesupport_fastrtps_cpp;rosidl_typesupport_introspection_cpp
+[1.764s] -- Found unitree_api: 0.0.0 (/ws/install/unitree_api/share/unitree_api/cmake)
+[1.781s] -- Found rclcpp: 16.0.17 (/opt/ros/humble/share/rclcpp/cmake)
+[1.861s] -- Found rmw_implementation_cmake: 6.1.2 (/opt/ros/humble/share/rmw_implementation_cmake/cmake)
+[1.866s] -- Found rmw_fastrtps_cpp: 6.2.9 (/opt/ros/humble/share/rmw_fastrtps_cpp/cmake)
+[2.077s] -- Found OpenSSL: /usr/lib/aarch64-linux-gnu/libcrypto.so (found version "3.0.2")  
+[2.113s] -- Found FastRTPS: /opt/ros/humble/include  
+[2.181s] -- Using RMW implementation 'rmw_fastrtps_cpp' as default
+[2.196s] -- Looking for pthread.h
+[2.409s] -- Looking for pthread.h - found
+[2.413s] -- Performing Test CMAKE_HAVE_LIBC_PTHREAD
+[2.668s] -- Performing Test CMAKE_HAVE_LIBC_PTHREAD - Success
+[2.670s] -- Found Threads: TRUE  
+[2.769s] -- Found rosbag2_cpp: 0.15.15 (/opt/ros/humble/share/rosbag2_cpp/cmake)
+[2.873s] -- Found ament_lint_auto: 0.12.14 (/opt/ros/humble/share/ament_lint_auto/cmake)
+[3.080s] -- Added test 'copyright' to check source files copyright and LICENSE
+[3.085s] -- Added test 'cppcheck' to perform static code analysis on C / C++ code
+[3.086s] -- Configured cppcheck include dirs: /ws/src/unitree_mujoco/example/ros2/include
+[3.087s] -- Configured cppcheck exclude dirs and/or files: 
+[3.087s] -- Added test 'cpplint' to check C / C++ code against the Google style
+[3.087s] -- Configured cpplint exclude dirs and/or files: 
+[3.093s] -- Added test 'lint_cmake' to check CMake code style
+[3.099s] -- Added test 'uncrustify' to check C / C++ code style
+[3.100s] -- Configured uncrustify additional arguments: 
+[3.101s] -- Added test 'xmllint' to check XML markup files
+[3.109s] -- Configuring done
+[3.137s] -- Generating done
+[3.145s] -- Build files have been written to: /ws/build/stand_go2
+[3.175s] Invoked command in '/ws/build/stand_go2' returned '0': AMENT_PREFIX_PATH=/ws/install/unitree_go:/ws/install/unitree_api:${AMENT_PREFIX_PATH} CMAKE_PREFIX_PATH=/ws/install/unitree_go:/ws/install/unitree_api:/ws/libtorch:/opt/ros/humble LD_LIBRARY_PATH=/ws/install/unitree_go/lib:/ws/install/unitree_api/lib:${LD_LIBRARY_PATH} PYTHONPATH=/ws/install/unitree_go/local/lib/python3.10/dist-packages:/ws/install/unitree_api/local/lib/python3.10/dist-packages:${PYTHONPATH} /usr/bin/cmake /ws/src/unitree_mujoco/example/ros2 -DCMAKE_INSTALL_PREFIX=/ws/install/stand_go2
+[3.177s] Invoking command in '/ws/build/stand_go2': AMENT_PREFIX_PATH=/ws/install/unitree_go:/ws/install/unitree_api:${AMENT_PREFIX_PATH} CMAKE_PREFIX_PATH=/ws/install/unitree_go:/ws/install/unitree_api:/ws/libtorch:/opt/ros/humble LD_LIBRARY_PATH=/ws/install/unitree_go/lib:/ws/install/unitree_api/lib:${LD_LIBRARY_PATH} PYTHONPATH=/ws/install/unitree_go/local/lib/python3.10/dist-packages:/ws/install/unitree_api/local/lib/python3.10/dist-packages:${PYTHONPATH} /usr/bin/cmake --build /ws/build/stand_go2 -- -j4 -l4
+[3.341s] [ 33%] [32mBuilding CXX object CMakeFiles/stand_go2.dir/src/stand_go2.cpp.o[0m
+[14.364s] [ 66%] [32mBuilding CXX object CMakeFiles/stand_go2.dir/src/motor_crc.cpp.o[0m
+[21.138s] [100%] [32m[1mLinking CXX executable stand_go2[0m
+[21.869s] [100%] Built target stand_go2
+[21.904s] Invoked command in '/ws/build/stand_go2' returned '0': AMENT_PREFIX_PATH=/ws/install/unitree_go:/ws/install/unitree_api:${AMENT_PREFIX_PATH} CMAKE_PREFIX_PATH=/ws/install/unitree_go:/ws/install/unitree_api:/ws/libtorch:/opt/ros/humble LD_LIBRARY_PATH=/ws/install/unitree_go/lib:/ws/install/unitree_api/lib:${LD_LIBRARY_PATH} PYTHONPATH=/ws/install/unitree_go/local/lib/python3.10/dist-packages:/ws/install/unitree_api/local/lib/python3.10/dist-packages:${PYTHONPATH} /usr/bin/cmake --build /ws/build/stand_go2 -- -j4 -l4
+[21.907s] Invoking command in '/ws/build/stand_go2': AMENT_PREFIX_PATH=/ws/install/unitree_go:/ws/install/unitree_api:${AMENT_PREFIX_PATH} CMAKE_PREFIX_PATH=/ws/install/unitree_go:/ws/install/unitree_api:/ws/libtorch:/opt/ros/humble LD_LIBRARY_PATH=/ws/install/unitree_go/lib:/ws/install/unitree_api/lib:${LD_LIBRARY_PATH} PYTHONPATH=/ws/install/unitree_go/local/lib/python3.10/dist-packages:/ws/install/unitree_api/local/lib/python3.10/dist-packages:${PYTHONPATH} /usr/bin/cmake --install /ws/build/stand_go2
+[21.939s] -- Install configuration: ""
+[21.939s] -- Installing: /ws/install/stand_go2/lib/stand_go2/stand_go2
+[21.945s] -- Set runtime path of "/ws/install/stand_go2/lib/stand_go2/stand_go2" to ""
+[21.945s] -- Installing: /ws/install/stand_go2/share/ament_index/resource_index/package_run_dependencies/stand_go2
+[21.945s] -- Installing: /ws/install/stand_go2/share/ament_index/resource_index/parent_prefix_path/stand_go2
+[21.945s] -- Installing: /ws/install/stand_go2/share/stand_go2/environment/ament_prefix_path.sh
+[21.945s] -- Installing: /ws/install/stand_go2/share/stand_go2/environment/ament_prefix_path.dsv
+[21.945s] -- Installing: /ws/install/stand_go2/share/stand_go2/environment/path.sh
+[21.945s] -- Installing: /ws/install/stand_go2/share/stand_go2/environment/path.dsv
+[21.946s] -- Installing: /ws/install/stand_go2/share/stand_go2/local_setup.bash
+[21.946s] -- Installing: /ws/install/stand_go2/share/stand_go2/local_setup.sh
+[21.946s] -- Installing: /ws/install/stand_go2/share/stand_go2/local_setup.zsh
+[21.946s] -- Installing: /ws/install/stand_go2/share/stand_go2/local_setup.dsv
+[21.946s] -- Installing: /ws/install/stand_go2/share/stand_go2/package.dsv
+[21.947s] -- Installing: /ws/install/stand_go2/share/ament_index/resource_index/packages/stand_go2
+[21.947s] -- Installing: /ws/install/stand_go2/share/stand_go2/cmake/stand_go2Config.cmake
+[21.947s] -- Installing: /ws/install/stand_go2/share/stand_go2/cmake/stand_go2Config-version.cmake
+[21.950s] -- Installing: /ws/install/stand_go2/share/stand_go2/package.xml
+[21.951s] Invoked command in '/ws/build/stand_go2' returned '0': AMENT_PREFIX_PATH=/ws/install/unitree_go:/ws/install/unitree_api:${AMENT_PREFIX_PATH} CMAKE_PREFIX_PATH=/ws/install/unitree_go:/ws/install/unitree_api:/ws/libtorch:/opt/ros/humble LD_LIBRARY_PATH=/ws/install/unitree_go/lib:/ws/install/unitree_api/lib:${LD_LIBRARY_PATH} PYTHONPATH=/ws/install/unitree_go/local/lib/python3.10/dist-packages:/ws/install/unitree_api/local/lib/python3.10/dist-packages:${PYTHONPATH} /usr/bin/cmake --install /ws/build/stand_go2

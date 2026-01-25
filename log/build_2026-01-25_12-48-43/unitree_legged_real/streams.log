@@ -1,0 +1,36 @@
+[0.104s] Invoking command in '/ws/build/unitree_legged_real': AMENT_PREFIX_PATH=/ws/install/unitree_rl_controller:/ws/install/unitree_go:/ws/install/unitree_api:/ws/install/ros2_unitree_legged_msgs:${AMENT_PREFIX_PATH} CMAKE_PREFIX_PATH=/ws/install/unitree_rl_controller:/ws/install/unitree_go:/ws/install/unitree_api:/ws/install/ros2_unitree_legged_msgs:/ws/libtorch:/opt/ros/humble LD_LIBRARY_PATH=/ws/install/unitree_rl_controller/lib:/ws/install/unitree_go/lib:/ws/install/unitree_api/lib:/ws/install/ros2_unitree_legged_msgs/lib:${LD_LIBRARY_PATH} PYTHONPATH=/ws/install/unitree_go/local/lib/python3.10/dist-packages:/ws/install/unitree_api/local/lib/python3.10/dist-packages:/ws/install/ros2_unitree_legged_msgs/local/lib/python3.10/dist-packages:${PYTHONPATH} /usr/bin/cmake --build /ws/build/unitree_legged_real -- -j4 -l4
+[0.198s] [35m[1mConsolidate compiler generated dependencies of target go2_heightmap_node[0m
+[0.204s] [35m[1mConsolidate compiler generated dependencies of target lcm_server[0m
+[0.239s] [35m[1mConsolidate compiler generated dependencies of target ros2_rl_go2[0m
+[0.281s] [ 28%] Built target lcm_server
+[0.285s] [ 57%] Built target go2_heightmap_node
+[0.315s] [100%] Built target ros2_rl_go2
+[0.345s] Invoked command in '/ws/build/unitree_legged_real' returned '0': AMENT_PREFIX_PATH=/ws/install/unitree_rl_controller:/ws/install/unitree_go:/ws/install/unitree_api:/ws/install/ros2_unitree_legged_msgs:${AMENT_PREFIX_PATH} CMAKE_PREFIX_PATH=/ws/install/unitree_rl_controller:/ws/install/unitree_go:/ws/install/unitree_api:/ws/install/ros2_unitree_legged_msgs:/ws/libtorch:/opt/ros/humble LD_LIBRARY_PATH=/ws/install/unitree_rl_controller/lib:/ws/install/unitree_go/lib:/ws/install/unitree_api/lib:/ws/install/ros2_unitree_legged_msgs/lib:${LD_LIBRARY_PATH} PYTHONPATH=/ws/install/unitree_go/local/lib/python3.10/dist-packages:/ws/install/unitree_api/local/lib/python3.10/dist-packages:/ws/install/ros2_unitree_legged_msgs/local/lib/python3.10/dist-packages:${PYTHONPATH} /usr/bin/cmake --build /ws/build/unitree_legged_real -- -j4 -l4
+[0.349s] Invoking command in '/ws/build/unitree_legged_real': AMENT_PREFIX_PATH=/ws/install/unitree_rl_controller:/ws/install/unitree_go:/ws/install/unitree_api:/ws/install/ros2_unitree_legged_msgs:${AMENT_PREFIX_PATH} CMAKE_PREFIX_PATH=/ws/install/unitree_rl_controller:/ws/install/unitree_go:/ws/install/unitree_api:/ws/install/ros2_unitree_legged_msgs:/ws/libtorch:/opt/ros/humble LD_LIBRARY_PATH=/ws/install/unitree_rl_controller/lib:/ws/install/unitree_go/lib:/ws/install/unitree_api/lib:/ws/install/ros2_unitree_legged_msgs/lib:${LD_LIBRARY_PATH} PYTHONPATH=/ws/install/unitree_go/local/lib/python3.10/dist-packages:/ws/install/unitree_api/local/lib/python3.10/dist-packages:/ws/install/ros2_unitree_legged_msgs/local/lib/python3.10/dist-packages:${PYTHONPATH} /usr/bin/cmake --install /ws/build/unitree_legged_real
+[0.362s] -- Install configuration: ""
+[0.363s] -- Up-to-date: /ws/install/unitree_legged_real/lib
+[0.363s] -- Up-to-date: /ws/install/unitree_legged_real/lib/libunitree_legged_sdk_amd64.so
+[0.363s] -- Up-to-date: /ws/install/unitree_legged_real/lib/libunitree_legged_sdk_arm64.so
+[0.363s] -- Up-to-date: /ws/install/unitree_legged_real/lib/libddsc.so
+[0.363s] -- Up-to-date: /ws/install/unitree_legged_real/lib/libddscxx.so
+[0.363s] -- Up-to-date: /ws/install/unitree_legged_real/lib/libddsc.so
+[0.363s] -- Up-to-date: /ws/install/unitree_legged_real/lib/libddscxx.so
+[0.363s] -- Up-to-date: /ws/install/unitree_legged_real/lib/unitree_legged_real/ros2_rl_go2
+[0.364s] -- Up-to-date: /ws/install/unitree_legged_real/lib/unitree_legged_real/go2_heightmap_node
+[0.365s] -- Up-to-date: /ws/install/unitree_legged_real/lib/unitree_legged_real/lcm_server
+[0.365s] -- Up-to-date: /ws/install/unitree_legged_real/share/ament_index/resource_index/package_run_dependencies/unitree_legged_real
+[0.365s] -- Up-to-date: /ws/install/unitree_legged_real/share/ament_index/resource_index/parent_prefix_path/unitree_legged_real
+[0.365s] -- Up-to-date: /ws/install/unitree_legged_real/share/unitree_legged_real/environment/ament_prefix_path.sh
+[0.365s] -- Up-to-date: /ws/install/unitree_legged_real/share/unitree_legged_real/environment/ament_prefix_path.dsv
+[0.365s] -- Up-to-date: /ws/install/unitree_legged_real/share/unitree_legged_real/environment/path.sh
+[0.365s] -- Up-to-date: /ws/install/unitree_legged_real/share/unitree_legged_real/environment/path.dsv
+[0.366s] -- Up-to-date: /ws/install/unitree_legged_real/share/unitree_legged_real/local_setup.bash
+[0.366s] -- Up-to-date: /ws/install/unitree_legged_real/share/unitree_legged_real/local_setup.sh
+[0.366s] -- Up-to-date: /ws/install/unitree_legged_real/share/unitree_legged_real/local_setup.zsh
+[0.366s] -- Up-to-date: /ws/install/unitree_legged_real/share/unitree_legged_real/local_setup.dsv
+[0.366s] -- Installing: /ws/install/unitree_legged_real/share/unitree_legged_real/package.dsv
+[0.366s] -- Up-to-date: /ws/install/unitree_legged_real/share/ament_index/resource_index/packages/unitree_legged_real
+[0.366s] -- Up-to-date: /ws/install/unitree_legged_real/share/unitree_legged_real/cmake/unitree_legged_realConfig.cmake
+[0.366s] -- Up-to-date: /ws/install/unitree_legged_real/share/unitree_legged_real/cmake/unitree_legged_realConfig-version.cmake
+[0.366s] -- Up-to-date: /ws/install/unitree_legged_real/share/unitree_legged_real/package.xml
+[0.370s] Invoked command in '/ws/build/unitree_legged_real' returned '0': AMENT_PREFIX_PATH=/ws/install/unitree_rl_controller:/ws/install/unitree_go:/ws/install/unitree_api:/ws/install/ros2_unitree_legged_msgs:${AMENT_PREFIX_PATH} CMAKE_PREFIX_PATH=/ws/install/unitree_rl_controller:/ws/install/unitree_go:/ws/install/unitree_api:/ws/install/ros2_unitree_legged_msgs:/ws/libtorch:/opt/ros/humble LD_LIBRARY_PATH=/ws/install/unitree_rl_controller/lib:/ws/install/unitree_go/lib:/ws/install/unitree_api/lib:/ws/install/ros2_unitree_legged_msgs/lib:${LD_LIBRARY_PATH} PYTHONPATH=/ws/install/unitree_go/local/lib/python3.10/dist-packages:/ws/install/unitree_api/local/lib/python3.10/dist-packages:/ws/install/ros2_unitree_legged_msgs/local/lib/python3.10/dist-packages:${PYTHONPATH} /usr/bin/cmake --install /ws/build/unitree_legged_real

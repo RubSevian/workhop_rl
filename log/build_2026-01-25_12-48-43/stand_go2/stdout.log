@@ -1,0 +1,19 @@
+[35m[1mConsolidate compiler generated dependencies of target stand_go2[0m
+[100%] Built target stand_go2
+-- Install configuration: ""
+-- Up-to-date: /ws/install/stand_go2/lib/stand_go2/stand_go2
+-- Up-to-date: /ws/install/stand_go2/share/ament_index/resource_index/package_run_dependencies/stand_go2
+-- Up-to-date: /ws/install/stand_go2/share/ament_index/resource_index/parent_prefix_path/stand_go2
+-- Up-to-date: /ws/install/stand_go2/share/stand_go2/environment/ament_prefix_path.sh
+-- Up-to-date: /ws/install/stand_go2/share/stand_go2/environment/ament_prefix_path.dsv
+-- Up-to-date: /ws/install/stand_go2/share/stand_go2/environment/path.sh
+-- Up-to-date: /ws/install/stand_go2/share/stand_go2/environment/path.dsv
+-- Up-to-date: /ws/install/stand_go2/share/stand_go2/local_setup.bash
+-- Up-to-date: /ws/install/stand_go2/share/stand_go2/local_setup.sh
+-- Up-to-date: /ws/install/stand_go2/share/stand_go2/local_setup.zsh
+-- Up-to-date: /ws/install/stand_go2/share/stand_go2/local_setup.dsv
+-- Installing: /ws/install/stand_go2/share/stand_go2/package.dsv
+-- Up-to-date: /ws/install/stand_go2/share/ament_index/resource_index/packages/stand_go2
+-- Up-to-date: /ws/install/stand_go2/share/stand_go2/cmake/stand_go2Config.cmake
+-- Up-to-date: /ws/install/stand_go2/share/stand_go2/cmake/stand_go2Config-version.cmake
+-- Up-to-date: /ws/install/stand_go2/share/stand_go2/package.xml

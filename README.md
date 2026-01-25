@@ -69,9 +69,10 @@ simulate
 3. Save changes in docker container
 
     ```
+    docker ps
     docker commit <container_id>workhop_rl:humble-dev-saved
     ```
-4. Download libtorch image 1.9.0
+4. Download libtorch image 1.9.0 and copy into dir workhop_rl
     ```
     ```
 5. Build code workshop_rl
@@ -81,6 +82,10 @@ simulate
     After:
 
     ```
+    export Torch_DIR=/ws/libtorch/share/cmake/Torch
+    export CMAKE_PREFIX_PATH=/ws/libtorch:$CMAKE_PREFIX_PATH
+    export LD_LIBRARY_PATH=/ws/libtorch/lib:$LD_LIBRARY_PATH
+
     colcon build  --packages-skip unitree_mujoco
     ```
 

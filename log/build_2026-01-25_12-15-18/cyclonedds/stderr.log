@@ -1,0 +1,3 @@
+gmake[2]: *** [src/core/CMakeFiles/ddsc.dir/build.make:958: src/core/CMakeFiles/ddsc.dir/ddsi/src/q_thread.c.o] Interrupt
+gmake[1]: *** [CMakeFiles/Makefile2:675: src/core/CMakeFiles/ddsc.dir/all] Interrupt
+gmake: *** [Makefile:156: all] Interrupt

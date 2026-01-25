@@ -1,0 +1,3 @@
+gmake[2]: *** [CMakeFiles/unitree_go__rosidl_typesupport_fastrtps_c.dir/build.make:552: CMakeFiles/unitree_go__rosidl_typesupport_fastrtps_c.dir/rosidl_typesupport_fastrtps_c/unitree_go/msg/detail/res__type_support_c.cpp.o] Interrupt
+gmake[1]: *** [CMakeFiles/Makefile2:241: CMakeFiles/unitree_go__rosidl_typesupport_fastrtps_c.dir/all] Interrupt
+gmake: *** [Makefile:146: all] Interrupt

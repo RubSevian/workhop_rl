@@ -1,0 +1,85 @@
+-- The C compiler identification is GNU 11.4.0
+-- The CXX compiler identification is GNU 11.4.0
+-- Detecting C compiler ABI info
+-- Detecting C compiler ABI info - done
+-- Check for working C compiler: /usr/bin/cc - skipped
+-- Detecting C compile features
+-- Detecting C compile features - done
+-- Detecting CXX compiler ABI info
+-- Detecting CXX compiler ABI info - done
+-- Check for working CXX compiler: /usr/bin/c++ - skipped
+-- Detecting CXX compile features
+-- Detecting CXX compile features - done
+-- Found ament_cmake: 1.3.12 (/opt/ros/humble/share/ament_cmake/cmake)
+-- Found Python3: /usr/bin/python3 (found version "3.10.12") found components: Interpreter 
+-- Found rclcpp: 16.0.17 (/opt/ros/humble/share/rclcpp/cmake)
+-- Found rosidl_generator_c: 3.1.8 (/opt/ros/humble/share/rosidl_generator_c/cmake)
+-- Found rosidl_adapter: 3.1.8 (/opt/ros/humble/share/rosidl_adapter/cmake)
+-- Found rosidl_generator_cpp: 3.1.8 (/opt/ros/humble/share/rosidl_generator_cpp/cmake)
+-- Using all available rosidl_typesupport_c: rosidl_typesupport_fastrtps_c;rosidl_typesupport_introspection_c
+-- Using all available rosidl_typesupport_cpp: rosidl_typesupport_fastrtps_cpp;rosidl_typesupport_introspection_cpp
+-- Found rmw_implementation_cmake: 6.1.2 (/opt/ros/humble/share/rmw_implementation_cmake/cmake)
+-- Found rmw_fastrtps_cpp: 6.2.9 (/opt/ros/humble/share/rmw_fastrtps_cpp/cmake)
+-- Found OpenSSL: /usr/lib/aarch64-linux-gnu/libcrypto.so (found version "3.0.2")  
+-- Found FastRTPS: /opt/ros/humble/include  
+-- Using RMW implementation 'rmw_fastrtps_cpp' as default
+-- Looking for pthread.h
+-- Looking for pthread.h - found
+-- Performing Test CMAKE_HAVE_LIBC_PTHREAD
+-- Performing Test CMAKE_HAVE_LIBC_PTHREAD - Success
+-- Found Threads: TRUE  
+-- Found sensor_msgs: 4.9.0 (/opt/ros/humble/share/sensor_msgs/cmake)
+-- Found std_srvs: 4.9.0 (/opt/ros/humble/share/std_srvs/cmake)
+-- Found ros2_unitree_legged_msgs: 0.4.0 (/ws/install/ros2_unitree_legged_msgs/share/ros2_unitree_legged_msgs/cmake)
+-- Found unitree_rl_controller: 0.0.0 (/ws/install/unitree_rl_controller/share/unitree_rl_controller/cmake)
+-- Found Torch: /ws/libtorch/lib/libtorch.so  
+-- TORCH_FOUND: TRUE
+-- TORCH_INCLUDE_DIRS: /ws/libtorch/include;/ws/libtorch/include/torch/csrc/api/include
+-- TORCH_LIBRARIES: torch;torch_library;/ws/libtorch/lib/libc10.so;/ws/libtorch/lib/libkineto.a
+-- Found unitree_go: 0.0.0 (/ws/install/unitree_go/share/unitree_go/cmake)
+-- Found unitree_api: 0.0.0 (/ws/install/unitree_api/share/unitree_api/cmake)
+-- Found tf2: 0.25.18 (/opt/ros/humble/share/tf2/cmake)
+-- Found tf2_ros: 0.25.18 (/opt/ros/humble/share/tf2_ros/cmake)
+-- Found tf2_sensor_msgs: 0.25.18 (/opt/ros/humble/share/tf2_sensor_msgs/cmake)
+-- Configuring done
+-- Generating done
+-- Build files have been written to: /ws/build/unitree_legged_real
+[ 14%] [32mBuilding CXX object CMakeFiles/lcm_server.dir/unitree_legged_sdk/examples/lcm_server.cpp.o[0m
+[ 28%] [32m[1mLinking CXX executable lcm_server[0m
+[ 28%] Built target lcm_server
+[ 42%] [32mBuilding CXX object CMakeFiles/ros2_rl_go2.dir/src/ros2_rl_go2.cpp.o[0m
+[ 57%] [32mBuilding CXX object CMakeFiles/ros2_rl_go2.dir/src/motor_crc.cpp.o[0m
+[ 71%] [32m[1mLinking CXX executable ros2_rl_go2[0m
+[ 71%] Built target ros2_rl_go2
+[ 85%] [32mBuilding CXX object CMakeFiles/go2_heightmap_node.dir/src/go2_heightmap_node.cpp.o[0m
+[100%] [32m[1mLinking CXX executable go2_heightmap_node[0m
+[100%] Built target go2_heightmap_node
+-- Install configuration: ""
+-- Installing: /ws/install/unitree_legged_real/lib
+-- Installing: /ws/install/unitree_legged_real/lib/libunitree_legged_sdk_amd64.so
+-- Installing: /ws/install/unitree_legged_real/lib/libunitree_legged_sdk_arm64.so
+-- Installing: /ws/install/unitree_legged_real/lib/libddsc.so
+-- Installing: /ws/install/unitree_legged_real/lib/libddscxx.so
+-- Up-to-date: /ws/install/unitree_legged_real/lib/libddsc.so
+-- Up-to-date: /ws/install/unitree_legged_real/lib/libddscxx.so
+-- Installing: /ws/install/unitree_legged_real/lib/unitree_legged_real/ros2_rl_go2
+-- Set runtime path of "/ws/install/unitree_legged_real/lib/unitree_legged_real/ros2_rl_go2" to ""
+-- Installing: /ws/install/unitree_legged_real/lib/unitree_legged_real/go2_heightmap_node
+-- Set runtime path of "/ws/install/unitree_legged_real/lib/unitree_legged_real/go2_heightmap_node" to ""
+-- Installing: /ws/install/unitree_legged_real/lib/unitree_legged_real/lcm_server
+-- Set runtime path of "/ws/install/unitree_legged_real/lib/unitree_legged_real/lcm_server" to ""
+-- Installing: /ws/install/unitree_legged_real/share/ament_index/resource_index/package_run_dependencies/unitree_legged_real
+-- Installing: /ws/install/unitree_legged_real/share/ament_index/resource_index/parent_prefix_path/unitree_legged_real
+-- Installing: /ws/install/unitree_legged_real/share/unitree_legged_real/environment/ament_prefix_path.sh
+-- Installing: /ws/install/unitree_legged_real/share/unitree_legged_real/environment/ament_prefix_path.dsv
+-- Installing: /ws/install/unitree_legged_real/share/unitree_legged_real/environment/path.sh
+-- Installing: /ws/install/unitree_legged_real/share/unitree_legged_real/environment/path.dsv
+-- Installing: /ws/install/unitree_legged_real/share/unitree_legged_real/local_setup.bash
+-- Installing: /ws/install/unitree_legged_real/share/unitree_legged_real/local_setup.sh
+-- Installing: /ws/install/unitree_legged_real/share/unitree_legged_real/local_setup.zsh
+-- Installing: /ws/install/unitree_legged_real/share/unitree_legged_real/local_setup.dsv
+-- Installing: /ws/install/unitree_legged_real/share/unitree_legged_real/package.dsv
+-- Installing: /ws/install/unitree_legged_real/share/ament_index/resource_index/packages/unitree_legged_real
+-- Installing: /ws/install/unitree_legged_real/share/unitree_legged_real/cmake/unitree_legged_realConfig.cmake
+-- Installing: /ws/install/unitree_legged_real/share/unitree_legged_real/cmake/unitree_legged_realConfig-version.cmake
+-- Installing: /ws/install/unitree_legged_real/share/unitree_legged_real/package.xml

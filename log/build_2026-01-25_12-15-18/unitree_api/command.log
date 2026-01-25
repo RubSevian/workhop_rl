@@ -1,0 +1,6 @@
+Invoking command in '/ws/build/unitree_api': CMAKE_PREFIX_PATH=/opt/ros/humble /usr/bin/cmake /ws/src/unitree_ros2/cyclonedds_ws/src/unitree/unitree_api -DCMAKE_INSTALL_PREFIX=/ws/install/unitree_api
+Invoked command in '/ws/build/unitree_api' returned '0': CMAKE_PREFIX_PATH=/opt/ros/humble /usr/bin/cmake /ws/src/unitree_ros2/cyclonedds_ws/src/unitree/unitree_api -DCMAKE_INSTALL_PREFIX=/ws/install/unitree_api
+Invoking command in '/ws/build/unitree_api': CMAKE_PREFIX_PATH=/opt/ros/humble /usr/bin/cmake --build /ws/build/unitree_api -- -j4 -l4
+Invoked command in '/ws/build/unitree_api' returned '0': CMAKE_PREFIX_PATH=/opt/ros/humble /usr/bin/cmake --build /ws/build/unitree_api -- -j4 -l4
+Invoking command in '/ws/build/unitree_api': CMAKE_PREFIX_PATH=/opt/ros/humble /usr/bin/cmake --install /ws/build/unitree_api
+Invoked command in '/ws/build/unitree_api' returned '0': CMAKE_PREFIX_PATH=/opt/ros/humble /usr/bin/cmake --install /ws/build/unitree_api
