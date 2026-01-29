@@ -84,9 +84,9 @@ torch::Tensor Agent::Act()
     this->obs.action = this->Forward();
 
     output_dof_pos = this->ComputePosition(this->obs.action);
-    std::cout << "Action_output before clamp: " << output_dof_pos << std::endl;
+    //std::cout << "Action_output before clamp: " << output_dof_pos << std::endl;
     torch::Tensor clamped_output = torch::clamp(output_dof_pos, -3.5, 3.5); // Ручной клиппинг [-3, 3]
-    std::cout << "Action_output after clamp: " << clamped_output << std::endl;
+    //std::cout << "Action_output after clamp: " << clamped_output << std::endl;
     return clamped_output;
 }
 
@@ -188,7 +188,7 @@ torch::Tensor Agent::Forward()
 torch::Tensor Agent::ComputeTorque(const torch::Tensor &actions_scaled) {
     torch::Tensor target_pos = actions_scaled * this->params.action_scale + this->params.default_dof_pos;
     torch::Tensor output_dof_tau = this->params.rl_kp * (target_pos - this->obs.dof_pos) - this->params.rl_kd * this->obs.dof_vel;
-    std::cout << "Agent::ComputeTorque before clamp: " << output_dof_tau << std::endl;
+    //std::cout << "Agent::ComputeTorque before clamp: " << output_dof_tau << std::endl;
     output_dof_tau = torch::clamp(output_dof_tau, -this->params.torque_limits, this->params.torque_limits);
     return output_dof_tau;
 }

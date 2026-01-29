@@ -7,6 +7,6 @@ source $HOME/go2_deploy/workhop_rl/src/unitree_ros2/cyclonedds_ws/install/setup.
 source $HOME/go2_deploy/workhop_rl/install/setup.bash
 export RMW_IMPLEMENTATION=rmw_cyclonedds_cpp
 export CYCLONEDDS_URI='<CycloneDDS><Domain><General><Interfaces>
-                            <NetworkInterface name="enp3s0" priority="default" multicast="default" />
+                            <NetworkInterface name="enx00e04c6802fc" priority="default" multicast="default" />
                         </Interfaces></General></Domain></CycloneDDS>'
 

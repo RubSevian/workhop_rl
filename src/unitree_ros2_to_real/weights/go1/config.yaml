@@ -1,6 +1,6 @@
 go1:
 
-  model_name: policy_new.pt #policy.pt #policy_1_stable_cycle_0_40.pt #policy_new_cycle_0_30.pt #"policy_24_07_.pt" #"policy_14_07_6950.pt" #"policy_14_07_4450.pt" # "policy_10000_new.pt" # "policy_6400_new_walk_11_07.pt" # "10_23_43.pt" #"policy_new_param.pt" #"policy_new_walk.pt" #"policy_test.pt" #"Mar25_16-22-14_500.pt"
+  model_name: policy_test13.pt #policy.pt #policy_1_stable_cycle_0_40.pt #policy_new_cycle_0_30.pt #"policy_24_07_.pt" #"policy_14_07_6950.pt" #"policy_14_07_4450.pt" # "policy_10000_new.pt" # "policy_6400_new_walk_11_07.pt" # "10_23_43.pt" #"policy_new_param.pt" #"policy_new_walk.pt" #"policy_test.pt" #"Mar25_16-22-14_500.pt"
   observations: ["command","ang_vel" ,"gravity_vec","dof_pos","dof_vel","action"] #Full_OBS if need another check your obs in legged_gym "sin","cos"
   #["lin_vel" ,"ang_vel" ,"gravity_vec" ,"command","dof_pos","dof_vel","action"]
   observations_history: [0,1,2,3,4,5]  # 0 is the latest observation
@@ -53,7 +53,7 @@ go1:
              1, 1, 1]
   commands_scale: [2.0, 2.0, 0.25]
   default_dof_pos: [ 0.0, 0.8, -1.5, # FL
-                    -0.0, 0.8, -1.5, # FR
+                    -0.1, 0.8, -1.5, # FR
                      0.0, 1.0, -1.5, # RL
                     -0.0, 1.0, -1.5] # RR
   # default_dof_pos: [ 0.0, 0.8, -1.5, # FL

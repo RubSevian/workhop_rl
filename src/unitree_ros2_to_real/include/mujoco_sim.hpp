@@ -34,15 +34,25 @@ public:
     int get_num_motors() const;
     void set_command(float x, float y, float z);
     void set_heightmap(const std::array<float, 17*11>& hm);
-    enum StateID {
-        STATE_INIT,
-        STATE_READY
+        // enum StateID {
+    //     STATE_INIT,
+    //     STATE_READY,
+    //     STATE_DAMPING,
+    //     MODE_RL
+    // };
+    enum ControlMode {
+        MODE_IDEL    = 0,
+        MODE_STANDUP = 1,  // подъём/интерполяция в default pose
+        MODE_DAMPING = 2,  // демпфирование
+        MODE_RL      = 3   // RL
     };
-
+    ControlMode control_mode = MODE_IDEL;
+    bool standup_done = false;
+    void change_mode(ControlMode m) ;
     int init_count;
     int motiontime;
     float runing_time;
-    StateID robot_state;
+    // StateID robot_state;
     const double dt;
     const int Go2_NUM_MOTOR;
     const std::string ROBOT_NAME;
@@ -93,6 +103,10 @@ private:
         bool d_pressed = false;
         bool q_pressed = false;
         bool e_pressed = false;
+        bool t_pressed = false;//damping
+        bool y_pressed = false;
+        bool r_pressed = false;
+        bool o_pressed = false;
         bool space_pressed = false; // Для сброса команды
     } keyboard_state;
     // std::array<float, 3> last_command = {0.0f, 0.0f, 0.0f}; // Храним последнюю команду

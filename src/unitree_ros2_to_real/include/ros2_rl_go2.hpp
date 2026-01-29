@@ -38,15 +38,25 @@ public:
     std::string get_robot_name() const;
     int get_num_motors() const;
     void set_command(float x, float y, float z);
-    enum StateID {
-        STATE_INIT,
-        STATE_READY
+    // enum StateID {
+    //     STATE_INIT,
+    //     STATE_READY
+    // };
+    enum ControlMode {
+        MODE_START = 0,
+        MODE_STANDUP,
+        MODE_DAMPING,
+        MODE_RL
     };
+
+    ControlMode mode_ = MODE_START;
+    int last_key_ = 0;
+    bool standup_done_ = false;
 
     int init_count;
     int motiontime;
     float runing_time;
-    StateID robot_state;
+    //StateID robot_state;
     const double dt;
     const int Go2_NUM_MOTOR;
     const std::string ROBOT_NAME;

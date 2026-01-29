@@ -12,7 +12,7 @@
 using std::placeholders::_1;
 
 RobotController::RobotController() :
-    init_count(0), motiontime(0), runing_time(0.0), robot_state(STATE_INIT),
+    init_count(0), motiontime(0), runing_time(0.0),mode_(MODE_START),
     dt(0.02), Go2_NUM_MOTOR(12), ROBOT_NAME("go1"),
     net2joint_indexes({3, 4, 5, 0, 1, 2, 9, 10, 11, 6, 7, 8})
     {
@@ -72,57 +72,187 @@ unitree_go::msg::LowCmd RobotController::update(const unitree_go::msg::LowState&
     agent.obs.command.index({0}) = joystick.ly;
     agent.obs.command.index({1}) = -joystick.rx;
     agent.obs.command.index({2}) = -joystick.lx;
-    std::cout << "Command: ly=" << agent.obs.command.index({0}).item<float>()
-              << ", -rx=" << agent.obs.command.index({1}).item<float>()
-              << ", -lx=" << agent.obs.command.index({2}).item<float>() << std::endl;
-    
+    // std::cout << "Command: ly=" << agent.obs.command.index({0}).item<float>()
+    //           << ", -rx=" << agent.obs.command.index({1}).item<float>()
+    //           << ", -lx=" << agent.obs.command.index({2}).item<float>() << std::endl;
+ 
     if (!rl_inited_) {
         agent.InitRL();      // создаст history_obs_buf и заполнит reset(...) текущим obs [file:22]
         rl_inited_ = true;
     }
+       // --- latch mode by key (как в MuJoCo) ---
+    const int key = joystick.keys;
+    const bool new_cmd = (key != 0 && key != last_key_);
 
-    if (motiontime < 500) {
-        float rate = motiontime / 400.0f;
-        for (int i = 0; i < Go2_NUM_MOTOR; i++) {
-            qDes[i] = jointLinearInterpolation(qInit[i], agent.params.default_dof_pos.index({i}).item<float>(), rate);
-            cmd.motor_cmd[i].mode = 0x01; // Torque mode
-            cmd.motor_cmd[i].q = qDes[i];
-            cmd.motor_cmd[i].dq = 0;
-            cmd.motor_cmd[i].kp = agent.params.fixed_kp.index({i}).item<float>();
-            cmd.motor_cmd[i].kd = agent.params.fixed_kd.index({i}).item<float>();
-            cmd.motor_cmd[i].tau = 0;
-        }
-        if (motiontime % 100 == 0) {
-            std::stringstream ss;
-            ss << "Default_dof_pos: ";
-            for (int i = 0; i < Go2_NUM_MOTOR; i++) ss << agent.params.default_dof_pos.index({i}).item<float>() << " ";
-            std::cout << ss.str() << std::endl;
-        }
-    } else {
-        robot_state = STATE_READY;
-        agent.UpdatePhase(runing_time);
-        torch::Tensor actions = agent.Act();
-        for (int i = 0; i < Go2_NUM_MOTOR; i++) {
-            cmd.motor_cmd[i].mode = 0x01; // Torque mode
-            cmd.motor_cmd[i].q = actions.index({net2joint_indexes[i]}).item<float>();
-            cmd.motor_cmd[i].dq = 0;
-            cmd.motor_cmd[i].kp = agent.params.rl_kp.index({i}).item<float>();
-            cmd.motor_cmd[i].kd = agent.params.rl_kd.index({i}).item<float>();
-            cmd.motor_cmd[i].tau = 0;//actions.index({net2joint_indexes[i]}).item<float>();
-        }
-        if (motiontime % 100 == 0) {
-            std::stringstream ss;
-            ss << "Actions: ";
-            for (int i = 0; i < Go2_NUM_MOTOR; i++) {
-                ss << actions.index({net2joint_indexes[i]}).item<float>() << " ";
+    if (new_cmd) {
+        RCLCPP_INFO(rclcpp::get_logger("RobotController"),
+              "key=%d -> mode=%d, standup_done=%d",
+              key, (int)mode_, (int)standup_done_);
+        if (key == 256) {
+            mode_ = MODE_START;
+            standup_done_ = false;
+        } else if (key == 4096) {
+            mode_ = MODE_STANDUP;
+            standup_done_ = false;
+            motiontime = 0;
+        // // важно: стартовую позу для подъёма снимаем при входе в STANDUP,
+        // // иначе повторный подъём будет от старого qInit (сейчас qInit берётся только первые 10 тиков) [file:141]
+            for (int i = 0; i < Go2_NUM_MOTOR; ++i) {
+            qInit[i] = state.motor_state[i].q;
             }
-            std::cout << ss.str() << std::endl;
+        } else if (key == 16384) {
+            mode_ = MODE_DAMPING;
+        } else if (key == 2048) {
+            mode_ = MODE_RL;
         }
     }
+    last_key_ = key;
 
-    motiontime++;
+    switch(mode_){
+        case MODE_START:{
+            for (int i = 0; i < Go2_NUM_MOTOR; i++) {
+                cmd.motor_cmd[i].mode = 0x01;
+                cmd.motor_cmd[i].q   = 0.0f;
+                cmd.motor_cmd[i].dq  = 0.0f;
+                cmd.motor_cmd[i].kp  = 0.0f;
+                cmd.motor_cmd[i].kd  = 0.0f;
+                cmd.motor_cmd[i].tau = 0.0f;
+            }
+        }
+        break;
+        
+        case MODE_DAMPING: {
+        // мягкий hold
+            for (int i = 0; i < Go2_NUM_MOTOR; i++) {
+                cmd.motor_cmd[i].mode = 0x01;
+                cmd.motor_cmd[i].q   = agent.params.default_dof_pos.index({i}).item<float>();
+                cmd.motor_cmd[i].dq  = 0.0f;
+                cmd.motor_cmd[i].kp  = 20.0f;
+                cmd.motor_cmd[i].kd  = 1.5f;
+                cmd.motor_cmd[i].tau = 0.0f;
+            }
+        } break;
+
+        case MODE_STANDUP: {
+            if (motiontime < 500) {
+                float rate = motiontime / 400.0f;
+
+                for (int i = 0; i < Go2_NUM_MOTOR; i++) {
+                qDes[i] = jointLinearInterpolation(
+                    qInit[i],
+                    agent.params.default_dof_pos.index({i}).item<float>(),
+                    rate);
+
+                cmd.motor_cmd[i].mode = 0x01;
+                cmd.motor_cmd[i].q   = qDes[i];
+                cmd.motor_cmd[i].dq  = 0.0f;
+                cmd.motor_cmd[i].kp  = agent.params.fixed_kp.index({i}).item<float>();
+                cmd.motor_cmd[i].kd  = agent.params.fixed_kd.index({i}).item<float>();
+                cmd.motor_cmd[i].tau = 0.0f;
+                }
+
+                if (motiontime % 100 == 0) {
+                std::stringstream ss;
+                ss << "Default_dof_pos: ";
+                for (int i = 0; i < Go2_NUM_MOTOR; i++) {
+                    ss << agent.params.default_dof_pos.index({i}).item<float>() << " ";
+                }
+                std::cout << ss.str() << std::endl;
+                }
+
+                motiontime++;
+            } else {
+                standup_done_ = true;
+                mode_ = MODE_DAMPING;   // закончили подъём -> держим позу до новой команды
+            }
+        } break;
+
+        case MODE_RL: {
+            // safety: если не поднялись — не пускаем RL
+            if (!standup_done_) {
+                mode_ = MODE_DAMPING;
+                break;
+            }
+
+            agent.UpdatePhase(runing_time);
+            torch::Tensor actions = agent.Act();
+
+            for (int i = 0; i < Go2_NUM_MOTOR; i++) {
+                cmd.motor_cmd[i].mode = 0x01;
+                cmd.motor_cmd[i].q   = actions.index({net2joint_indexes[i]}).item<float>();
+                cmd.motor_cmd[i].dq  = 0.0f;
+                cmd.motor_cmd[i].kp  = agent.params.rl_kp.index({i}).item<float>();
+                cmd.motor_cmd[i].kd  = agent.params.rl_kd.index({i}).item<float>();
+                cmd.motor_cmd[i].tau = 0.0f;
+            }
+
+            if (motiontime % 100 == 0) {
+                std::stringstream ss;
+                ss << "Actions: ";
+                for (int i = 0; i < Go2_NUM_MOTOR; i++) {
+                ss << actions.index({net2joint_indexes[i]}).item<float>() << " ";
+                }
+                std::cout << ss.str() << std::endl;
+            }
+        } break;
+
+        default: {
+            // на всякий случай безопасный hold
+            for (int i = 0; i < Go2_NUM_MOTOR; ++i) {
+                cmd.motor_cmd[i].mode = 0x01;
+                cmd.motor_cmd[i].q   = 0.0f;
+                cmd.motor_cmd[i].dq  = 0.0f;
+                cmd.motor_cmd[i].kp  = 0.0f;
+                cmd.motor_cmd[i].kd  = 0.0f;
+                cmd.motor_cmd[i].tau = 0.0f;
+            }
+        } break;
+    }
+
     runing_time += dt;
     return cmd;
+    // if (motiontime < 500) {
+    //     float rate = motiontime / 400.0f;
+    //     for (int i = 0; i < Go2_NUM_MOTOR; i++) {
+    //         qDes[i] = jointLinearInterpolation(qInit[i], agent.params.default_dof_pos.index({i}).item<float>(), rate);
+    //         cmd.motor_cmd[i].mode = 0x01; // Torque mode
+    //         cmd.motor_cmd[i].q = qDes[i];
+    //         cmd.motor_cmd[i].dq = 0;
+    //         cmd.motor_cmd[i].kp = agent.params.fixed_kp.index({i}).item<float>();
+    //         cmd.motor_cmd[i].kd = agent.params.fixed_kd.index({i}).item<float>();
+    //         cmd.motor_cmd[i].tau = 0;
+    //     }
+    //     if (motiontime % 100 == 0) {
+    //         std::stringstream ss;
+    //         ss << "Default_dof_pos: ";
+    //         for (int i = 0; i < Go2_NUM_MOTOR; i++) ss << agent.params.default_dof_pos.index({i}).item<float>() << " ";
+    //         std::cout << ss.str() << std::endl;
+    //     }
+    // } else {
+    //     robot_state = STATE_READY;
+    //     agent.UpdatePhase(runing_time);
+    //     torch::Tensor actions = agent.Act();
+    //     for (int i = 0; i < Go2_NUM_MOTOR; i++) {
+    //         cmd.motor_cmd[i].mode = 0x01; // Torque mode
+    //         cmd.motor_cmd[i].q = actions.index({net2joint_indexes[i]}).item<float>();
+    //         cmd.motor_cmd[i].dq = 0;
+    //         cmd.motor_cmd[i].kp = agent.params.rl_kp.index({i}).item<float>();
+    //         cmd.motor_cmd[i].kd = agent.params.rl_kd.index({i}).item<float>();
+    //         cmd.motor_cmd[i].tau = 0;//actions.index({net2joint_indexes[i]}).item<float>();
+    //     }
+    //     if (motiontime % 100 == 0) {
+    //         std::stringstream ss;
+    //         ss << "Actions: ";
+    //         for (int i = 0; i < Go2_NUM_MOTOR; i++) {
+    //             ss << actions.index({net2joint_indexes[i]}).item<float>() << " ";
+    //         }
+    //         std::cout << ss.str() << std::endl;
+    //     }
+    // }
+
+    // motiontime++;
+    // runing_time += dt;
+    // return cmd;
 }
 
 void RobotController::initial_positions(const std::array<unitree_go::msg::MotorState, 20>& motor_state) {
@@ -180,7 +310,7 @@ InterfaceRos::~InterfaceRos() {
 
 void InterfaceRos::JoystickHandler(const unitree_go::msg::WirelessController::SharedPtr msg) {
     joystick = *msg;
-    RCLCPP_INFO(this->get_logger(), "Joystick: ly=%f, -rx=%f, -lx=%f", joystick.ly, -joystick.rx, -joystick.lx);
+    //RCLCPP_INFO(this->get_logger(), "Joystick: ly=%f, -rx=%f, -lx=%f", joystick.ly, -joystick.rx, -joystick.lx);
 }
 
 
@@ -205,28 +335,28 @@ void InterfaceRos::LowStateHandler(const unitree_go::msg::LowState::SharedPtr ms
     latest_state = msg;
     publish_imu(msg->imu_state);
     publish_motor_state(msg->motor_state);
-    if (INFO_IMU) {
-        RCLCPP_INFO(this->get_logger(), "IMU: gyro = [%f, %f, %f], quat = [%f, %f, %f, %f]",
-                    msg->imu_state.gyroscope[0], msg->imu_state.gyroscope[1], msg->imu_state.gyroscope[2],
-                    msg->imu_state.quaternion[0], msg->imu_state.quaternion[1],
-                    msg->imu_state.quaternion[2], msg->imu_state.quaternion[3]);
-    }
-    if (INFO_MOTOR) {
-        for (int i = 0; i < controller.get_num_motors(); i++) {
-            RCLCPP_INFO(this->get_logger(), "Motor state -- num: %d; q: %f; dq: %f; tau: %f",
-                        i, msg->motor_state[i].q, msg->motor_state[i].dq, msg->motor_state[i].tau_est);
-        }
-    }
-    if (INFO_FOOT_FORCE) {
-        for (int i = 0; i < 4; i++) {
-            RCLCPP_INFO(this->get_logger(), "Foot force -- foot%d: %d", i, msg->foot_force[i]);
-            RCLCPP_INFO(this->get_logger(), "Estimated foot force -- foot%d: %d", i, msg->foot_force_est[i]);
-        }
-    }
-    if (INFO_BATTERY) {
-        RCLCPP_INFO(this->get_logger(), "Battery state -- current: %f; voltage: %f",
-                    msg->power_a, msg->power_v);
-    }
+    // if (INFO_IMU) {
+    //     RCLCPP_INFO(this->get_logger(), "IMU: gyro = [%f, %f, %f], quat = [%f, %f, %f, %f]",
+    //                 msg->imu_state.gyroscope[0], msg->imu_state.gyroscope[1], msg->imu_state.gyroscope[2],
+    //                 msg->imu_state.quaternion[0], msg->imu_state.quaternion[1],
+    //                 msg->imu_state.quaternion[2], msg->imu_state.quaternion[3]);
+    // }
+    // if (INFO_MOTOR) {
+    //     for (int i = 0; i < controller.get_num_motors(); i++) {
+    //         RCLCPP_INFO(this->get_logger(), "Motor state -- num: %d; q: %f; dq: %f; tau: %f",
+    //                     i, msg->motor_state[i].q, msg->motor_state[i].dq, msg->motor_state[i].tau_est);
+    //     }
+    // }
+    // if (INFO_FOOT_FORCE) {
+    //     for (int i = 0; i < 4; i++) {
+    //         RCLCPP_INFO(this->get_logger(), "Foot force -- foot%d: %d", i, msg->foot_force[i]);
+    //         RCLCPP_INFO(this->get_logger(), "Estimated foot force -- foot%d: %d", i, msg->foot_force_est[i]);
+    //     }
+    // }
+    // if (INFO_BATTERY) {
+    //     RCLCPP_INFO(this->get_logger(), "Battery state -- current: %f; voltage: %f",
+    //                 msg->power_a, msg->power_v);
+    // }
 }
 
 void InterfaceRos::timer_callback_cmd() {

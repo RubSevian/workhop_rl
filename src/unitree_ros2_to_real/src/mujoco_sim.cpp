@@ -13,7 +13,7 @@
 using std::placeholders::_1; //Для использования placeholders в лямбда-функциях (например, для std::bind)
 
 RobotController::RobotController():
-    init_count(0),motiontime(0),runing_time(0.0),robot_state(STATE_INIT),
+    init_count(0),motiontime(0),runing_time(0.0),control_mode(MODE_IDEL),
     dt(0.02),Go2_NUM_MOTOR(12),ROBOT_NAME("go1"),
     rl_inited_(false) ,
     net2joint_indexes({3, 4, 5, 0, 1, 2, 9, 10, 11, 6, 7, 8}) {
@@ -46,61 +46,223 @@ void RobotController::initializeRL(const std::string& config_path, const std::st
         throw;
     }
 }
+void RobotController::change_mode(ControlMode m)
+{
 
-unitree_go::msg::LowCmd RobotController::update(const unitree_go::msg::LowState& state) {
+    if (m == MODE_STANDUP) {
+        standup_done = false;
+        motiontime  = 0;
+        control_mode = MODE_STANDUP;
+        return;
+    }
+
+
+    if (m == MODE_DAMPING) {
+        control_mode = MODE_DAMPING;
+        return;
+    }
+
+
+    if (m == MODE_RL) {
+        control_mode = standup_done ? MODE_RL : MODE_DAMPING;
+        return;
+    }
+
+    control_mode = MODE_IDEL;
+}
+
+unitree_go::msg::LowCmd RobotController::update(const unitree_go::msg::LowState& state)
+{
     unitree_go::msg::LowCmd cmd;
+
     initial_positions(state.motor_state);
     update_dof_state(state.motor_state);
 
-    
     agent.obs.ang_vel.index({0}) = state.imu_state.gyroscope[0];
     agent.obs.ang_vel.index({1}) = state.imu_state.gyroscope[1];
     agent.obs.ang_vel.index({2}) = state.imu_state.gyroscope[2];
+
     agent.obs.base_quat.index({0}) = state.imu_state.quaternion[1];
     agent.obs.base_quat.index({1}) = state.imu_state.quaternion[2];
     agent.obs.base_quat.index({2}) = state.imu_state.quaternion[3];
     agent.obs.base_quat.index({3}) = state.imu_state.quaternion[0];
 
     if (!rl_inited_) {
-        agent.InitRL();      // создаст history_obs_buf и заполнит reset(...) текущим obs [file:22]
+        agent.InitRL();
+        // если у тебя есть reset history buf и т.п. — оставь как было
         rl_inited_ = true;
     }
 
-    if (motiontime < 500) {
-        float rate = motiontime / 300.0f;
-        for (int i = 0; i < Go2_NUM_MOTOR; i++) {
-            qDes[i] = jointLinearInterpolation(qInit[i], agent.params.default_dof_pos.index({i}).item<float>(), rate);
-            cmd.motor_cmd[i].q = qDes[i];
-            cmd.motor_cmd[i].dq = 0;
-            cmd.motor_cmd[i].kp = agent.params.fixed_kp.index({i}).item<float>();
-            cmd.motor_cmd[i].kd = agent.params.fixed_kd.index({i}).item<float>();
-            cmd.motor_cmd[i].tau = 0;
-        }
-    } else {
-        robot_state = STATE_READY;
-        agent.UpdatePhase(runing_time);
-        torch::Tensor actions = agent.Act();
-        for (int i = 0; i < Go2_NUM_MOTOR; i++) {
-            cmd.motor_cmd[i].q = actions.index({net2joint_indexes[i]}).item<float>();
-            cmd.motor_cmd[i].dq = 0;
-            cmd.motor_cmd[i].kp = agent.params.rl_kp.index({i}).item<float>();
-            cmd.motor_cmd[i].kd = agent.params.rl_kd.index({i}).item<float>();
-            cmd.motor_cmd[i].tau = 0;
-        }
-        if (motiontime % 100 == 0) {
-            std::stringstream ss;
-            ss << "Actions: ";
-            for (int i = 0; i < Go2_NUM_MOTOR; i++) {
-                ss << actions.index({net2joint_indexes[i]}).item<float>() << " ";
-            }
-            std::cout << ss.str() << std::endl;
-        }
+    // Safety: если внезапно попросили RL, но подъём не завершён
+    if (control_mode == MODE_RL && !standup_done) {
+    control_mode = MODE_DAMPING;
     }
 
-    motiontime++;
+    // -------- MODE_IDEL --------
+    if (control_mode == MODE_IDEL) {
+        for (int i = 0; i < Go2_NUM_MOTOR; i++) {
+            cmd.motor_cmd[i].mode = 0x01;
+            cmd.motor_cmd[i].q   = state.motor_state[i].q;
+            cmd.motor_cmd[i].dq  = 0.0f;
+            cmd.motor_cmd[i].kp  = 0.0f;
+            cmd.motor_cmd[i].kd  = 0.0f;
+            cmd.motor_cmd[i].tau = 0.0f;
+        }
+        return cmd;
+    }
+
+    // -------- MODE_STANDUP --------
+    if (control_mode == MODE_STANDUP) {
+    float rate = motiontime / 300.0f;
+
+    for (int i = 0; i < Go2_NUM_MOTOR; i++) {
+        qDes[i] = jointLinearInterpolation(qInit[i],agent.params.default_dof_pos.index({i}).item<float>(),rate);
+        cmd.motor_cmd[i].mode = 0x01;
+        cmd.motor_cmd[i].q   = qDes[i];
+        cmd.motor_cmd[i].dq  = 0.0f;
+        cmd.motor_cmd[i].kp  = agent.params.fixed_kp.index({i}).item<float>();
+        cmd.motor_cmd[i].kd  = agent.params.fixed_kd.index({i}).item<float>();
+        cmd.motor_cmd[i].tau = 0.0f;
+    }
+
+    if (motiontime >= 500) {
+            standup_done = true;
+            control_mode = MODE_STANDUP;   // после подъёма удерживаем позу
+        }
+
+        motiontime++;
+        runing_time += dt;
+        return cmd;
+    }
+
+    // -------- MODE_DAMPING --------
+    if (control_mode == MODE_DAMPING) {
+        for (int i = 0; i < Go2_NUM_MOTOR; i++) {
+            cmd.motor_cmd[i].mode = 0x01;
+
+            // ВАЖНО: в damping лучше держать текущие углы, а не default pose,
+            // иначе при каждом входе в damping будет резкий рывок в дефолт.
+            cmd.motor_cmd[i].q   = agent.params.default_dof_pos.index({i}).item<float>();
+
+            cmd.motor_cmd[i].dq  = 0.0f;
+            cmd.motor_cmd[i].kp  = 30.0f;
+            cmd.motor_cmd[i].kd  = 1.0f;
+            cmd.motor_cmd[i].tau = 0.0f;
+        }
+
+        runing_time += dt;
+        return cmd;
+    }
+
+    // -------- MODERL --------
+    // сюда мы попадём только если standupdone == true (или safety переведёт в damping выше)
+    agent.UpdatePhase(runing_time);
+    torch::Tensor actions = agent.Act();
+
+    for (int i = 0; i < Go2_NUM_MOTOR; i++) {
+    cmd.motor_cmd[i].mode = 0x01;
+    cmd.motor_cmd[i].q   = actions.index({net2joint_indexes[i]}).item<float>();
+    cmd.motor_cmd[i].dq  = 0.0f;
+    cmd.motor_cmd[i].kp  = agent.params.rl_kp.index({i}).item<float>();
+    cmd.motor_cmd[i].kd  = agent.params.rl_kd.index({i}).item<float>();
+    cmd.motor_cmd[i].tau = 0.0f;
+    }
+
     runing_time += dt;
     return cmd;
 }
+
+// unitree_go::msg::LowCmd RobotController::update(const unitree_go::msg::LowState& state) {
+//     unitree_go::msg::LowCmd cmd;
+//     initial_positions(state.motor_state);
+//     update_dof_state(state.motor_state);
+
+    
+//     agent.obs.ang_vel.index({0}) = state.imu_state.gyroscope[0];
+//     agent.obs.ang_vel.index({1}) = state.imu_state.gyroscope[1];
+//     agent.obs.ang_vel.index({2}) = state.imu_state.gyroscope[2];
+//     agent.obs.base_quat.index({0}) = state.imu_state.quaternion[1];
+//     agent.obs.base_quat.index({1}) = state.imu_state.quaternion[2];
+//     agent.obs.base_quat.index({2}) = state.imu_state.quaternion[3];
+//     agent.obs.base_quat.index({3}) = state.imu_state.quaternion[0];
+    
+
+//     if (!rl_inited_) {
+//         agent.InitRL();      // создаст history_obs_buf и заполнит reset(...) текущим obs [file:22]
+//         rl_inited_ = true;
+//     }
+
+
+//     if (control_mode == MODE_IDEL) {
+//         for (int i=0;i<Go2_NUM_MOTOR;i++){
+//             cmd.motor_cmd[i].mode = 0x01;
+//             cmd.motor_cmd[i].q   = state.motor_state[i].q;
+//             cmd.motor_cmd[i].dq  = 0.0f;
+//             cmd.motor_cmd[i].kp  = 0.0f;
+//             cmd.motor_cmd[i].kd  = 0.0f;
+//             cmd.motor_cmd[i].tau = 0.0f;
+//         }
+//         return cmd;
+//     }
+
+//     if (control_mode == MODE_STANDUP) {
+//         float rate = motiontime / 300.0f;
+//         for (int i=0;i<Go2_NUM_MOTOR;i++){
+//             qDes[i] = jointLinearInterpolation(qInit[i], agent.params.default_dof_pos.index({i}).item<float>(), rate);
+//             cmd.motor_cmd[i].q = qDes[i];
+//             cmd.motor_cmd[i].dq = 0;
+//             cmd.motor_cmd[i].kp = agent.params.fixed_kp.index({i}).item<float>();
+//             cmd.motor_cmd[i].kd = agent.params.fixed_kd.index({i}).item<float>();
+//             cmd.motor_cmd[i].tau = 0;
+//         }
+//         if (motiontime >= 500) {
+//             standup_done = true;
+//         }
+//         motiontime++;
+//         runing_time += dt;
+//         return cmd;
+//     }
+
+//     if (control_mode == MODE_DAMPING) { 
+//         for (int i = 0; i < Go2_NUM_MOTOR; i++) {
+//             cmd.motor_cmd[i].mode = 0x01;
+//             cmd.motor_cmd[i].q   = agent.params.default_dof_pos.index({i}).item<float>();   // держим текущую позу
+//             cmd.motor_cmd[i].dq  = 0.0f;
+//             cmd.motor_cmd[i].kp  = 40.0f;  // подстрой
+//             cmd.motor_cmd[i].kd  = 1.0f;
+//             cmd.motor_cmd[i].tau = 0.0f;
+//         }
+//         return cmd; 
+//     }
+
+//     if (control_mode == MODE_RL) {
+//         // stand_done_ тут уже true по правилам выше
+//         agent.UpdatePhase(runing_time);
+//         torch::Tensor actions = agent.Act();
+//         for (int i = 0; i < Go2_NUM_MOTOR; i++) {
+//             cmd.motor_cmd[i].q = actions.index({net2joint_indexes[i]}).item<float>();
+//             cmd.motor_cmd[i].dq = 0;
+//             cmd.motor_cmd[i].kp = agent.params.rl_kp.index({i}).item<float>();
+//             cmd.motor_cmd[i].kd = agent.params.rl_kd.index({i}).item<float>();
+//             cmd.motor_cmd[i].tau = 0;
+//         }
+//         if (motiontime % 100 == 0) {
+//             // std::stringstream ss;
+//             // ss << "Actions: ";
+//             // for (int i = 0; i < Go2_NUM_MOTOR; i++) {
+//             //     ss << actions.index({net2joint_indexes[i]}).item<float>() << " ";
+//             // }
+//             // std::cout << ss.str() << std::endl;
+//         }
+//         return cmd;
+//     }
+
+//     motiontime++;
+//     runing_time += dt;
+//     return cmd;
+// }   
+
+
 int RobotController::get_num_motors() const {
     return Go2_NUM_MOTOR;
 }
@@ -192,6 +354,13 @@ void InterfaceRos::key_callback(GLFWwindow* window, int key, int scancode, int a
     if (key == GLFW_KEY_Q) state->q_pressed = pressed;
     if (key == GLFW_KEY_E) state->e_pressed = pressed;
     if (key == GLFW_KEY_SPACE) state->space_pressed = pressed;
+
+    if (action == GLFW_PRESS) {
+        if (key == GLFW_KEY_Y) state->y_pressed = true;  // событие
+        if (key == GLFW_KEY_T) state->t_pressed = true;  // событие
+        if (key == GLFW_KEY_R) state->r_pressed = true;  // событие
+        if (key == GLFW_KEY_O) state->o_pressed = true;  // событие 
+    }
 }
 
 void InterfaceRos::init_cmd() {
@@ -251,21 +420,22 @@ void InterfaceRos::LowStateHandler(const unitree_go::msg::LowState::SharedPtr ms
     publish_imu(msg->imu_state);
     publish_motor_state(msg->motor_state);
 
-    if (INFO_IMU) {
-        RCLCPP_INFO(this->get_logger(), "IMU: gyro = [%f, %f, %f], quat = [%f, %f, %f, %f]",
-                    msg->imu_state.gyroscope[0], msg->imu_state.gyroscope[1], msg->imu_state.gyroscope[2],
-                    msg->imu_state.quaternion[0], msg->imu_state.quaternion[1],
-                    msg->imu_state.quaternion[2], msg->imu_state.quaternion[3]);
-    }
-    if (INFO_MOTOR) {
-        for (int i = 0; i < controller.get_num_motors(); i++) {
-            if(msg->motor_state[i].tau_est > 33.f){
-                RCLCPP_INFO(this->get_logger(), "Motor state -- num: %d; q: %f; dq: %f; tau: %f",
-                        i, msg->motor_state[i].q, msg->motor_state[i].dq, msg->motor_state[i].tau_est);
-            }
-        }
-    }
+    // if (INFO_IMU) {
+    //     RCLCPP_INFO(this->get_logger(), "IMU: gyro = [%f, %f, %f], quat = [%f, %f, %f, %f]",
+    //                 msg->imu_state.gyroscope[0], msg->imu_state.gyroscope[1], msg->imu_state.gyroscope[2],
+    //                 msg->imu_state.quaternion[0], msg->imu_state.quaternion[1],
+    //                 msg->imu_state.quaternion[2], msg->imu_state.quaternion[3]);
+    // }
+    // if (INFO_MOTOR) {
+    //     for (int i = 0; i < controller.get_num_motors(); i++) {
+    //         if(msg->motor_state[i].tau_est > 33.f){
+    //             RCLCPP_INFO(this->get_logger(), "Motor state -- num: %d; q: %f; dq: %f; tau: %f",
+    //                     i, msg->motor_state[i].q, msg->motor_state[i].dq, msg->motor_state[i].tau_est);
+    //         }
+    //     }
+    // }
 }
+
 void InterfaceRos::timer_callback_cmd() {
     if (!latest_state) {
         RCLCPP_WARN(this->get_logger(), "Waiting for first 10 iterations to initialize");
@@ -315,7 +485,20 @@ void InterfaceRos::timer_callback_cmd() {
 
     if (keyboard_state.space_pressed) { x = 0.0f; y = 0.0f; z = 0.0f; };
     controller.set_command(x, y, z);
-    RCLCPP_INFO(this->get_logger(), "Command: x=%f, y=%f", x, y);
+    //RCLCPP_INFO(this->get_logger(), "Command: x=%f, y=%f", x, y);
+
+    if (keyboard_state.o_pressed) controller.change_mode(RobotController::MODE_IDEL);
+    if (keyboard_state.y_pressed) controller.change_mode(RobotController::MODE_STANDUP);
+    if (keyboard_state.t_pressed) controller.change_mode(RobotController::MODE_DAMPING);
+    if (keyboard_state.r_pressed) controller.change_mode(RobotController::MODE_RL);
+
+    keyboard_state.y_pressed = false;
+    keyboard_state.t_pressed = false;
+    keyboard_state.r_pressed = false;
+    keyboard_state.o_pressed = false;
+
+
+
     low_cmd = controller.update(*latest_state);
     send_command(low_cmd);
 
