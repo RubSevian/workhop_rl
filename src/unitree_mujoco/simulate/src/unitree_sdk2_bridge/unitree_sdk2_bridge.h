@@ -133,7 +133,7 @@ public:
     xRockerBtnDataStruct wireless_remote_ = {};
 
     JoystickId js_id_;
-    Joystick *js_;
+    Joystick *js_ = nullptr;
     int max_value_ = (1 << 15); // 16 bits joystick
 
     mjData *mj_data_;

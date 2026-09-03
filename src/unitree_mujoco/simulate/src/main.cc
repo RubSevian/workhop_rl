@@ -62,6 +62,7 @@ namespace
   // model and data
   mjModel *m = nullptr;
   mjData *d = nullptr;
+  std::atomic<bool> mujoco_ready{false};
 
   // control noise variables
   mjtNum *ctrlnoise = nullptr;
@@ -532,6 +533,7 @@ void PhysicsThread(mj::Simulate *sim, const char *filename)
     {
       sim->Load(m, d, filename);
       mj_forward(m, d);
+      mujoco_ready.store(true);
 
       // allocate ctrlnoise
       free(ctrlnoise);
@@ -559,7 +561,7 @@ void *UnitreeSdk2BridgeThread(void *arg)
   // Wait for mujoco data
   while (1)
   {
-    if (d)
+    if (mujoco_ready.load())
     {
       std::cout << "Mujoco data is prepared" << std::endl;
       break;
@@ -660,14 +662,13 @@ int main(int argc, char **argv)
   config.joystick_bits = yaml_node["joystick_bits"].as<int>();
 
   sim->use_elastic_band_ = config.enable_elastic_band;
-  yaml_node.~Node();
 
   std::filesystem::path fs_path(path_mujoco);
 
   std::filesystem::path parent_path = fs_path.parent_path();
 
   std::cout << "Path to main.cc: parent " << parent_path << std::endl;
-  string scene_path = "/home/ruben/go2_deploy/workhop_rl/src/unitree_mujoco/unitree_robots/go2/scene_terrain.xml";
+  string scene_path = (parent_path / "unitree_robots" / config.robot / config.robot_scene).string();
   const char *filename = nullptr;
   if (argc > 1)
   {

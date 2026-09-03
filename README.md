@@ -84,26 +84,22 @@ cd .. && cd .. && cd ..
 1. Compile in the root directory of the project
 
 ```bash
-source ./env_setup.sh  # in first time error (install/setup.bash: No such file or directory) - normal
-
-colcon build 
+source /opt/ros/humble/setup.bash
+colcon build --cmake-clean-cache
 
 source ./env_setup.sh  #(without errors)
 ```
-2. Export path to libtorch
+`env_setup.sh` sources the current workspace and adds `/home/ruben/libtorch/lib` to `LD_LIBRARY_PATH`. To use another LibTorch location, set `TORCH_LIB_DIR` before sourcing it.
+
+2. Start code in terminal with (source ./env_setup.sh) you need 2 treminals
+
+2.1. First Terminal (run Mujoco)
 
 ```bash
-export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/home/ruben/workhop_rl/src/libtorch/lib/ #change to your libtorch path
-```
-3. Start code in terminal with (source ./env_setup.sh) you need 2 treminals
-
-3.1. First Terminal (run Mujoco)
-
-```bash
-sudo ./build/unitree_mujoco/unitree_mujoco 
+bash ./run_mujoco.sh
 
 ```
-3.2. Second Terminal (run statnd_up)
+2.2. Second Terminal (run statnd_up)
 
 ```bash
 ros2 run unitree_legged_real mujoco_sim 

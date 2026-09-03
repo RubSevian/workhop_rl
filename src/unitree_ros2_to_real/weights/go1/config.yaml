@@ -1,9 +1,11 @@
 go1:
 
-  model_name: policy_test13.pt #policy.pt #policy_1_stable_cycle_0_40.pt #policy_new_cycle_0_30.pt #"policy_24_07_.pt" #"policy_14_07_6950.pt" #"policy_14_07_4450.pt" # "policy_10000_new.pt" # "policy_6400_new_walk_11_07.pt" # "10_23_43.pt" #"policy_new_param.pt" #"policy_new_walk.pt" #"policy_test.pt" #"Mar25_16-22-14_500.pt"
-  observations: ["command","ang_vel" ,"gravity_vec","dof_pos","dof_vel","action"] #Full_OBS if need another check your obs in legged_gym "sin","cos"
+  model_name: policy_1.pt #policy.pt #policy_1_stable_cycle_0_40.pt #policy_new_cycle_0_30.pt #"policy_24_07_.pt" #"policy_14_07_6950.pt" #"policy_14_07_4450.pt" # "policy_10000_new.pt" # "policy_6400_new_walk_11_07.pt" # "10_23_43.pt" #"policy_new_param.pt" #"policy_new_walk.pt" #"policy_test.pt" #"Mar25_16-22-14_500.pt"
+  observations: ["ang_vel","gravity_vec","command","dof_pos","dof_vel","action","sin","cos"] #Full_OBS if need another check your obs in legged_gym "sin","cos"
   #["lin_vel" ,"ang_vel" ,"gravity_vec" ,"command","dof_pos","dof_vel","action"]
-  observations_history: [0,1,2,3,4,5]  # 0 is the latest observation
+  # ObservationBuffer expects IDs in the order returned to the actor.
+  # go2_stand training flattens the five frames from oldest to newest.
+  observations_history: [4,3,2,1,0]
   observations_history_priority: "time"  # "time" or "term" priority
   clip_obs: 100.0
   clip_actions: 100.0
@@ -13,7 +15,7 @@ go1:
   dof_pos_scale: 1.0
   dof_vel_scale: 0.05
   decimation: 4
-  cycle_time: 0.35  #0.3
+  cycle_time: 0.4  #0.3
   torque_limits: [33.5, 33.5, 33.5,
                   33.5, 33.5, 33.5,
                   33.5, 33.5, 33.5,
@@ -30,32 +32,32 @@ go1:
   #         25, 25, 25,
   #         25, 25, 25,
   #         25, 25, 25]
-  rl_kd: [1, 1, 1,
-         1, 1, 1,
-         1, 1, 1,
-         1, 1, 1]        
-  rl_kp: [30, 30, 30,
-          30,30, 30,
-          30, 30, 30,
-          30, 30, 30]
+  rl_kd: [1., 1., 1.,
+          1., 1., 1.,
+          1., 1., 1.,
+          1., 1., 1.]
+  rl_kp: [20, 20, 20,
+          20, 20, 20,
+          20, 20, 20,
+          20, 20, 20]
 
 #   rl_kd: [1.5, 1.5, 1.5,
 #           1.5, 1.5, 1.5,
 #           1.5, 1.5, 1.5,
 #           1.5, 1.5, 1.5]
-  fixed_kp: [40, 40, 40,
-             40, 40, 40,
-             40, 40, 40, 
-             40, 40, 40]
-  fixed_kd: [1, 1, 1,
-             1, 1, 1,
-             1, 1, 1,
-             1, 1, 1]
+  fixed_kp: [25, 25, 25,
+             25, 25, 25,
+             25, 25, 25,
+             25, 25, 25]
+  fixed_kd: [1., 1., 1.,
+             1., 1., 1.,
+             1., 1., 1.,
+             1., 1., 1.]
   commands_scale: [2.0, 2.0, 0.25]
   default_dof_pos: [ 0.0, 0.8, -1.5, # FL
-                    -0.1, 0.8, -1.5, # FR
-                     0.0, 1.0, -1.5, # RL
-                    -0.0, 1.0, -1.5] # RR
+                     0.0, 0.8, -1.5, # FR
+                     0.0, 1.1, -1.7, # RL
+                    -0.0, 1.1, -1.7] # RR
   # default_dof_pos: [ 0.0, 0.8, -1.5, # FL
   #                   -0.0, 0.8, -1.5, # FR
   #                    0.0, 1.1, -1.7, # RL
@@ -68,4 +70,3 @@ go1:
                 "FR_hip", "FR_thigh", "FR_calf",
                 "RL_hip", "RL_thigh", "RL_calf",
                 "RR_hip", "RR_thigh", "RR_calf"]
-

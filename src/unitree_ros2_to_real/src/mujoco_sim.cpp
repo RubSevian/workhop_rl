@@ -64,6 +64,7 @@ void RobotController::change_mode(ControlMode m)
 
 
     if (m == MODE_RL) {
+        rl_history_needs_reset_ = true;
         control_mode = standup_done ? MODE_RL : MODE_DAMPING;
         return;
     }
@@ -93,9 +94,17 @@ unitree_go::msg::LowCmd RobotController::update(const unitree_go::msg::LowState&
         rl_inited_ = true;
     }
 
-    // Safety: если внезапно попросили RL, но подъём не завершён
+    // Safety: do not enter RL before the manual stand-up is complete.
     if (control_mode == MODE_RL && !standup_done) {
-    control_mode = MODE_DAMPING;
+        control_mode = MODE_DAMPING;
+    }
+
+    // The policy was trained with a chronological history (oldest -> newest).
+    // Refill it from the standing state when switching from the manual stand-up
+    // controller, instead of mixing it with samples from the initial pose.
+    if (control_mode == MODE_RL && rl_history_needs_reset_) {
+        agent.InitRL();
+        rl_history_needs_reset_ = false;
     }
 
     // -------- MODE_IDEL --------
@@ -480,8 +489,8 @@ void InterfaceRos::timer_callback_cmd() {
     if (keyboard_state.s_pressed) x -= 0.5f;
     if (keyboard_state.a_pressed) y += 0.5f;
     if (keyboard_state.d_pressed) y -= 0.5f;
-    if (keyboard_state.q_pressed) z += 1.f;
-    if (keyboard_state.e_pressed) z -= 1.f;
+    if (keyboard_state.q_pressed) z += 1.0f;
+    if (keyboard_state.e_pressed) z -= 1.0f;
 
     if (keyboard_state.space_pressed) { x = 0.0f; y = 0.0f; z = 0.0f; };
     controller.set_command(x, y, z);

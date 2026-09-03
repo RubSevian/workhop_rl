@@ -248,7 +248,8 @@ void Agent::ReadYaml(const std::string &robot_name,const std::string &config_pat
     this->params.rl_kd =  torch::tensor(ReadVectorFromYaml<float>(config["rl_kd"]));
     this->params.fixed_kp =  torch::tensor(ReadVectorFromYaml<float>(config["fixed_kp"]));
     this->params.fixed_kd =  torch::tensor(ReadVectorFromYaml<float>(config["fixed_kd"]));
-    this->params.torque_limits =  torch::tensor(ReadVectorFromYaml<float>(config["ftorque_limits"]));
+    this->params.torque_limits = torch::tensor(ReadVectorFromYaml<float>(
+        config["torque_limits"] ? config["torque_limits"] : config["ftorque_limits"]));
     this->params.ang_vel_scale = config["ang_vel_scale"].as<float>();
     this->params.dof_pos_scale = config["dof_pos_scale"].as<float>();
     this->params.dof_vel_scale = config["dof_vel_scale"].as<float>();
@@ -259,4 +260,17 @@ void Agent::ReadYaml(const std::string &robot_name,const std::string &config_pat
     this->params.command_scale = torch::tensor(ReadVectorFromYaml<float>(config["commands_scale"]));
     this->params.default_dof_pos = torch::tensor(ReadVectorFromYaml<float>(config["default_dof_pos"]));
     this->params.joint_names = ReadVectorFromYaml<std::string>(config["joint_names"]);
+
+    const auto require_12 = [](const torch::Tensor& values, const char* name) {
+        if (values.numel() != 12) {
+            throw std::runtime_error(std::string("Expected 12 values for '") + name +
+                                     "', got " + std::to_string(values.numel()));
+        }
+    };
+    require_12(this->params.rl_kp, "rl_kp");
+    require_12(this->params.rl_kd, "rl_kd");
+    require_12(this->params.fixed_kp, "fixed_kp");
+    require_12(this->params.fixed_kd, "fixed_kd");
+    require_12(this->params.torque_limits, "torque_limits");
+    require_12(this->params.default_dof_pos, "default_dof_pos");
 }

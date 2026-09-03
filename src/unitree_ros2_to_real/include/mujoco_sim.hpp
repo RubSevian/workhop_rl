@@ -62,6 +62,7 @@ public:
     const std::vector<float> stiffness;
     const std::vector<float> damping;
     bool rl_inited_ = false; 
+    bool rl_history_needs_reset_ = false;
 
 private:
     Agent agent;

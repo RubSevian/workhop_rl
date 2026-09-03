@@ -7,3 +7,6 @@ ERROR: Headers and library have different versions
 Tue Jul  1 20:03:53 2025
 WARNING: Nan, Inf or huge value in QACC at DOF 0. The simulation is unstable. Time = 30.3580.
 
+Thu Sep  3 15:30:39 2026
+ERROR: could not initialize GLFW
+
