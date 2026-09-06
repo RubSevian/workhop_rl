@@ -2,6 +2,7 @@
  * This example demonstrates how to use ROS2 to send low-level motor commands to Unitree Go2 robot
  */
 #include "ros2_rl_go2.hpp"
+#include <stdexcept>
 
 #define INFO_IMU 1
 #define INFO_MOTOR 1
@@ -32,6 +33,13 @@ int RobotController::get_num_motors() const {
     return Go2_NUM_MOTOR;
 }
 
+void RobotController::set_robot_name(const std::string& robot_name) {
+    if (robot_name.empty()) {
+        throw std::invalid_argument("robot_name must not be empty");
+    }
+    ROBOT_NAME = robot_name;
+}
+
 void RobotController::initializeRL(const std::string& config_path, const std::string& model_path) {
     try {
         if (!config_path.empty()) {
@@ -48,7 +56,17 @@ void RobotController::initializeRL(const std::string& config_path, const std::st
     }
 }
 
-unitree_go::msg::LowCmd RobotController::update(const unitree_go::msg::LowState& state,const unitree_go::msg::WirelessController& joystick) {
+void RobotController::set_command(float x, float y, float z) {
+    agent.obs.command.index({0}) = x;
+    agent.obs.command.index({1}) = y;
+    agent.obs.command.index({2}) = z;
+}
+
+void RobotController::start_autonomy() {
+    autonomous_requested_ = true;
+}
+
+unitree_go::msg::LowCmd RobotController::update(const unitree_go::msg::LowState& state) {
     unitree_go::msg::LowCmd cmd;
     initial_positions(state.motor_state);
     update_dof_state(state.motor_state);
@@ -67,46 +85,20 @@ unitree_go::msg::LowCmd RobotController::update(const unitree_go::msg::LowState&
     agent.obs.base_quat.index({2}) = state.imu_state.quaternion[3]; // z
     agent.obs.base_quat.index({3}) = state.imu_state.quaternion[0]; // w
 
-        
-    // Обработка данных джойстика
-    agent.obs.command.index({0}) = joystick.ly;
-    agent.obs.command.index({1}) = -joystick.rx;
-    agent.obs.command.index({2}) = -joystick.lx;
-    // std::cout << "Command: ly=" << agent.obs.command.index({0}).item<float>()
-    //           << ", -rx=" << agent.obs.command.index({1}).item<float>()
-    //           << ", -lx=" << agent.obs.command.index({2}).item<float>() << std::endl;
- 
     if (!rl_inited_) {
         agent.InitRL();      // создаст history_obs_buf и заполнит reset(...) текущим obs [file:22]
         rl_inited_ = true;
     }
-       // --- latch mode by key (как в MuJoCo) ---
-    const int key = joystick.keys;
-    const bool new_cmd = (key != 0 && key != last_key_);
-
-    if (new_cmd) {
-        RCLCPP_INFO(rclcpp::get_logger("RobotController"),
-              "key=%d -> mode=%d, standup_done=%d",
-              key, (int)mode_, (int)standup_done_);
-        if (key == 256) {
-            mode_ = MODE_START;
-            standup_done_ = false;
-        } else if (key == 4096) {
-            mode_ = MODE_STANDUP;
-            standup_done_ = false;
-            motiontime = 0;
-        // // важно: стартовую позу для подъёма снимаем при входе в STANDUP,
-        // // иначе повторный подъём будет от старого qInit (сейчас qInit берётся только первые 10 тиков) [file:141]
-            for (int i = 0; i < Go2_NUM_MOTOR; ++i) {
+    // Autonomous execution does not depend on the wireless controller.  Capture
+    // the measured joint position at the transition so stand-up is continuous.
+    if (autonomous_requested_ && mode_ == MODE_START) {
+        mode_ = MODE_STANDUP;
+        standup_done_ = false;
+        motiontime = 0;
+        for (int i = 0; i < Go2_NUM_MOTOR; ++i) {
             qInit[i] = state.motor_state[i].q;
-            }
-        } else if (key == 16384) {
-            mode_ = MODE_DAMPING;
-        } else if (key == 2048) {
-            mode_ = MODE_RL;
         }
     }
-    last_key_ = key;
 
     switch(mode_){
         case MODE_START:{
@@ -163,7 +155,7 @@ unitree_go::msg::LowCmd RobotController::update(const unitree_go::msg::LowState&
                 motiontime++;
             } else {
                 standup_done_ = true;
-                mode_ = MODE_DAMPING;   // закончили подъём -> держим позу до новой команды
+                mode_ = autonomous_requested_ ? MODE_RL : MODE_DAMPING;
             }
         } break;
 
@@ -283,22 +275,54 @@ float RobotController::jointLinearInterpolation(float initPos, float targetPos, 
 }
 
 InterfaceRos::InterfaceRos(const std::string& network_interface) : Node("low_level_cmd_sender") {
+    declare_parameter<std::string>("cmd_vel_topic", "/cmd_vel");
+    declare_parameter<double>("cmd_vel_timeout_sec", cmd_vel_timeout_sec_);
+    declare_parameter<double>("max_linear_x", max_linear_x_);
+    declare_parameter<double>("max_linear_y", max_linear_y_);
+    declare_parameter<double>("max_yaw_rate", max_yaw_rate_);
+    declare_parameter<bool>("autostart", autostart_);
+    declare_parameter<std::string>("robot_name", controller.get_robot_name());
+    declare_parameter<std::string>("config_path", "");
+    declare_parameter<std::string>("model_path", "");
+    get_parameter("cmd_vel_timeout_sec", cmd_vel_timeout_sec_);
+    get_parameter("max_linear_x", max_linear_x_);
+    get_parameter("max_linear_y", max_linear_y_);
+    get_parameter("max_yaw_rate", max_yaw_rate_);
+    get_parameter("autostart", autostart_);
+    std::string cmd_vel_topic;
+    std::string robot_name;
+    std::string config_path;
+    std::string model_path;
+    get_parameter("cmd_vel_topic", cmd_vel_topic);
+    get_parameter("robot_name", robot_name);
+    get_parameter("config_path", config_path);
+    get_parameter("model_path", model_path);
+
     cmd_puber = create_publisher<unitree_go::msg::LowCmd>("lowcmd", 10);
     imu_pub = create_publisher<sensor_msgs::msg::Imu>("go2/imu", 10);
     motor_state_pub = create_publisher<sensor_msgs::msg::JointState>("go2/motor_state", 10);
     state_sub = create_subscription<unitree_go::msg::LowState>(
         "lowstate", 10, std::bind(&InterfaceRos::LowStateHandler, this, _1));
-    joystick_sub = create_subscription<unitree_go::msg::WirelessController>(
-        "/wirelesscontroller", 10, std::bind(&InterfaceRos::JoystickHandler, this, _1));
+    cmd_vel_sub = create_subscription<geometry_msgs::msg::TwistStamped>(
+        cmd_vel_topic, rclcpp::QoS(10), std::bind(&InterfaceRos::CmdVelHandler, this, _1));
     timer_ = create_wall_timer(std::chrono::milliseconds(20), std::bind(&InterfaceRos::timer_callback_cmd, this));
     init_cmd();
     try {
-        std::string config_path = std::string(CONFIG_BASE_DIR) + "/weights/" + controller.get_robot_name() + "/config.yaml";
+        controller.set_robot_name(robot_name);
+        if (config_path.empty()) {
+            config_path = std::string(CONFIG_BASE_DIR) + "/weights/" + controller.get_robot_name() + "/config.yaml";
+        }
         controller.initializeRL(config_path, "");
-        std::string model_path = std::string(CONFIG_BASE_DIR) + "/weights/" + controller.get_robot_name() + "/" + controller.get_model_name();
+        if (model_path.empty()) {
+            model_path = std::string(CONFIG_BASE_DIR) + "/weights/" + controller.get_robot_name() + "/" + controller.get_model_name();
+        }
         RCLCPP_INFO(this->get_logger(), "CONFIG_PATH: %s", config_path.c_str());
         RCLCPP_INFO(this->get_logger(), "MODEL_PATH: %s", model_path.c_str());
         controller.initializeRL("", model_path);
+        model_loaded_ = true;
+        if (autostart_) {
+            controller.start_autonomy();
+        }
     } catch (const std::exception& e) {
         RCLCPP_ERROR(this->get_logger(), "Error initializing RL: %s", e.what());
     }
@@ -308,9 +332,23 @@ InterfaceRos::~InterfaceRos() {
     
 }
 
-void InterfaceRos::JoystickHandler(const unitree_go::msg::WirelessController::SharedPtr msg) {
-    joystick = *msg;
-    //RCLCPP_INFO(this->get_logger(), "Joystick: ly=%f, -rx=%f, -lx=%f", joystick.ly, -joystick.rx, -joystick.lx);
+void InterfaceRos::CmdVelHandler(const geometry_msgs::msg::TwistStamped::SharedPtr msg) {
+    const auto finite = [](double value) { return std::isfinite(value); };
+    if (!finite(msg->twist.linear.x) || !finite(msg->twist.linear.y) ||
+        !finite(msg->twist.angular.z)) {
+        RCLCPP_WARN(this->get_logger(), "Ignoring non-finite /cmd_vel");
+        return;
+    }
+
+    const auto clamp = [](double value, double limit) {
+        return std::clamp(value, -limit, limit);
+    };
+    controller.set_command(
+        static_cast<float>(clamp(msg->twist.linear.x, max_linear_x_)),
+        static_cast<float>(clamp(msg->twist.linear.y, max_linear_y_)),
+        static_cast<float>(clamp(msg->twist.angular.z, max_yaw_rate_)));
+    cmd_vel_received_ = true;
+    last_cmd_vel_time_ = std::chrono::steady_clock::now();
 }
 
 
@@ -360,11 +398,20 @@ void InterfaceRos::LowStateHandler(const unitree_go::msg::LowState::SharedPtr ms
 }
 
 void InterfaceRos::timer_callback_cmd() {
-    if (!latest_state) {
+    if (!latest_state || !model_loaded_) {
         RCLCPP_WARN(this->get_logger(), "Waiting for first state message");
         return;
     }
-    low_cmd = controller.update(*latest_state,joystick);
+    // A state-only launch must never claim the low-level actuator topic.
+    // Enabling it is an explicit physical-robot decision in the launch file.
+    if (!autostart_) {
+        return;
+    }
+    if (!cmd_vel_received_ ||
+        std::chrono::duration<double>(std::chrono::steady_clock::now() - last_cmd_vel_time_).count() > cmd_vel_timeout_sec_) {
+        controller.set_command(0.0F, 0.0F, 0.0F);
+    }
+    low_cmd = controller.update(*latest_state);
     send_command(low_cmd);
 }
 
@@ -408,23 +455,12 @@ void InterfaceRos::send_command(unitree_go::msg::LowCmd& cmd) {
 }
 
 int main(int argc, char** argv) {
-
-    // std::cout << "Press enter to start";
-    // std::cin.get();
-    // rclcpp::init(argc, argv);
-    // auto node = std::make_shared<InterfaceRos>();
-    // rclcpp::spin(node);
-    // rclcpp::shutdown();
     rclcpp::init(argc, argv);
-    std::string network_interface = (argc < 2) ? "enp3s0" : argv[1]; // Фиксированный интерфейс по умолчанию
-    RCLCPP_INFO(rclcpp::get_logger("main"), "ChannelFactory initialized with interface: %s", network_interface.c_str());
-    std::cout << "Press enter to start";
-    std::cin.get();
-    auto node = std::make_shared<InterfaceRos>(network_interface);
+    // This node receives lowstate/lowcmd through ROS 2; it does not initialise
+    // a separate SDK channel.  Start immediately so a launch file is fully
+    // autonomous and no keyboard or wireless controller is required.
+    auto node = std::make_shared<InterfaceRos>("");
     rclcpp::spin(node);
     rclcpp::shutdown();
     return 0;
 }
-
-
-
