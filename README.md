@@ -137,3 +137,37 @@ ros2 run unitree_legged_real ros2_rl_go2
 ```bash
 sudo ip link set lo multicast on # fix
 ```
+
+## Go2 low-level mode before RL navigation (ROS 2 Jazzy)
+
+`ros2_rl_go2` must not publish joint commands while Unitree `sport_mode` owns
+the motors.  The package contains `go2_mode_switch`, an SDK2-only utility which
+does not publish any `LowCmd` message.
+
+With the robot safely suspended or lying down, first inspect the mode:
+
+```bash
+source jazzy_setup.sh
+ros2 run unitree_legged_real go2_mode_switch --interface "$GO2_NETWORK_INTERFACE" --status
+```
+
+To explicitly release the Unitree service:
+
+```bash
+ros2 run unitree_legged_real go2_mode_switch --interface "$GO2_NETWORK_INTERFACE" --release-sport-mode
+```
+
+For an autonomous launch, `ros2_rl_go2` performs the same SDK2 operation before
+it creates a motor-output path.  Motion stays disabled if the check fails:
+
+```bash
+ros2 launch vehicle_simulator system_real_robot_rl_navigation.launch \
+  autostart:=true release_sport_mode:=true \
+  network_interface:="$GO2_NETWORK_INTERFACE" \
+  robot_name:=go2 config_path:=/absolute/go2_config.yaml \
+  model_path:=/absolute/go2_policy.pt
+```
+
+`release_sport_mode` defaults to `false`; it is safe to run a state-only launch
+without it.  If sport mode was released manually, use `autostart:=true` with
+`release_sport_mode:=false`: the node still queries and verifies that it is off.

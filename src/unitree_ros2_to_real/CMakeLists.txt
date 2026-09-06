@@ -135,9 +135,18 @@ ament_target_dependencies(go2_heightmap_node
   tf2_sensor_msgs
 )
 
+# A small SDK2-only process for releasing sport_mode before any ROS node claims
+# the low-level command topic.  It has no Torch dependency and never writes a
+# LowCmd message.
+add_library(go2_motion_mode src/go2_motion_mode.cpp)
+target_link_libraries(go2_motion_mode ${UNITREE_GO2_LIBS})
+
+add_executable(go2_mode_switch src/go2_mode_switch.cpp)
+target_link_libraries(go2_mode_switch go2_motion_mode)
+
 
 add_executable(ros2_rl_go2 src/ros2_rl_go2.cpp src/motor_crc.cpp)
-target_link_libraries(ros2_rl_go2 ${UNITREE_GO2_LIBS} ${TORCH_LIBRARIES})
+target_link_libraries(ros2_rl_go2 go2_motion_mode ${UNITREE_GO2_LIBS} ${TORCH_LIBRARIES})
 ament_target_dependencies(ros2_rl_go2 rclcpp geometry_msgs unitree_rl_controller sensor_msgs ${DEPENDENCY_LIST})
 set_target_properties(ros2_rl_go2 PROPERTIES
   BUILD_RPATH "${TORCH_INSTALL_PREFIX}/lib"
@@ -155,6 +164,7 @@ endif()
 install(TARGETS
     ros2_rl_go2 
     go2_heightmap_node
+    go2_mode_switch
     DESTINATION lib/${PROJECT_NAME}
 )
 
