@@ -157,6 +157,10 @@ To explicitly release the Unitree service:
 ros2 run unitree_legged_real go2_mode_switch --interface "$GO2_NETWORK_INTERFACE" --release-sport-mode
 ```
 
+On Go2 firmware tested here, `--status` reports `status=0` while Sport Mode is
+active and `status=1` after it is released.  The utility prints this meaning
+explicitly; never infer it from a generic boolean convention.
+
 For an autonomous launch, `ros2_rl_go2` performs the same SDK2 operation before
 it creates a motor-output path.  Motion stays disabled if the check fails:
 

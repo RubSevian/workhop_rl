@@ -12,6 +12,11 @@ namespace go2_motion_mode {
 namespace {
 
 constexpr char kSportModeService[] = "sport_mode";
+// Go2 RobotState reports 0 while the service is running and 1 after it has
+// been stopped.  This was verified against the Unitree mobile application on
+// the physical robot; do not treat this as a generic C++ boolean.
+constexpr int32_t kServiceRunning = 0;
+constexpr int32_t kServiceStopped = 1;
 
 Result QuerySportModeWithClient(unitree::robot::go2::RobotStateClient& client) {
   std::vector<unitree::robot::go2::ServiceState> services;
@@ -25,7 +30,13 @@ Result QuerySportModeWithClient(unitree::robot::go2::RobotStateClient& client) {
       std::ostringstream stream;
       stream << "sport_mode status=" << service.status
              << " protect=" << service.protect;
-      return {true, service.status != 0, stream.str()};
+      if (service.status == kServiceRunning) {
+        return {true, true, stream.str() + " (Sport Mode active)"};
+      }
+      if (service.status == kServiceStopped) {
+        return {true, false, stream.str() + " (Sport Mode released)"};
+      }
+      return {false, false, stream.str() + " (unknown sport_mode state)"};
     }
   }
 
