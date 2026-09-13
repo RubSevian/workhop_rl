@@ -2,6 +2,7 @@
 #include <chrono>
 #include <cmath>
 #include <fstream>
+#include <limits>
 #include <stdexcept>
 #include <string>
 #include <vector>
@@ -79,26 +80,71 @@ private:
       active.data = true;
       active_pub_->publish(active);
       navigation_armed_ = true;
-      goal_world_x_ = odom_.pose.pose.position.x + goal_x_;
-      goal_world_y_ = odom_.pose.pose.position.y + goal_y_;
+      const auto& q = odom_.pose.pose.orientation;
+      const double initial_yaw = std::atan2(
+        2.0 * (q.w * q.z + q.x * q.y),
+        1.0 - 2.0 * (q.y * q.y + q.z * q.z));
+      const double cos_yaw = std::cos(initial_yaw);
+      const double sin_yaw = std::sin(initial_yaw);
+      const double initial_x = odom_.pose.pose.position.x;
+      const double initial_y = odom_.pose.pose.position.y;
+      world_points_.reserve(points_.size());
+      for (const auto& [x, y] : points_) {
+        world_points_.emplace_back(
+          initial_x + cos_yaw * x - sin_yaw * y,
+          initial_y + sin_yaw * x + cos_yaw * y);
+      }
+      goal_world_x_ = world_points_.back().first;
+      goal_world_y_ = world_points_.back().second;
       return;  // Ensure the follower receives navigation_active before /path.
     }
-    if (navigation_armed_ && !path_sent_) {
+    if (navigation_armed_ && !finished_) {
+      // pathFollower rejects a path older than pathTimeoutSec.  Re-express the
+      // fixed world route in the current vehicle frame on every timer tick.
+      const auto& position = odom_.pose.pose.position;
+      const auto& q = odom_.pose.pose.orientation;
+      const double yaw = std::atan2(
+        2.0 * (q.w * q.z + q.x * q.y),
+        1.0 - 2.0 * (q.y * q.y + q.z * q.z));
+      const double cos_yaw = std::cos(yaw);
+      const double sin_yaw = std::sin(yaw);
       nav_msgs::msg::Path path;
       path.header.stamp = now();
       path.header.frame_id = frame_id_;
-      for (const auto& [x, y] : points_) {
+      geometry_msgs::msg::PoseStamped current_pose;
+      current_pose.header = path.header;
+      current_pose.pose.orientation.w = 1.0;
+      path.poses.push_back(current_pose);
+
+      std::size_t nearest_index = 0;
+      double nearest_distance = std::numeric_limits<double>::infinity();
+      for (std::size_t index = 0; index < world_points_.size(); ++index) {
+        const double distance = std::hypot(
+          world_points_[index].first - position.x,
+          world_points_[index].second - position.y);
+        if (distance < nearest_distance) {
+          nearest_distance = distance;
+          nearest_index = index;
+        }
+      }
+      const std::size_t first_target = std::min(nearest_index + 1, world_points_.size() - 1);
+      for (std::size_t index = first_target; index < world_points_.size(); ++index) {
+        const auto& [world_x, world_y] = world_points_[index];
+        const double dx = world_x - position.x;
+        const double dy = world_y - position.y;
         geometry_msgs::msg::PoseStamped pose;
         pose.header = path.header;
-        pose.pose.position.x = x;
-        pose.pose.position.y = y;
+        pose.pose.position.x = cos_yaw * dx + sin_yaw * dy;
+        pose.pose.position.y = -sin_yaw * dx + cos_yaw * dy;
         pose.pose.orientation.w = 1.0;
         path.poses.push_back(pose);
       }
-      path_pub_->publish(path);  // Exactly once: follower keeps this reference pose.
-      path_sent_ = true;
-      RCLCPP_INFO(get_logger(), "Published one %s test path; goal=(%.2f, %.2f)",
-                  path_type_.c_str(), goal_world_x_, goal_world_y_);
+      path_pub_->publish(path);
+      if (!path_sent_) {
+        path_sent_ = true;
+        RCLCPP_INFO(get_logger(), "Started %s test path; fixed goal=(%.2f, %.2f)",
+                    path_type_.c_str(), goal_world_x_, goal_world_y_);
+      }
     }
     const auto& position = odom_.pose.pose.position;
     const double distance = std::hypot(position.x - goal_world_x_, position.y - goal_world_y_);
@@ -120,6 +166,7 @@ private:
 
   std::string path_type_, frame_id_;
   std::vector<std::pair<double, double>> points_;
+  std::vector<std::pair<double, double>> world_points_;
   double goal_x_{0.0}, goal_y_{0.0}, goal_world_x_{0.0}, goal_world_y_{0.0};
   double publish_delay_sec_{2.0}, goal_tolerance_{0.30};
   bool have_odom_{false}, navigation_armed_{false}, path_sent_{false}, finished_{false};
