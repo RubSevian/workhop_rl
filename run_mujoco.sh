@@ -2,7 +2,7 @@
 set -eo pipefail
 
 PROJECT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
-UNITREE_SDK_DDS_LIB_DIR="${UNITREE_SDK_DDS_LIB_DIR:-/usr/local/lib}"
+UNITREE_SDK_DDS_LIB_DIR="${UNITREE_SDK_DDS_LIB_DIR:-${PROJECT_DIR}/src/unitree_ros2_to_real/library/unitree_sdk2/thirdparty/lib/aarch64}"
 
 if [ ! -f "$UNITREE_SDK_DDS_LIB_DIR/libddsc.so" ] || [ ! -f "$UNITREE_SDK_DDS_LIB_DIR/libddscxx.so" ]; then
     echo "Unitree SDK CycloneDDS libraries were not found in $UNITREE_SDK_DDS_LIB_DIR." >&2
@@ -10,7 +10,7 @@ if [ ! -f "$UNITREE_SDK_DDS_LIB_DIR/libddsc.so" ] || [ ! -f "$UNITREE_SDK_DDS_LI
     exit 1
 fi
 
-source "$PROJECT_DIR/env_setup.sh"
+source "$PROJECT_DIR/mujoco_setup.sh"
 
 # unitree_sdk2 requires libddsc and libddscxx from the same SDK release.
 # Put its directory before the ROS CycloneDDS overlay to avoid mixing 0.10.2 and 0.10.5.
