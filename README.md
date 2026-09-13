@@ -140,6 +140,11 @@ sudo ip link set lo multicast on # fix
 
 ## Go2 low-level mode before RL navigation (ROS 2 Jazzy)
 
+The working Go2 profile is `weights/go2/config.yaml`.  It deliberately refers
+to the currently verified policy under `weights/go1/` until that binary is
+copied to `weights/go2/`; this avoids changing a known-working policy during a
+directory migration.  Use `robot_name:=go2` for all new launches.
+
 `ros2_rl_go2` must not publish joint commands while Unitree `sport_mode` owns
 the motors.  The package contains `go2_mode_switch`, an SDK2-only utility which
 does not publish any `LowCmd` message.
