@@ -62,6 +62,10 @@ void RobotController::set_command(float x, float y, float z) {
     agent.obs.command.index({0}) = x;
     agent.obs.command.index({1}) = y;
     agent.obs.command.index({2}) = z;
+    constexpr float kMotionCommandDeadband = 0.01F;
+    motion_command_requested_ = std::abs(x) > kMotionCommandDeadband ||
+                                std::abs(y) > kMotionCommandDeadband ||
+                                std::abs(z) > kMotionCommandDeadband;
 }
 
 void RobotController::start_autonomy() {
@@ -132,14 +136,21 @@ unitree_go::msg::LowCmd RobotController::update(const unitree_go::msg::LowState&
         break;
         
         case MODE_DAMPING: {
-        // мягкий hold
+            // Do not invoke a gait merely because stand-up completed: a zero
+            // command can still make a learned policy step or drift.
             for (int i = 0; i < Go2_NUM_MOTOR; i++) {
+                const int policy_index = net2joint_indexes[i];
                 cmd.motor_cmd[i].mode = 0x01;
-                cmd.motor_cmd[i].q   = agent.params.default_dof_pos.index({i}).item<float>();
+                cmd.motor_cmd[i].q   = agent.params.default_dof_pos.index({policy_index}).item<float>();
                 cmd.motor_cmd[i].dq  = 0.0f;
-                cmd.motor_cmd[i].kp  = 20.0f;
-                cmd.motor_cmd[i].kd  = 1.5f;
+                cmd.motor_cmd[i].kp  = agent.params.fixed_kp.index({policy_index}).item<float>();
+                cmd.motor_cmd[i].kd  = agent.params.fixed_kd.index({policy_index}).item<float>();
                 cmd.motor_cmd[i].tau = 0.0f;
+            }
+            if (autonomous_requested_ && standup_done_ && motion_command_requested_) {
+                agent.ResetHistory();
+                runing_time = 0.0F;
+                mode_ = MODE_RL;
             }
         } break;
 
@@ -148,16 +159,17 @@ unitree_go::msg::LowCmd RobotController::update(const unitree_go::msg::LowState&
                 float rate = motiontime / 400.0f;
 
                 for (int i = 0; i < Go2_NUM_MOTOR; i++) {
+                const int policy_index = net2joint_indexes[i];
                 qDes[i] = jointLinearInterpolation(
                     qInit[i],
-                    agent.params.default_dof_pos.index({i}).item<float>(),
+                    agent.params.default_dof_pos.index({policy_index}).item<float>(),
                     rate);
 
                 cmd.motor_cmd[i].mode = 0x01;
                 cmd.motor_cmd[i].q   = qDes[i];
                 cmd.motor_cmd[i].dq  = 0.0f;
-                cmd.motor_cmd[i].kp  = agent.params.fixed_kp.index({i}).item<float>();
-                cmd.motor_cmd[i].kd  = agent.params.fixed_kd.index({i}).item<float>();
+                cmd.motor_cmd[i].kp  = agent.params.fixed_kp.index({policy_index}).item<float>();
+                cmd.motor_cmd[i].kd  = agent.params.fixed_kd.index({policy_index}).item<float>();
                 cmd.motor_cmd[i].tau = 0.0f;
                 }
 
@@ -167,15 +179,18 @@ unitree_go::msg::LowCmd RobotController::update(const unitree_go::msg::LowState&
                 // tick; a default-constructed LowCmd can briefly release the
                 // motors and make the robot dip before RL takes over.
                 for (int i = 0; i < Go2_NUM_MOTOR; i++) {
+                    const int policy_index = net2joint_indexes[i];
                     cmd.motor_cmd[i].mode = 0x01;
-                    cmd.motor_cmd[i].q = agent.params.default_dof_pos.index({i}).item<float>();
+                    cmd.motor_cmd[i].q = agent.params.default_dof_pos.index({policy_index}).item<float>();
                     cmd.motor_cmd[i].dq = 0.0f;
-                    cmd.motor_cmd[i].kp = agent.params.fixed_kp.index({i}).item<float>();
-                    cmd.motor_cmd[i].kd = agent.params.fixed_kd.index({i}).item<float>();
+                    cmd.motor_cmd[i].kp = agent.params.fixed_kp.index({policy_index}).item<float>();
+                    cmd.motor_cmd[i].kd = agent.params.fixed_kd.index({policy_index}).item<float>();
                     cmd.motor_cmd[i].tau = 0.0f;
                 }
                 standup_done_ = true;
-                mode_ = autonomous_requested_ ? MODE_RL : MODE_DAMPING;
+                agent.ResetHistory();
+                runing_time = 0.0F;
+                mode_ = MODE_DAMPING;
             }
         } break;
 
@@ -193,8 +208,8 @@ unitree_go::msg::LowCmd RobotController::update(const unitree_go::msg::LowState&
                 cmd.motor_cmd[i].mode = 0x01;
                 cmd.motor_cmd[i].q   = actions.index({net2joint_indexes[i]}).item<float>();
                 cmd.motor_cmd[i].dq  = 0.0f;
-                cmd.motor_cmd[i].kp  = agent.params.rl_kp.index({i}).item<float>();
-                cmd.motor_cmd[i].kd  = agent.params.rl_kd.index({i}).item<float>();
+                cmd.motor_cmd[i].kp  = agent.params.rl_kp.index({net2joint_indexes[i]}).item<float>();
+                cmd.motor_cmd[i].kd  = agent.params.rl_kd.index({net2joint_indexes[i]}).item<float>();
                 cmd.motor_cmd[i].tau = 0.0f;
             }
         } break;
@@ -289,7 +304,6 @@ InterfaceRos::InterfaceRos(const std::string& network_interface) : Node("low_lev
     declare_parameter<std::string>("cmd_vel_topic", "/cmd_vel");
     declare_parameter<double>("cmd_vel_timeout_sec", cmd_vel_timeout_sec_);
     declare_parameter<double>("low_state_timeout_sec", low_state_timeout_sec_);
-    declare_parameter<double>("low_state_startup_grace_sec", low_state_startup_grace_sec_);
     declare_parameter<double>("max_linear_x", max_linear_x_);
     declare_parameter<double>("max_linear_y", max_linear_y_);
     declare_parameter<double>("max_yaw_rate", max_yaw_rate_);
@@ -305,7 +319,6 @@ InterfaceRos::InterfaceRos(const std::string& network_interface) : Node("low_lev
     declare_parameter<bool>("low_level_mode_verified", false);
     get_parameter("cmd_vel_timeout_sec", cmd_vel_timeout_sec_);
     get_parameter("low_state_timeout_sec", low_state_timeout_sec_);
-    get_parameter("low_state_startup_grace_sec", low_state_startup_grace_sec_);
     get_parameter("max_linear_x", max_linear_x_);
     get_parameter("max_linear_y", max_linear_y_);
     get_parameter("max_yaw_rate", max_yaw_rate_);
@@ -411,10 +424,6 @@ void InterfaceRos::init_cmd() {
 void InterfaceRos::LowStateHandler(const unitree_go::msg::LowState::SharedPtr msg) {
     latest_state = msg;
     last_low_state_time_ = std::chrono::steady_clock::now();
-    if (!first_low_state_received_) {
-        first_low_state_time_ = last_low_state_time_;
-        first_low_state_received_ = true;
-    }
     publish_imu(msg->imu_state);
     publish_motor_state(msg->motor_state);
     // if (INFO_IMU) {
@@ -443,7 +452,7 @@ void InterfaceRos::LowStateHandler(const unitree_go::msg::LowState::SharedPtr ms
 
 void InterfaceRos::timer_callback_cmd() {
     if (!latest_state || !model_loaded_) {
-        RCLCPP_WARN_THROTTLE(this->get_logger(), *this->get_clock(), 2000,
+        RCLCPP_DEBUG_THROTTLE(this->get_logger(), *this->get_clock(), 2000,
                             "Waiting for first state message or policy");
         return;
     }
@@ -453,12 +462,9 @@ void InterfaceRos::timer_callback_cmd() {
         return;
     }
     const auto now = std::chrono::steady_clock::now();
-    const double startup_age = std::chrono::duration<double>(
-        now - first_low_state_time_).count();
-    const bool watchdog_armed = startup_age >= low_state_startup_grace_sec_;
     const double low_state_age = std::chrono::duration<double>(
         now - last_low_state_time_).count();
-    if (watchdog_armed && low_state_age > low_state_timeout_sec_) {
+    if (low_state_age > low_state_timeout_sec_) {
         fault_latched_ = true;
         autostart_ = false;
         RCLCPP_ERROR(
@@ -473,8 +479,15 @@ void InterfaceRos::timer_callback_cmd() {
         controller.set_command(0.0F, 0.0F, 0.0F);
     }
     try {
+        const auto control_start = std::chrono::steady_clock::now();
         low_cmd = controller.update(*latest_state);
         send_command(low_cmd);
+        const double control_ms = std::chrono::duration<double, std::milli>(
+            std::chrono::steady_clock::now() - control_start).count();
+        if (control_ms > 10.0) {
+            RCLCPP_WARN_THROTTLE(this->get_logger(), *this->get_clock(), 2000,
+                                 "RL control cycle is %.1f ms (budget is 20 ms)", control_ms);
+        }
     } catch (const std::exception& error) {
         fault_latched_ = true;
         autostart_ = false;

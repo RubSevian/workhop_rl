@@ -3,13 +3,14 @@
 #include <map>
 #include "std_msgs/msg/string.hpp"
 #include <stdexcept>
+#include <cmath>
 
 
 torch::Tensor Agent::QuatRotateInverse(torch::Tensor q, torch::Tensor v) {
     torch::Tensor q_w = q.index({3});
     torch::Tensor q_vec = q.index({torch::indexing::Slice(torch::indexing::None, 3)});
     torch::Tensor a = v * (2.0 * q_w * q_w - 1.0);
-    torch::Tensor b = torch::cross(q_vec, v) * q_w * 2.0;
+    torch::Tensor b = torch::cross(q_vec, v, 0) * q_w * 2.0;
     torch::Tensor c = q_vec * torch::matmul(q_vec.view({1, 3}), v.view({3, 1})).squeeze(-1) * 2.0;
     return a - b + c;
 }
@@ -53,7 +54,22 @@ void Agent::InitRL()
 
     // 4) fill history with current obs so first steps are not zeros [file:22]
     this->history_obs_buf.reset({0}, clamped_obs.view({1, -1}));
+    this->history_initialized = true;
 
+}
+
+void Agent::ResetHistory()
+{
+    // A previous action recorded while lying down or standing up is not a
+    // valid input to the first walking step.
+    this->obs.action.zero_();
+    if (this->params.observations_history.empty()) return;
+    if (!this->history_initialized) {
+        InitRL();
+        return;
+    }
+    const torch::Tensor current_obs = this->ComputeObservation();
+    this->history_obs_buf.reset({0}, current_obs.view({1, -1}));
 }
 void Agent::UpdatePhase(float time) {
     float phase = time / params.cycle_time; // Фаза в [0, 1] и далее (не ограничена)
@@ -290,4 +306,31 @@ void Agent::ReadYaml(const std::string &robot_name,const std::string &config_pat
     require_12(this->params.fixed_kd, "fixed_kd");
     require_12(this->params.torque_limits, "torque_limits");
     require_12(this->params.default_dof_pos, "default_dof_pos");
+    if (this->params.command_scale.numel() != 3) {
+        throw std::runtime_error("Expected 3 values for 'commands_scale'");
+    }
+    if (this->params.joint_names.size() != 12) {
+        throw std::runtime_error("Expected 12 values for 'joint_names'");
+    }
+    if (this->params.obs_model.empty()) {
+        throw std::runtime_error("'observations' must not be empty");
+    }
+    const auto require_finite = [](const torch::Tensor& values, const char* name) {
+        if (!torch::isfinite(values).all().item<bool>()) {
+            throw std::runtime_error(std::string("Non-finite value in '") + name + "'");
+        }
+    };
+    require_finite(this->params.rl_kp, "rl_kp");
+    require_finite(this->params.rl_kd, "rl_kd");
+    require_finite(this->params.fixed_kp, "fixed_kp");
+    require_finite(this->params.fixed_kd, "fixed_kd");
+    require_finite(this->params.torque_limits, "torque_limits");
+    require_finite(this->params.default_dof_pos, "default_dof_pos");
+    require_finite(this->params.command_scale, "commands_scale");
+    if (!std::isfinite(this->params.action_scale) || !std::isfinite(this->params.clip_obs) ||
+        !std::isfinite(this->params.clip_actions) || !std::isfinite(this->params.cycle_time) ||
+        this->params.action_scale <= 0.0F || this->params.clip_obs <= 0.0F ||
+        this->params.clip_actions <= 0.0F || this->params.cycle_time <= 0.0F) {
+        throw std::runtime_error("Invalid finite positive policy scale/clip/cycle_time");
+    }
 }
