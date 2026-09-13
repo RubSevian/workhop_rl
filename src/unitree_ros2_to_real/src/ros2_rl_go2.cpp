@@ -289,6 +289,7 @@ InterfaceRos::InterfaceRos(const std::string& network_interface) : Node("low_lev
     declare_parameter<std::string>("cmd_vel_topic", "/cmd_vel");
     declare_parameter<double>("cmd_vel_timeout_sec", cmd_vel_timeout_sec_);
     declare_parameter<double>("low_state_timeout_sec", low_state_timeout_sec_);
+    declare_parameter<double>("low_state_startup_grace_sec", low_state_startup_grace_sec_);
     declare_parameter<double>("max_linear_x", max_linear_x_);
     declare_parameter<double>("max_linear_y", max_linear_y_);
     declare_parameter<double>("max_yaw_rate", max_yaw_rate_);
@@ -304,6 +305,7 @@ InterfaceRos::InterfaceRos(const std::string& network_interface) : Node("low_lev
     declare_parameter<bool>("low_level_mode_verified", false);
     get_parameter("cmd_vel_timeout_sec", cmd_vel_timeout_sec_);
     get_parameter("low_state_timeout_sec", low_state_timeout_sec_);
+    get_parameter("low_state_startup_grace_sec", low_state_startup_grace_sec_);
     get_parameter("max_linear_x", max_linear_x_);
     get_parameter("max_linear_y", max_linear_y_);
     get_parameter("max_yaw_rate", max_yaw_rate_);
@@ -409,6 +411,10 @@ void InterfaceRos::init_cmd() {
 void InterfaceRos::LowStateHandler(const unitree_go::msg::LowState::SharedPtr msg) {
     latest_state = msg;
     last_low_state_time_ = std::chrono::steady_clock::now();
+    if (!first_low_state_received_) {
+        first_low_state_time_ = last_low_state_time_;
+        first_low_state_received_ = true;
+    }
     publish_imu(msg->imu_state);
     publish_motor_state(msg->motor_state);
     // if (INFO_IMU) {
@@ -446,9 +452,13 @@ void InterfaceRos::timer_callback_cmd() {
     if (!autostart_ || fault_latched_) {
         return;
     }
+    const auto now = std::chrono::steady_clock::now();
+    const double startup_age = std::chrono::duration<double>(
+        now - first_low_state_time_).count();
+    const bool watchdog_armed = startup_age >= low_state_startup_grace_sec_;
     const double low_state_age = std::chrono::duration<double>(
-        std::chrono::steady_clock::now() - last_low_state_time_).count();
-    if (low_state_age > low_state_timeout_sec_) {
+        now - last_low_state_time_).count();
+    if (watchdog_armed && low_state_age > low_state_timeout_sec_) {
         fault_latched_ = true;
         autostart_ = false;
         RCLCPP_ERROR(

@@ -99,8 +99,13 @@ private:
     bool cmd_vel_received_ = false;
     std::chrono::steady_clock::time_point last_cmd_vel_time_{};
     std::chrono::steady_clock::time_point last_low_state_time_{};
+    std::chrono::steady_clock::time_point first_low_state_time_{};
     double cmd_vel_timeout_sec_ = 0.25;
-    double low_state_timeout_sec_ = 0.20;
+    double low_state_timeout_sec_ = 0.50;
+    // Stand-up takes 500 ticks at 50 Hz (10 s).  Do not latch a transient
+    // lowstate pause while the robot is still moving to the pose.
+    double low_state_startup_grace_sec_ = 10.5;
+    bool first_low_state_received_ = false;
     double max_linear_x_ = 0.4;
     double max_linear_y_ = 0.2;
     double max_yaw_rate_ = 0.8;
