@@ -25,6 +25,7 @@ def generate_launch_description():
                 'maxSpeed': 0.30, 'maxYawRate': 28.0, 'maxAccel': 1.0,
                 'twoWayDrive': False, 'pubSkipNum': 1,
                 'odomTimeoutSec': 0.50, 'pathTimeoutSec': 0.50,
+                'allowStaticPath': True,
                 'is_real_robot': False, 'sendSportCommand': False,
             }]),
         Node(
