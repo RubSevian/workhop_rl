@@ -98,12 +98,15 @@ private:
     unitree_go::msg::LowState::SharedPtr latest_state;
     bool cmd_vel_received_ = false;
     std::chrono::steady_clock::time_point last_cmd_vel_time_{};
+    std::chrono::steady_clock::time_point last_low_state_time_{};
     double cmd_vel_timeout_sec_ = 0.25;
+    double low_state_timeout_sec_ = 0.20;
     double max_linear_x_ = 0.4;
     double max_linear_y_ = 0.2;
     double max_yaw_rate_ = 0.8;
     bool autostart_ = false;
     bool model_loaded_ = false;
+    bool fault_latched_ = false;
     RobotController controller;
 
     // xKeySwitchUnion unitree_joy;

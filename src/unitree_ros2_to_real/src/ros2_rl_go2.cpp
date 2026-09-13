@@ -70,13 +70,29 @@ void RobotController::start_autonomy() {
 
 unitree_go::msg::LowCmd RobotController::update(const unitree_go::msg::LowState& state) {
     unitree_go::msg::LowCmd cmd;
+    for (int i = 0; i < Go2_NUM_MOTOR; ++i) {
+        if (!std::isfinite(state.motor_state[i].q) ||
+            !std::isfinite(state.motor_state[i].dq)) {
+            throw std::runtime_error("Invalid motor state at index " + std::to_string(i));
+        }
+    }
+    for (int axis = 0; axis < 3; ++axis) {
+        if (!std::isfinite(state.imu_state.gyroscope[axis])) {
+            throw std::runtime_error("Invalid IMU gyroscope");
+        }
+    }
     initial_positions(state.motor_state);
     update_dof_state(state.motor_state);
 
-    bool valid_imu = (state.imu_state.quaternion[0] != 0.0 || state.imu_state.quaternion[1] != 0.0 ||
-                      state.imu_state.quaternion[2] != 0.0 || state.imu_state.quaternion[3] != 0.0);
+    const bool valid_imu =
+        std::isfinite(state.imu_state.quaternion[0]) &&
+        std::isfinite(state.imu_state.quaternion[1]) &&
+        std::isfinite(state.imu_state.quaternion[2]) &&
+        std::isfinite(state.imu_state.quaternion[3]) &&
+        (state.imu_state.quaternion[0] != 0.0 || state.imu_state.quaternion[1] != 0.0 ||
+         state.imu_state.quaternion[2] != 0.0 || state.imu_state.quaternion[3] != 0.0);
     if (!valid_imu) {
-        std::cerr << "Warning: Invalid IMU data (zero quaternion)" << std::endl;
+        throw std::runtime_error("Invalid IMU quaternion");
     }
 
     agent.obs.ang_vel.index({0}) = state.imu_state.gyroscope[0];
@@ -145,17 +161,19 @@ unitree_go::msg::LowCmd RobotController::update(const unitree_go::msg::LowState&
                 cmd.motor_cmd[i].tau = 0.0f;
                 }
 
-                if (motiontime % 100 == 0) {
-                std::stringstream ss;
-                ss << "Default_dof_pos: ";
-                for (int i = 0; i < Go2_NUM_MOTOR; i++) {
-                    ss << agent.params.default_dof_pos.index({i}).item<float>() << " ";
-                }
-                std::cout << ss.str() << std::endl;
-                }
-
                 motiontime++;
             } else {
+                // Keep a valid position command during the single transition
+                // tick; a default-constructed LowCmd can briefly release the
+                // motors and make the robot dip before RL takes over.
+                for (int i = 0; i < Go2_NUM_MOTOR; i++) {
+                    cmd.motor_cmd[i].mode = 0x01;
+                    cmd.motor_cmd[i].q = agent.params.default_dof_pos.index({i}).item<float>();
+                    cmd.motor_cmd[i].dq = 0.0f;
+                    cmd.motor_cmd[i].kp = agent.params.fixed_kp.index({i}).item<float>();
+                    cmd.motor_cmd[i].kd = agent.params.fixed_kd.index({i}).item<float>();
+                    cmd.motor_cmd[i].tau = 0.0f;
+                }
                 standup_done_ = true;
                 mode_ = autonomous_requested_ ? MODE_RL : MODE_DAMPING;
             }
@@ -178,15 +196,6 @@ unitree_go::msg::LowCmd RobotController::update(const unitree_go::msg::LowState&
                 cmd.motor_cmd[i].kp  = agent.params.rl_kp.index({i}).item<float>();
                 cmd.motor_cmd[i].kd  = agent.params.rl_kd.index({i}).item<float>();
                 cmd.motor_cmd[i].tau = 0.0f;
-            }
-
-            if (motiontime % 100 == 0) {
-                std::stringstream ss;
-                ss << "Actions: ";
-                for (int i = 0; i < Go2_NUM_MOTOR; i++) {
-                ss << actions.index({net2joint_indexes[i]}).item<float>() << " ";
-                }
-                std::cout << ss.str() << std::endl;
             }
         } break;
 
@@ -254,12 +263,6 @@ void RobotController::initial_positions(const std::array<unitree_go::msg::MotorS
         for (int i = 0; i < Go2_NUM_MOTOR; i++) {
             qInit[i] = motor_state[i].q;
         }
-        if (init_count == 0) {
-            std::stringstream ss;
-            ss << "Initial positions: ";
-            for (int i = 0; i < Go2_NUM_MOTOR; i++) ss << qInit[i] << " ";
-            std::cout << ss.str() << std::endl;
-        }
         init_count++;
     }
 }
@@ -285,6 +288,7 @@ InterfaceRos::InterfaceRos(const std::string& network_interface) : Node("low_lev
     }
     declare_parameter<std::string>("cmd_vel_topic", "/cmd_vel");
     declare_parameter<double>("cmd_vel_timeout_sec", cmd_vel_timeout_sec_);
+    declare_parameter<double>("low_state_timeout_sec", low_state_timeout_sec_);
     declare_parameter<double>("max_linear_x", max_linear_x_);
     declare_parameter<double>("max_linear_y", max_linear_y_);
     declare_parameter<double>("max_yaw_rate", max_yaw_rate_);
@@ -299,6 +303,7 @@ InterfaceRos::InterfaceRos(const std::string& network_interface) : Node("low_lev
     declare_parameter<bool>("release_sport_mode", false);
     declare_parameter<bool>("low_level_mode_verified", false);
     get_parameter("cmd_vel_timeout_sec", cmd_vel_timeout_sec_);
+    get_parameter("low_state_timeout_sec", low_state_timeout_sec_);
     get_parameter("max_linear_x", max_linear_x_);
     get_parameter("max_linear_y", max_linear_y_);
     get_parameter("max_yaw_rate", max_yaw_rate_);
@@ -403,6 +408,7 @@ void InterfaceRos::init_cmd() {
 
 void InterfaceRos::LowStateHandler(const unitree_go::msg::LowState::SharedPtr msg) {
     latest_state = msg;
+    last_low_state_time_ = std::chrono::steady_clock::now();
     publish_imu(msg->imu_state);
     publish_motor_state(msg->motor_state);
     // if (INFO_IMU) {
@@ -431,20 +437,41 @@ void InterfaceRos::LowStateHandler(const unitree_go::msg::LowState::SharedPtr ms
 
 void InterfaceRos::timer_callback_cmd() {
     if (!latest_state || !model_loaded_) {
-        RCLCPP_WARN(this->get_logger(), "Waiting for first state message");
+        RCLCPP_WARN_THROTTLE(this->get_logger(), *this->get_clock(), 2000,
+                            "Waiting for first state message or policy");
         return;
     }
     // A state-only launch must never claim the low-level actuator topic.
     // Enabling it is an explicit physical-robot decision in the launch file.
-    if (!autostart_) {
+    if (!autostart_ || fault_latched_) {
+        return;
+    }
+    const double low_state_age = std::chrono::duration<double>(
+        std::chrono::steady_clock::now() - last_low_state_time_).count();
+    if (low_state_age > low_state_timeout_sec_) {
+        fault_latched_ = true;
+        autostart_ = false;
+        RCLCPP_ERROR(
+            this->get_logger(),
+            "Safety stop latched: /lowstate is stale for %.3f s. Restart is required; "
+            "RL will not resume automatically.",
+            low_state_age);
         return;
     }
     if (!cmd_vel_received_ ||
         std::chrono::duration<double>(std::chrono::steady_clock::now() - last_cmd_vel_time_).count() > cmd_vel_timeout_sec_) {
         controller.set_command(0.0F, 0.0F, 0.0F);
     }
-    low_cmd = controller.update(*latest_state);
-    send_command(low_cmd);
+    try {
+        low_cmd = controller.update(*latest_state);
+        send_command(low_cmd);
+    } catch (const std::exception& error) {
+        fault_latched_ = true;
+        autostart_ = false;
+        RCLCPP_ERROR(this->get_logger(),
+                     "Safety stop latched during RL update: %s. Restart is required.",
+                     error.what());
+    }
 }
 
 void InterfaceRos::publish_imu(const unitree_go::msg::IMUState& imu_state) {

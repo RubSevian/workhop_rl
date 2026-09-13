@@ -72,6 +72,7 @@ bool Agent::Load_Model(const std::string &model_path)
     try {
         // Deserialize the ScriptModule from a file using torch::jit::load().
         module = torch::jit::load(model_path);
+        module.eval();
     }
     catch (const c10::Error& e) {
         return false;
@@ -81,8 +82,18 @@ bool Agent::Load_Model(const std::string &model_path)
 
 torch::Tensor Agent::Act()
 {
+    torch::NoGradGuard no_grad;
 
     this->obs.action = this->Forward();
+
+    if (this->obs.action.numel() != 12) {
+        throw std::runtime_error(
+            "Policy must return 12 actions, got " +
+            std::to_string(this->obs.action.numel()));
+    }
+    if (!torch::isfinite(this->obs.action).all().item<bool>()) {
+        throw std::runtime_error("Policy returned NaN or Inf");
+    }
 
     output_dof_pos = this->ComputePosition(this->obs.action);
     //std::cout << "Action_output before clamp: " << output_dof_pos << std::endl;
