@@ -161,17 +161,17 @@ On Go2 firmware tested here, `--status` reports `status=0` while Sport Mode is
 active and `status=1` after it is released.  The utility prints this meaning
 explicitly; never infer it from a generic boolean convention.
 
-For an autonomous launch, `ros2_rl_go2` performs the same SDK2 operation before
-it creates a motor-output path.  Motion stays disabled if the check fails:
+Run the mode command as a separate process before starting the ROS bridge.
+SDK2 and ROS Jazzy both initialise CycloneDDS and cannot safely do so inside
+the same process.  Motion stays disabled unless this preflight is acknowledged:
 
 ```bash
 ros2 launch vehicle_simulator system_real_robot_rl_navigation.launch \
-  autostart:=true release_sport_mode:=true \
+  autostart:=true release_sport_mode:=false low_level_mode_verified:=true \
   network_interface:="$GO2_NETWORK_INTERFACE" \
   robot_name:=go2 config_path:=/absolute/go2_config.yaml \
   model_path:=/absolute/go2_policy.pt
 ```
 
-`release_sport_mode` defaults to `false`; it is safe to run a state-only launch
-without it.  If sport mode was released manually, use `autostart:=true` with
-`release_sport_mode:=false`: the node still queries and verifies that it is off.
+`release_sport_mode` must be `false` in `ros2_rl_go2`.  If it is true, or if
+`low_level_mode_verified` is false, the bridge intentionally sends no LowCmd.

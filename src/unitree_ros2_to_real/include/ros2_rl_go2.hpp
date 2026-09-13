@@ -9,7 +9,6 @@
 // #include <unitree/idl/go2/WirelessController_.hpp>
 // #include <unitree/robot/channel/channel_subscriber.hpp>
 // #include <unitree/robot/channel/channel_publisher.hpp>
-#include <unitree/robot/go2/robot_state/robot_state_client.hpp>
 #include <unitree_go/msg/low_state.hpp>
 #include <unitree_go/msg/imu_state.hpp>
 #include <unitree_go/msg/motor_state.hpp>

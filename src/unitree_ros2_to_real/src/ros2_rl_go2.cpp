@@ -2,7 +2,6 @@
  * This example demonstrates how to use ROS2 to send low-level motor commands to Unitree Go2 robot
  */
 #include "ros2_rl_go2.hpp"
-#include "go2_motion_mode.hpp"
 
 #include <cstdlib>
 #include <stdexcept>
@@ -294,9 +293,11 @@ InterfaceRos::InterfaceRos(const std::string& network_interface) : Node("low_lev
     declare_parameter<std::string>("config_path", "");
     declare_parameter<std::string>("model_path", "");
     declare_parameter<std::string>("network_interface", default_network_interface);
-    // This is intentionally opt-in.  The node always verifies the mode before
-    // autostart, and it sends no LowCmd if verification/release fails.
+    // SDK2 and ROS CycloneDDS must not share this process: both try to create a
+    // CycloneDDS domain.  Sport Mode is therefore released/checked beforehand
+    // with the separate go2_mode_switch executable.
     declare_parameter<bool>("release_sport_mode", false);
+    declare_parameter<bool>("low_level_mode_verified", false);
     get_parameter("cmd_vel_timeout_sec", cmd_vel_timeout_sec_);
     get_parameter("max_linear_x", max_linear_x_);
     get_parameter("max_linear_y", max_linear_y_);
@@ -306,30 +307,26 @@ InterfaceRos::InterfaceRos(const std::string& network_interface) : Node("low_lev
     std::string robot_name;
     std::string config_path;
     std::string model_path;
-    std::string selected_network_interface;
     bool release_sport_mode = false;
+    bool low_level_mode_verified = false;
     get_parameter("cmd_vel_topic", cmd_vel_topic);
     get_parameter("robot_name", robot_name);
     get_parameter("config_path", config_path);
     get_parameter("model_path", model_path);
-    get_parameter("network_interface", selected_network_interface);
     get_parameter("release_sport_mode", release_sport_mode);
+    get_parameter("low_level_mode_verified", low_level_mode_verified);
 
     if (autostart_) {
-        const go2_motion_mode::Result mode_result =
-            release_sport_mode ? go2_motion_mode::ReleaseSportMode(selected_network_interface)
-                               : go2_motion_mode::QuerySportMode(selected_network_interface);
-        if (!mode_result.ok || mode_result.sport_mode_active) {
-            // timer_callback_cmd checks autostart_ before it can publish.  Keep
-            // the node alive for diagnostics, but make physical motion
-            // impossible until the operator has fixed the mode switch.
+        if (release_sport_mode || !low_level_mode_verified) {
+            // timer_callback_cmd checks autostart_ before it can publish.  Do
+            // not silently bypass the explicit preflight requirement.
             autostart_ = false;
             RCLCPP_ERROR(
                 get_logger(),
-                "Low-level mode is not verified; actuator output remains disabled: %s",
-                mode_result.message.c_str());
+                "Actuator output remains disabled. Run go2_mode_switch in a separate process "
+                "first, then start with release_sport_mode:=false and low_level_mode_verified:=true.");
         } else {
-            RCLCPP_INFO(get_logger(), "Low-level mode verified: %s", mode_result.message.c_str());
+            RCLCPP_INFO(get_logger(), "External low-level-mode preflight acknowledged.");
         }
     }
 
