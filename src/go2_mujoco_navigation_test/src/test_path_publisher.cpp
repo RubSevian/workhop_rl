@@ -21,17 +21,25 @@ public:
     declare_parameter<double>("goal_tolerance", 0.30);
     declare_parameter<std::string>("csv_path", "/tmp/go2_mujoco_smoke_test.csv");
     declare_parameter<std::string>("frame_id", "vehicle");
+    declare_parameter<std::string>("world_frame_id", "map");
 
     path_type_ = get_parameter("test_path").as_string();
     const double step = get_parameter("path_step").as_double();
     publish_delay_sec_ = get_parameter("publish_delay_sec").as_double();
     goal_tolerance_ = get_parameter("goal_tolerance").as_double();
     frame_id_ = get_parameter("frame_id").as_string();
+    world_frame_id_ = get_parameter("world_frame_id").as_string();
     BuildPath(step);
 
     path_pub_ = create_publisher<nav_msgs::msg::Path>("/path", rclcpp::QoS(1));
     active_pub_ = create_publisher<std_msgs::msg::Bool>(
       "/navigation_active", rclcpp::QoS(1).transient_local());
+    current_pose_pub_ = create_publisher<geometry_msgs::msg::PoseStamped>(
+      "/mujoco_test/current_pose", rclcpp::QoS(10));
+    goal_pose_pub_ = create_publisher<geometry_msgs::msg::PoseStamped>(
+      "/mujoco_test/goal_pose", rclcpp::QoS(1).transient_local());
+    trajectory_pub_ = create_publisher<nav_msgs::msg::Path>(
+      "/mujoco_test/trajectory", rclcpp::QoS(10));
     odom_sub_ = create_subscription<nav_msgs::msg::Odometry>(
       "/state_estimation", rclcpp::QoS(20),
       std::bind(&TestPathPublisher::OnOdom, this, std::placeholders::_1));
@@ -89,6 +97,7 @@ private:
       const double initial_y = odom_.pose.pose.position.y;
       goal_world_x_ = initial_x + cos_yaw * goal_x_ - sin_yaw * goal_y_;
       goal_world_y_ = initial_y + sin_yaw * goal_x_ + cos_yaw * goal_y_;
+      PublishGoal();
       return;  // Ensure the follower receives navigation_active before /path.
     }
     if (navigation_armed_ && !path_sent_) {
@@ -115,9 +124,15 @@ private:
     const double distance = std::hypot(position.x - goal_world_x_, position.y - goal_world_y_);
     const auto& q = odom_.pose.pose.orientation;
     const double yaw = std::atan2(2.0 * (q.w * q.z + q.x * q.y), 1.0 - 2.0 * (q.y * q.y + q.z * q.z));
+    PublishCurrentPose();
     if (csv_) csv_ << elapsed << ',' << position.x << ',' << position.y << ',' << yaw << ','
                    << cmd_.twist.linear.x << ',' << cmd_.twist.linear.y << ',' << cmd_.twist.angular.z << ','
                    << distance << '\n';
+    RCLCPP_INFO_THROTTLE(
+      get_logger(), *get_clock(), 1000,
+      "state=(%.2f, %.2f), yaw=%.2f, goal=(%.2f, %.2f), distance=%.2f, cmd=(%.2f, %.2f, %.2f)",
+      position.x, position.y, yaw, goal_world_x_, goal_world_y_, distance,
+      cmd_.twist.linear.x, cmd_.twist.linear.y, cmd_.twist.angular.z);
     if (path_sent_ && !finished_ && distance <= goal_tolerance_) {
       finished_ = true;
       std_msgs::msg::Bool inactive;
@@ -129,17 +144,47 @@ private:
     }
   }
 
-  std::string path_type_, frame_id_;
+  void PublishGoal() {
+    geometry_msgs::msg::PoseStamped goal;
+    goal.header.stamp = now();
+    goal.header.frame_id = world_frame_id_;
+    goal.pose.position.x = goal_world_x_;
+    goal.pose.position.y = goal_world_y_;
+    goal.pose.orientation.w = 1.0;
+    goal_pose_pub_->publish(goal);
+  }
+
+  void PublishCurrentPose() {
+    geometry_msgs::msg::PoseStamped current;
+    current.header.stamp = now();
+    current.header.frame_id = world_frame_id_;
+    current.pose = odom_.pose.pose;
+    current_pose_pub_->publish(current);
+
+    trajectory_.header = current.header;
+    trajectory_.poses.push_back(current);
+    constexpr std::size_t kMaxTrajectoryPoints = 1000;
+    if (trajectory_.poses.size() > kMaxTrajectoryPoints) {
+      trajectory_.poses.erase(trajectory_.poses.begin());
+    }
+    trajectory_pub_->publish(trajectory_);
+  }
+
+  std::string path_type_, frame_id_, world_frame_id_;
   std::vector<std::pair<double, double>> points_;
   double goal_x_{0.0}, goal_y_{0.0}, goal_world_x_{0.0}, goal_world_y_{0.0};
   double publish_delay_sec_{2.0}, goal_tolerance_{0.30};
   bool have_odom_{false}, navigation_armed_{false}, path_sent_{false}, finished_{false};
   nav_msgs::msg::Odometry odom_;
+  nav_msgs::msg::Path trajectory_;
   geometry_msgs::msg::TwistStamped cmd_;
   std::ofstream csv_;
   std::chrono::steady_clock::time_point start_time_;
   rclcpp::Publisher<nav_msgs::msg::Path>::SharedPtr path_pub_;
   rclcpp::Publisher<std_msgs::msg::Bool>::SharedPtr active_pub_;
+  rclcpp::Publisher<geometry_msgs::msg::PoseStamped>::SharedPtr current_pose_pub_;
+  rclcpp::Publisher<geometry_msgs::msg::PoseStamped>::SharedPtr goal_pose_pub_;
+  rclcpp::Publisher<nav_msgs::msg::Path>::SharedPtr trajectory_pub_;
   rclcpp::Subscription<nav_msgs::msg::Odometry>::SharedPtr odom_sub_;
   rclcpp::Subscription<geometry_msgs::msg::TwistStamped>::SharedPtr cmd_sub_;
   rclcpp::TimerBase::SharedPtr timer_;
