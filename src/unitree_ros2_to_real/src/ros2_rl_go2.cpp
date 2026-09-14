@@ -72,6 +72,24 @@ void RobotController::start_autonomy() {
     autonomous_requested_ = true;
 }
 
+void RobotController::set_hold_transition_seconds(double seconds) {
+    if (!std::isfinite(seconds) || seconds < dt) {
+        throw std::invalid_argument("hold_transition_sec must be finite and at least one control period");
+    }
+    hold_transition_ticks_ = std::max(1, static_cast<int>(std::lround(seconds / dt)));
+}
+
+std::string RobotController::get_mode_name() const {
+    switch (mode_) {
+        case MODE_START: return "start";
+        case MODE_STANDUP: return "standup";
+        case MODE_HOLD_TRANSITION: return "hold_transition";
+        case MODE_DAMPING: return "holding";
+        case MODE_RL: return "rl_walking";
+    }
+    return "unknown";
+}
+
 unitree_go::msg::LowCmd RobotController::update(const unitree_go::msg::LowState& state) {
     unitree_go::msg::LowCmd cmd;
     for (int i = 0; i < Go2_NUM_MOTOR; ++i) {
@@ -194,10 +212,48 @@ unitree_go::msg::LowCmd RobotController::update(const unitree_go::msg::LowState&
             }
         } break;
 
+        case MODE_HOLD_TRANSITION: {
+            const float rate = static_cast<float>(hold_transition_tick_) /
+                static_cast<float>(hold_transition_ticks_);
+            for (int i = 0; i < Go2_NUM_MOTOR; ++i) {
+                const int policy_index = net2joint_indexes[i];
+                cmd.motor_cmd[i].mode = 0x01;
+                cmd.motor_cmd[i].q = jointLinearInterpolation(
+                    qInit[i], agent.params.default_dof_pos.index({policy_index}).item<float>(), rate);
+                cmd.motor_cmd[i].dq = 0.0f;
+                cmd.motor_cmd[i].kp = agent.params.fixed_kp.index({policy_index}).item<float>();
+                cmd.motor_cmd[i].kd = agent.params.fixed_kd.index({policy_index}).item<float>();
+                cmd.motor_cmd[i].tau = 0.0f;
+            }
+            ++hold_transition_tick_;
+            if (hold_transition_tick_ > hold_transition_ticks_) {
+                agent.ResetHistory();
+                runing_time = 0.0F;
+                mode_ = MODE_DAMPING;
+            }
+        } break;
+
         case MODE_RL: {
             // safety: если не поднялись — не пускаем RL
             if (!standup_done_) {
                 mode_ = MODE_DAMPING;
+                break;
+            }
+            if (!motion_command_requested_) {
+                for (int i = 0; i < Go2_NUM_MOTOR; ++i) {
+                    qInit[i] = state.motor_state[i].q;
+                }
+                hold_transition_tick_ = 0;
+                mode_ = MODE_HOLD_TRANSITION;
+                for (int i = 0; i < Go2_NUM_MOTOR; ++i) {
+                    const int policy_index = net2joint_indexes[i];
+                    cmd.motor_cmd[i].mode = 0x01;
+                    cmd.motor_cmd[i].q = qInit[i];
+                    cmd.motor_cmd[i].dq = 0.0f;
+                    cmd.motor_cmd[i].kp = agent.params.fixed_kp.index({policy_index}).item<float>();
+                    cmd.motor_cmd[i].kd = agent.params.fixed_kd.index({policy_index}).item<float>();
+                    cmd.motor_cmd[i].tau = 0.0f;
+                }
                 break;
             }
 
@@ -307,6 +363,7 @@ InterfaceRos::InterfaceRos(const std::string& network_interface) : Node("low_lev
     declare_parameter<double>("max_linear_x", max_linear_x_);
     declare_parameter<double>("max_linear_y", max_linear_y_);
     declare_parameter<double>("max_yaw_rate", max_yaw_rate_);
+    declare_parameter<double>("hold_transition_sec", hold_transition_sec_);
     declare_parameter<bool>("autostart", autostart_);
     declare_parameter<std::string>("robot_name", controller.get_robot_name());
     declare_parameter<std::string>("config_path", "");
@@ -322,6 +379,7 @@ InterfaceRos::InterfaceRos(const std::string& network_interface) : Node("low_lev
     get_parameter("max_linear_x", max_linear_x_);
     get_parameter("max_linear_y", max_linear_y_);
     get_parameter("max_yaw_rate", max_yaw_rate_);
+    get_parameter("hold_transition_sec", hold_transition_sec_);
     get_parameter("autostart", autostart_);
     std::string cmd_vel_topic;
     std::string robot_name;
@@ -353,6 +411,7 @@ InterfaceRos::InterfaceRos(const std::string& network_interface) : Node("low_lev
     cmd_puber = create_publisher<unitree_go::msg::LowCmd>("lowcmd", 10);
     imu_pub = create_publisher<sensor_msgs::msg::Imu>("go2/imu", 10);
     motor_state_pub = create_publisher<sensor_msgs::msg::JointState>("go2/motor_state", 10);
+    locomotion_status_pub = create_publisher<std_msgs::msg::String>("go2/locomotion_status", 10);
     state_sub = create_subscription<unitree_go::msg::LowState>(
         "lowstate", 10, std::bind(&InterfaceRos::LowStateHandler, this, _1));
     cmd_vel_sub = create_subscription<geometry_msgs::msg::TwistStamped>(
@@ -361,6 +420,7 @@ InterfaceRos::InterfaceRos(const std::string& network_interface) : Node("low_lev
     init_cmd();
     try {
         controller.set_robot_name(robot_name);
+        controller.set_hold_transition_seconds(hold_transition_sec_);
         if (config_path.empty()) {
             config_path = std::string(CONFIG_BASE_DIR) + "/weights/" + controller.get_robot_name() + "/config.yaml";
         }
@@ -482,6 +542,9 @@ void InterfaceRos::timer_callback_cmd() {
         const auto control_start = std::chrono::steady_clock::now();
         low_cmd = controller.update(*latest_state);
         send_command(low_cmd);
+        std_msgs::msg::String status;
+        status.data = controller.get_mode_name();
+        locomotion_status_pub->publish(status);
         const double control_ms = std::chrono::duration<double, std::milli>(
             std::chrono::steady_clock::now() - control_start).count();
         if (control_ms > 10.0) {

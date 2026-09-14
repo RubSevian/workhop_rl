@@ -39,6 +39,8 @@ public:
     void set_robot_name(const std::string& robot_name);
     void set_command(float x, float y, float z);
     void start_autonomy();
+    void set_hold_transition_seconds(double seconds);
+    std::string get_mode_name() const;
     // enum StateID {
     //     STATE_INIT,
     //     STATE_READY
@@ -46,6 +48,7 @@ public:
     enum ControlMode {
         MODE_START = 0,
         MODE_STANDUP,
+        MODE_HOLD_TRANSITION,
         MODE_DAMPING,
         MODE_RL
     };
@@ -69,6 +72,8 @@ public:
     bool rl_inited_ = false;
     bool autonomous_requested_ = false;
     bool motion_command_requested_ = false;
+    int hold_transition_tick_ = 0;
+    int hold_transition_ticks_ = 50;
 
 private:
     Agent agent;
@@ -93,6 +98,7 @@ private:
     rclcpp::Publisher<unitree_go::msg::LowCmd>::SharedPtr low_cmd_pub;
     rclcpp::Publisher<sensor_msgs::msg::Imu>::SharedPtr imu_pub;
     rclcpp::Publisher<sensor_msgs::msg::JointState>::SharedPtr motor_state_pub;
+    rclcpp::Publisher<std_msgs::msg::String>::SharedPtr locomotion_status_pub;
     rclcpp::Subscription<unitree_go::msg::LowState>::SharedPtr state_sub;
     rclcpp::Subscription<geometry_msgs::msg::TwistStamped>::SharedPtr cmd_vel_sub;
     unitree_go::msg::LowCmd low_cmd;
@@ -105,6 +111,7 @@ private:
     double max_linear_x_ = 0.4;
     double max_linear_y_ = 0.2;
     double max_yaw_rate_ = 0.8;
+    double hold_transition_sec_ = 1.0;
     bool autostart_ = false;
     bool model_loaded_ = false;
     bool fault_latched_ = false;

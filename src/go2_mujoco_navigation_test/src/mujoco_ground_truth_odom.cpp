@@ -1,4 +1,5 @@
 #include <array>
+#include <chrono>
 #include <cmath>
 #include <mutex>
 
@@ -16,6 +17,7 @@ public:
     declare_parameter<std::string>("frame_id", "map");
     declare_parameter<std::string>("child_frame_id", "vehicle");
     declare_parameter<double>("publish_rate_hz", 100.0);
+    declare_parameter<double>("input_timeout_sec", 0.25);
 
     const auto sport_topic = get_parameter("sport_state_topic").as_string();
     const auto low_topic = get_parameter("low_state_topic").as_string();
@@ -23,6 +25,7 @@ public:
     frame_id_ = get_parameter("frame_id").as_string();
     child_frame_id_ = get_parameter("child_frame_id").as_string();
     const auto rate = std::max(1.0, get_parameter("publish_rate_hz").as_double());
+    input_timeout_sec_ = std::max(0.01, get_parameter("input_timeout_sec").as_double());
 
     odom_pub_ = create_publisher<nav_msgs::msg::Odometry>(odom_topic_, rclcpp::QoS(20));
     sport_sub_ = create_subscription<unitree_go::msg::SportModeState>(
@@ -42,6 +45,7 @@ private:
     position_ = msg->position;
     linear_velocity_ = msg->velocity;
     have_sport_state_ = true;
+    last_sport_state_time_ = std::chrono::steady_clock::now();
   }
 
   void OnLowState(const unitree_go::msg::LowState::SharedPtr msg) {
@@ -50,11 +54,18 @@ private:
     quaternion_wxyz_ = msg->imu_state.quaternion;
     angular_velocity_ = msg->imu_state.gyroscope;
     have_low_state_ = true;
+    last_low_state_time_ = std::chrono::steady_clock::now();
   }
 
   void Publish() {
     std::scoped_lock lock(data_mutex_);
-    if (!have_sport_state_ || !have_low_state_) return;
+    const auto current_time = std::chrono::steady_clock::now();
+    if (!have_sport_state_ || !have_low_state_ ||
+        std::chrono::duration<double>(current_time - last_sport_state_time_).count() > input_timeout_sec_ ||
+        std::chrono::duration<double>(current_time - last_low_state_time_).count() > input_timeout_sec_) return;
+    for (const auto value : position_) {
+      if (!std::isfinite(value)) return;
+    }
     const auto& q = quaternion_wxyz_;
     const double norm = std::sqrt(q[0] * q[0] + q[1] * q[1] + q[2] * q[2] + q[3] * q[3]);
     if (!std::isfinite(norm) || norm < 1.0e-6) return;
@@ -86,6 +97,9 @@ private:
   std::array<float, 3> angular_velocity_{};
   bool have_sport_state_{false};
   bool have_low_state_{false};
+  double input_timeout_sec_{0.25};
+  std::chrono::steady_clock::time_point last_sport_state_time_{};
+  std::chrono::steady_clock::time_point last_low_state_time_{};
   std::string odom_topic_, frame_id_, child_frame_id_;
   rclcpp::Publisher<nav_msgs::msg::Odometry>::SharedPtr odom_pub_;
   rclcpp::Subscription<unitree_go::msg::SportModeState>::SharedPtr sport_sub_;
