@@ -90,7 +90,7 @@ void update_dof_state(const ros2_unitree_legged_msgs::msg::LowState &state, Agen
 int main(int argc, char **argv)
 {
     Agent agent;
-    const std::string ROBOT_NAME = "go1";
+    const std::string ROBOT_NAME = "go2";
 
     const std::string CONFIG_PATH = std::string(CONFIG_BASE_DIR) + "/weights/" + ROBOT_NAME + "/config.yaml";
     try {
@@ -142,7 +142,7 @@ int main(int argc, char **argv)
     state_udp.InitCmdData(cmd);
    
     rclcpp::Publisher<sensor_msgs::msg::Imu>::SharedPtr pub_imu;
-    pub_imu = node->create_publisher<sensor_msgs::msg::Imu>("/go1/imu0", 1000);
+    pub_imu = node->create_publisher<sensor_msgs::msg::Imu>("/go2/imu0", 1000);
 
     auto pub = node->create_publisher<ros2_unitree_legged_msgs::msg::LowCmd>("low_cmd", 1000);
 

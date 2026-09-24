@@ -337,7 +337,10 @@ void Agent::ReadYaml(const std::string &robot_name,const std::string &config_pat
     this->params.command_scale = torch::tensor(ReadVectorFromYaml<float>(config["commands_scale"]));
     this->params.default_dof_pos = torch::tensor(ReadVectorFromYaml<float>(config["default_dof_pos"]));
     this->params.joint_names = ReadVectorFromYaml<std::string>(config["joint_names"]);
-    this->params.arm_joint_names = ReadVectorFromYaml<std::string>(config["arm_joint_names"]);
+    if (config["arm_joint_names"])
+        this->params.arm_joint_names = ReadVectorFromYaml<std::string>(config["arm_joint_names"]);
+    else
+        this->params.arm_joint_names.clear();
 
     const auto require_12 = [](const torch::Tensor& values, const char* name) {
         if (values.numel() != 12) {

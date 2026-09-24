@@ -65,6 +65,14 @@ if(BUILD_TESTING)
   target_link_libraries(agent_unified_reset_test ${PROJECT_NAME} ${TORCH_LIBRARIES})
   add_test(NAME agent_unified_reset_test
     COMMAND agent_unified_reset_test)
+
+  add_executable(agent_config_loading_test
+    tests/agent_config_loading_test.cpp)
+  target_compile_definitions(agent_config_loading_test PRIVATE
+    UNITREE_RL_CONTROLLER_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}")
+  target_link_libraries(agent_config_loading_test ${PROJECT_NAME} ${TORCH_LIBRARIES})
+  add_test(NAME agent_config_loading_test
+    COMMAND agent_config_loading_test)
 endif()
 
 ament_package()

@@ -13,7 +13,7 @@ using std::placeholders::_1;
 
 RobotController::RobotController() :
     init_count(0), motiontime(0), runing_time(0.0),mode_(MODE_START),
-    dt(0.02), Go2_NUM_MOTOR(12), ROBOT_NAME("go1"),
+    dt(0.02), Go2_NUM_MOTOR(12), ROBOT_NAME("go2"),
     net2joint_indexes({3, 4, 5, 0, 1, 2, 9, 10, 11, 6, 7, 8})
     {
     std::fill(std::begin(qInit), std::end(qInit), 0.0f);
