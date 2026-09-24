@@ -7,6 +7,7 @@
 #include "std_msgs/msg/string.hpp"
 #include <yaml-cpp/yaml.h>
 #include "observation_buffer.hpp"
+#include "unified_observation_contract.hpp"
 #include <algorithm> 
 
 struct Observations
@@ -22,11 +23,15 @@ struct Observations
     torch::Tensor sin;
     torch::Tensor cos;
     torch::Tensor height_map;
+    torch::Tensor arm_pos;
+    torch::Tensor arm_vel;
+    torch::Tensor arm_target;
 };
 
 struct ModelParams
 {
     std::string model_name;
+    std::string observation_layout = "legacy";
     float action_scale;
     float lin_vel_scale;
     int decimation;
@@ -48,6 +53,7 @@ struct ModelParams
     float cycle_time;
     std::vector<std::string> obs_model;
     std::vector<std::string> joint_names;
+    std::vector<std::string> arm_joint_names;
 };
 
 class Agent
@@ -57,6 +63,9 @@ class Agent
         torch::Tensor output_dof_tau= torch::zeros({12}); // [12] для моментов
         torch::jit::script::Module module;
         torch::Tensor ComputeObservation();
+        torch::Tensor ComputeGo2Rars01ActorFrame();
+        go2_rars01::UnifiedObservationState UnifiedState() const;
+        bool UsesGo2Rars01UnifiedLayout() const;
         void InitObservations();
         torch::Tensor ComputePosition(torch::Tensor &actions);
         torch::Tensor ComputeTorque(const torch::Tensor &actions_scaled);
@@ -67,6 +76,7 @@ class Agent
         std::vector<int> obs_dims;      // dims каждого терма наблюдений (как в RL SDK)
         bool use_obs_history = false;
         bool history_initialized = false;
+        go2_rars01::UnifiedObservationContract unified_observation_;
     public:
         ModelParams params;
         Observations obs;

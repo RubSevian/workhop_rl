@@ -30,7 +30,10 @@ include_directories(
 )
 
 # Создаём библиотеку
-add_library(${PROJECT_NAME} SHARED src/rl_agent.cpp src/observation_buffer.cpp)
+add_library(${PROJECT_NAME} SHARED
+  src/rl_agent.cpp
+  src/observation_buffer.cpp
+  src/unified_observation_contract.cpp)
 # Линкуем с библиотеками
 target_link_libraries(${PROJECT_NAME} ${TORCH_LIBRARIES} yaml-cpp)  
 
@@ -49,5 +52,13 @@ install(TARGETS ${PROJECT_NAME}
 install(DIRECTORY include/
   DESTINATION include
 )
+
+if(BUILD_TESTING)
+  add_executable(unified_observation_contract_test
+    tests/unified_observation_contract_test.cpp)
+  target_link_libraries(unified_observation_contract_test ${PROJECT_NAME} ${TORCH_LIBRARIES})
+  add_test(NAME unified_observation_contract_test
+    COMMAND unified_observation_contract_test)
+endif()
 
 ament_package()

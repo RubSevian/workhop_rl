@@ -1,6 +1,8 @@
 #include <torch/torch.h>
 #include "rl_agent.h"
 #include <map>
+#include <cmath>
+#include <stdexcept>
 #include "std_msgs/msg/string.hpp"
 
 
@@ -31,9 +33,33 @@ void Agent::InitObservations()
     obs.sin=torch::zeros({1});
     obs.cos=torch::zeros({1});
     obs.height_map = torch::zeros({187});
+    obs.arm_pos = torch::zeros({go2_rars01::Dimensions::ArmPos});
+    obs.arm_vel = torch::zeros({go2_rars01::Dimensions::ArmVel});
+    obs.arm_target = torch::zeros({go2_rars01::Dimensions::ArmTarget});
 }
+bool Agent::UsesGo2Rars01UnifiedLayout() const
+{
+    return params.observation_layout == "go2_rars01_unified_v1";
+}
+
+go2_rars01::UnifiedObservationState Agent::UnifiedState() const
+{
+    return {obs.ang_vel, obs.command, obs.base_quat, obs.dof_pos, obs.dof_vel,
+            obs.action, obs.arm_pos, obs.arm_vel, obs.arm_target};
+}
+
+torch::Tensor Agent::ComputeGo2Rars01ActorFrame()
+{
+    return unified_observation_.BuildFrame(UnifiedState());
+}
+
 void Agent::InitRL()
 {
+    if (UsesGo2Rars01UnifiedLayout()) {
+        unified_observation_.Reset(ComputeGo2Rars01ActorFrame());
+        return;
+    }
+
     if (this->params.observations_history.empty())
         return;
 
@@ -55,6 +81,7 @@ void Agent::InitRL()
 
 }
 void Agent::UpdatePhase(float time) {
+    if (UsesGo2Rars01UnifiedLayout()) return;
     float phase = time / params.cycle_time; // Фаза в [0, 1] и далее (не ограничена)
     float angle = 2 * M_PI * phase;
     obs.sin.index({0}) = std::sin(angle);
@@ -98,6 +125,9 @@ torch::Tensor Agent::ComputePosition(torch::Tensor &actions)
 
 torch::Tensor Agent::ComputeObservation()
 {
+    if (UsesGo2Rars01UnifiedLayout()) {
+        return ComputeGo2Rars01ActorFrame();
+    }
     std::vector<torch::Tensor> obs_model_list;
 
     for (const std::string &obs_name : this->params.obs_model){
@@ -160,6 +190,27 @@ torch::Tensor Agent::ComputeObservation()
 
 torch::Tensor Agent::Forward()
 {
+    if (UsesGo2Rars01UnifiedLayout()) {
+        const auto frame = ComputeGo2Rars01ActorFrame();
+        if (!unified_observation_.initialized()) {
+            unified_observation_.Reset(frame);
+        } else {
+            unified_observation_.Insert(frame);
+        }
+        const auto actor_input = unified_observation_.History();
+        if (actor_input.dim() != 2 || actor_input.size(0) != 1 ||
+            actor_input.size(1) != go2_rars01::Dimensions::ActorInput) {
+            throw std::runtime_error("Unified actor input must have shape [1, 315]");
+        }
+        auto actions = module.forward({actor_input}).toTensor().reshape({-1});
+        if (actions.numel() != go2_rars01::Dimensions::ActorOutput ||
+            !torch::isfinite(actions).all().item<bool>()) {
+            throw std::runtime_error("Unified policy must return 12 finite leg actions");
+        }
+        return torch::clamp(actions, -this->params.clip_actions, this->params.clip_actions);
+    }
+
+
     torch::Tensor obs = this->ComputeObservation(); // [N]
 
     torch::Tensor actions;
@@ -222,7 +273,13 @@ void Agent::ReadYaml(const std::string &robot_name,const std::string &config_pat
 
 	try
 	{
-		config = YAML::LoadFile(config_path)[robot_name];
+		auto document = YAML::LoadFile(config_path);
+        config = document[robot_name];
+        // RobotController keeps its legacy robot-name argument. A supplied
+        // unified config is self-describing and remains usable via
+        // initializeRL(config_path, model_path).
+        if (!config && document["go2_rars01"])
+            config = document["go2_rars01"];
 	} catch(YAML::BadFile &e)
 	{
 
@@ -240,7 +297,9 @@ void Agent::ReadYaml(const std::string &robot_name,const std::string &config_pat
     else
         this->params.observations_history_priority = "time";
 
-    this->params.model_name = config["model_name"].as<std::string>();
+    this->params.model_name = config["model_name"] ? config["model_name"].as<std::string>() : "";
+    this->params.observation_layout = config["observation_layout"] ?
+        config["observation_layout"].as<std::string>() : "legacy";
     this->params.clip_obs = config["clip_obs"].as<float>();
     this->params.clip_actions = config["clip_actions"].as<float>();
     this->params.action_scale = config["action_scale"].as<float>();
@@ -254,12 +313,14 @@ void Agent::ReadYaml(const std::string &robot_name,const std::string &config_pat
     this->params.dof_pos_scale = config["dof_pos_scale"].as<float>();
     this->params.dof_vel_scale = config["dof_vel_scale"].as<float>();
     this->params.decimation = config["decimation"].as<int>();
+    this->params.frequency = config["frequency"] ? config["frequency"].as<float>() : 0.0F;
     this->params.cycle_time = config["cycle_time"].as<float>();
     this->params.lin_vel_scale = config["lin_vel_scale"].as<float>();
     this->params.obs_model = ReadVectorFromYaml<std::string>(config["observations"]);
     this->params.command_scale = torch::tensor(ReadVectorFromYaml<float>(config["commands_scale"]));
     this->params.default_dof_pos = torch::tensor(ReadVectorFromYaml<float>(config["default_dof_pos"]));
     this->params.joint_names = ReadVectorFromYaml<std::string>(config["joint_names"]);
+    this->params.arm_joint_names = ReadVectorFromYaml<std::string>(config["arm_joint_names"]);
 
     const auto require_12 = [](const torch::Tensor& values, const char* name) {
         if (values.numel() != 12) {
@@ -273,4 +334,50 @@ void Agent::ReadYaml(const std::string &robot_name,const std::string &config_pat
     require_12(this->params.fixed_kd, "fixed_kd");
     require_12(this->params.torque_limits, "torque_limits");
     require_12(this->params.default_dof_pos, "default_dof_pos");
+
+    if (UsesGo2Rars01UnifiedLayout()) {
+        if (this->params.observations_history != std::vector<int>({4, 3, 2, 1, 0}) ||
+            this->params.observations_history_priority != "time") {
+            throw std::runtime_error("go2_rars01_unified_v1 requires chronological history [4,3,2,1,0] with time priority");
+        }
+        go2_rars01::UnifiedObservationScales scales;
+        scales.ang_vel = this->params.ang_vel_scale;
+        scales.dof_pos = this->params.dof_pos_scale;
+        scales.dof_vel = this->params.dof_vel_scale;
+        scales.clip_observations = this->params.clip_obs;
+        const auto same = [](float actual, float expected) {
+            return std::abs(actual - expected) <= 1.0e-6F;
+        };
+        if (this->params.command_scale.numel() != go2_rars01::Dimensions::Command ||
+            this->params.decimation != 4 || !same(this->params.frequency, 50.0F) ||
+            !same(this->params.action_scale, 0.25F) || !same(this->params.ang_vel_scale, 0.25F) ||
+            !same(this->params.dof_pos_scale, 1.0F) || !same(this->params.dof_vel_scale, 0.05F) ||
+            !same(this->params.clip_obs, 100.0F) || !same(this->params.clip_actions, 100.0F)) {
+            throw std::runtime_error("go2_rars01_unified_v1 has an incompatible scale, clip, decimation, or frequency");
+        }
+        for (int i = 0; i < go2_rars01::Dimensions::Command; ++i) {
+            scales.command[i] = this->params.command_scale.index({i}).item<float>();
+        }
+        if (!same(scales.command[0], 2.0F) || !same(scales.command[1], 2.0F) ||
+            !same(scales.command[2], 0.25F)) {
+            throw std::runtime_error("go2_rars01_unified_v1 requires command scales [2, 2, 0.25]");
+        }
+        if (this->params.joint_names.size() != go2_rars01::kLegJointNames.size()) {
+            throw std::runtime_error("go2_rars01_unified_v1 requires 12 ordered leg joint names");
+        }
+        for (std::size_t i = 0; i < this->params.joint_names.size(); ++i) {
+            if (this->params.joint_names[i] != go2_rars01::kLegJointNames[i]) {
+                throw std::runtime_error("go2_rars01_unified_v1 leg joint order differs from policy order");
+            }
+        }
+        if (this->params.arm_joint_names.size() != go2_rars01::kArmJointNames.size()) {
+            throw std::runtime_error("go2_rars01_unified_v1 requires 6 ordered arm joint names");
+        }
+        for (std::size_t i = 0; i < this->params.arm_joint_names.size(); ++i) {
+            if (this->params.arm_joint_names[i] != go2_rars01::kArmJointNames[i]) {
+                throw std::runtime_error("go2_rars01_unified_v1 arm joint order differs from policy order");
+            }
+        }
+        unified_observation_.Configure(this->params.default_dof_pos, scales);
+    }
 }
