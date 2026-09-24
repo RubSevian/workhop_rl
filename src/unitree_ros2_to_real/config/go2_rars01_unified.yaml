@@ -1,0 +1,40 @@
+go2_rars01:
+  # Strict Phase-2 actor path; ignores the legacy `observations` list.
+  observation_layout: "go2_rars01_unified_v1"
+  model_name: ""
+
+  observations: []
+  observations_history: [4, 3, 2, 1, 0]
+  observations_history_priority: "time"
+
+  clip_obs: 100.0
+  clip_actions: 100.0
+  action_scale: 0.25
+  ang_vel_scale: 0.25
+  dof_pos_scale: 1.0
+  dof_vel_scale: 0.05
+  commands_scale: [2.0, 2.0, 0.25]
+
+  # MuJoCo integration supplies dt=0.005 s and executes this policy every 4 steps.
+  decimation: 4
+  frequency: 50.0
+  cycle_time: 0.0
+  lin_vel_scale: 0.0
+
+  # Training control baseline. Arm joints are intentionally absent.
+  rl_kp: [25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25]
+  rl_kd: [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1]
+  fixed_kp: [25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25, 25]
+  fixed_kd: [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1]
+  torque_limits: [23.7, 23.7, 35.55, 23.7, 23.7, 35.55,
+                  23.7, 23.7, 35.55, 23.7, 23.7, 35.55]
+
+  default_dof_pos: [0.1, 0.8, -1.5,
+                    -0.1, 0.8, -1.5,
+                     0.1, 0.8, -1.5,
+                    -0.1, 0.8, -1.5]
+  joint_names: ["FL_hip_joint", "FL_thigh_joint", "FL_calf_joint",
+                "FR_hip_joint", "FR_thigh_joint", "FR_calf_joint",
+                "RL_hip_joint", "RL_thigh_joint", "RL_calf_joint",
+                "RR_hip_joint", "RR_thigh_joint", "RR_calf_joint"]
+  arm_joint_names: ["joint1", "joint2", "joint3", "joint4", "joint5", "joint6"]
