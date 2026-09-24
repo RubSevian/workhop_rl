@@ -82,6 +82,10 @@ class Agent
         Observations obs;
         Agent();
         void InitRL();
+        // Reset only policy state; current robot and arm measurements are retained.
+        void ResetPolicyState();
+        // Read-only diagnostic for lifecycle tests and runtime instrumentation.
+        torch::Tensor UnifiedActorHistory() const;
         bool Load_Model(const std::string &model_path);
         torch::Tensor Act();
         void ReadYaml(const std::string &robot_name,const std::string &config_path);

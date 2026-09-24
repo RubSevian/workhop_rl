@@ -53,10 +53,27 @@ torch::Tensor Agent::ComputeGo2Rars01ActorFrame()
     return unified_observation_.BuildFrame(UnifiedState());
 }
 
+void Agent::ResetPolicyState()
+{
+    if (!UsesGo2Rars01UnifiedLayout()) return;
+
+    // The [33:45] frame slice is the previous policy action. Training clears
+    // both action tensors at reset, so a re-entry into RL must not carry an
+    // output from the previous control session into f0.
+    obs.action = torch::zeros({go2_rars01::Dimensions::PreviousAction},
+                              obs.action.options());
+    unified_observation_.Reset(ComputeGo2Rars01ActorFrame());
+}
+
+torch::Tensor Agent::UnifiedActorHistory() const
+{
+    return unified_observation_.History();
+}
+
 void Agent::InitRL()
 {
     if (UsesGo2Rars01UnifiedLayout()) {
-        unified_observation_.Reset(ComputeGo2Rars01ActorFrame());
+        ResetPolicyState();
         return;
     }
 

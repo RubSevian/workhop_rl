@@ -59,6 +59,12 @@ if(BUILD_TESTING)
   target_link_libraries(unified_observation_contract_test ${PROJECT_NAME} ${TORCH_LIBRARIES})
   add_test(NAME unified_observation_contract_test
     COMMAND unified_observation_contract_test)
+
+  add_executable(agent_unified_reset_test
+    tests/agent_unified_reset_test.cpp)
+  target_link_libraries(agent_unified_reset_test ${PROJECT_NAME} ${TORCH_LIBRARIES})
+  add_test(NAME agent_unified_reset_test
+    COMMAND agent_unified_reset_test)
 endif()
 
 ament_package()
