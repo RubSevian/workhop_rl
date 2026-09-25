@@ -20,4 +20,4 @@ runtime:
   mount_collision_approximation: "arm_mount_link collision uses 0.22x0.16x0.10 box; its full 431649-face canonical STL is retained as three visual-only chunks"
 generated:
   file: "go2_rars01.xml"
-  sha256: "7bad2e2fd811f50c11191868d3b421b55cb9a23ee0e50f0da3963ee70766209b"
+  sha256: "c4309145177d565b4eab56f0a4d266d6e367d2b2a6e32e139ff9aaeb96f6f742"

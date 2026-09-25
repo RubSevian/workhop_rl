@@ -245,16 +245,16 @@
               </body>
             </body>
           </body>
-          <geom mesh="base_0" material="black" contype="0" conaffinity="0" group="2" />
-          <geom mesh="base_1" material="black" contype="0" conaffinity="0" group="2" />
-          <geom mesh="base_2" material="black" contype="0" conaffinity="0" group="2" />
-          <geom mesh="base_3" material="white" contype="0" conaffinity="0" group="2" />
-          <geom mesh="base_4" material="gray" contype="0" conaffinity="0" group="2" />
         </body>
         <geom type="mesh" mesh="arm_mount_link_part0" contype="0" conaffinity="0" group="2" />
         <geom type="mesh" mesh="arm_mount_link_part1" contype="0" conaffinity="0" group="2" />
         <geom type="mesh" mesh="arm_mount_link_part2" contype="0" conaffinity="0" group="2" />
       </body>
+      <geom mesh="base_0" material="black" contype="0" conaffinity="0" group="2" />
+      <geom mesh="base_1" material="black" contype="0" conaffinity="0" group="2" />
+      <geom mesh="base_2" material="black" contype="0" conaffinity="0" group="2" />
+      <geom mesh="base_3" material="white" contype="0" conaffinity="0" group="2" />
+      <geom mesh="base_4" material="gray" contype="0" conaffinity="0" group="2" />
       <site name="imu" pos="-0.02557 0 0.04232" />
     </body>
   </worldbody>

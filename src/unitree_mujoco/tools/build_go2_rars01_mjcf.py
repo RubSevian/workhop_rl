@@ -56,8 +56,12 @@ def add_stock_go2_visuals(root):
    if copy.tag == 'mesh': copy.set('file', '../go2/assets/' + copy.get('file'))
    asset.append(copy)
  generated = {body.get('name'): body for body in root.findall('.//body') if body.get('name')}
+ # The canonical RARS01 URDF has an arm body also named ``base_link``. Go2's
+ # stock shell belongs on its physical root, named ``base`` after URDF import;
+ # the leg bodies have identical names in both models.
+ body_target = {'base_link': 'base'}
  for stock_body in stock_root.findall('.//body'):
-  target = generated.get(stock_body.get('name'))
+  target = generated.get(body_target.get(stock_body.get('name'), stock_body.get('name')))
   if target is None: continue
   for geom in stock_body.findall('geom'):
    if geom.get('mesh'):
