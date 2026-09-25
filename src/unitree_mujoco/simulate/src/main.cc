@@ -77,6 +77,7 @@ namespace
 
     int domain_id = 1;
     std::string interface = "lo";
+    int enable_unitree_bridge = 1;
 
     int use_joystick = 0;
     std::string joystick_type = "xbox";
@@ -671,6 +672,7 @@ int main(int argc, char **argv)
   config.base_body = yaml_node["base_body"] ? yaml_node["base_body"].as<std::string>() : "base_link";
   config.domain_id = yaml_node["domain_id"].as<int>();
   config.interface = yaml_node["interface"].as<std::string>();
+  config.enable_unitree_bridge = yaml_node["enable_unitree_bridge"] ? yaml_node["enable_unitree_bridge"].as<int>() : 1;
   config.print_scene_information = yaml_node["print_scene_information"].as<int>();
   config.enable_elastic_band = yaml_node["enable_elastic_band"].as<int>();
   config.use_joystick = yaml_node["use_joystick"].as<int>();
@@ -696,12 +698,15 @@ int main(int argc, char **argv)
     filename = scene_path.c_str();
   }
 
-  pthread_t unitree_thread;
-  int rc = pthread_create(&unitree_thread, NULL, UnitreeSdk2BridgeThread, NULL);
-  if (rc != 0)
-  {
-    std::cout << "Error:unable to create thread," << rc << std::endl;
-    exit(-1);
+  if (config.enable_unitree_bridge) {
+    pthread_t unitree_thread;
+    int rc = pthread_create(&unitree_thread, NULL, UnitreeSdk2BridgeThread, NULL);
+    if (rc != 0) {
+      std::cout << "Error:unable to create thread," << rc << std::endl;
+      exit(-1);
+    }
+  } else {
+    std::cout << "Unitree DDS bridge disabled by config; running MuJoCo physics/viewer only." << std::endl;
   }
 
   if (config.robot == "go2_rars01") mjcb_control = Go2Rars01HomeHold;

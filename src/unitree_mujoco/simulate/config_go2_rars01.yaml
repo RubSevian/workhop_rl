@@ -3,6 +3,7 @@ robot_scene: "scene.xml"
 base_body: "base"
 domain_id: 1
 interface: "lo"
+enable_unitree_bridge: 0  # enable only with a verified DDS-capable interface
 use_joystick: 0
 joystick_type: "xbox"
 joystick_device: "/dev/input/js0"
