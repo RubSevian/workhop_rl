@@ -1,0 +1,682 @@
+{
+  "bounds_tolerance": 1e-07,
+  "converter": "trimesh.export_obj",
+  "decimation": false,
+  "derivative_urdfs": [
+    "generated/go2_arm_dynamic_train_obj.urdf",
+    "generated/go2_arm_dynamic_base_obj.urdf"
+  ],
+  "process": false,
+  "profiles": [
+    "train_obj",
+    "base_obj"
+  ],
+  "records": [
+    {
+      "checks": {
+        "area_equal": true,
+        "bounds_equal": true,
+        "extents_equal": true,
+        "face_count_equal": true,
+        "finite_geometry": true,
+        "ordered_triangle_coordinates_equal": true
+      },
+      "output": "assets/rars01/arm_mount_link.obj",
+      "output_area": 0.3597599637448146,
+      "output_bounds": [
+        [
+          -0.1191952974,
+          -0.0480028801,
+          -0.0022
+        ],
+        [
+          0.1443047076,
+          0.0479971208,
+          0.1143660024
+        ]
+      ],
+      "output_extents": [
+        0.263500005,
+        0.0960000009,
+        0.1165660024
+      ],
+      "output_faces": 431649,
+      "output_sha256": "d965655fb0aa6263ca18a61805fb12beb3237d6c9c31a41b2d265f3bb767efa9",
+      "output_size_bytes": 18872725,
+      "output_vertices": 226025,
+      "reference_count": 2,
+      "relative_area_error": 7.86154694183447e-10,
+      "source": "meshes/arm_mount_link.STL",
+      "source_area": 0.35975996346198763,
+      "source_bounds": [
+        [
+          -0.11919529736042023,
+          -0.048002880066633224,
+          -0.002199999988079071
+        ],
+        [
+          0.14430470764636993,
+          0.0479971207678318,
+          0.11436600238084793
+        ]
+      ],
+      "source_extents": [
+        0.26350000500679016,
+        0.09600000083446503,
+        0.116566002368927
+      ],
+      "source_faces": 431649,
+      "source_sha256": "c3ac8ba98ff545b6cc58da150b5ac80ef7d303b9df3007c507afac8702d420c4",
+      "source_size_bytes": 21582534,
+      "source_vertices": 1294947,
+      "status": "PASS",
+      "vertex_indexing": "exact-coordinate compaction (no rounding)"
+    },
+    {
+      "checks": {
+        "area_equal": true,
+        "bounds_equal": true,
+        "extents_equal": true,
+        "face_count_equal": true,
+        "finite_geometry": true,
+        "ordered_triangle_coordinates_equal": true
+      },
+      "output": "assets/rars01/base_link.obj",
+      "output_area": 0.12783122018662046,
+      "output_bounds": [
+        [
+          -0.0424993262,
+          -0.0425006822,
+          -4e-10
+        ],
+        [
+          0.0425006747,
+          0.0424993187,
+          0.0742499977
+        ]
+      ],
+      "output_extents": [
+        0.0850000009,
+        0.0850000009,
+        0.0742499981
+      ],
+      "output_faces": 37326,
+      "output_sha256": "e6b9679a78abc73d8a800b00be9fd3cfcad3f5efb31d0a24423999b161d143a3",
+      "output_size_bytes": 1457271,
+      "output_vertices": 18493,
+      "reference_count": 2,
+      "relative_area_error": 2.980183872307554e-10,
+      "source": "meshes/base_link.STL",
+      "source_area": 0.12783122022471652,
+      "source_bounds": [
+        [
+          -0.042499326169490814,
+          -0.042500682175159454,
+          -3.799796033376879e-10
+        ],
+        [
+          0.04250067472457886,
+          0.04249931871891022,
+          0.0742499977350235
+        ]
+      ],
+      "source_extents": [
+        0.08500000089406967,
+        0.08500000089406967,
+        0.0742499981150031
+      ],
+      "source_faces": 37326,
+      "source_sha256": "8c72c8e6506d444b38b7eac4a0fb342e693d17a00b8abcf15829c2f756731547",
+      "source_size_bytes": 1866384,
+      "source_vertices": 111978,
+      "status": "PASS",
+      "vertex_indexing": "exact-coordinate compaction (no rounding)"
+    },
+    {
+      "checks": {
+        "area_equal": true,
+        "bounds_equal": true,
+        "extents_equal": true,
+        "face_count_equal": true,
+        "finite_geometry": true,
+        "ordered_triangle_coordinates_equal": true
+      },
+      "output": "assets/rars01/End_link.obj",
+      "output_area": 0.08972999766523379,
+      "output_bounds": [
+        [
+          -0.1770000011,
+          -0.1000000015,
+          -0.0390550606
+        ],
+        [
+          -0.0834999979,
+          0.1000000015,
+          0.0878250003
+        ]
+      ],
+      "output_extents": [
+        0.0935000032,
+        0.200000003,
+        0.12688006089999998
+      ],
+      "output_faces": 109410,
+      "output_sha256": "df20aeab8e009b01e8b964f2edd768e398712aebe064fee73c5656e310119658",
+      "output_size_bytes": 4460302,
+      "output_vertices": 54417,
+      "reference_count": 2,
+      "relative_area_error": 7.381568146487455e-10,
+      "source": "meshes/End_link.STL",
+      "source_area": 0.0897299977314686,
+      "source_bounds": [
+        [
+          -0.1770000010728836,
+          -0.10000000149011612,
+          -0.03905506059527397
+        ],
+        [
+          -0.08349999785423279,
+          0.10000000149011612,
+          0.0878250002861023
+        ]
+      ],
+      "source_extents": [
+        0.09350000321865082,
+        0.20000000298023224,
+        0.12688006088137627
+      ],
+      "source_faces": 109410,
+      "source_sha256": "b56bba3521af93eea7a2494e66f9daa54bfcd63ca534fc75ff78e85e91fdfa37",
+      "source_size_bytes": 5470584,
+      "source_vertices": 328230,
+      "status": "PASS",
+      "vertex_indexing": "exact-coordinate compaction (no rounding)"
+    },
+    {
+      "checks": {
+        "area_equal": true,
+        "bounds_equal": true,
+        "extents_equal": true,
+        "face_count_equal": true,
+        "finite_geometry": true,
+        "ordered_triangle_coordinates_equal": true
+      },
+      "output": "assets/rars01/gripper_left.obj",
+      "output_area": 0.032503600403061876,
+      "output_bounds": [
+        [
+          -0.0675000027,
+          0.0,
+          -0.023
+        ],
+        [
+          0.0375000015,
+          0.0299999993,
+          0.023
+        ]
+      ],
+      "output_extents": [
+        0.1050000042,
+        0.0299999993,
+        0.046
+      ],
+      "output_faces": 1972,
+      "output_sha256": "58b6a52c92a2ac5399e871181309a1d816ffc7b0e8097403cc8efd470ae7cffb",
+      "output_size_bytes": 65742,
+      "output_vertices": 913,
+      "reference_count": 2,
+      "relative_area_error": 4.2524538433276585e-10,
+      "source": "meshes/gripper_left.STL",
+      "source_area": 0.03250360038923987,
+      "source_bounds": [
+        [
+          -0.06750000268220901,
+          4.597017211338539e-16,
+          -0.023000000044703484
+        ],
+        [
+          0.03750000149011612,
+          0.029999999329447746,
+          0.023000000044703484
+        ]
+      ],
+      "source_extents": [
+        0.10500000417232513,
+        0.02999999932944729,
+        0.04600000008940697
+      ],
+      "source_faces": 1972,
+      "source_sha256": "41c102deb3fdbbaeaec470a361f0713912f48a6d03c44e3f3fb50bccca910765",
+      "source_size_bytes": 98684,
+      "source_vertices": 5916,
+      "status": "PASS",
+      "vertex_indexing": "exact-coordinate compaction (no rounding)"
+    },
+    {
+      "checks": {
+        "area_equal": true,
+        "bounds_equal": true,
+        "extents_equal": true,
+        "face_count_equal": true,
+        "finite_geometry": true,
+        "ordered_triangle_coordinates_equal": true
+      },
+      "output": "assets/rars01/gripper_right.obj",
+      "output_area": 0.032503600403061876,
+      "output_bounds": [
+        [
+          -0.0675000027,
+          -0.0299999993,
+          -0.023
+        ],
+        [
+          0.0375000015,
+          0.0,
+          0.023
+        ]
+      ],
+      "output_extents": [
+        0.1050000042,
+        0.0299999993,
+        0.046
+      ],
+      "output_faces": 1972,
+      "output_sha256": "7d34e3b7f8785790cb9b90e4813e0089b787a973f64aa795526ca83f0d0752e6",
+      "output_size_bytes": 66588,
+      "output_vertices": 912,
+      "reference_count": 2,
+      "relative_area_error": 4.252364181400796e-10,
+      "source": "meshes/gripper_right.STL",
+      "source_area": 0.03250360038924016,
+      "source_bounds": [
+        [
+          -0.06750000268220901,
+          -0.029999999329447746,
+          -0.023000000044703484
+        ],
+        [
+          0.03750000149011612,
+          3.9898639947466563e-17,
+          0.023000000044703484
+        ]
+      ],
+      "source_extents": [
+        0.10500000417232513,
+        0.029999999329447788,
+        0.04600000008940697
+      ],
+      "source_faces": 1972,
+      "source_sha256": "96d76778362715429d60c149951d26b939879eff7f284baa6741efe9289db2e3",
+      "source_size_bytes": 98684,
+      "source_vertices": 5916,
+      "status": "PASS",
+      "vertex_indexing": "exact-coordinate compaction (no rounding)"
+    },
+    {
+      "checks": {
+        "area_equal": true,
+        "bounds_equal": true,
+        "extents_equal": true,
+        "face_count_equal": true,
+        "finite_geometry": true,
+        "ordered_triangle_coordinates_equal": true
+      },
+      "output": "assets/rars01/link1_m0.obj",
+      "output_area": 0.053706970542453686,
+      "output_bounds": [
+        [
+          -0.0389683694,
+          -0.0426249988,
+          0.0
+        ],
+        [
+          0.0484640002,
+          0.0426249988,
+          0.1035000011
+        ]
+      ],
+      "output_extents": [
+        0.0874323696,
+        0.0852499976,
+        0.1035000011
+      ],
+      "output_faces": 2820,
+      "output_sha256": "530b2c5bd540997976566617d1d6eef896ff21b7ac6052503afef294d96b56ef",
+      "output_size_bytes": 98938,
+      "output_vertices": 1377,
+      "reference_count": 2,
+      "relative_area_error": 4.020592964763265e-10,
+      "source": "meshes/link1_m0.STL",
+      "source_area": 0.05370697056404707,
+      "source_bounds": [
+        [
+          -0.038968369364738464,
+          -0.04262499883770943,
+          0.0
+        ],
+        [
+          0.04846400022506714,
+          0.04262499883770943,
+          0.10350000113248825
+        ]
+      ],
+      "source_extents": [
+        0.0874323695898056,
+        0.08524999767541885,
+        0.10350000113248825
+      ],
+      "source_faces": 2820,
+      "source_sha256": "7088b8037b7396a6ec3e250f06d81dd29de777be2099f258785174f00fa5f7ed",
+      "source_size_bytes": 141084,
+      "source_vertices": 8460,
+      "status": "PASS",
+      "vertex_indexing": "exact-coordinate compaction (no rounding)"
+    },
+    {
+      "checks": {
+        "area_equal": true,
+        "bounds_equal": true,
+        "extents_equal": true,
+        "face_count_equal": true,
+        "finite_geometry": true,
+        "ordered_triangle_coordinates_equal": true
+      },
+      "output": "assets/rars01/link2_m1.obj",
+      "output_area": 0.18335368542745678,
+      "output_bounds": [
+        [
+          -0.2784999907,
+          -0.00495,
+          -0.0285
+        ],
+        [
+          0.0285000056,
+          0.0643000007,
+          0.0285
+        ]
+      ],
+      "output_extents": [
+        0.30699999629999997,
+        0.0692500007,
+        0.057
+      ],
+      "output_faces": 73116,
+      "output_sha256": "fd07e5f28f66d68d372427cc864ec810c52371ff1437ba12606be7667df73434",
+      "output_size_bytes": 2928516,
+      "output_vertices": 36324,
+      "reference_count": 2,
+      "relative_area_error": 2.6430164083758348e-11,
+      "source": "meshes/link2_m1.STL",
+      "source_area": 0.18335368543230285,
+      "source_bounds": [
+        [
+          -0.2784999907016754,
+          -0.00494999997317791,
+          -0.02850000001490116
+        ],
+        [
+          0.02850000560283661,
+          0.06430000066757202,
+          0.02850000001490116
+        ]
+      ],
+      "source_extents": [
+        0.306999996304512,
+        0.06925000064074993,
+        0.05700000002980232
+      ],
+      "source_faces": 73116,
+      "source_sha256": "cbca3df9709ae5d8b011a0ee07ca5f6c38d52ee591d73fd2c829ff398c3279d5",
+      "source_size_bytes": 3655884,
+      "source_vertices": 219348,
+      "status": "PASS",
+      "vertex_indexing": "exact-coordinate compaction (no rounding)"
+    },
+    {
+      "checks": {
+        "area_equal": true,
+        "bounds_equal": true,
+        "extents_equal": true,
+        "face_count_equal": true,
+        "finite_geometry": true,
+        "ordered_triangle_coordinates_equal": true
+      },
+      "output": "assets/rars01/link2_m2.obj",
+      "output_area": 0.1667317746110263,
+      "output_bounds": [
+        [
+          -0.0209412817,
+          -0.0129500004,
+          -0.0209412817
+        ],
+        [
+          0.2614499927,
+          0.072300002,
+          0.085571073
+        ]
+      ],
+      "output_extents": [
+        0.2823912744,
+        0.0852500024,
+        0.1065123547
+      ],
+      "output_faces": 114200,
+      "output_sha256": "5d11c26d671fe5e77dd4f55259517e8343c298e94b819298e72d24c7a27728ea",
+      "output_size_bytes": 4547061,
+      "output_vertices": 56786,
+      "reference_count": 2,
+      "relative_area_error": 7.534577243222359e-11,
+      "source": "meshes/link2_m2.STL",
+      "source_area": 0.16673177459846378,
+      "source_bounds": [
+        [
+          -0.02094128169119358,
+          -0.01295000035315752,
+          -0.02094128169119358
+        ],
+        [
+          0.26144999265670776,
+          0.0723000019788742,
+          0.08557107299566269
+        ]
+      ],
+      "source_extents": [
+        0.28239127434790134,
+        0.08525000233203173,
+        0.10651235468685627
+      ],
+      "source_faces": 114200,
+      "source_sha256": "7ecbd4bc44d8c61d667066960e5b608014fcf7d548086ec7b0a27057940167ff",
+      "source_size_bytes": 5710084,
+      "source_vertices": 342600,
+      "status": "PASS",
+      "vertex_indexing": "exact-coordinate compaction (no rounding)"
+    },
+    {
+      "checks": {
+        "area_equal": true,
+        "bounds_equal": true,
+        "extents_equal": true,
+        "face_count_equal": true,
+        "finite_geometry": true,
+        "ordered_triangle_coordinates_equal": true
+      },
+      "output": "assets/rars01/link_3_m3.obj",
+      "output_area": 0.07064961124246358,
+      "output_bounds": [
+        [
+          -0.0284932181,
+          -0.0099499999,
+          -0.0284932181
+        ],
+        [
+          0.1148112044,
+          0.0620499998,
+          0.0960000008
+        ]
+      ],
+      "output_extents": [
+        0.1433044225,
+        0.0719999997,
+        0.1244932189
+      ],
+      "output_faces": 107570,
+      "output_sha256": "6364e6493516b4e5d57ec79792e45e7ea37be829ae2b7d11a408e7f46bcd8645",
+      "output_size_bytes": 4286046,
+      "output_vertices": 53566,
+      "reference_count": 2,
+      "relative_area_error": 6.443334203757542e-10,
+      "source": "meshes/link_3_m3.STL",
+      "source_area": 0.07064961128798548,
+      "source_bounds": [
+        [
+          -0.02849321812391281,
+          -0.009949999861419201,
+          -0.02849321812391281
+        ],
+        [
+          0.11481120437383652,
+          0.062049999833106995,
+          0.09600000083446503
+        ]
+      ],
+      "source_extents": [
+        0.14330442249774933,
+        0.0719999996945262,
+        0.12449321895837784
+      ],
+      "source_faces": 107570,
+      "source_sha256": "54afd9069d48d7b062288d5e8e405524927f880b9411b55d1f4f3d734e08434a",
+      "source_size_bytes": 5378584,
+      "source_vertices": 322710,
+      "status": "PASS",
+      "vertex_indexing": "exact-coordinate compaction (no rounding)"
+    },
+    {
+      "checks": {
+        "area_equal": true,
+        "bounds_equal": true,
+        "extents_equal": true,
+        "face_count_equal": true,
+        "finite_geometry": true,
+        "ordered_triangle_coordinates_equal": true
+      },
+      "output": "assets/rars01/link_4_m4.obj",
+      "output_area": 0.06030648515203249,
+      "output_bounds": [
+        [
+          -0.0445000008,
+          -0.0285,
+          -0.0895059705
+        ],
+        [
+          0.0285,
+          0.0285,
+          -0.0049999999
+        ]
+      ],
+      "output_extents": [
+        0.0730000008,
+        0.057,
+        0.08450597060000001
+      ],
+      "output_faces": 105498,
+      "output_sha256": "1a470701ab05c7c0149f28bebd27e51580028b4b33a4e26d4d6b8b5f88392f9e",
+      "output_size_bytes": 4285422,
+      "output_vertices": 52565,
+      "reference_count": 2,
+      "relative_area_error": 4.5840134850313195e-10,
+      "source": "meshes/link_4_m4.STL",
+      "source_area": 0.060306485179677065,
+      "source_bounds": [
+        [
+          -0.04450000077486038,
+          -0.02850000001490116,
+          -0.08950597047805786
+        ],
+        [
+          0.02850000001490116,
+          0.02850000001490116,
+          -0.004999999888241291
+        ]
+      ],
+      "source_extents": [
+        0.07300000078976154,
+        0.05700000002980232,
+        0.08450597058981657
+      ],
+      "source_faces": 105498,
+      "source_sha256": "cff450bcc4ec6acaa6de223e417da898d0bd20ec7ec61aa1ce09cfdff38a8803",
+      "source_size_bytes": 5274984,
+      "source_vertices": 316494,
+      "status": "PASS",
+      "vertex_indexing": "exact-coordinate compaction (no rounding)"
+    },
+    {
+      "checks": {
+        "area_equal": true,
+        "bounds_equal": true,
+        "extents_equal": true,
+        "face_count_equal": true,
+        "finite_geometry": true,
+        "ordered_triangle_coordinates_equal": true
+      },
+      "output": "assets/rars01/link_5_m5.obj",
+      "output_area": 0.011002099723076817,
+      "output_bounds": [
+        [
+          -1e-10,
+          -0.0250000004,
+          -0.0249797255
+        ],
+        [
+          0.0179999992,
+          0.0250000004,
+          0.0249998532
+        ]
+      ],
+      "output_extents": [
+        0.0179999993,
+        0.0500000008,
+        0.0499795787
+      ],
+      "output_faces": 4452,
+      "output_sha256": "67b66da102fd1d2e592282fa4c7c0cd2a91435af1fcd159e73e1fdce5591b670",
+      "output_size_bytes": 162445,
+      "output_vertices": 2215,
+      "reference_count": 2,
+      "relative_area_error": 1.0658864629543604e-09,
+      "source": "meshes/link_5_m5.STL",
+      "source_area": 0.011002099734803806,
+      "source_bounds": [
+        [
+          -5.2151297169622524e-11,
+          -0.02500000037252903,
+          -0.02497972548007965
+        ],
+        [
+          0.017999999225139618,
+          0.02500000037252903,
+          0.02499985322356224
+        ]
+      ],
+      "source_extents": [
+        0.017999999277290915,
+        0.05000000074505806,
+        0.04997957870364189
+      ],
+      "source_faces": 4452,
+      "source_sha256": "6e783701cba2480c80232f86b48ec09fda81bf9dac9e8f752317037c8027b227",
+      "source_size_bytes": 222684,
+      "source_vertices": 13356,
+      "status": "PASS",
+      "vertex_indexing": "exact-coordinate compaction (no rounding)"
+    }
+  ],
+  "relative_area_tolerance": 1e-06,
+  "schema_version": 1,
+  "source_urdf": "urdf/go2_arm_dynamic_base.urdf",
+  "status": "PASS",
+  "trimesh_version": "5.0.0",
+  "unique_meshes": 11
+}

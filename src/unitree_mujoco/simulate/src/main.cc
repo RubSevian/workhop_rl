@@ -98,14 +98,17 @@ namespace
   void Go2Rars01HomeHold(const mjModel* model, mjData* data) {
     if (model->nu < 20) return;
     const char* joints[] = {"joint1", "joint2", "joint3", "joint4", "joint5", "joint6", "gripper_left_joint", "gripper_right_joint"};
+    const char* actuators[] = {"joint1_motor", "joint2_motor", "joint3_motor", "joint4_motor", "joint5_motor", "joint6_motor", "gripper_left_motor", "gripper_right_motor"};
     const double kp[] = {20, 20, 20, 6, 6, 6, 20, 20};
     const double kd[] = {1, 1, 1, .4, .4, .4, .2, .2};
-    const double limit[] = {27, 27, 27, 7, 7, 7, 3, 3};
     for (int i = 0; i < 8; ++i) {
       int jid = mj_name2id(model, mjOBJ_JOINT, joints[i]);
-      if (jid < 0) return;
+      int aid = mj_name2id(model, mjOBJ_ACTUATOR, actuators[i]);
+      if (jid < 0 || aid != 12 + i) return;
       double tau = -kp[i] * data->qpos[model->jnt_qposadr[jid]] - kd[i] * data->qvel[model->jnt_dofadr[jid]];
-      data->ctrl[12 + i] = std::max(-limit[i], std::min(limit[i], tau));
+      const double lower = model->actuator_ctrlrange[2 * aid];
+      const double upper = model->actuator_ctrlrange[2 * aid + 1];
+      data->ctrl[aid] = std::max(lower, std::min(upper, tau));
     }
   }
 
@@ -551,6 +554,12 @@ void PhysicsThread(mj::Simulate *sim, const char *filename)
       d = mj_makeData(m);
     if (d)
     {
+      // A model-provided `home` keyframe is its physically valid reset pose.
+      // mj_makeData alone uses qpos0 (zero free-base translation for this
+      // URDF), which begins the robot inside the floor and causes a launch.
+      const int home_key = mj_name2id(m, mjOBJ_KEY, "home");
+      if (home_key >= 0)
+        mj_resetDataKeyframe(m, d, home_key);
       sim->Load(m, d, filename);
       mj_forward(m, d);
       mujoco_ready.store(true);

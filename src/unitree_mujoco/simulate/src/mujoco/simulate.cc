@@ -2199,7 +2199,17 @@ namespace mujoco
 
     if (pending_.reset)
     {
-      mj_resetData(m_, d_);
+      // Prefer an explicitly named physically valid reset pose when present.
+      // Fall back to MuJoCo's qpos0 for generic models without one.
+      const int home_key = mj_name2id(m_, mjOBJ_KEY, "home");
+      if (home_key >= 0)
+      {
+        mj_resetDataKeyframe(m_, d_, home_key);
+      }
+      else
+      {
+        mj_resetData(m_, d_);
+      }
       mj_forward(m_, d_);
       load_error[0] = '\0';
       update_profiler = true;

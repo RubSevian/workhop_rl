@@ -1,23 +1,35 @@
 model:
   name: go2_rars01
+
 sources:
   rars01_description:
     repository: "https://github.com/RubSevian/rars01_description.git"
     branch: "go2_arm"
     commit: "2df2bf4f9a28437124b4eedf6e1777c2f497b709"
-    urdf: "urdf/go2_arm_dynamic_base.urdf"
-    urdf_sha256: "3050983e7bc91a32e5ea7eb7b405f463b3be1f966c810b404edd0a96cf64bfec"
-  stock_unitree_mujoco:
+    train_urdf: "urdf/go2_arm_dynamic_train.urdf"
+    base_urdf: "urdf/go2_arm_dynamic_base.urdf"
+    train_urdf_sha256: "dae1a4412837d1059d1f500ac46a86b53f9571b929a1e2ca34ece0f0c9d72352"
+    base_urdf_sha256: "3050983e7bc91a32e5ea7eb7b405f463b3be1f966c810b404edd0a96cf64bfec"
+
+  stock_go2_visuals:
     repository: "https://github.com/RubSevian/workhop_rl.git"
     branch: "ros2_go2_rars01_sim"
     source_model: "src/unitree_mujoco/unitree_robots/go2/go2.xml"
     source_model_sha256: "4da6220cce0ba14d81c58993d63531b6ef0e5af5d36563c5e61e4d41b63d8f50"
+
+mesh_pipeline:
+  rars01_source_format: "STL"
+  rars01_runtime_format: "OBJ"
+  decimation: false
+  conversion_report: "MESH_CONVERSION_REPORT.json"
+
 runtime:
+  profile: "train_obj"
   timestep: 0.005
   leg_actuators: 12
   arm_actuators: 6
   gripper_actuators: 2
-  mount_collision_approximation: "arm_mount_link collision uses 0.22x0.16x0.10 box; its full 431649-face canonical STL is retained as three visual-only chunks"
+
 generated:
-  file: "go2_rars01.xml"
-  sha256: "c4309145177d565b4eab56f0a4d266d6e367d2b2a6e32e139ff9aaeb96f6f742"
+  mjcf: "go2_rars01.xml"
+  mjcf_sha256: "b642c5ed7e3f0bda3afec20a7e02552bc57b6c9b7da8d4eebaf4101ebba21632"

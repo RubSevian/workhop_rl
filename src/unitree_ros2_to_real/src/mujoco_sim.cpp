@@ -28,6 +28,11 @@ std::string RobotController::get_robot_name() const {
 }
 
 void RobotController::set_command(float x, float y, float z) {
+    // Phase-3 manual command safety envelope; navigation is intentionally not
+    // connected in this phase.
+    x = std::max(-1.0f, std::min(1.0f, x));
+    y = std::max(-0.5f, std::min(0.5f, y));
+    z = std::max(-0.5f, std::min(0.5f, z));
     agent.obs.command = torch::tensor({x, y, z});
 }
 

@@ -4,6 +4,7 @@
 #include <iostream>
 #include <chrono>
 #include <cstring>
+#include <array>
 
 #include <unitree/robot/channel/channel_publisher.hpp>
 #include <unitree/robot/channel/channel_subscriber.hpp>
@@ -146,6 +147,19 @@ public:
     int have_imu_ = false;
     int have_frame_sensor_ = false;
     int idl_type_ = 0; // 0: unitree_go, 1: unitree_hg
+
+    // Resolved by semantic name.  The bridge ABI is always twelve Go2 legs,
+    // even when the MuJoCo model also exposes RARS01 actuators.
+    std::array<int, GO2_LEG_MOTOR_COUNT> leg_actuator_ids_{};
+    std::array<int, GO2_LEG_MOTOR_COUNT> leg_pos_sensor_adr_{};
+    std::array<int, GO2_LEG_MOTOR_COUNT> leg_vel_sensor_adr_{};
+    std::array<int, GO2_LEG_MOTOR_COUNT> leg_force_sensor_adr_{};
+    std::array<int, 8> rars01_joint_ids_{};
+    int imu_quat_adr_ = -1;
+    int imu_gyro_adr_ = -1;
+    int imu_acc_adr_ = -1;
+    int frame_pos_adr_ = -1;
+    int frame_vel_adr_ = -1;
 
 private:
     void GetWirelessRemote();

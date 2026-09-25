@@ -1,5 +1,29 @@
 #include "unitree_sdk2_bridge.h"
 #include <stdexcept>
+#include <set>
+
+namespace {
+const char* kLegJoints[GO2_LEG_MOTOR_COUNT] = {
+    "FR_hip_joint", "FR_thigh_joint", "FR_calf_joint",
+    "FL_hip_joint", "FL_thigh_joint", "FL_calf_joint",
+    "RR_hip_joint", "RR_thigh_joint", "RR_calf_joint",
+    "RL_hip_joint", "RL_thigh_joint", "RL_calf_joint"};
+const char* kLegActuators[GO2_LEG_MOTOR_COUNT] = {
+    "FR_hip", "FR_thigh", "FR_calf", "FL_hip", "FL_thigh", "FL_calf",
+    "RR_hip", "RR_thigh", "RR_calf", "RL_hip", "RL_thigh", "RL_calf"};
+const char* kRars01Joints[8] = {
+    "joint1", "joint2", "joint3", "joint4", "joint5", "joint6",
+    "gripper_left_joint", "gripper_right_joint"};
+
+int SensorAddress(const mjModel* model, const std::string& name, int expected_dim) {
+    const int id = mj_name2id(model, mjOBJ_SENSOR, name.c_str());
+    if (id < 0) throw std::runtime_error("Missing MuJoCo sensor: " + name);
+    if (model->sensor_dim[id] != expected_dim) {
+        throw std::runtime_error("Unexpected dimension for MuJoCo sensor: " + name);
+    }
+    return model->sensor_adr[id];
+}
+}  // namespace
 
 UnitreeSdk2Bridge::UnitreeSdk2Bridge(mjModel *model, mjData *data) : mj_model_(model), mj_data_(data)
 {
@@ -47,9 +71,10 @@ void UnitreeSdk2Bridge::LowCmdGoHandler(const void *msg)
     {
         for (int i = 0; i < num_motor_; i++)
         {
-            mj_data_->ctrl[i] = cmd->motor_cmd()[i].tau() +
-                                cmd->motor_cmd()[i].kp() * (cmd->motor_cmd()[i].q() - mj_data_->sensordata[i]) +
-                                cmd->motor_cmd()[i].kd() * (cmd->motor_cmd()[i].dq() - mj_data_->sensordata[i + num_motor_]);
+            const int actuator = leg_actuator_ids_[i];
+            mj_data_->ctrl[actuator] = cmd->motor_cmd()[i].tau() +
+                                cmd->motor_cmd()[i].kp() * (cmd->motor_cmd()[i].q() - mj_data_->sensordata[leg_pos_sensor_adr_[i]]) +
+                                cmd->motor_cmd()[i].kd() * (cmd->motor_cmd()[i].dq() - mj_data_->sensordata[leg_vel_sensor_adr_[i]]);
         }
     }
 }
@@ -61,9 +86,10 @@ void UnitreeSdk2Bridge::LowCmdHgHandler(const void *msg)
     {
         for (int i = 0; i < num_motor_; i++)
         {
-            mj_data_->ctrl[i] = cmd->motor_cmd()[i].tau() +
-                                cmd->motor_cmd()[i].kp() * (cmd->motor_cmd()[i].q() - mj_data_->sensordata[i]) +
-                                cmd->motor_cmd()[i].kd() * (cmd->motor_cmd()[i].dq() - mj_data_->sensordata[i + num_motor_]);
+            const int actuator = leg_actuator_ids_[i];
+            mj_data_->ctrl[actuator] = cmd->motor_cmd()[i].tau() +
+                                cmd->motor_cmd()[i].kp() * (cmd->motor_cmd()[i].q() - mj_data_->sensordata[leg_pos_sensor_adr_[i]]) +
+                                cmd->motor_cmd()[i].kd() * (cmd->motor_cmd()[i].dq() - mj_data_->sensordata[leg_vel_sensor_adr_[i]]);
         }
     }
 }
@@ -74,15 +100,14 @@ void UnitreeSdk2Bridge::PublishLowStateGo()
     {
         for (int i = 0; i < num_motor_; i++)
         {
-            low_state_go_.motor_state()[i].q() = mj_data_->sensordata[i];
-            low_state_go_.motor_state()[i].dq() = mj_data_->sensordata[i + num_motor_];
-            low_state_go_.motor_state()[i].tau_est() = mj_data_->sensordata[i + 2 * num_motor_];
+            low_state_go_.motor_state()[i].q() = mj_data_->sensordata[leg_pos_sensor_adr_[i]];
+            low_state_go_.motor_state()[i].dq() = mj_data_->sensordata[leg_vel_sensor_adr_[i]];
+            low_state_go_.motor_state()[i].tau_est() = mj_data_->sensordata[leg_force_sensor_adr_[i]];
         }
         // Combined Go2+RARS01 model: publish arm/gripper measurement only.
         // No LowCmd slot beyond the first 12 is ever applied to mj_data_->ctrl.
-        const char* arm_names[] = {"joint1", "joint2", "joint3", "joint4", "joint5", "joint6", "gripper_left_joint", "gripper_right_joint"};
         for (int i = 0; i < 8; ++i) {
-            const int joint = mj_name2id(mj_model_, mjOBJ_JOINT, arm_names[i]);
+            const int joint = rars01_joint_ids_[i];
             if (joint >= 0) {
                 const int slot = 12 + i;
                 low_state_go_.motor_state()[slot].q() = mj_data_->qpos[mj_model_->jnt_qposadr[joint]];
@@ -93,10 +118,10 @@ void UnitreeSdk2Bridge::PublishLowStateGo()
 
         if (have_frame_sensor_)
         {
-            low_state_go_.imu_state().quaternion()[0] = mj_data_->sensordata[dim_motor_sensor_ + 0];
-            low_state_go_.imu_state().quaternion()[1] = mj_data_->sensordata[dim_motor_sensor_ + 1];
-            low_state_go_.imu_state().quaternion()[2] = mj_data_->sensordata[dim_motor_sensor_ + 2];
-            low_state_go_.imu_state().quaternion()[3] = mj_data_->sensordata[dim_motor_sensor_ + 3];
+            low_state_go_.imu_state().quaternion()[0] = mj_data_->sensordata[imu_quat_adr_ + 0];
+            low_state_go_.imu_state().quaternion()[1] = mj_data_->sensordata[imu_quat_adr_ + 1];
+            low_state_go_.imu_state().quaternion()[2] = mj_data_->sensordata[imu_quat_adr_ + 2];
+            low_state_go_.imu_state().quaternion()[3] = mj_data_->sensordata[imu_quat_adr_ + 3];
 
 	    double w = low_state_go_.imu_state().quaternion()[0];
 	    double x = low_state_go_.imu_state().quaternion()[1];
@@ -107,13 +132,13 @@ void UnitreeSdk2Bridge::PublishLowStateGo()
 	    low_state_go_.imu_state().rpy()[1] = asin(2 * (w * y - z * x));
 	    low_state_go_.imu_state().rpy()[2] = atan2(2 * (w * z + x * y), 1 - 2 * (y * y + z * z));
 
-            low_state_go_.imu_state().gyroscope()[0] = mj_data_->sensordata[dim_motor_sensor_ + 4];
-            low_state_go_.imu_state().gyroscope()[1] = mj_data_->sensordata[dim_motor_sensor_ + 5];
-            low_state_go_.imu_state().gyroscope()[2] = mj_data_->sensordata[dim_motor_sensor_ + 6];
+            low_state_go_.imu_state().gyroscope()[0] = mj_data_->sensordata[imu_gyro_adr_ + 0];
+            low_state_go_.imu_state().gyroscope()[1] = mj_data_->sensordata[imu_gyro_adr_ + 1];
+            low_state_go_.imu_state().gyroscope()[2] = mj_data_->sensordata[imu_gyro_adr_ + 2];
 
-            low_state_go_.imu_state().accelerometer()[0] = mj_data_->sensordata[dim_motor_sensor_ + 7];
-            low_state_go_.imu_state().accelerometer()[1] = mj_data_->sensordata[dim_motor_sensor_ + 8];
-            low_state_go_.imu_state().accelerometer()[2] = mj_data_->sensordata[dim_motor_sensor_ + 9];
+            low_state_go_.imu_state().accelerometer()[0] = mj_data_->sensordata[imu_acc_adr_ + 0];
+            low_state_go_.imu_state().accelerometer()[1] = mj_data_->sensordata[imu_acc_adr_ + 1];
+            low_state_go_.imu_state().accelerometer()[2] = mj_data_->sensordata[imu_acc_adr_ + 2];
         }
 
         if (js_)
@@ -177,13 +202,13 @@ void UnitreeSdk2Bridge::PublishHighState()
     if (mj_data_ && have_frame_sensor_)
     {
 
-        high_state_.position()[0] = mj_data_->sensordata[dim_motor_sensor_ + 10];
-        high_state_.position()[1] = mj_data_->sensordata[dim_motor_sensor_ + 11];
-        high_state_.position()[2] = mj_data_->sensordata[dim_motor_sensor_ + 12];
+        high_state_.position()[0] = mj_data_->sensordata[frame_pos_adr_ + 0];
+        high_state_.position()[1] = mj_data_->sensordata[frame_pos_adr_ + 1];
+        high_state_.position()[2] = mj_data_->sensordata[frame_pos_adr_ + 2];
 
-        high_state_.velocity()[0] = mj_data_->sensordata[dim_motor_sensor_ + 13];
-        high_state_.velocity()[1] = mj_data_->sensordata[dim_motor_sensor_ + 14];
-        high_state_.velocity()[2] = mj_data_->sensordata[dim_motor_sensor_ + 15];
+        high_state_.velocity()[0] = mj_data_->sensordata[frame_vel_adr_ + 0];
+        high_state_.velocity()[1] = mj_data_->sensordata[frame_vel_adr_ + 1];
+        high_state_.velocity()[2] = mj_data_->sensordata[frame_vel_adr_ + 2];
 
         high_state_puber_->Write(high_state_);
     }
@@ -353,16 +378,36 @@ void UnitreeSdk2Bridge::CheckSensor()
     if (mj_model_->nu < GO2_LEG_MOTOR_COUNT) throw std::runtime_error("MuJoCo model has fewer than 12 Go2 leg actuators");
     dim_motor_sensor_ = MOTOR_SENSOR_NUM * num_motor_;
 
-    for (int i = dim_motor_sensor_; i < mj_model_->nsensor; i++)
-    {
-        const char *name = mj_id2name(mj_model_, mjOBJ_SENSOR, i);
-        if (strcmp(name, "imu_quat") == 0)
-        {
-            have_imu_ = true;
+    std::set<int> actuator_ids;
+    for (int i = 0; i < GO2_LEG_MOTOR_COUNT; ++i) {
+        const int actuator = mj_name2id(mj_model_, mjOBJ_ACTUATOR, kLegActuators[i]);
+        if (actuator != i || !actuator_ids.insert(actuator).second) {
+            throw std::runtime_error("Go2 actuator order/uniqueness mismatch at " + std::string(kLegActuators[i]));
         }
-        if (strcmp(name, "frame_pos") == 0)
-        {
-            have_frame_sensor_ = true;
+        leg_actuator_ids_[i] = actuator;
+        leg_pos_sensor_adr_[i] = SensorAddress(mj_model_, std::string(kLegActuators[i]) + "_pos", 1);
+        leg_vel_sensor_adr_[i] = SensorAddress(mj_model_, std::string(kLegActuators[i]) + "_vel", 1);
+        leg_force_sensor_adr_[i] = SensorAddress(mj_model_, std::string(kLegActuators[i]) + "_torque", 1);
+    }
+    imu_quat_adr_ = SensorAddress(mj_model_, "imu_quat", 4);
+    imu_gyro_adr_ = SensorAddress(mj_model_, "imu_gyro", 3);
+    imu_acc_adr_ = SensorAddress(mj_model_, "imu_acc", 3);
+    frame_pos_adr_ = SensorAddress(mj_model_, "frame_pos", 3);
+    frame_vel_adr_ = SensorAddress(mj_model_, "frame_vel", 3);
+    have_imu_ = true;
+    have_frame_sensor_ = true;
+
+    rars01_joint_ids_.fill(-1);
+    if (mj_model_->nu >= 20) {
+        const char* rars01_actuators[8] = {
+            "joint1_motor", "joint2_motor", "joint3_motor", "joint4_motor",
+            "joint5_motor", "joint6_motor", "gripper_left_motor", "gripper_right_motor"};
+        for (int i = 0; i < 8; ++i) {
+            rars01_joint_ids_[i] = mj_name2id(mj_model_, mjOBJ_JOINT, kRars01Joints[i]);
+            const int actuator = mj_name2id(mj_model_, mjOBJ_ACTUATOR, rars01_actuators[i]);
+            if (rars01_joint_ids_[i] < 0 || actuator != 12 + i || actuator_ids.count(actuator)) {
+                throw std::runtime_error("RARS01 joint/actuator ownership mismatch at " + std::string(kRars01Joints[i]));
+            }
         }
     }
 
