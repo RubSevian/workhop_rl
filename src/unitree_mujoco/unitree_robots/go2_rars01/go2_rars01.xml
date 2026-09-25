@@ -13,6 +13,9 @@
     <mesh name="End_link" content_type="model/stl" file="assets/rars01/End_link.STL" />
     <mesh name="gripper_left" content_type="model/stl" file="assets/rars01/gripper_left.STL" />
     <mesh name="gripper_right" content_type="model/stl" file="assets/rars01/gripper_right.STL" />
+    <mesh name="arm_mount_link_part0" file="assets/rars01/arm_mount_link_part0.STL" />
+    <mesh name="arm_mount_link_part1" file="assets/rars01/arm_mount_link_part1.STL" />
+    <mesh name="arm_mount_link_part2" file="assets/rars01/arm_mount_link_part2.STL" />
   </asset>
   <worldbody>
     <body name="base">
@@ -195,6 +198,9 @@
             </body>
           </body>
         </body>
+        <geom type="mesh" mesh="arm_mount_link_part0" contype="0" conaffinity="0" group="2" />
+        <geom type="mesh" mesh="arm_mount_link_part1" contype="0" conaffinity="0" group="2" />
+        <geom type="mesh" mesh="arm_mount_link_part2" contype="0" conaffinity="0" group="2" />
       </body>
       <site name="imu" pos="-0.02557 0 0.04232" />
     </body>

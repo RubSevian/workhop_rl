@@ -17,7 +17,7 @@ runtime:
   leg_actuators: 12
   arm_actuators: 6
   gripper_actuators: 2
-  mount_collision_approximation: "arm_mount_link STL has 431649 faces; MuJoCo limit is 200000, replaced by 0.22x0.16x0.10 box"
+  mount_collision_approximation: "arm_mount_link collision uses 0.22x0.16x0.10 box; its full 431649-face canonical STL is retained as three visual-only chunks"
 generated:
   file: "go2_rars01.xml"
-  sha256: "3fc265eb1accba0672d662427a5274c56dc61b8214bdd326416d351253c7704a"
+  sha256: "03dcfe507060e0b41d6ad6ccb9f41563b36aef8a34bb09fc7b23da57445bd9b5"
