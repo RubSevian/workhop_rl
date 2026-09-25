@@ -1,0 +1,11 @@
+robot: "go2_rars01"
+robot_scene: "scene.xml"
+base_body: "base"
+domain_id: 1
+interface: "lo"
+use_joystick: 0
+joystick_type: "xbox"
+joystick_device: "/dev/input/js0"
+joystick_bits: 16
+print_scene_information: 1
+enable_elastic_band: 0

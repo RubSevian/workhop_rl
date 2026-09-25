@@ -23,6 +23,8 @@
 #include <new>
 #include <string>
 #include <thread>
+#include <algorithm>
+#include <stdexcept>
 
 #include <filesystem>
 
@@ -71,6 +73,7 @@ namespace
   {
     std::string robot = "go2";
     std::string robot_scene = "scene_terrain.xml";
+    std::string base_body = "base_link";
 
     int domain_id = 1;
     std::string interface = "lo";
@@ -88,6 +91,22 @@ namespace
   } config;
 
   using Seconds = std::chrono::duration<double>;
+
+  // The Unitree bridge owns ctrl[0:12]. This callback owns only the dedicated
+  // arm/gripper actuators in the combined model at every MuJoCo physics step.
+  void Go2Rars01HomeHold(const mjModel* model, mjData* data) {
+    if (model->nu < 20) return;
+    const char* joints[] = {"joint1", "joint2", "joint3", "joint4", "joint5", "joint6", "gripper_left_joint", "gripper_right_joint"};
+    const double kp[] = {20, 20, 20, 6, 6, 6, 20, 20};
+    const double kd[] = {1, 1, 1, .4, .4, .4, .2, .2};
+    const double limit[] = {27, 27, 27, 7, 7, 7, 3, 3};
+    for (int i = 0; i < 8; ++i) {
+      int jid = mj_name2id(model, mjOBJ_JOINT, joints[i]);
+      if (jid < 0) return;
+      double tau = -kp[i] * data->qpos[model->jnt_qposadr[jid]] - kd[i] * data->qvel[model->jnt_dofadr[jid]];
+      data->ctrl[12 + i] = std::max(-limit[i], std::min(limit[i], tau));
+    }
+  }
 
   //---------------------------------------- plugin handling -----------------------------------------
 
@@ -569,14 +588,9 @@ void *UnitreeSdk2BridgeThread(void *arg)
     usleep(500000);
   }
 
-  if (config.robot == "h1" || config.robot == "g1")
-  {
-    config.band_attached_link = 6 * mj_name2id(m, mjOBJ_BODY, "torso_link");
-  }
-  else
-  {
-    config.band_attached_link = 6 * mj_name2id(m, mjOBJ_BODY, "base_link");
-  }
+  const int base_body_id = mj_name2id(m, mjOBJ_BODY, config.base_body.c_str());
+  if (base_body_id < 0) throw std::runtime_error("Configured base body does not exist: " + config.base_body);
+  config.band_attached_link = 6 * base_body_id;
 
   ChannelFactory::Instance()->Init(config.domain_id, config.interface);
   UnitreeSdk2Bridge unitree_interface(m, d);
@@ -647,11 +661,14 @@ int main(int argc, char **argv)
   // Load simulation configuration
   string path_mujoco = mujoco_dir ;
   std::cout << "Path to main.cc: " << mujoco_dir << std::endl;
-  string path_config = string(mujoco_dir) + "/" + "config.yaml";
+  string config_name = "config.yaml";
+  if (argc == 3 && std::string(argv[1]) == "--config") config_name = argv[2];
+  string path_config = string(mujoco_dir) + "/" + config_name;
   std::cout << "Path to main.cc: new " << path_config << std::endl;
   YAML::Node yaml_node = YAML::LoadFile(path_config);
   config.robot = yaml_node["robot"].as<std::string>();
   config.robot_scene = yaml_node["robot_scene"].as<std::string>();
+  config.base_body = yaml_node["base_body"] ? yaml_node["base_body"].as<std::string>() : "base_link";
   config.domain_id = yaml_node["domain_id"].as<int>();
   config.interface = yaml_node["interface"].as<std::string>();
   config.print_scene_information = yaml_node["print_scene_information"].as<int>();
@@ -670,7 +687,7 @@ int main(int argc, char **argv)
   std::cout << "Path to main.cc: parent " << parent_path << std::endl;
   string scene_path = (parent_path / "unitree_robots" / config.robot / config.robot_scene).string();
   const char *filename = nullptr;
-  if (argc > 1)
+  if (argc > 1 && std::string(argv[1]) != "--config")
   {
     filename = argv[1];
   }
@@ -686,6 +703,8 @@ int main(int argc, char **argv)
     std::cout << "Error:unable to create thread," << rc << std::endl;
     exit(-1);
   }
+
+  if (config.robot == "go2_rars01") mjcb_control = Go2Rars01HomeHold;
 
   // start physics thread
   std::thread physicsthreadhandle(&PhysicsThread, sim.get(), filename);

@@ -1,4 +1,5 @@
 #include "unitree_sdk2_bridge.h"
+#include <stdexcept>
 
 UnitreeSdk2Bridge::UnitreeSdk2Bridge(mjModel *model, mjData *data) : mj_model_(model), mj_data_(data)
 {
@@ -76,6 +77,18 @@ void UnitreeSdk2Bridge::PublishLowStateGo()
             low_state_go_.motor_state()[i].q() = mj_data_->sensordata[i];
             low_state_go_.motor_state()[i].dq() = mj_data_->sensordata[i + num_motor_];
             low_state_go_.motor_state()[i].tau_est() = mj_data_->sensordata[i + 2 * num_motor_];
+        }
+        // Combined Go2+RARS01 model: publish arm/gripper measurement only.
+        // No LowCmd slot beyond the first 12 is ever applied to mj_data_->ctrl.
+        const char* arm_names[] = {"joint1", "joint2", "joint3", "joint4", "joint5", "joint6", "gripper_left_joint", "gripper_right_joint"};
+        for (int i = 0; i < 8; ++i) {
+            const int joint = mj_name2id(mj_model_, mjOBJ_JOINT, arm_names[i]);
+            if (joint >= 0) {
+                const int slot = 12 + i;
+                low_state_go_.motor_state()[slot].q() = mj_data_->qpos[mj_model_->jnt_qposadr[joint]];
+                low_state_go_.motor_state()[slot].dq() = mj_data_->qvel[mj_model_->jnt_dofadr[joint]];
+                low_state_go_.motor_state()[slot].tau_est() = mj_data_->qfrc_actuator[mj_model_->jnt_dofadr[joint]];
+            }
         }
 
         if (have_frame_sensor_)
@@ -336,7 +349,8 @@ void UnitreeSdk2Bridge::PrintSceneInformation()
 
 void UnitreeSdk2Bridge::CheckSensor()
 {
-    num_motor_ = mj_model_->nu;
+    num_motor_ = GO2_LEG_MOTOR_COUNT;
+    if (mj_model_->nu < GO2_LEG_MOTOR_COUNT) throw std::runtime_error("MuJoCo model has fewer than 12 Go2 leg actuators");
     dim_motor_sensor_ = MOTOR_SENSOR_NUM * num_motor_;
 
     for (int i = dim_motor_sensor_; i < mj_model_->nsensor; i++)

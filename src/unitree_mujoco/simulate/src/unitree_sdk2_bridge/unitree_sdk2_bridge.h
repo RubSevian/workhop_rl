@@ -25,6 +25,7 @@ using namespace std;
 #define TOPIC_LOWCMD "rt/lowcmd"
 #define TOPIC_WIRELESS_CONTROLLER "rt/wirelesscontroller"
 #define MOTOR_SENSOR_NUM 3
+#define GO2_LEG_MOTOR_COUNT 12
 #define NUM_MOTOR_IDL_GO 20
 #define NUM_MOTOR_IDL_HG 35
 

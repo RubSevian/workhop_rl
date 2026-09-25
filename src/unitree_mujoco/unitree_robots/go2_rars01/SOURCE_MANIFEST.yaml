@@ -1,0 +1,23 @@
+model:
+  name: go2_rars01
+sources:
+  rars01_description:
+    repository: "https://github.com/RubSevian/rars01_description.git"
+    branch: "go2_arm"
+    commit: "2df2bf4f9a28437124b4eedf6e1777c2f497b709"
+    urdf: "urdf/go2_arm_dynamic_base.urdf"
+    urdf_sha256: "3050983e7bc91a32e5ea7eb7b405f463b3be1f966c810b404edd0a96cf64bfec"
+  stock_unitree_mujoco:
+    repository: "https://github.com/RubSevian/workhop_rl.git"
+    branch: "ros2_go2_rars01_sim"
+    source_model: "src/unitree_mujoco/unitree_robots/go2/go2.xml"
+    source_model_sha256: "4da6220cce0ba14d81c58993d63531b6ef0e5af5d36563c5e61e4d41b63d8f50"
+runtime:
+  timestep: 0.005
+  leg_actuators: 12
+  arm_actuators: 6
+  gripper_actuators: 2
+  mount_collision_approximation: "arm_mount_link STL has 431649 faces; MuJoCo limit is 200000, replaced by 0.22x0.16x0.10 box"
+generated:
+  file: "go2_rars01.xml"
+  sha256: "3fc265eb1accba0672d662427a5274c56dc61b8214bdd326416d351253c7704a"

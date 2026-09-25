@@ -289,6 +289,13 @@ void RobotController::update_dof_state(const std::array<unitree_go::msg::MotorSt
         agent.obs.dof_pos.index({net2joint_indexes[i]}) = motor_state[i].q;
         agent.obs.dof_vel.index({net2joint_indexes[i]}) = motor_state[i].dq;
     }
+    // Phase-3 Sim2Sim transport: slots 12..17 are measured RARS01 joints.
+    // They are read-only for the Unitree bridge; arm_target is the home hold.
+    for (int i = 0; i < 6; ++i) {
+        agent.obs.arm_pos.index({i}) = motor_state[12 + i].q;
+        agent.obs.arm_vel.index({i}) = motor_state[12 + i].dq;
+    }
+    agent.obs.arm_target = torch::zeros({6}, torch::kFloat32);
 }
 float RobotController::jointLinearInterpolation(float initPos, float targetPos, float rate) {
     rate = std::min(std::max(rate, 0.0f), 1.0f);
@@ -316,12 +323,19 @@ InterfaceRos::InterfaceRos() : Node("low_level_cmd_sender") {
     init_cmd();
     init_glfw();
     try {
-        std::string CONFIG_PATH = std::string(CONFIG_BASE_DIR) + "/weights/" + controller.get_robot_name() + "/config.yaml";
-        controller.initializeRL(CONFIG_PATH, "");
-        std::string model_path = std::string(CONFIG_BASE_DIR) + "/weights/" + controller.get_robot_name() + "/" + controller.get_model_name();
-        RCLCPP_INFO(this->get_logger(), "CONFIG_PATH: %s", CONFIG_PATH.c_str());
-        RCLCPP_INFO(this->get_logger(), "model_path: %s", model_path.c_str());
-        controller.initializeRL("", model_path);
+        const std::string explicit_config = declare_parameter<std::string>("rl_config_path", "");
+        const std::string explicit_policy = declare_parameter<std::string>("policy_path", "");
+        if (!explicit_config.empty()) {
+            if (explicit_policy.empty()) throw std::runtime_error("policy_path is required with rl_config_path; no legacy policy fallback");
+            controller.initializeRL(explicit_config, explicit_policy);
+            RCLCPP_INFO(this->get_logger(), "Unified RL config: %s", explicit_config.c_str());
+            RCLCPP_INFO(this->get_logger(), "Unified policy: %s", explicit_policy.c_str());
+        } else {
+            std::string CONFIG_PATH = std::string(CONFIG_BASE_DIR) + "/weights/" + controller.get_robot_name() + "/config.yaml";
+            controller.initializeRL(CONFIG_PATH, "");
+            std::string model_path = std::string(CONFIG_BASE_DIR) + "/weights/" + controller.get_robot_name() + "/" + controller.get_model_name();
+            controller.initializeRL("", model_path);
+        }
     } catch (const std::exception& e) {
         RCLCPP_ERROR(this->get_logger(), "Error initializing RL: %s", e.what());
     }

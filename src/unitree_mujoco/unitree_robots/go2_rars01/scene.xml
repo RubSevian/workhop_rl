@@ -1,0 +1,5 @@
+<mujoco model="go2_rars01_scene">
+  <include file="go2_rars01.xml"/>
+  <visual><headlight diffuse="0.6 0.6 0.6" ambient="0.3 0.3 0.3"/></visual>
+  <worldbody><geom name="floor" type="plane" size="20 20 0.1" rgba="0.2 0.3 0.2 1" friction="0.8 0.02 0.01"/></worldbody>
+</mujoco>
