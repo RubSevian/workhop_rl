@@ -624,18 +624,20 @@ namespace
       cloud.header.stamp = SimStamp(data->time);
       cloud.header.frame_id = "unilidar";
       sensor_msgs::PointCloud2Modifier modifier(cloud);
-      modifier.setPointCloud2Fields(5,
+      modifier.setPointCloud2Fields(6,
           "x", 1, sensor_msgs::msg::PointField::FLOAT32,
           "y", 1, sensor_msgs::msg::PointField::FLOAT32,
           "z", 1, sensor_msgs::msg::PointField::FLOAT32,
           "intensity", 1, sensor_msgs::msg::PointField::FLOAT32,
-          "time", 1, sensor_msgs::msg::PointField::FLOAT32);
+          "time", 1, sensor_msgs::msg::PointField::FLOAT32,
+          "ring", 1, sensor_msgs::msg::PointField::UINT16);
       modifier.resize(count);
       sensor_msgs::PointCloud2Iterator<float> x_it(cloud, "x");
       sensor_msgs::PointCloud2Iterator<float> y_it(cloud, "y");
       sensor_msgs::PointCloud2Iterator<float> z_it(cloud, "z");
       sensor_msgs::PointCloud2Iterator<float> intensity_it(cloud, "intensity");
       sensor_msgs::PointCloud2Iterator<float> time_it(cloud, "time");
+      sensor_msgs::PointCloud2Iterator<uint16_t> ring_it(cloud, "ring");
       const mjtNum* origin = data->xpos + 3 * radar_body_id_;
       const mjtNum* rotation = data->xmat + 9 * radar_body_id_;
       const double scan_period = 1.0 / std::max(1.0, lidar_rate_);
@@ -658,7 +660,8 @@ namespace
           *z_it = range * static_cast<float>(local_dir[2]);
           *intensity_it = valid ? 1.0F : 0.0F;
           *time_it = static_cast<float>(scan_period * col / std::max(1, horizontal_samples_));
-          ++x_it; ++y_it; ++z_it; ++intensity_it; ++time_it;
+          *ring_it = static_cast<uint16_t>(row);
+          ++x_it; ++y_it; ++z_it; ++intensity_it; ++time_it; ++ring_it;
         }
       }
       cloud_pub_->publish(cloud);

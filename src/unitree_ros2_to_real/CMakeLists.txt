@@ -155,6 +155,7 @@ install(PROGRAMS scripts/manual_twist_test.py
                  scripts/stage4d_full_navigation_evaluator.py
                  scripts/stage4d_stop_navigation.py
                  scripts/run_stage4d_autonomous.sh
+                 scripts/stage4d_rviz_robot.py
   DESTINATION lib/${PROJECT_NAME}
 )
 
