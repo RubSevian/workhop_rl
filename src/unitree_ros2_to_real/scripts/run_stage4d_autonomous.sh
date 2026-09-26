@@ -16,7 +16,7 @@ LOG="$RUN_DIR/stage4d_launch.log"
 TRACE="$RUN_DIR/stage4d_trace.json"
 
 echo "Starting Stage4D (RViz=$RVIZ), output=$RUN_DIR"
-timeout --signal=INT --kill-after=10s 240s ros2 launch unitree_legged_real stage4d_full_navigation.launch.py \
+timeout --signal=INT --kill-after=10s 360s ros2 launch unitree_legged_real stage4d_full_navigation.launch.py \
   rl_config_path:="$PWD/src/unitree_ros2_to_real/config/go2_rars01_unified.yaml" \
   policy_path:="$WORKSPACE_ROOT/weights/policy_1.pt" \
   mujoco_config:=config_go2_rars01_stage4d.yaml rviz:="$RVIZ" report_path:="$TRACE" >"$LOG" 2>&1 &
