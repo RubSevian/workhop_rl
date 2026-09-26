@@ -12,7 +12,7 @@ joystick_bits: 16
 print_scene_information: 1
 enable_elastic_band: 0
 odom_topic: "/sim/ground_truth_odom"
-world_frame: "camera_init"
+world_frame: "map"
 lidar_rate: 10.0
 lidar_horizontal_samples: 360
 lidar_vertical_lines: 18

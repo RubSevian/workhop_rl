@@ -157,6 +157,7 @@ install(PROGRAMS scripts/manual_twist_test.py
                  scripts/run_stage4d_autonomous.sh
                  scripts/stage4d_rviz_robot.py
                  scripts/stage4d_robot_state_bridge.py
+                 scripts/stage4d_graph_bootstrap.py
   DESTINATION lib/${PROJECT_NAME}
 )
 

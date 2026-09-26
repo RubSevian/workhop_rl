@@ -52,5 +52,5 @@ Visualization Manager:
       Visual Enabled: true
       Collision Enabled: false
   Global Options:
-    Fixed Frame: camera_init
+    Fixed Frame: map
   Name: root

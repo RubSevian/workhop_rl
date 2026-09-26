@@ -5,7 +5,7 @@ from rclpy.node import Node
 from geometry_msgs.msg import PointStamped
 CASES={'D0':(1.0,0.0),'D1':(1.2,0.8),'D2':(1.8,-0.8),'D3':(0.6,1.0),'D4A':(1.0,0.0),'D4B':(0.6,0.9)}
 def main():
-    p=argparse.ArgumentParser(); p.add_argument('--case',choices=CASES); p.add_argument('--x',type=float); p.add_argument('--y',type=float); p.add_argument('--frame',default='camera_init'); p.add_argument('--duration',type=float,default=1.0); p.add_argument('--rate',type=float,default=10.0); a=p.parse_args()
+    p=argparse.ArgumentParser(); p.add_argument('--case',choices=CASES); p.add_argument('--x',type=float); p.add_argument('--y',type=float); p.add_argument('--frame',default='map'); p.add_argument('--duration',type=float,default=1.0); p.add_argument('--rate',type=float,default=10.0); a=p.parse_args()
     if a.case is None and (a.x is None or a.y is None): p.error('--case or --x/--y is required')
     x,y=CASES[a.case] if a.case else (a.x,a.y)
     rclpy.init(); n=Node('stage4d_send_goal'); pub=n.create_publisher(PointStamped,'/goal_point',10); period=1.0/a.rate
