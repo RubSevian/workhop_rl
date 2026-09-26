@@ -158,6 +158,9 @@ install(PROGRAMS scripts/manual_twist_test.py
                  scripts/stage4d_rviz_robot.py
                  scripts/stage4d_robot_state_bridge.py
                  scripts/stage4d_graph_bootstrap.py
+                 scripts/stage4d_odometry_path.py
+                 scripts/stage4d_scene_markers.py
+                 scripts/stage4d_terrain_diagnostics.py
   DESTINATION lib/${PROJECT_NAME}
 )
 

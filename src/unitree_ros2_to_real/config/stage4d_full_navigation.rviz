@@ -4,53 +4,84 @@ Panels:
 Visualization Manager:
   Class: ""
   Displays:
-    - Class: rviz_default_plugins/PointCloud2
-      Name: raw_lidar
-      Topic: /unilidar/cloud
-    - Class: rviz_default_plugins/PointCloud2
-      Name: cloud_registered
-      Topic: /cloud_registered
-    - Class: rviz_default_plugins/PointCloud2
-      Name: terrain_map
-      Topic: /terrain_map
-    - Class: rviz_default_plugins/PointCloud2
-      Name: terrain_map_ext
-      Topic: /terrain_map_ext
-    - Class: rviz_default_plugins/Path
-      Name: point_lio_path
-      Topic: /point_lio/path
-    - Class: rviz_default_plugins/Path
-      Name: local_path
-      Topic: /path
-    - Class: rviz_default_plugins/Marker
-      Name: far_path
-      Topic: /viz_path_topic
-    - Class: rviz_default_plugins/Marker
-      Name: far_nodes
-      Topic: /viz_node_topic
-    - Class: rviz_default_plugins/Marker
-      Name: far_graph
-      Topic: /viz_graph_topic
-    - Class: rviz_default_plugins/Marker
-      Name: far_poly
-      Topic: /viz_poly_topic
-    - Class: rviz_default_plugins/Marker
-      Name: far_contour
-      Topic: /viz_contour_topic
-    - Class: rviz_default_plugins/Marker
-      Name: far_grid
-      Topic: /viz_grid_map_topic
-    - Class: rviz_default_plugins/Marker
-      Name: far_viewpoint
-      Topic: /viz_viewpoint_extend_topic
-    - Class: rviz_default_plugins/Odometry
-      Name: ground_truth
-      Topic: /sim/ground_truth_odom
+    - Class: rviz_default_plugins/Grid
+      Enabled: true
+      Name: MuJoCo world grid
+      Plane: XY
+      Cell Size: 1
+      Plane Cell Count: 20
+    - Class: rviz_default_plugins/Axes
+      Enabled: true
+      Name: Map axes
+      Reference Frame: map
+      Length: 1
+      Radius: 0.04
     - Class: rviz_default_plugins/RobotModel
-      Name: Go2_RARS01
+      Enabled: true
+      Name: MuJoCo Go2 model (actual pose and joints)
       Robot Description: robot_description
       Visual Enabled: true
       Collision Enabled: false
+    - Class: rviz_default_plugins/MarkerArray
+      Enabled: true
+      Name: MuJoCo semantic scene
+      Topic:
+        Value: /stage4d/scene_markers
+    - Class: rviz_default_plugins/Path
+      Enabled: true
+      Name: Point-LIO trajectory
+      Topic:
+        Value: /point_lio/path
+    - Class: rviz_default_plugins/Path
+      Enabled: true
+      Name: Local path
+      Topic:
+        Value: /path
+    - Class: rviz_default_plugins/Marker
+      Enabled: true
+      Name: FAR selected path
+      Topic:
+        Value: /viz_path_topic
+    - Class: rviz_default_plugins/PointCloud2
+      Enabled: false
+      Name: Registered scan (enable for sensor debugging)
+      Topic:
+        Value: /registered_scan
+    - Class: rviz_default_plugins/PointCloud2
+      Enabled: false
+      Name: Terrain map (enable for planner debugging)
+      Topic:
+        Value: /terrain_map
+    - Class: rviz_default_plugins/PointCloud2
+      Enabled: false
+      Name: Extended terrain map (enable for planner debugging)
+      Topic:
+        Value: /terrain_map_ext
+    - Class: rviz_default_plugins/Marker
+      Enabled: false
+      Name: FAR graph (debug)
+      Topic:
+        Value: /viz_graph_topic
+    - Class: rviz_default_plugins/Marker
+      Enabled: false
+      Name: FAR nodes (debug)
+      Topic:
+        Value: /viz_node_topic
+    - Class: rviz_default_plugins/Marker
+      Enabled: false
+      Name: FAR contour (debug)
+      Topic:
+        Value: /viz_contour_topic
+    - Class: rviz_default_plugins/PointCloud2
+      Enabled: false
+      Name: Raw L1 emulation (debug)
+      Topic:
+        Value: /utlidar/cloud
+    - Class: rviz_default_plugins/PointCloud2
+      Enabled: false
+      Name: Transformed L1 (debug)
+      Topic:
+        Value: /utlidar/transformed_cloud
   Global Options:
     Fixed Frame: map
   Name: root

@@ -18,3 +18,5 @@ lidar_horizontal_samples: 360
 lidar_vertical_lines: 18
 lidar_min_range: 0.5
 lidar_max_range: 100.0
+# Let MuJoCo settle and the RL standing phase complete before Point-LIO initializes.
+sensor_start_delay: 12.0

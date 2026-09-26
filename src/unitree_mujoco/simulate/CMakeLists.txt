@@ -18,6 +18,7 @@ find_package(tf2_ros REQUIRED)
 find_package(unitree_go REQUIRED)
 find_package(sensor_msgs REQUIRED)
 find_package(std_srvs REQUIRED)
+find_package(rosgraph_msgs REQUIRED)
 
 file(GLOB SIM_SRC
     src/joystick/joystick.cc
@@ -35,7 +36,7 @@ set(SIM_DEPENDENCIES
 
 add_executable(unitree_mujoco ${SIM_SRC} src/main.cc)
 target_link_libraries(unitree_mujoco ${SIM_DEPENDENCIES})
-ament_target_dependencies(unitree_mujoco rclcpp nav_msgs geometry_msgs tf2_ros std_msgs sensor_msgs std_srvs unitree_go)
+ament_target_dependencies(unitree_mujoco rclcpp nav_msgs geometry_msgs tf2_ros std_msgs sensor_msgs std_srvs rosgraph_msgs unitree_go)
 
 add_executable(test_unitree_sdk2 test/test_unitree_sdk2.cpp)
 target_link_libraries(test_unitree_sdk2 unitree_sdk2)
@@ -53,5 +54,6 @@ install(TARGETS
 set(CMAKE_BUILD_TYPE Release)
 install(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/../unitree_robots/go2_rars01/generated/ DESTINATION share/${PROJECT_NAME}/urdf)
 install(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/../unitree_robots/go2_rars01/assets/ DESTINATION share/${PROJECT_NAME}/assets)
+install(FILES ${CMAKE_CURRENT_SOURCE_DIR}/../unitree_robots/go2_rars01/scene_stage4d.xml DESTINATION share/${PROJECT_NAME}/scene)
 
 ament_package()

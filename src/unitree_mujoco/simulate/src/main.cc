@@ -27,6 +27,8 @@
 #include <cmath>
 #include <stdexcept>
 #include <array>
+#include <vector>
+#include <limits>
 #include <atomic>
 #include <sstream>
 
@@ -48,6 +50,7 @@
 #include <std_msgs/msg/float64.hpp>
 #include <std_msgs/msg/int64.hpp>
 #include <std_msgs/msg/string.hpp>
+#include <rosgraph_msgs/msg/clock.hpp>
 #include <sensor_msgs/msg/imu.hpp>
 #include <sensor_msgs/msg/point_cloud2.hpp>
 #include <sensor_msgs/point_cloud2_iterator.hpp>
@@ -112,11 +115,38 @@ namespace
     int lidar_vertical_lines = 18;
     double lidar_min_range = 0.5;
     double lidar_max_range = 100.0;
+    // Do not initialize the estimator while the robot is still settling onto
+    // its nominal stance.  This is simulation time, not wall-clock time.
+    double sensor_start_delay = 12.0;
 
     int enable_elastic_band = 0;
     int band_attached_link = 0;
 
   } config;
+
+  builtin_interfaces::msg::Time SimStamp(mjtNum seconds) {
+    const int64_t total_ns = static_cast<int64_t>(seconds * 1.0e9);
+    builtin_interfaces::msg::Time stamp;
+    stamp.sec = static_cast<int32_t>(total_ns / 1000000000LL);
+    stamp.nanosec = static_cast<uint32_t>(total_ns % 1000000000LL);
+    return stamp;
+  }
+
+  class MujocoClockPublisher {
+  public:
+    MujocoClockPublisher() : node_(std::make_shared<rclcpp::Node>("mujoco_clock")) {
+      pub_ = node_->create_publisher<rosgraph_msgs::msg::Clock>("/clock", 10);
+    }
+    void Publish(const mjData* data) {
+      rosgraph_msgs::msg::Clock msg;
+      msg.clock = SimStamp(data->time);
+      pub_->publish(msg);
+    }
+  private:
+    rclcpp::Node::SharedPtr node_;
+    rclcpp::Publisher<rosgraph_msgs::msg::Clock>::SharedPtr pub_;
+  };
+  std::unique_ptr<MujocoClockPublisher> mujoco_clock;
 
   // Stage-4 uses the native ROS message transport, not SDK2's private DDS
   // channel.  It prevents the SDK2 allocator crash on localhost and exactly
@@ -307,7 +337,6 @@ namespace
     MujocoGroundTruthOdom()
         : node_(std::make_shared<rclcpp::Node>("mujoco_ground_truth_odom")) {
       odom_pub_ = node_->create_publisher<nav_msgs::msg::Odometry>(config.odom_topic, 10);
-      tf_broadcaster_ = std::make_unique<tf2_ros::TransformBroadcaster>(node_);
     }
 
     void Publish(const mjModel* model, const mjData* data) {
@@ -326,7 +355,7 @@ namespace
       }
 
       nav_msgs::msg::Odometry odom;
-      odom.header.stamp = node_->now();
+      odom.header.stamp = SimStamp(data->time);
       odom.header.frame_id = config.world_frame;
       odom.child_frame_id = config.base_body;
       odom.pose.pose.position.x = data->qpos[qpos_adr + 0];
@@ -348,14 +377,6 @@ namespace
       odom.twist.twist.linear.z = body_velocity[5];
       odom_pub_->publish(odom);
 
-      geometry_msgs::msg::TransformStamped transform;
-      transform.header = odom.header;
-      transform.child_frame_id = odom.child_frame_id;
-      transform.transform.translation.x = odom.pose.pose.position.x;
-      transform.transform.translation.y = odom.pose.pose.position.y;
-      transform.transform.translation.z = odom.pose.pose.position.z;
-      transform.transform.rotation = odom.pose.pose.orientation;
-      tf_broadcaster_->sendTransform(transform);
     }
 
   private:
@@ -379,7 +400,6 @@ namespace
 
     rclcpp::Node::SharedPtr node_;
     rclcpp::Publisher<nav_msgs::msg::Odometry>::SharedPtr odom_pub_;
-    std::unique_ptr<tf2_ros::TransformBroadcaster> tf_broadcaster_;
     const mjModel* resolved_model_ = nullptr;
     int base_body_id_ = -1;
     int freejoint_id_ = -1;
@@ -519,9 +539,10 @@ namespace
         : node_(std::make_shared<rclcpp::Node>("mujoco_pointlio_sensor_bridge")),
           lidar_rate_(cfg.lidar_rate), horizontal_samples_(cfg.lidar_horizontal_samples),
           vertical_lines_(cfg.lidar_vertical_lines), min_range_(cfg.lidar_min_range),
-          max_range_(cfg.lidar_max_range) {
-      imu_pub_ = node_->create_publisher<sensor_msgs::msg::Imu>("/unilidar/imu", 20);
-      cloud_pub_ = node_->create_publisher<sensor_msgs::msg::PointCloud2>("/unilidar/cloud", 5);
+          max_range_(cfg.lidar_max_range), sensor_start_delay_(cfg.sensor_start_delay) {
+      imu_pub_ = node_->create_publisher<sensor_msgs::msg::Imu>("/utlidar/imu", 20);
+      cloud_pub_ = node_->create_publisher<sensor_msgs::msg::PointCloud2>("/utlidar/cloud", 5);
+      diagnostics_pub_ = node_->create_publisher<std_msgs::msg::String>("/mujoco/lidar_diagnostics", 10);
       lidar_toggle_ = node_->create_service<std_srvs::srv::SetBool>(
           "/mujoco/lidar_enable", [this](const std::shared_ptr<std_srvs::srv::SetBool::Request> req,
                                            std::shared_ptr<std_srvs::srv::SetBool::Response> res) {
@@ -545,15 +566,25 @@ namespace
       if (!Resolve(model)) return;
       if (data->time + 1.0e-9 < last_sim_time_) {
         next_lidar_time_ = data->time;
-        physics_ticks_ = 0;
+        next_imu_time_ = data->time;
       }
       last_sim_time_ = data->time;
-      ++physics_ticks_;
-      if (imu_enabled_.load() && (physics_ticks_ % 2) == 0) PublishImu(model, data);
-      if (lidar_enabled_.load() && data->time + 1.0e-9 >= next_lidar_time_) {
-        PublishLidar(model, data);
-        next_lidar_time_ = data->time + 1.0 / std::max(1.0, lidar_rate_);
+      // The Go2 starts from the floor and spends its initial seconds settling
+      // and entering the RL stance.  Feeding that transient to Point-LIO makes
+      // its stationary gravity initialization invalid.
+      if (data->time + 1.0e-9 < sensor_start_delay_) {
+        scan_active_ = false;
+        next_imu_time_ = sensor_start_delay_;
+        next_lidar_time_ = sensor_start_delay_;
+        return;
       }
+      if (imu_enabled_.load() && data->time + 1.0e-9 >= next_imu_time_) {
+        PublishImu(data);
+        next_imu_time_ = data->time + 0.01;  // original UTLidar Point-LIO contract: 100 Hz
+      }
+      // A cloud is assembled over one scan period from physics-time raycasts,
+      // so each point's time field is truthful rather than a synthetic zero.
+      if (lidar_enabled_.load()) PublishLidar(model, data);
     }
 
   private:
@@ -562,135 +593,183 @@ namespace
       if (sensor < 0 || model->sensor_dim[sensor] != dimension) return -1;
       return model->sensor_adr[sensor];
     }
-
+    static std::array<double, 4> MultiplyQuaternion(const std::array<double, 4>& a,
+                                                      const std::array<double, 4>& b) {
+      // MuJoCo sensor order is w,x,y,z.
+      return {a[0]*b[0] - a[1]*b[1] - a[2]*b[2] - a[3]*b[3],
+              a[0]*b[1] + a[1]*b[0] + a[2]*b[3] - a[3]*b[2],
+              a[0]*b[2] - a[1]*b[3] + a[2]*b[0] + a[3]*b[1],
+              a[0]*b[3] + a[1]*b[2] - a[2]*b[1] + a[3]*b[0]};
+    }
+    static std::array<double, 3> BodyToRawVector(const std::array<double, 3>& body) {
+      // Inverse of transform_everything.py: Ry(15.1 deg) * diag(1,-1,-1).
+      constexpr double theta = 15.1 * M_PI / 180.0;
+      const double x = std::cos(theta) * body[0] + std::sin(theta) * body[2];
+      const double y = body[1];
+      const double z = -std::sin(theta) * body[0] + std::cos(theta) * body[2];
+      return {x, -y, -z};
+    }
     bool Resolve(const mjModel* model) {
       if (resolved_model_ == model) return ready_;
       resolved_model_ = model;
       radar_body_id_ = mj_name2id(model, mjOBJ_BODY, "radar");
-      base_body_id_ = mj_name2id(model, mjOBJ_BODY, "base");
+      floor_geom_id_ = mj_name2id(model, mjOBJ_GEOM, "floor");
       imu_quat_adr_ = SensorAddress(model, "imu_quat", 4);
       imu_gyro_adr_ = SensorAddress(model, "imu_gyro", 3);
       imu_acc_adr_ = SensorAddress(model, "imu_acc", 3);
-      ready_ = radar_body_id_ >= 0 && base_body_id_ >= 0 && imu_quat_adr_ >= 0 &&
+      ready_ = radar_body_id_ >= 0 && floor_geom_id_ >= 0 && imu_quat_adr_ >= 0 &&
                imu_gyro_adr_ >= 0 && imu_acc_adr_ >= 0;
-      next_lidar_time_ = 0.0;
+      next_lidar_time_ = sensor_start_delay_;
+      next_imu_time_ = sensor_start_delay_;
       last_sim_time_ = -1.0e30;
+      scan_active_ = false;
       if (ready_) {
         RCLCPP_INFO(node_->get_logger(),
-                    "Point-LIO sensors ready: /unilidar/imu=250Hz, /unilidar/cloud=%.1fHz, frame=unilidar, scan=%dx%d",
-                    lidar_rate_, vertical_lines_, horizontal_samples_);
+                    "L1 emulation ready: /utlidar/imu=100Hz, /utlidar/cloud=%.1fHz, scan=%dx%d, start_delay=%.1fs, environment group=0",
+                    lidar_rate_, vertical_lines_, horizontal_samples_, sensor_start_delay_);
       } else {
-        RCLCPP_ERROR(node_->get_logger(), "Point-LIO sensor bridge missing radar/body or IMU sensors");
+        RCLCPP_ERROR(node_->get_logger(), "L1 emulation missing radar, floor, or IMU sensors");
       }
       return ready_;
     }
-
-    builtin_interfaces::msg::Time SimStamp(mjtNum seconds) const {
-      builtin_interfaces::msg::Time stamp;
-      const int64_t total_ns = static_cast<int64_t>(seconds * 1.0e9);
-      stamp.sec = static_cast<int32_t>(total_ns / 1000000000LL);
-      stamp.nanosec = static_cast<uint32_t>(total_ns % 1000000000LL);
-      return stamp;
-    }
-
-    void PublishImu(const mjModel*, const mjData* data) {
+    void PublishImu(const mjData* data) {
       sensor_msgs::msg::Imu msg;
       msg.header.stamp = SimStamp(data->time);
-      msg.header.frame_id = "imu";
-      msg.orientation.w = data->sensordata[imu_quat_adr_ + 0];
-      msg.orientation.x = data->sensordata[imu_quat_adr_ + 1];
-      msg.orientation.y = data->sensordata[imu_quat_adr_ + 2];
-      msg.orientation.z = data->sensordata[imu_quat_adr_ + 3];
-      msg.angular_velocity.x = data->sensordata[imu_gyro_adr_ + 0];
-      msg.angular_velocity.y = data->sensordata[imu_gyro_adr_ + 1];
-      msg.angular_velocity.z = data->sensordata[imu_gyro_adr_ + 2];
-      msg.linear_acceleration.x = data->sensordata[imu_acc_adr_ + 0];
-      msg.linear_acceleration.y = data->sensordata[imu_acc_adr_ + 1];
-      msg.linear_acceleration.z = data->sensordata[imu_acc_adr_ + 2];
+      msg.header.frame_id = "utlidar_imu_1";
+      // The original transformer applies mount R(0, 2.878202585, pi) to raw.
+      // Publish its inverse here so its existing raw->body conversion happens exactly once.
+      constexpr double pitch = 2.8782025850555556;
+      constexpr double yaw = M_PI;
+      const std::array<double, 4> mount = {std::cos(pitch/2)*std::cos(yaw/2),
+                                            -std::sin(pitch/2)*std::sin(yaw/2),
+                                             std::sin(pitch/2)*std::cos(yaw/2),
+                                             std::cos(pitch/2)*std::sin(yaw/2)};
+      const std::array<double, 4> inv_mount = {mount[0], -mount[1], -mount[2], -mount[3]};
+      const std::array<double, 4> body_q = {data->sensordata[imu_quat_adr_], data->sensordata[imu_quat_adr_ + 1],
+                                             data->sensordata[imu_quat_adr_ + 2], data->sensordata[imu_quat_adr_ + 3]};
+      const auto raw_q = MultiplyQuaternion(inv_mount, body_q);
+      msg.orientation.w = raw_q[0]; msg.orientation.x = raw_q[1];
+      msg.orientation.y = raw_q[2]; msg.orientation.z = raw_q[3];
+      const auto raw_w = BodyToRawVector({data->sensordata[imu_gyro_adr_], data->sensordata[imu_gyro_adr_ + 1], data->sensordata[imu_gyro_adr_ + 2]});
+      const auto raw_a = BodyToRawVector({data->sensordata[imu_acc_adr_], data->sensordata[imu_acc_adr_ + 1], data->sensordata[imu_acc_adr_ + 2]});
+      msg.angular_velocity.x = raw_w[0]; msg.angular_velocity.y = raw_w[1]; msg.angular_velocity.z = raw_w[2];
+      msg.linear_acceleration.x = raw_a[0]; msg.linear_acceleration.y = raw_a[1]; msg.linear_acceleration.z = raw_a[2];
       imu_pub_->publish(msg);
-      if (!logged_imu_) {
-        logged_imu_ = true;
-        RCLCPP_INFO(node_->get_logger(),
-                    "Stationary IMU sample frame=%s gyro=[%.3f %.3f %.3f] acc=[%.3f %.3f %.3f]",
-                    msg.header.frame_id.c_str(), msg.angular_velocity.x, msg.angular_velocity.y,
-                    msg.angular_velocity.z, msg.linear_acceleration.x, msg.linear_acceleration.y,
-                    msg.linear_acceleration.z);
-      }
     }
+    struct LidarHit { float x, y, z, intensity, time; uint16_t ring; };
 
     void PublishLidar(const mjModel* model, const mjData* data) {
-      const int count = std::max(1, vertical_lines_) * std::max(1, horizontal_samples_);
-      sensor_msgs::msg::PointCloud2 cloud;
-      cloud.header.stamp = SimStamp(data->time);
-      cloud.header.frame_id = "unilidar";
-      sensor_msgs::PointCloud2Modifier modifier(cloud);
-      modifier.setPointCloud2Fields(6,
-          "x", 1, sensor_msgs::msg::PointField::FLOAT32,
-          "y", 1, sensor_msgs::msg::PointField::FLOAT32,
-          "z", 1, sensor_msgs::msg::PointField::FLOAT32,
-          "intensity", 1, sensor_msgs::msg::PointField::FLOAT32,
-          "time", 1, sensor_msgs::msg::PointField::FLOAT32,
-          "ring", 1, sensor_msgs::msg::PointField::UINT16);
-      modifier.resize(count);
-      sensor_msgs::PointCloud2Iterator<float> x_it(cloud, "x");
-      sensor_msgs::PointCloud2Iterator<float> y_it(cloud, "y");
-      sensor_msgs::PointCloud2Iterator<float> z_it(cloud, "z");
-      sensor_msgs::PointCloud2Iterator<float> intensity_it(cloud, "intensity");
-      sensor_msgs::PointCloud2Iterator<float> time_it(cloud, "time");
-      sensor_msgs::PointCloud2Iterator<uint16_t> ring_it(cloud, "ring");
-      const mjtNum* origin = data->xpos + 3 * radar_body_id_;
-      const mjtNum* rotation = data->xmat + 9 * radar_body_id_;
+      const int rows = std::max(1, vertical_lines_);
+      const int cols = std::max(1, horizontal_samples_);
+      const int rays = rows * cols;
       const double scan_period = 1.0 / std::max(1.0, lidar_rate_);
-      for (int row = 0; row < std::max(1, vertical_lines_); ++row) {
-        const double vertical = (-15.0 + 30.0 * row / std::max(1, vertical_lines_ - 1)) * M_PI / 180.0;
-        for (int col = 0; col < std::max(1, horizontal_samples_); ++col) {
-          const double horizontal = 2.0 * M_PI * col / std::max(1, horizontal_samples_);
-          const double local_dir[3] = {std::cos(vertical) * std::cos(horizontal),
-                                       std::cos(vertical) * std::sin(horizontal), std::sin(vertical)};
-          mjtNum world_dir[3] = {
-              rotation[0] * local_dir[0] + rotation[1] * local_dir[1] + rotation[2] * local_dir[2],
-              rotation[3] * local_dir[0] + rotation[4] * local_dir[1] + rotation[5] * local_dir[2],
-              rotation[6] * local_dir[0] + rotation[7] * local_dir[1] + rotation[8] * local_dir[2]};
-          int geom_id[1] = {-1};
-          const mjtNum distance = mj_ray(model, data, origin, world_dir, nullptr, 1, base_body_id_, geom_id);
-          const bool valid = geom_id[0] >= 0 && distance >= min_range_ && distance <= max_range_;
-          const float range = static_cast<float>(valid ? distance : max_range_);
-          *x_it = range * static_cast<float>(local_dir[0]);
-          *y_it = range * static_cast<float>(local_dir[1]);
-          *z_it = range * static_cast<float>(local_dir[2]);
-          *intensity_it = valid ? 1.0F : 0.0F;
-          *time_it = static_cast<float>(scan_period * col / std::max(1, horizontal_samples_));
-          *ring_it = static_cast<uint16_t>(row);
-          ++x_it; ++y_it; ++z_it; ++intensity_it; ++time_it; ++ring_it;
-        }
+      if (!scan_active_) {
+        scan_active_ = true;
+        scan_start_time_ = data->time;
+        scan_next_ray_ = 0;
+        scan_hits_.clear();
+        scan_floor_hits_ = 0;
+        scan_non_floor_hits_ = 0;
+        scan_min_hit_ = std::numeric_limits<double>::infinity();
+        scan_max_hit_ = 0.0;
       }
+
+      // One azimuth column per instant: all vertical channels share that
+      // instant.  This produces the exact Point-LIO `time` contract while
+      // retaining actual MuJoCo poses/ray intersections for every slice.
+      const double elapsed = std::max(0.0, static_cast<double>(data->time - scan_start_time_));
+      const int target = std::min(rays, std::max(scan_next_ray_,
+          static_cast<int>(std::floor((elapsed / scan_period) * rays + 1.0e-9))));
+      const int count = target - scan_next_ray_;
+      if (count > 0) {
+        std::vector<mjtNum> world_dirs(3 * count);
+        std::vector<std::array<float, 3>> local_dirs(count);
+        std::vector<uint16_t> rings(count);
+        std::vector<float> offsets(count);
+        const mjtNum* rotation = data->xmat + 9 * radar_body_id_;
+        for (int j = 0; j < count; ++j) {
+          const int ray = scan_next_ray_ + j;
+          const int col = ray / rows;
+          const int row = ray % rows;
+          const double vertical = (-15.0 + 30.0 * row / std::max(1, rows - 1)) * M_PI / 180.0;
+          const double horizontal = 2.0 * M_PI * col / cols;
+          const std::array<float, 3> local = {static_cast<float>(std::cos(vertical) * std::cos(horizontal)),
+                                               static_cast<float>(std::cos(vertical) * std::sin(horizontal)),
+                                               static_cast<float>(std::sin(vertical))};
+          local_dirs[j] = local;
+          rings[j] = static_cast<uint16_t>(row);
+          offsets[j] = static_cast<float>(scan_period * col / cols);
+          world_dirs[3*j+0] = rotation[0]*local[0] + rotation[1]*local[1] + rotation[2]*local[2];
+          world_dirs[3*j+1] = rotation[3]*local[0] + rotation[4]*local[1] + rotation[5]*local[2];
+          world_dirs[3*j+2] = rotation[6]*local[0] + rotation[7]*local[1] + rotation[8]*local[2];
+        }
+        std::array<mjtByte, mjNGROUP> environment_mask{};
+        environment_mask[0] = 1;
+        std::vector<int> geom_ids(count, -1);
+        std::vector<mjtNum> distances(count, -1.0);
+        const mjtNum* origin = data->xpos + 3 * radar_body_id_;
+        mj_multiRay(model, const_cast<mjData*>(data), origin, world_dirs.data(), environment_mask.data(), 1,
+                    -1, geom_ids.data(), distances.data(), count, static_cast<mjtNum>(max_range_));
+        for (int j = 0; j < count; ++j) {
+          const mjtNum distance = distances[j];
+          if (geom_ids[j] < 0 || !std::isfinite(static_cast<double>(distance)) ||
+              distance < min_range_ || distance > max_range_) continue;
+          const auto& dir = local_dirs[j];
+          scan_hits_.push_back({static_cast<float>(distance)*dir[0], static_cast<float>(distance)*dir[1],
+                                static_cast<float>(distance)*dir[2], 1.0F, offsets[j], rings[j]});
+          scan_min_hit_ = std::min(scan_min_hit_, static_cast<double>(distance));
+          scan_max_hit_ = std::max(scan_max_hit_, static_cast<double>(distance));
+          if (geom_ids[j] == floor_geom_id_) ++scan_floor_hits_; else ++scan_non_floor_hits_;
+        }
+        scan_next_ray_ = target;
+      }
+      if (scan_next_ray_ < rays) return;
+
+      sensor_msgs::msg::PointCloud2 cloud;
+      cloud.header.stamp = SimStamp(scan_start_time_);
+      cloud.header.frame_id = "utlidar_lidar_1";
+      sensor_msgs::PointCloud2Modifier modifier(cloud);
+      modifier.setPointCloud2Fields(6, "x", 1, sensor_msgs::msg::PointField::FLOAT32,
+          "y", 1, sensor_msgs::msg::PointField::FLOAT32, "z", 1, sensor_msgs::msg::PointField::FLOAT32,
+          "intensity", 1, sensor_msgs::msg::PointField::FLOAT32, "time", 1, sensor_msgs::msg::PointField::FLOAT32,
+          "ring", 1, sensor_msgs::msg::PointField::UINT16);
+      modifier.resize(scan_hits_.size());
+      sensor_msgs::PointCloud2Iterator<float> x(cloud, "x"), y(cloud, "y"), z(cloud, "z"), intensity(cloud, "intensity"), time(cloud, "time");
+      sensor_msgs::PointCloud2Iterator<uint16_t> ring(cloud, "ring");
+      for (const auto& hit : scan_hits_) { *x=hit.x; *y=hit.y; *z=hit.z; *intensity=hit.intensity; *time=hit.time; *ring=hit.ring; ++x; ++y; ++z; ++intensity; ++time; ++ring; }
       cloud_pub_->publish(cloud);
+      if (data->time + 1.0e-9 >= next_diagnostics_time_) {
+        next_diagnostics_time_ = data->time + 1.0;
+        std_msgs::msg::String diagnostic;
+        std::ostringstream out;
+        out << "{\"total_rays\":" << rays << ",\"valid_hits\":" << scan_hits_.size()
+            << ",\"hit_ratio\":" << (static_cast<double>(scan_hits_.size())/rays)
+            << ",\"min_valid_range\":" << (scan_hits_.empty() ? 0.0 : scan_min_hit_)
+            << ",\"max_valid_range\":" << scan_max_hit_ << ",\"floor_hits\":" << scan_floor_hits_
+            << ",\"non_floor_hits\":" << scan_non_floor_hits_ << "}";
+        diagnostic.data = out.str();
+        diagnostics_pub_->publish(diagnostic);
+      }
+      scan_active_ = false;
     }
 
     rclcpp::Node::SharedPtr node_;
     rclcpp::Publisher<sensor_msgs::msg::Imu>::SharedPtr imu_pub_;
     rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr cloud_pub_;
-    rclcpp::Service<std_srvs::srv::SetBool>::SharedPtr lidar_toggle_;
-    rclcpp::Service<std_srvs::srv::SetBool>::SharedPtr imu_toggle_;
+    rclcpp::Publisher<std_msgs::msg::String>::SharedPtr diagnostics_pub_;
+    rclcpp::Service<std_srvs::srv::SetBool>::SharedPtr lidar_toggle_, imu_toggle_;
     std::thread spin_thread_;
-    std::atomic<bool> lidar_enabled_{true};
-    std::atomic<bool> imu_enabled_{true};
+    std::atomic<bool> lidar_enabled_{true}, imu_enabled_{true};
     const mjModel* resolved_model_ = nullptr;
-    int radar_body_id_ = -1;
-    int base_body_id_ = -1;
-    int imu_quat_adr_ = -1;
-    int imu_gyro_adr_ = -1;
-    int imu_acc_adr_ = -1;
+    int radar_body_id_ = -1, floor_geom_id_ = -1, imu_quat_adr_ = -1, imu_gyro_adr_ = -1, imu_acc_adr_ = -1;
     bool ready_ = false;
-    bool logged_imu_ = false;
-    uint64_t physics_ticks_ = 0;
-    mjtNum next_lidar_time_ = 0.0;
-    mjtNum last_sim_time_ = -1.0e30;
-    double lidar_rate_;
-    int horizontal_samples_;
-    int vertical_lines_;
-    double min_range_;
-    double max_range_;
+    mjtNum next_lidar_time_ = 0.0, next_imu_time_ = 0.0, next_diagnostics_time_ = 0.0, last_sim_time_ = -1.0e30;
+    double lidar_rate_; int horizontal_samples_, vertical_lines_; double min_range_, max_range_, sensor_start_delay_;
+    bool scan_active_ = false;
+    mjtNum scan_start_time_ = 0.0;
+    int scan_next_ray_ = 0, scan_floor_hits_ = 0, scan_non_floor_hits_ = 0;
+    double scan_min_hit_ = std::numeric_limits<double>::infinity(), scan_max_hit_ = 0.0;
+    std::vector<LidarHit> scan_hits_;
   };
 
   std::unique_ptr<MujocoPointLioSensorBridge> pointlio_sensor_bridge;
@@ -1077,6 +1156,7 @@ namespace
               if (ros_low_level_bridge) ros_low_level_bridge->Apply(m, d);
               // run single step, let next iteration deal with timing
               mj_step(m, d);
+              if (mujoco_clock) mujoco_clock->Publish(d);
               if (ros_low_level_bridge) ros_low_level_bridge->Publish(m, d);
               if (ground_truth_odom) ground_truth_odom->Publish(m, d);
               if (collision_diagnostics) collision_diagnostics->Observe(m, d);
@@ -1125,6 +1205,7 @@ namespace
                 if (ros_low_level_bridge) ros_low_level_bridge->Apply(m, d);
                 // call mj_step
                 mj_step(m, d);
+                if (mujoco_clock) mujoco_clock->Publish(d);
                 if (ros_low_level_bridge) ros_low_level_bridge->Publish(m, d);
                 if (ground_truth_odom) ground_truth_odom->Publish(m, d);
                 if (collision_diagnostics) collision_diagnostics->Observe(m, d);
@@ -1200,7 +1281,11 @@ void PhysicsThread(mj::Simulate *sim, const char *filename)
   mj_deleteData(d);
   mj_deleteModel(m);
 
-  exit(0);
+  ctrlnoise = nullptr;
+  d = nullptr;
+  m = nullptr;
+  mujoco_ready.store(false);
+  return;
 }
 
 void *UnitreeSdk2BridgeThread(void *arg)
@@ -1235,7 +1320,7 @@ void *UnitreeSdk2BridgeThread(void *arg)
 
   unitree_interface.Run();
 
-  pthread_exit(NULL);
+  return nullptr;
 }
 //------------------------------------------ main --------------------------------------------------
 
@@ -1317,6 +1402,7 @@ int main(int argc, char **argv)
   config.lidar_vertical_lines = yaml_node["lidar_vertical_lines"] ? yaml_node["lidar_vertical_lines"].as<int>() : 18;
   config.lidar_min_range = yaml_node["lidar_min_range"] ? yaml_node["lidar_min_range"].as<double>() : 0.5;
   config.lidar_max_range = yaml_node["lidar_max_range"] ? yaml_node["lidar_max_range"].as<double>() : 100.0;
+  config.sensor_start_delay = yaml_node["sensor_start_delay"] ? yaml_node["sensor_start_delay"].as<double>() : 12.0;
   config.enable_elastic_band = yaml_node["enable_elastic_band"].as<int>();
   config.use_joystick = yaml_node["use_joystick"].as<int>();
   config.joystick_type = yaml_node["joystick_type"].as<std::string>();
@@ -1354,6 +1440,7 @@ int main(int argc, char **argv)
 
   if (config.robot == "go2_rars01") mjcb_control = Go2Rars01HomeHold;
   if (config.enable_ros_bridge) ros_low_level_bridge = std::make_unique<MujocoRosLowLevelBridge>();
+  mujoco_clock = std::make_unique<MujocoClockPublisher>();
   ground_truth_odom = std::make_unique<MujocoGroundTruthOdom>();
   collision_diagnostics = std::make_unique<MujocoCollisionDiagnostics>();
   pointlio_sensor_bridge = std::make_unique<MujocoPointLioSensorBridge>(config);
@@ -1362,9 +1449,14 @@ int main(int argc, char **argv)
   std::thread physicsthreadhandle(&PhysicsThread, sim.get(), filename);
   // start simulation UI loop (blocking call)
   sim->RenderLoop();
+  sim->exitrequest.store(true);
   physicsthreadhandle.join();
 
   rclcpp::shutdown();
-  pthread_exit(NULL);
+  pointlio_sensor_bridge.reset();
+  collision_diagnostics.reset();
+  ground_truth_odom.reset();
+  ros_low_level_bridge.reset();
+  mujoco_clock.reset();
   return 0;
 }
