@@ -3,6 +3,7 @@
 import math
 import time
 import rclpy
+import argparse
 from nav_msgs.msg import Odometry
 from rclpy.node import Node
 from rclpy.qos import DurabilityPolicy, QoSProfile
@@ -10,8 +11,9 @@ from std_msgs.msg import Bool
 
 
 class PointLioStateAdapter(Node):
-    def __init__(self):
+    def __init__(self, output_frame="map"):
         super().__init__("pointlio_state_adapter")
+        self.output_frame = output_frame
         self.pub = self.create_publisher(Odometry, "/state_estimation", 10)
         qos = QoSProfile(depth=1, durability=DurabilityPolicy.TRANSIENT_LOCAL)
         self.ready_pub = self.create_publisher(Bool, "/pointlio_ready", qos)
@@ -39,7 +41,7 @@ class PointLioStateAdapter(Node):
         self.last_valid_wall = time.monotonic()
         out = Odometry()
         out.header = msg.header
-        out.header.frame_id = "map"
+        out.header.frame_id = self.output_frame
         out.child_frame_id = msg.child_frame_id or "base"
         out.pose = msg.pose
         out.twist = msg.twist
@@ -52,8 +54,11 @@ class PointLioStateAdapter(Node):
 
 
 def main():
+    parser = argparse.ArgumentParser(add_help=False)
+    parser.add_argument("--frame", default="map")
+    args, _ = parser.parse_known_args()
     rclpy.init()
-    node = PointLioStateAdapter()
+    node = PointLioStateAdapter(args.frame)
     try:
         rclpy.spin(node)
     except KeyboardInterrupt:

@@ -1,0 +1,51 @@
+Panels:
+  - Class: rviz_common/Displays
+    Name: Displays
+Visualization Manager:
+  Class: ""
+  Displays:
+    - Class: rviz_default_plugins/PointCloud2
+      Name: raw_lidar
+      Topic: /unilidar/cloud
+    - Class: rviz_default_plugins/PointCloud2
+      Name: cloud_registered
+      Topic: /cloud_registered
+    - Class: rviz_default_plugins/PointCloud2
+      Name: terrain_map
+      Topic: /terrain_map
+    - Class: rviz_default_plugins/PointCloud2
+      Name: terrain_map_ext
+      Topic: /terrain_map_ext
+    - Class: rviz_default_plugins/Path
+      Name: point_lio_path
+      Topic: /point_lio/path
+    - Class: rviz_default_plugins/Path
+      Name: local_path
+      Topic: /path
+    - Class: rviz_default_plugins/Marker
+      Name: far_path
+      Topic: /viz_path_topic
+    - Class: rviz_default_plugins/Marker
+      Name: far_nodes
+      Topic: /viz_node_topic
+    - Class: rviz_default_plugins/Marker
+      Name: far_graph
+      Topic: /viz_graph_topic
+    - Class: rviz_default_plugins/Marker
+      Name: far_poly
+      Topic: /viz_poly_topic
+    - Class: rviz_default_plugins/Marker
+      Name: far_contour
+      Topic: /viz_contour_topic
+    - Class: rviz_default_plugins/Marker
+      Name: far_grid
+      Topic: /viz_grid_map_topic
+    - Class: rviz_default_plugins/Marker
+      Name: far_viewpoint
+      Topic: /viz_viewpoint_extend_topic
+    - Class: rviz_default_plugins/Odometry
+      Name: ground_truth
+      Topic: /sim/ground_truth_odom
+  Global Options:
+    Fixed Frame: camera_init
+  Name: root

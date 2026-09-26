@@ -150,6 +150,10 @@ install(PROGRAMS scripts/manual_twist_test.py
                  scripts/pointcloud_fields_check.py
                  scripts/stage4c_pointlio_evaluator.py
                  scripts/run_stage4c_autonomous.sh
+                 scripts/stage4d_readiness.py
+                 scripts/stage4d_send_goal.py
+                 scripts/stage4d_full_navigation_evaluator.py
+                 scripts/stage4d_stop_navigation.py
   DESTINATION lib/${PROJECT_NAME}
 )
 
