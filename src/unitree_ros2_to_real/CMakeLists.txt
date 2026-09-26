@@ -145,6 +145,7 @@ install(DIRECTORY launch/
 )
 
 install(PROGRAMS scripts/manual_twist_test.py
+                 scripts/stage4b_navigation_test.py
   DESTINATION lib/${PROJECT_NAME}
 )
 
@@ -157,6 +158,5 @@ if(BUILD_TESTING)
 endif()
 
 ament_package()
-
 
 

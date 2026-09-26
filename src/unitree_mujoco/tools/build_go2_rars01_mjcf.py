@@ -302,6 +302,15 @@ def write_scene(output_root: Path, stock_scene: Path) -> None:
     # Robot collision geoms use group 3.  Keep the visible floor explicitly in
     # group 0 so hiding group 3 never removes the ground from the viewer.
     text = text.replace('<geom name="floor" ', '<geom name="floor" group="0" ')
+    # The stock demo obstacle at x=1.5 is a rectangular plinth with a cylinder
+    # on top.  It is not part of the Stage-4 navigation world.
+    text, removed = re.subn(
+        r'\s*<geom pos="1\.5 0\.0 0\.1" type="box"[^>]*/>'
+        r'\s*<geom pos="1\.5 0\.0 0\.25" type="cylinder"[^>]*/>',
+        '', text, count=1,
+    )
+    if removed != 1:
+        raise ValueError("expected stock plinth/cylinder obstacle was not found")
     # The checked-in heightfield images are optional stock demo assets; the
     # Phase-3 smoke scene uses the plane while keeping lighting and skybox.
     text = re.sub(r"\s*<hfield[^>]*/>", "", text)

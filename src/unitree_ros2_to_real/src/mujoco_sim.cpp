@@ -483,6 +483,13 @@ void InterfaceRos::LowStateHandler(const unitree_go::msg::LowState::SharedPtr ms
     const uint32_t delta = static_cast<uint32_t>(msg->tick - last_physics_tick_);
     last_physics_tick_ = msg->tick;
     if (delta == 0) return;
+    // A simulator restart can leave one queued LowState from the previous
+    // process generation.  Do not turn that wrap/restart into a fake policy
+    // update; resume the 10:1 cadence from the new tick stream.
+    if (delta > 1000U) {
+        accumulated_physics_steps_ = 0;
+        return;
+    }
     accumulated_physics_steps_ += delta;
     if (accumulated_physics_steps_ < physics_steps_per_policy_) return;
     if (accumulated_physics_steps_ != physics_steps_per_policy_) {
@@ -582,7 +589,7 @@ void InterfaceRos::RunPolicyTick(const unitree_go::msg::LowState& state) {
     if (++command_diagnostic_tick_ >= 50) {
         command_diagnostic_tick_ = 0;
         RCLCPP_INFO(get_logger(),
-                    "cmd_vel: active=%d valid=%d stale=%d age=%.3fs safe=[%.2f %.2f %.2f], policy=50Hz (dt=0.005, decimation=4)",
+                    "cmd_vel: active=%d valid=%d stale=%d age=%.3fs safe=[%.2f %.2f %.2f], policy=50Hz (physics_dt=0.002, steps/policy=10)",
                     safe_command.navigation_active, safe_command.has_valid_command, safe_command.stale,
                     safe_command.age_sec, safe_command.value[0], safe_command.value[1], safe_command.value[2]);
     }

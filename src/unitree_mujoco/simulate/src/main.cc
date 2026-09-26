@@ -299,9 +299,12 @@ namespace
 
     void Publish(const mjModel* model, const mjData* data) {
       if (!Resolve(model)) return;
-      if (data->time + 1.0e-9 < next_publish_time_) next_publish_time_ = data->time;
+      // Reset only on an actual simulation-time rollback.  Ordinary 2 ms
+      // physics ticks must remain rate-limited to 50 Hz for planner odometry.
+      if (data->time + 1.0e-9 < last_sim_time_) next_publish_time_ = data->time;
+      last_sim_time_ = data->time;
       if (data->time + 1.0e-9 < next_publish_time_) return;
-      next_publish_time_ = data->time + 0.02;  // 50 Hz, matches RL decimation 4 x 0.005 s
+      next_publish_time_ = data->time + 0.02;  // 50 Hz, 10 x 0.002 s physics ticks
 
       const int qpos_adr = model->jnt_qposadr[freejoint_id_];
       const auto finite = [](mjtNum value) { return std::isfinite(static_cast<double>(value)); };
@@ -349,6 +352,7 @@ namespace
       base_body_id_ = mj_name2id(model, mjOBJ_BODY, config.base_body.c_str());
       freejoint_id_ = mj_name2id(model, mjOBJ_JOINT, "base_freejoint");
       next_publish_time_ = 0.0;
+      last_sim_time_ = -1.0e30;
       if (base_body_id_ < 0 || freejoint_id_ < 0 || model->jnt_type[freejoint_id_] != mjJNT_FREE) {
         RCLCPP_ERROR(node_->get_logger(),
                      "Cannot publish ground-truth odometry: need body '%s' and freejoint 'base_freejoint'",
@@ -367,6 +371,7 @@ namespace
     int base_body_id_ = -1;
     int freejoint_id_ = -1;
     mjtNum next_publish_time_ = 0.0;
+    mjtNum last_sim_time_ = -1.0e30;
   };
 
   std::unique_ptr<MujocoGroundTruthOdom> ground_truth_odom;

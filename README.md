@@ -107,6 +107,37 @@ ros2 run unitree_legged_real mujoco_sim
 ## Results WORK (with RL policy in mujoco sim)
 ![alt text](img/Screenshot%20from%202025-06-07%2000-52-52.png)
 
+## Stage 4: unified RL + MuJoCo launch
+
+Run this from the `workhop_rl` repository, not from its parent workspace.
+This is important: otherwise `$PWD/src/...` resolves to a non-existent path
+such as `/home/ruben/go2_diploma_sim2sim/src/unitree_ros2_to_real/...`.
+
+```bash
+cd /home/ruben/go2_diploma_sim2sim/repos/workhop_rl
+source /opt/ros/humble/setup.bash
+source install/setup.bash
+
+WORKSPACE_ROOT=$(cd ../.. && pwd)
+ros2 launch unitree_legged_real stage4_mujoco_navigation.launch.py \
+  rl_config_path:=$PWD/src/unitree_ros2_to_real/config/go2_rars01_unified.yaml \
+  policy_path:=$WORKSPACE_ROOT/weights/policy_1.pt \
+  mujoco_config:=config_go2_rars01.yaml
+```
+
+Expected startup line:
+
+```text
+Physics scheduler: physics_dt=0.002000, policy_dt=0.020000, steps/policy=10
+```
+
+In a second terminal (with the same `cd` and `source` commands), send a
+two-second manual command:
+
+```bash
+ros2 run unitree_legged_real manual_twist_test.py forward --activate --duration 2
+```
+
 
 ## Compilation for Real Robot
 
