@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
-set -u
 
 WORKSHOP_ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)
 cd "$WORKSHOP_ROOT"
 source /opt/ros/humble/setup.bash
 source ../autonomy_nav_go2/install/setup.bash
 source install/setup.bash
+set -u
 WORKSPACE_ROOT=$(cd ../.. && pwd)
 RUN_DIR=${STAGE4C_RUN_DIR:-"$WORKSPACE_ROOT/stage4c_runs/$(date +%Y%m%d_%H%M%S)"}
 mkdir -p "$RUN_DIR"
