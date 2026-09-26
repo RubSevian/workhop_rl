@@ -61,6 +61,7 @@ class Stage4CEvaluator(Node):
         self.timer = self.create_timer(0.1, self.tick)
         self.latest_cmd = None
         self.pointlio_ready = False
+        self.auto_start = bool(args.auto_start)
 
     def ready_cb(self, msg):
         self.pointlio_ready = bool(msg.data)
@@ -113,17 +114,23 @@ class Stage4CEvaluator(Node):
         tx, ty, da = self.align
         return tx + math.cos(da) * x - math.sin(da) * y, ty + math.sin(da) * x + math.cos(da) * y, wrap(a + da)
 
-    def start_navigation(self, _, response):
+    def start_route(self):
         if self.gt is None or self.lio is None or not self.pointlio_ready:
-            response.success = False
-            response.message = "Point-LIO/GT odometry is not ready"
-            return response
+            return False
         gx, gy, a = self.gt.pose.pose.position.x, self.gt.pose.pose.position.y, yaw(self.gt.pose.pose.orientation)
         self.goal = (gx + math.cos(a) * self.args.goal_x - math.sin(a) * self.args.goal_y,
                      gy + math.sin(a) * self.args.goal_x + math.cos(a) * self.args.goal_y)
         self.route_started = time.monotonic()
         self.active = True
         self.active_pub.publish(Bool(data=True))
+        self.get_logger().info(f"Stage-4C route started: goal=({self.goal[0]:.3f}, {self.goal[1]:.3f})")
+        return True
+
+    def start_navigation(self, _, response):
+        if not self.start_route():
+            response.success = False
+            response.message = "Point-LIO/GT odometry is not ready"
+            return response
         response.success = True
         response.message = f"Started fixed-world goal ({self.goal[0]:.3f}, {self.goal[1]:.3f})"
         return response
@@ -151,6 +158,8 @@ class Stage4CEvaluator(Node):
         goal.point.x, goal.point.y = self.goal; self.goal_pub.publish(goal)
 
     def tick(self):
+        if self.args.mode == "service" and self.auto_start and not self.active and self.route_started is None:
+            self.start_route()
         self.publish_route()
         if self.args.mode == "static" and time.monotonic() - self.started >= self.args.duration:
             self.finish()
@@ -187,6 +196,7 @@ def main():
     parser = argparse.ArgumentParser(); parser.add_argument("--mode", choices=["service", "static"], default="service")
     parser.add_argument("--goal-x", type=float, default=1.0); parser.add_argument("--goal-y", type=float, default=0.0)
     parser.add_argument("--duration", type=float, default=20.0); parser.add_argument("--stop-distance", type=float, default=0.2)
+    parser.add_argument("--auto-start", type=lambda value: value.lower() in ("1", "true", "yes"), default=False)
     parser.add_argument("--report", type=Path, default=Path("/tmp/stage4c_pointlio_report.json")); args, _ = parser.parse_known_args()
     rclpy.init(); node = Stage4CEvaluator(args)
     try: rclpy.spin(node)

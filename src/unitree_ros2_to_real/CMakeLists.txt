@@ -149,6 +149,7 @@ install(PROGRAMS scripts/manual_twist_test.py
                  scripts/pointlio_state_adapter.py
                  scripts/pointcloud_fields_check.py
                  scripts/stage4c_pointlio_evaluator.py
+                 scripts/run_stage4c_autonomous.sh
   DESTINATION lib/${PROJECT_NAME}
 )
 
