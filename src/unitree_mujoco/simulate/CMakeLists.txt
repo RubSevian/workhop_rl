@@ -11,6 +11,11 @@ list(APPEND CMAKE_PREFIX_PATH "/opt/unitree_robotics/lib/cmake")
 find_package(mujoco REQUIRED)
 find_package(unitree_sdk2 REQUIRED)
 find_package(ament_cmake REQUIRED)
+find_package(rclcpp REQUIRED)
+find_package(nav_msgs REQUIRED)
+find_package(geometry_msgs REQUIRED)
+find_package(tf2_ros REQUIRED)
+find_package(unitree_go REQUIRED)
 
 file(GLOB SIM_SRC
     src/joystick/joystick.cc
@@ -28,7 +33,7 @@ set(SIM_DEPENDENCIES
 
 add_executable(unitree_mujoco ${SIM_SRC} src/main.cc)
 target_link_libraries(unitree_mujoco ${SIM_DEPENDENCIES})
-ament_target_dependencies(unitree_mujoco ${DEPENDENCY_LIST})
+ament_target_dependencies(unitree_mujoco rclcpp nav_msgs geometry_msgs tf2_ros unitree_go)
 
 add_executable(test_unitree_sdk2 test/test_unitree_sdk2.cpp)
 target_link_libraries(test_unitree_sdk2 unitree_sdk2)

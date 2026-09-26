@@ -14,7 +14,7 @@ using std::placeholders::_1; //Для использования placeholders в
 
 RobotController::RobotController():
     init_count(0),motiontime(0),runing_time(0.0),control_mode(MODE_IDEL),
-    dt(0.02),Go2_NUM_MOTOR(12),ROBOT_NAME("go2"),
+    policy_dt(0.02),Go2_NUM_MOTOR(12),ROBOT_NAME("go2"),
     rl_inited_(false) ,
     net2joint_indexes({3, 4, 5, 0, 1, 2, 9, 10, 11, 6, 7, 8}) {
     std::fill(std::begin(qInit), std::end(qInit), 0.0f);
@@ -145,7 +145,7 @@ unitree_go::msg::LowCmd RobotController::update(const unitree_go::msg::LowState&
         }
 
         motiontime++;
-        runing_time += dt;
+        runing_time += policy_dt;
         return cmd;
     }
 
@@ -164,7 +164,7 @@ unitree_go::msg::LowCmd RobotController::update(const unitree_go::msg::LowState&
             cmd.motor_cmd[i].tau = 0.0f;
         }
 
-        runing_time += dt;
+        runing_time += policy_dt;
         return cmd;
     }
 
@@ -182,7 +182,7 @@ unitree_go::msg::LowCmd RobotController::update(const unitree_go::msg::LowState&
     cmd.motor_cmd[i].tau = 0.0f;
     }
 
-    runing_time += dt;
+    runing_time += policy_dt;
     return cmd;
 }
 
@@ -314,17 +314,35 @@ void RobotController::set_heightmap(const std::array<float, 17*11>& hm)
 }
 
 // InterfaceRos implementation
-InterfaceRos::InterfaceRos() : Node("low_level_cmd_sender") {
+InterfaceRos::InterfaceRos() : Node("low_level_cmd_sender"), command_adapter_(0.5) {
     cmd_puber = create_publisher<unitree_go::msg::LowCmd>("lowcmd", 10);
     low_cmd_pub = create_publisher<unitree_go::msg::LowCmd>("go2/low_cmd", 10);
     imu_pub = create_publisher<sensor_msgs::msg::Imu>("go2/imu", 10);
     motor_state_pub = create_publisher<sensor_msgs::msg::JointState>("go2/motor_state", 10);
     state_sub = create_subscription<unitree_go::msg::LowState>(
         "lowstate", 10, std::bind(&InterfaceRos::LowStateHandler, this, std::placeholders::_1));
+    physics_dt_sub = create_subscription<std_msgs::msg::Float64>(
+        "/mujoco/physics_dt", rclcpp::QoS(1).transient_local(),
+        std::bind(&InterfaceRos::PhysicsDtHandler, this, std::placeholders::_1));
     // subscribe to heightmap image from real robot node
     heightmap_sub = create_subscription<sensor_msgs::msg::Image>(
     "/height_map/image", 10, std::bind(&InterfaceRos::HeightmapImageHandler, this, _1));
-    timer_ = create_wall_timer(std::chrono::milliseconds(20), std::bind(&InterfaceRos::timer_callback_cmd, this));
+    const double cmd_vel_timeout_sec = declare_parameter<double>("cmd_vel_timeout_sec", 0.5);
+    const bool initial_navigation_active = declare_parameter<bool>("initial_navigation_active", false);
+    auto_start_rl_ = declare_parameter<bool>("auto_start_rl", false);
+    const std::string cmd_vel_topic = declare_parameter<std::string>("cmd_vel_topic", "/cmd_vel");
+    const std::string navigation_active_topic = declare_parameter<std::string>("navigation_active_topic", "/navigation_active");
+    command_adapter_.SetTimeout(cmd_vel_timeout_sec);
+    command_adapter_.SetNavigationActive(initial_navigation_active);
+    cmd_vel_sub = create_subscription<geometry_msgs::msg::TwistStamped>(
+        cmd_vel_topic, 10, std::bind(&InterfaceRos::CmdVelHandler, this, _1));
+    navigation_active_sub = create_subscription<std_msgs::msg::Bool>(
+        navigation_active_topic, rclcpp::QoS(1).transient_local(),
+        std::bind(&InterfaceRos::NavigationActiveHandler, this, _1));
+    safe_command_pub = create_publisher<geometry_msgs::msg::TwistStamped>("/rl/safe_command", 10);
+    // Wall time is UI-only.  Policy inference is scheduled from sequential
+    // physics LowState ticks in LowStateHandler (10 x 0.002 s = 0.020 s).
+    timer_ = create_wall_timer(std::chrono::milliseconds(10), std::bind(&InterfaceRos::timer_callback_cmd, this));
     init_cmd();
     init_glfw();
     try {
@@ -375,12 +393,6 @@ void InterfaceRos::key_callback(GLFWwindow* window, int key, int scancode, int a
     KeyboardState* state = static_cast<KeyboardState*>(glfwGetWindowUserPointer(window));
     bool pressed = (action == GLFW_PRESS || action == GLFW_REPEAT);
 
-    if (key == GLFW_KEY_W) state->w_pressed = pressed;
-    if (key == GLFW_KEY_S) state->s_pressed = pressed;
-    if (key == GLFW_KEY_A) state->a_pressed = pressed;
-    if (key == GLFW_KEY_D) state->d_pressed = pressed;
-    if (key == GLFW_KEY_Q) state->q_pressed = pressed;
-    if (key == GLFW_KEY_E) state->e_pressed = pressed;
     if (key == GLFW_KEY_SPACE) state->space_pressed = pressed;
 
     if (action == GLFW_PRESS) {
@@ -389,6 +401,20 @@ void InterfaceRos::key_callback(GLFWwindow* window, int key, int scancode, int a
         if (key == GLFW_KEY_R) state->r_pressed = true;  // событие
         if (key == GLFW_KEY_O) state->o_pressed = true;  // событие 
     }
+}
+
+void InterfaceRos::CmdVelHandler(const geometry_msgs::msg::TwistStamped::SharedPtr msg) {
+    if (!command_adapter_.Accept(static_cast<float>(msg->twist.linear.x),
+                                 static_cast<float>(msg->twist.linear.y),
+                                 static_cast<float>(msg->twist.angular.z),
+                                 NavigationCommandAdapter::Clock::now())) {
+        RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 2000,
+                             "Rejected non-finite /cmd_vel; watchdog was not refreshed");
+    }
+}
+
+void InterfaceRos::NavigationActiveHandler(const std_msgs::msg::Bool::SharedPtr msg) {
+    command_adapter_.SetNavigationActive(msg->data);
 }
 
 void InterfaceRos::init_cmd() {
@@ -448,6 +474,24 @@ void InterfaceRos::LowStateHandler(const unitree_go::msg::LowState::SharedPtr ms
     publish_imu(msg->imu_state);
     publish_motor_state(msg->motor_state);
 
+    if (physics_steps_per_policy_ == 0) return;
+    if (!have_physics_tick_) {
+        last_physics_tick_ = msg->tick;
+        have_physics_tick_ = true;
+        return;
+    }
+    const uint32_t delta = static_cast<uint32_t>(msg->tick - last_physics_tick_);
+    last_physics_tick_ = msg->tick;
+    if (delta == 0) return;
+    accumulated_physics_steps_ += delta;
+    if (accumulated_physics_steps_ < physics_steps_per_policy_) return;
+    if (accumulated_physics_steps_ != physics_steps_per_policy_) {
+        RCLCPP_WARN(get_logger(), "Physics tick gap: expected %u steps per policy, got %lu",
+                    physics_steps_per_policy_, accumulated_physics_steps_);
+    }
+    accumulated_physics_steps_ = 0;
+    RunPolicyTick(*msg);
+
     // if (INFO_IMU) {
     //     RCLCPP_INFO(this->get_logger(), "IMU: gyro = [%f, %f, %f], quat = [%f, %f, %f, %f]",
     //                 msg->imu_state.gyroscope[0], msg->imu_state.gyroscope[1], msg->imu_state.gyroscope[2],
@@ -464,11 +508,30 @@ void InterfaceRos::LowStateHandler(const unitree_go::msg::LowState::SharedPtr ms
     // }
 }
 
-void InterfaceRos::timer_callback_cmd() {
-    if (!latest_state) {
-        RCLCPP_WARN(this->get_logger(), "Waiting for first 10 iterations to initialize");
+void InterfaceRos::PhysicsDtHandler(const std_msgs::msg::Float64::SharedPtr msg) {
+    if (!std::isfinite(msg->data) || msg->data <= 0.0) {
+        RCLCPP_ERROR(get_logger(), "Rejected invalid MuJoCo physics_dt=%g", msg->data);
         return;
     }
+    const double ratio = controller.policy_dt / msg->data;
+    const auto rounded = static_cast<uint32_t>(std::llround(ratio));
+    if (rounded == 0 || std::abs(ratio - static_cast<double>(rounded)) > 1.0e-9) {
+        RCLCPP_ERROR(get_logger(), "policy_dt=%.6f is not an integral multiple of physics_dt=%.6f",
+                     controller.policy_dt, msg->data);
+        return;
+    }
+    physics_steps_per_policy_ = rounded;
+    RCLCPP_INFO(get_logger(), "Physics scheduler: physics_dt=%.6f, policy_dt=%.6f, steps/policy=%u",
+                msg->data, controller.policy_dt, physics_steps_per_policy_);
+}
+
+void InterfaceRos::timer_callback_cmd() {
+    // The timer must never drive policy inference: it only dispatches GLFW
+    // input, which is consumed by the next physics-scheduled policy tick.
+    glfwPollEvents();
+}
+
+void InterfaceRos::RunPolicyTick(const unitree_go::msg::LowState& state) {
 // Обновляем команду только при активных клавишах или сбросе
     // bool command_changed = false;
     // float x = last_command[0];
@@ -502,19 +565,29 @@ void InterfaceRos::timer_callback_cmd() {
     //     controller.set_command(x, y, z);
     //     RCLCPP_INFO(this->get_logger(), "Command updated: x=%f, y=%f, z=%f", x, y, z);
     // }
-    float x = 0.0f, y = 0.0f, z = 0.0f;
+    if (auto_start_rl_ && !auto_standup_started_) {
+        controller.change_mode(RobotController::MODE_STANDUP);
+        auto_standup_started_ = true;
+        RCLCPP_INFO(get_logger(), "Stage-4 auto sequence: stand-up, then RL after the safe hold is complete");
+    }
+    const auto safe_command = command_adapter_.GetSafeCommand(NavigationCommandAdapter::Clock::now());
+    controller.set_command(safe_command.value[0], safe_command.value[1], safe_command.value[2]);
+    geometry_msgs::msg::TwistStamped safe_msg;
+    safe_msg.header.stamp = now();
+    safe_msg.header.frame_id = "base_link";
+    safe_msg.twist.linear.x = safe_command.value[0];
+    safe_msg.twist.linear.y = safe_command.value[1];
+    safe_msg.twist.angular.z = safe_command.value[2];
+    safe_command_pub->publish(safe_msg);
+    if (++command_diagnostic_tick_ >= 50) {
+        command_diagnostic_tick_ = 0;
+        RCLCPP_INFO(get_logger(),
+                    "cmd_vel: active=%d valid=%d stale=%d age=%.3fs safe=[%.2f %.2f %.2f], policy=50Hz (dt=0.005, decimation=4)",
+                    safe_command.navigation_active, safe_command.has_valid_command, safe_command.stale,
+                    safe_command.age_sec, safe_command.value[0], safe_command.value[1], safe_command.value[2]);
+    }
 
-    if (keyboard_state.w_pressed) x += 0.5f;
-    if (keyboard_state.s_pressed) x -= 0.5f;
-    if (keyboard_state.a_pressed) y += 0.5f;
-    if (keyboard_state.d_pressed) y -= 0.5f;
-    if (keyboard_state.q_pressed) z += 1.0f;
-    if (keyboard_state.e_pressed) z -= 1.0f;
-
-    if (keyboard_state.space_pressed) { x = 0.0f; y = 0.0f; z = 0.0f; };
-    controller.set_command(x, y, z);
-    //RCLCPP_INFO(this->get_logger(), "Command: x=%f, y=%f", x, y);
-
+    if (keyboard_state.space_pressed) controller.set_command(0.0F, 0.0F, 0.0F);
     if (keyboard_state.o_pressed) controller.change_mode(RobotController::MODE_IDEL);
     if (keyboard_state.y_pressed) controller.change_mode(RobotController::MODE_STANDUP);
     if (keyboard_state.t_pressed) controller.change_mode(RobotController::MODE_DAMPING);
@@ -527,10 +600,14 @@ void InterfaceRos::timer_callback_cmd() {
 
 
 
-    low_cmd = controller.update(*latest_state);
+    low_cmd = controller.update(state);
     send_command(low_cmd);
+    ++policy_update_count_;
+    if (auto_start_rl_ && controller.standup_done && controller.control_mode == RobotController::MODE_STANDUP) {
+        controller.change_mode(RobotController::MODE_RL);
+        RCLCPP_INFO(get_logger(), "Stage-4 auto sequence: RL mode enabled");
+    }
 
-    glfwPollEvents();
     // float x = 0.0f, y= 0.0f;
     // if (keyboard_state.w_pressed) x += 0.5f;
     // if (keyboard_state.s_pressed) x -= 0.5f;
@@ -580,8 +657,6 @@ void InterfaceRos::send_command(unitree_go::msg::LowCmd& cmd) {
 }
 // Главная функция программы
 int main(int argc, char** argv) {
-    std::cout << "Press enter to start";
-    std::cin.get();
     rclcpp::init(argc, argv);
     auto node = std::make_shared<InterfaceRos>();
     rclcpp::spin(node);

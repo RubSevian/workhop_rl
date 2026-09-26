@@ -1,10 +1,20 @@
 <?xml version='1.0' encoding='utf-8'?>
 <mujoco model="go2_rars01">
   <compiler angle="radian" />
-  <option timestep="0.005" cone="elliptic" impratio="100" />
+  <option timestep="0.002" cone="elliptic" impratio="100" />
   <default>
     <default class="robot_collision">
       <geom group="3" />
+    </default>
+    <default class="go2_collision">
+      <geom group="3" friction=".8" margin=".001" condim="1" />
+    </default>
+    <default class="go2_leg">
+      <joint damping=".1" armature=".01" frictionloss=".2" />
+      <geom group="3" friction=".8" margin=".001" condim="1" />
+    </default>
+    <default class="go2_foot">
+      <geom group="3" priority="1" condim="6" friction=".8 .02 .01" />
     </default>
   </default>
   <asset>
@@ -41,19 +51,19 @@
     <mesh file="../go2/assets/foot.obj" />
   </asset>
   <worldbody>
-    <body name="base" childclass="robot_collision">
+    <body name="base">
       <freejoint name="base_freejoint" />
       <inertial pos="0.021112 0 -0.005366" quat="-0.000543471 0.713435 -0.00173769 0.700719" mass="6.921" diaginertia="0.107027 0.0980771 0.0244531" />
-      <geom size="0.1881 0.04675 0.057" type="box" />
+      <geom name="base_collision" class="go2_collision" size="0.1881 0.04675 0.057" type="box" />
       <body name="Head_upper" pos="0.285 0 0.01">
         <inertial pos="0 0 0" mass="0.001" diaginertia="9.6e-06 9.6e-06 9.6e-06" />
-        <geom size="0.05 0.045" type="cylinder" />
+        <geom class="go2_collision" size="0.05 0.045" type="cylinder" />
         <body name="Head_lower" pos="0.008 0 -0.07">
           <inertial pos="0 0 0" mass="0.001" diaginertia="9.6e-06 9.6e-06 9.6e-06" />
-          <geom size="0.047" />
+          <geom class="go2_collision" size="0.047" />
         </body>
       </body>
-      <body name="FL_hip" pos="0.1934 0.0465 0">
+      <body name="FL_hip" childclass="go2_leg" pos="0.1934 0.0465 0">
         <inertial pos="-0.0054 0.00194 -0.000105" quat="0.497014 0.499245 0.505462 0.498237" mass="0.678" diaginertia="0.00088403 0.000596003 0.000479967" />
         <joint name="FL_hip_joint" pos="0 0 0" axis="1 0 0" range="-1.0472 1.0472" actuatorfrcrange="-23.7 23.7" />
         <geom size="0.046 0.02" pos="0 0.08 0" quat="0.707107 0.707107 0 0" type="cylinder" />
@@ -73,7 +83,7 @@
             </body>
             <body name="FL_foot" pos="0 0 -0.213">
               <inertial pos="0 0 0" mass="0.04" diaginertia="9.6e-06 9.6e-06 9.6e-06" />
-              <geom size="0.022" pos="-0.002 0 0" />
+              <geom name="FL_foot_collision" class="go2_foot" size="0.022" pos="-0.002 0 0" />
             </body>
             <geom mesh="calf_0" material="gray" type="mesh" contype="0" conaffinity="0" group="2" />
             <geom mesh="calf_1" material="black" type="mesh" contype="0" conaffinity="0" group="2" />
@@ -85,7 +95,7 @@
         <geom mesh="hip_0" material="metal" type="mesh" contype="0" conaffinity="0" group="2" />
         <geom mesh="hip_1" material="gray" type="mesh" contype="0" conaffinity="0" group="2" />
       </body>
-      <body name="FR_hip" pos="0.1934 -0.0465 0">
+      <body name="FR_hip" childclass="go2_leg" pos="0.1934 -0.0465 0">
         <inertial pos="-0.0054 -0.00194 -0.000105" quat="0.498237 0.505462 0.499245 0.497014" mass="0.678" diaginertia="0.00088403 0.000596003 0.000479967" />
         <joint name="FR_hip_joint" pos="0 0 0" axis="1 0 0" range="-1.0472 1.0472" actuatorfrcrange="-23.7 23.7" />
         <geom size="0.046 0.02" pos="0 -0.08 0" quat="0.707107 0.707107 0 0" type="cylinder" />
@@ -105,7 +115,7 @@
             </body>
             <body name="FR_foot" pos="0 0 -0.213">
               <inertial pos="0 0 0" mass="0.04" diaginertia="9.6e-06 9.6e-06 9.6e-06" />
-              <geom size="0.022" pos="-0.002 0 0" />
+              <geom name="FR_foot_collision" class="go2_foot" size="0.022" pos="-0.002 0 0" />
             </body>
             <geom mesh="calf_mirror_0" material="gray" type="mesh" contype="0" conaffinity="0" group="2" />
             <geom mesh="calf_mirror_1" material="black" type="mesh" contype="0" conaffinity="0" group="2" />
@@ -117,7 +127,7 @@
         <geom mesh="hip_0" material="metal" quat="4.63268e-05 1 0 0" type="mesh" contype="0" conaffinity="0" group="2" />
         <geom mesh="hip_1" material="gray" quat="4.63268e-05 1 0 0" type="mesh" contype="0" conaffinity="0" group="2" />
       </body>
-      <body name="RL_hip" pos="-0.1934 0.0465 0">
+      <body name="RL_hip" childclass="go2_leg" pos="-0.1934 0.0465 0">
         <inertial pos="0.0054 0.00194 -0.000105" quat="0.505462 0.498237 0.497014 0.499245" mass="0.678" diaginertia="0.00088403 0.000596003 0.000479967" />
         <joint name="RL_hip_joint" pos="0 0 0" axis="1 0 0" range="-1.0472 1.0472" actuatorfrcrange="-23.7 23.7" />
         <geom size="0.046 0.02" pos="0 0.08 0" quat="0.707107 0.707107 0 0" type="cylinder" />
@@ -137,7 +147,7 @@
             </body>
             <body name="RL_foot" pos="0 0 -0.213">
               <inertial pos="0 0 0" mass="0.04" diaginertia="9.6e-06 9.6e-06 9.6e-06" />
-              <geom size="0.022" pos="-0.002 0 0" />
+              <geom name="RL_foot_collision" class="go2_foot" size="0.022" pos="-0.002 0 0" />
             </body>
             <geom mesh="calf_0" material="gray" type="mesh" contype="0" conaffinity="0" group="2" />
             <geom mesh="calf_1" material="black" type="mesh" contype="0" conaffinity="0" group="2" />
@@ -149,7 +159,7 @@
         <geom mesh="hip_0" material="metal" quat="4.63268e-05 0 1 0" type="mesh" contype="0" conaffinity="0" group="2" />
         <geom mesh="hip_1" material="gray" quat="4.63268e-05 0 1 0" type="mesh" contype="0" conaffinity="0" group="2" />
       </body>
-      <body name="RR_hip" pos="-0.1934 -0.0465 0">
+      <body name="RR_hip" childclass="go2_leg" pos="-0.1934 -0.0465 0">
         <inertial pos="0.0054 -0.00194 -0.000105" quat="0.499245 0.497014 0.498237 0.505462" mass="0.678" diaginertia="0.00088403 0.000596003 0.000479967" />
         <joint name="RR_hip_joint" pos="0 0 0" axis="1 0 0" range="-1.0472 1.0472" actuatorfrcrange="-23.7 23.7" />
         <geom size="0.046 0.02" pos="0 -0.08 0" quat="0.707107 0.707107 0 0" type="cylinder" />
@@ -169,7 +179,7 @@
             </body>
             <body name="RR_foot" pos="0 0 -0.213">
               <inertial pos="0 0 0" mass="0.04" diaginertia="9.6e-06 9.6e-06 9.6e-06" />
-              <geom size="0.022" pos="-0.002 0 0" />
+              <geom name="RR_foot_collision" class="go2_foot" size="0.022" pos="-0.002 0 0" />
             </body>
             <geom mesh="calf_mirror_0" material="gray" type="mesh" contype="0" conaffinity="0" group="2" />
             <geom mesh="calf_mirror_1" material="black" type="mesh" contype="0" conaffinity="0" group="2" />

@@ -4,7 +4,9 @@
 #include <sensor_msgs/msg/imu.hpp>
 #include "sensor_msgs/msg/image.hpp"
 #include <geometry_msgs/msg/wrench_stamped.hpp>
-#include <geometry_msgs/msg/twist.hpp>
+#include <geometry_msgs/msg/twist_stamped.hpp>
+#include <std_msgs/msg/bool.hpp>
+#include <std_msgs/msg/float64.hpp>
 #include <std_msgs/msg/u_int8_multi_array.hpp>
 #include <unitree_go/msg/low_state.hpp>
 #include <unitree_go/msg/imu_state.hpp>
@@ -15,6 +17,7 @@
 #include <torch/torch.h>
 #include "rl_agent.h"
 #include "motor_crc.h"
+#include "navigation_command_adapter.hpp"
 
 
 //keyboard
@@ -53,7 +56,8 @@ public:
     int motiontime;
     float runing_time;
     // StateID robot_state;
-    const double dt;
+    // Policy period; this is intentionally distinct from MuJoCo physics_dt.
+    const double policy_dt;
     const int Go2_NUM_MOTOR;
     const std::string ROBOT_NAME;
     float qInit[12];
@@ -76,12 +80,16 @@ public:
 private:
     void LowStateHandler(const unitree_go::msg::LowState::SharedPtr msg);
     void timer_callback_cmd();
+    void RunPolicyTick(const unitree_go::msg::LowState& state);
+    void PhysicsDtHandler(const std_msgs::msg::Float64::SharedPtr msg);
     void send_command(unitree_go::msg::LowCmd& cmd);
     void init_cmd();
     void publish_imu(const unitree_go::msg::IMUState& imu_state);
     void publish_motor_state(const std::array<unitree_go::msg::MotorState, 20>& motor_state);
     void init_glfw();
     static void key_callback(GLFWwindow* window , int key , int scancode, int action , int mods);
+    void CmdVelHandler(const geometry_msgs::msg::TwistStamped::SharedPtr msg);
+    void NavigationActiveHandler(const std_msgs::msg::Bool::SharedPtr msg);
       // heightmap from real robot (published by go2_heightmap_node)
     void HeightmapImageHandler(const sensor_msgs::msg::Image::SharedPtr msg);
 
@@ -91,19 +99,26 @@ private:
     rclcpp::Publisher<sensor_msgs::msg::Imu>::SharedPtr imu_pub;
     rclcpp::Publisher<sensor_msgs::msg::JointState>::SharedPtr motor_state_pub;
     rclcpp::Subscription<unitree_go::msg::LowState>::SharedPtr state_sub;
+    rclcpp::Subscription<std_msgs::msg::Float64>::SharedPtr physics_dt_sub;
     unitree_go::msg::LowCmd low_cmd;
     unitree_go::msg::LowState::SharedPtr latest_state;
     rclcpp::Subscription<sensor_msgs::msg::Image>::SharedPtr heightmap_sub;
+    rclcpp::Subscription<geometry_msgs::msg::TwistStamped>::SharedPtr cmd_vel_sub;
+    rclcpp::Subscription<std_msgs::msg::Bool>::SharedPtr navigation_active_sub;
+    rclcpp::Publisher<geometry_msgs::msg::TwistStamped>::SharedPtr safe_command_pub;
     RobotController controller;
+    NavigationCommandAdapter command_adapter_;
+    uint64_t command_diagnostic_tick_ = 0;
+    uint64_t last_physics_tick_ = 0;
+    uint64_t accumulated_physics_steps_ = 0;
+    uint64_t policy_update_count_ = 0;
+    bool have_physics_tick_ = false;
+    uint32_t physics_steps_per_policy_ = 0;
+    bool auto_start_rl_ = false;
+    bool auto_standup_started_ = false;
 
     GLFWwindow * window ;
     struct KeyboardState {
-        bool w_pressed = false;
-        bool s_pressed = false;
-        bool a_pressed = false;
-        bool d_pressed = false;
-        bool q_pressed = false;
-        bool e_pressed = false;
         bool t_pressed = false;//damping
         bool y_pressed = false;
         bool r_pressed = false;

@@ -16,6 +16,7 @@ project(unitree_legged_real)
 find_package(ament_cmake REQUIRED)
 find_package(rclcpp REQUIRED)
 find_package(sensor_msgs REQUIRED)
+find_package(geometry_msgs REQUIRED)
 find_package(std_srvs REQUIRED)
 
 find_package(ros2_unitree_legged_msgs REQUIRED)
@@ -99,9 +100,9 @@ target_link_libraries(lcm_server ${EXTRA_LIBS})
 # ament_target_dependencies(ros2_rl rclcpp ros2_unitree_legged_msgs unitree_rl_controller sensor_msgs)
 
 
-add_executable(mujoco_sim src/mujoco_sim.cpp src/motor_crc.cpp)
+add_executable(mujoco_sim src/mujoco_sim.cpp src/motor_crc.cpp src/navigation_command_adapter.cpp)
 target_link_libraries(mujoco_sim ${UNITREE_GO2_LIBS} ${EXTRA_LIBS} ${TORCH_LIBRARIES} glfw)
-ament_target_dependencies(mujoco_sim rclcpp  unitree_rl_controller sensor_msgs ${DEPENDENCY_LIST})
+ament_target_dependencies(mujoco_sim rclcpp unitree_rl_controller sensor_msgs geometry_msgs ${DEPENDENCY_LIST})
 
 add_executable(go2_heightmap_node
   src/go2_heightmap_node.cpp
@@ -139,8 +140,23 @@ install(DIRECTORY config/
   DESTINATION share/${PROJECT_NAME}/config
 )
 
-ament_package()
+install(DIRECTORY launch/
+  DESTINATION share/${PROJECT_NAME}/launch
+)
 
+install(PROGRAMS scripts/manual_twist_test.py
+  DESTINATION lib/${PROJECT_NAME}
+)
+
+if(BUILD_TESTING)
+  add_executable(navigation_command_adapter_test
+    tests/navigation_command_adapter_test.cpp
+    src/navigation_command_adapter.cpp)
+  target_include_directories(navigation_command_adapter_test PRIVATE include)
+  add_test(NAME navigation_command_adapter_test COMMAND navigation_command_adapter_test)
+endif()
+
+ament_package()
 
 
 

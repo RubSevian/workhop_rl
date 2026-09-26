@@ -168,7 +168,9 @@ def add_runtime_layers(
         option = ET.Element("option")
         insert_at = 1 if root.find("compiler") is not None else 0
         root.insert(insert_at, option)
-    option.set("timestep", "0.005")
+    # Physics runs at 500 Hz.  The learned policy stays at 50 Hz and its
+    # desired joint position is held for exactly ten servo ticks.
+    option.set("timestep", "0.002")
     option.set("cone", "elliptic")
     option.set("impratio", "100")
 
@@ -192,7 +194,36 @@ def add_runtime_layers(
     if collision_default is None:
         collision_default = ET.SubElement(main_default, "default", {"class": "robot_collision"})
         ET.SubElement(collision_default, "geom", {"group": "3"})
-    base.set("childclass", "robot_collision")
+    # Restore the stock Go2 passive joints/contact values without leaking them
+    # into the RARS01 arm, which is a sibling of the four leg roots.
+    go2_collision = ET.SubElement(main_default, "default", {"class": "go2_collision"})
+    ET.SubElement(go2_collision, "geom", {"group": "3", "friction": ".8", "margin": ".001", "condim": "1"})
+    go2_leg = ET.SubElement(main_default, "default", {"class": "go2_leg"})
+    ET.SubElement(go2_leg, "joint", {"damping": ".1", "armature": ".01", "frictionloss": ".2"})
+    ET.SubElement(go2_leg, "geom", {"group": "3", "friction": ".8", "margin": ".001", "condim": "1"})
+    go2_foot = ET.SubElement(main_default, "default", {"class": "go2_foot"})
+    ET.SubElement(go2_foot, "geom", {"group": "3", "priority": "1", "condim": "6", "friction": ".8 .02 .01"})
+    base.attrib.pop("childclass", None)
+    for name in ("FL_hip", "FR_hip", "RL_hip", "RR_hip"):
+        leg_root = next((b for b in base.findall("body") if b.get("name") == name), None)
+        if leg_root is None:
+            raise ValueError(f"missing Go2 leg root: {name}")
+        leg_root.set("childclass", "go2_leg")
+    for body in base.iter("body"):
+        if body.get("name") in ("FL_foot", "FR_foot", "RL_foot", "RR_foot"):
+            foot_geom = body.find("geom")
+            if foot_geom is None:
+                raise ValueError(f"missing foot collision geom: {body.get('name')}")
+            foot_geom.set("class", "go2_foot")
+            foot_geom.set("name", f"{body.get('name')}_collision")
+    base_geom = base.find("geom")
+    if base_geom is not None:
+        base_geom.set("class", "go2_collision")
+        base_geom.set("name", "base_collision")
+    for head_name in ("Head_upper", "Head_lower"):
+        head = next((b for b in base.iter("body") if b.get("name") == head_name), None)
+        if head is not None and head.find("geom") is not None:
+            head.find("geom").set("class", "go2_collision")
     base.insert(0, ET.Element("freejoint", {"name": "base_freejoint"}))
     ET.SubElement(base, "site", {"name": "imu", "pos": "-0.02557 0 0.04232"})
 
@@ -314,7 +345,7 @@ mesh_pipeline:
 
 runtime:
   profile: "train_obj"
-  timestep: 0.005
+  timestep: 0.002
   leg_actuators: 12
   arm_actuators: 6
   gripper_actuators: 2

@@ -24,7 +24,10 @@
 #include <string>
 #include <thread>
 #include <algorithm>
+#include <cmath>
 #include <stdexcept>
+#include <array>
+#include <atomic>
 
 #include <filesystem>
 
@@ -35,6 +38,13 @@
 #include "unitree_sdk2_bridge/unitree_sdk2_bridge.h"
 #include <pthread.h>
 #include "yaml-cpp/yaml.h"
+#include <rclcpp/rclcpp.hpp>
+#include <nav_msgs/msg/odometry.hpp>
+#include <geometry_msgs/msg/transform_stamped.hpp>
+#include <tf2_ros/transform_broadcaster.h>
+#include <unitree_go/msg/low_cmd.hpp>
+#include <unitree_go/msg/low_state.hpp>
+#include <std_msgs/msg/float64.hpp>
 
 #define MUJOCO_PLUGIN_DIR "mujoco_plugin"
 
@@ -78,6 +88,7 @@ namespace
     int domain_id = 1;
     std::string interface = "lo";
     int enable_unitree_bridge = 1;
+    int enable_ros_bridge = 0;
 
     int use_joystick = 0;
     std::string joystick_type = "xbox";
@@ -86,10 +97,279 @@ namespace
 
     int print_scene_information = 1;
 
+    std::string odom_topic = "/state_estimation";
+    std::string world_frame = "map";
+
     int enable_elastic_band = 0;
     int band_attached_link = 0;
 
   } config;
+
+  // Stage-4 uses the native ROS message transport, not SDK2's private DDS
+  // channel.  It prevents the SDK2 allocator crash on localhost and exactly
+  // matches the topics used by the unified policy node.
+  class MujocoRosLowLevelBridge {
+  public:
+    MujocoRosLowLevelBridge()
+        : node_(std::make_shared<rclcpp::Node>("mujoco_ros_low_level_bridge")) {
+      lowstate_pub_ = node_->create_publisher<unitree_go::msg::LowState>("lowstate", 10);
+      physics_dt_pub_ = node_->create_publisher<std_msgs::msg::Float64>(
+          "/mujoco/physics_dt", rclcpp::QoS(1).transient_local());
+      lowcmd_sub_ = node_->create_subscription<unitree_go::msg::LowCmd>(
+          "lowcmd", 10,
+          [this](const unitree_go::msg::LowCmd::SharedPtr msg) {
+            for (int i = 0; i < 12; ++i) {
+              const auto& motor = msg->motor_cmd[i];
+              if (!std::isfinite(motor.q) || !std::isfinite(motor.dq) ||
+                  !std::isfinite(motor.kp) || !std::isfinite(motor.kd) ||
+                  !std::isfinite(motor.tau)) {
+                RCLCPP_WARN_THROTTLE(node_->get_logger(), *node_->get_clock(), 2000,
+                                     "Ignoring non-finite /lowcmd generation");
+                return;
+              }
+            }
+            std::lock_guard<std::mutex> lock(command_mutex_);
+            latest_command_ = *msg;
+            have_command_ = true;
+            last_command_time_ = std::chrono::steady_clock::now();
+            ++command_generation_;
+          });
+      spin_thread_ = std::thread([this] { rclcpp::spin(node_); });
+    }
+
+    ~MujocoRosLowLevelBridge() {
+      if (spin_thread_.joinable()) spin_thread_.join();
+    }
+
+    // Called by the physics owner immediately before every mj_step.  The policy
+    // holds q_des at 50 Hz; this method recomputes tau from the *current* q,dq
+    // at the 500 Hz physics rate, rather than holding a stale torque.
+    void Apply(const mjModel* model, mjData* data) {
+      if (!Resolve(model)) return;
+      unitree_go::msg::LowCmd command;
+      bool timed_out = false;
+      {
+        std::lock_guard<std::mutex> lock(command_mutex_);
+        timed_out = !have_command_ ||
+            (std::chrono::steady_clock::now() - last_command_time_ > std::chrono::milliseconds(100));
+        if (!timed_out) command = latest_command_;
+      }
+      if (timed_out) command = SafeStandingCommand();
+      // Only the 12 Go2 leg actuators are commandable through this interface.
+      // RARS01 remains exclusively under Go2Rars01HomeHold at ctrl[12:20].
+      for (int i = 0; i < 12; ++i) {
+        const int actuator = leg_actuator_ids_[i];
+        const auto& motor = command.motor_cmd[i];
+        const double raw = motor.tau + motor.kp * (motor.q - data->sensordata[leg_pos_adr_[i]]) +
+            motor.kd * (motor.dq - data->sensordata[leg_vel_adr_[i]]);
+        const double limit = (i % 3 == 2) ? 35.55 : 23.7;
+        data->ctrl[actuator] = std::clamp(raw, -limit, limit);
+        if (raw != data->ctrl[actuator]) ++torque_saturation_count_;
+      }
+    }
+
+    void Publish(const mjModel* model, const mjData* data) {
+      if (!Resolve(model)) return;
+      unitree_go::msg::LowState state;
+      state.tick = static_cast<uint32_t>(++physics_tick_);
+      for (int i = 0; i < 12; ++i) {
+        state.motor_state[i].q = data->sensordata[leg_pos_adr_[i]];
+        state.motor_state[i].dq = data->sensordata[leg_vel_adr_[i]];
+        state.motor_state[i].tau_est = data->sensordata[leg_force_adr_[i]];
+      }
+      for (int i = 0; i < 8; ++i) {
+        const int joint = rars_joint_ids_[i];
+        const int slot = 12 + i;
+        state.motor_state[slot].q = data->qpos[model->jnt_qposadr[joint]];
+        state.motor_state[slot].dq = data->qvel[model->jnt_dofadr[joint]];
+        state.motor_state[slot].tau_est = data->qfrc_actuator[model->jnt_dofadr[joint]];
+      }
+      for (int i = 0; i < 4; ++i) state.imu_state.quaternion[i] = data->sensordata[imu_quat_adr_ + i];
+      for (int i = 0; i < 3; ++i) {
+        state.imu_state.gyroscope[i] = data->sensordata[imu_gyro_adr_ + i];
+        state.imu_state.accelerometer[i] = data->sensordata[imu_acc_adr_ + i];
+      }
+      const double w = state.imu_state.quaternion[0];
+      const double x = state.imu_state.quaternion[1];
+      const double y = state.imu_state.quaternion[2];
+      const double z = state.imu_state.quaternion[3];
+      state.imu_state.rpy[0] = std::atan2(2 * (w * x + y * z), 1 - 2 * (x * x + y * y));
+      state.imu_state.rpy[1] = std::asin(std::clamp(2 * (w * y - z * x), -1.0, 1.0));
+      state.imu_state.rpy[2] = std::atan2(2 * (w * z + x * y), 1 - 2 * (y * y + z * z));
+      lowstate_pub_->publish(state);
+    }
+
+  private:
+    static int SensorAddress(const mjModel* model, const char* name, int dimension) {
+      const int sensor = mj_name2id(model, mjOBJ_SENSOR, name);
+      if (sensor < 0 || model->sensor_dim[sensor] != dimension) {
+        throw std::runtime_error(std::string("Missing or invalid MuJoCo sensor: ") + name);
+      }
+      return model->sensor_adr[sensor];
+    }
+
+    static unitree_go::msg::LowCmd SafeStandingCommand() {
+      unitree_go::msg::LowCmd command;
+      // FR, FL, RR, RL; a bounded pose avoids a limp free-fall after /lowcmd
+      // disappears, while kd damps residual motion.
+      constexpr std::array<float, 12> kSafeQ = {
+          -0.1F, 0.8F, -1.5F, 0.1F, 0.8F, -1.5F,
+          -0.1F, 0.8F, -1.5F, 0.1F, 0.8F, -1.5F};
+      for (int i = 0; i < 12; ++i) {
+        command.motor_cmd[i].q = kSafeQ[i];
+        command.motor_cmd[i].dq = 0.0F;
+        command.motor_cmd[i].kp = 30.0F;
+        command.motor_cmd[i].kd = 2.0F;
+        command.motor_cmd[i].tau = 0.0F;
+      }
+      return command;
+    }
+
+    bool Resolve(const mjModel* model) {
+      if (resolved_model_ == model) return ready_;
+      resolved_model_ = model;
+      ready_ = false;
+      const char* actuator_names[] = {"FR_hip", "FR_thigh", "FR_calf", "FL_hip", "FL_thigh", "FL_calf",
+                                      "RR_hip", "RR_thigh", "RR_calf", "RL_hip", "RL_thigh", "RL_calf"};
+      const char* joints[] = {"joint1", "joint2", "joint3", "joint4", "joint5", "joint6",
+                              "gripper_left_joint", "gripper_right_joint"};
+      try {
+        for (int i = 0; i < 12; ++i) {
+          leg_actuator_ids_[i] = mj_name2id(model, mjOBJ_ACTUATOR, actuator_names[i]);
+          if (leg_actuator_ids_[i] < 0) throw std::runtime_error("Missing leg actuator");
+          const std::string prefix(actuator_names[i]);
+          leg_pos_adr_[i] = SensorAddress(model, (prefix + "_pos").c_str(), 1);
+          leg_vel_adr_[i] = SensorAddress(model, (prefix + "_vel").c_str(), 1);
+          leg_force_adr_[i] = SensorAddress(model, (prefix + "_torque").c_str(), 1);
+        }
+        for (int i = 0; i < 8; ++i) {
+          rars_joint_ids_[i] = mj_name2id(model, mjOBJ_JOINT, joints[i]);
+          if (rars_joint_ids_[i] < 0) throw std::runtime_error("Missing RARS01 joint");
+        }
+        imu_quat_adr_ = SensorAddress(model, "imu_quat", 4);
+        imu_gyro_adr_ = SensorAddress(model, "imu_gyro", 3);
+        imu_acc_adr_ = SensorAddress(model, "imu_acc", 3);
+        ready_ = true;
+        std_msgs::msg::Float64 physics_dt;
+        physics_dt.data = model->opt.timestep;
+        physics_dt_pub_->publish(physics_dt);
+        RCLCPP_INFO(node_->get_logger(), "ROS low-level bridge ready: /lowcmd -> 12 Go2 legs, /lowstate <- 20 motors");
+      } catch (const std::exception& error) {
+        RCLCPP_ERROR(node_->get_logger(), "ROS low-level bridge disabled: %s", error.what());
+      }
+      return ready_;
+    }
+
+    rclcpp::Node::SharedPtr node_;
+    rclcpp::Publisher<unitree_go::msg::LowState>::SharedPtr lowstate_pub_;
+    rclcpp::Publisher<std_msgs::msg::Float64>::SharedPtr physics_dt_pub_;
+    rclcpp::Subscription<unitree_go::msg::LowCmd>::SharedPtr lowcmd_sub_;
+    std::thread spin_thread_;
+    std::mutex command_mutex_;
+    unitree_go::msg::LowCmd latest_command_;
+    bool have_command_ = false;
+    std::chrono::steady_clock::time_point last_command_time_{};
+    std::atomic<uint64_t> command_generation_{0};
+    std::atomic<uint64_t> torque_saturation_count_{0};
+    uint64_t physics_tick_ = 0;
+    const mjModel* resolved_model_ = nullptr;
+    bool ready_ = false;
+    std::array<int, 12> leg_actuator_ids_{};
+    std::array<int, 12> leg_pos_adr_{};
+    std::array<int, 12> leg_vel_adr_{};
+    std::array<int, 12> leg_force_adr_{};
+    std::array<int, 8> rars_joint_ids_{};
+    int imu_quat_adr_ = -1;
+    int imu_gyro_adr_ = -1;
+    int imu_acc_adr_ = -1;
+  };
+
+  std::unique_ptr<MujocoRosLowLevelBridge> ros_low_level_bridge;
+
+  // Publishes only while the physics thread owns the MuJoCo lock, so the pose
+  // and velocity describe one consistent physics state.  Twist is explicitly
+  // body-frame: mj_objectVelocity(..., flg_local=1) returns [angular, linear].
+  class MujocoGroundTruthOdom {
+  public:
+    MujocoGroundTruthOdom()
+        : node_(std::make_shared<rclcpp::Node>("mujoco_ground_truth_odom")) {
+      odom_pub_ = node_->create_publisher<nav_msgs::msg::Odometry>(config.odom_topic, 10);
+      tf_broadcaster_ = std::make_unique<tf2_ros::TransformBroadcaster>(node_);
+    }
+
+    void Publish(const mjModel* model, const mjData* data) {
+      if (!Resolve(model)) return;
+      if (data->time + 1.0e-9 < next_publish_time_) next_publish_time_ = data->time;
+      if (data->time + 1.0e-9 < next_publish_time_) return;
+      next_publish_time_ = data->time + 0.02;  // 50 Hz, matches RL decimation 4 x 0.005 s
+
+      const int qpos_adr = model->jnt_qposadr[freejoint_id_];
+      const auto finite = [](mjtNum value) { return std::isfinite(static_cast<double>(value)); };
+      for (int i = 0; i < 7; ++i) {
+        if (!finite(data->qpos[qpos_adr + i])) return;
+      }
+
+      nav_msgs::msg::Odometry odom;
+      odom.header.stamp = node_->now();
+      odom.header.frame_id = config.world_frame;
+      odom.child_frame_id = config.base_body;
+      odom.pose.pose.position.x = data->qpos[qpos_adr + 0];
+      odom.pose.pose.position.y = data->qpos[qpos_adr + 1];
+      odom.pose.pose.position.z = data->qpos[qpos_adr + 2];
+      // MuJoCo freejoint quaternion is w,x,y,z; ROS is x,y,z,w.
+      odom.pose.pose.orientation.w = data->qpos[qpos_adr + 3];
+      odom.pose.pose.orientation.x = data->qpos[qpos_adr + 4];
+      odom.pose.pose.orientation.y = data->qpos[qpos_adr + 5];
+      odom.pose.pose.orientation.z = data->qpos[qpos_adr + 6];
+
+      std::array<mjtNum, 6> body_velocity{};
+      mj_objectVelocity(model, data, mjOBJ_BODY, base_body_id_, body_velocity.data(), 1);
+      odom.twist.twist.angular.x = body_velocity[0];
+      odom.twist.twist.angular.y = body_velocity[1];
+      odom.twist.twist.angular.z = body_velocity[2];
+      odom.twist.twist.linear.x = body_velocity[3];
+      odom.twist.twist.linear.y = body_velocity[4];
+      odom.twist.twist.linear.z = body_velocity[5];
+      odom_pub_->publish(odom);
+
+      geometry_msgs::msg::TransformStamped transform;
+      transform.header = odom.header;
+      transform.child_frame_id = odom.child_frame_id;
+      transform.transform.translation.x = odom.pose.pose.position.x;
+      transform.transform.translation.y = odom.pose.pose.position.y;
+      transform.transform.translation.z = odom.pose.pose.position.z;
+      transform.transform.rotation = odom.pose.pose.orientation;
+      tf_broadcaster_->sendTransform(transform);
+    }
+
+  private:
+    bool Resolve(const mjModel* model) {
+      if (resolved_model_ == model) return freejoint_id_ >= 0 && base_body_id_ >= 0;
+      resolved_model_ = model;
+      base_body_id_ = mj_name2id(model, mjOBJ_BODY, config.base_body.c_str());
+      freejoint_id_ = mj_name2id(model, mjOBJ_JOINT, "base_freejoint");
+      next_publish_time_ = 0.0;
+      if (base_body_id_ < 0 || freejoint_id_ < 0 || model->jnt_type[freejoint_id_] != mjJNT_FREE) {
+        RCLCPP_ERROR(node_->get_logger(),
+                     "Cannot publish ground-truth odometry: need body '%s' and freejoint 'base_freejoint'",
+                     config.base_body.c_str());
+        return false;
+      }
+      RCLCPP_INFO(node_->get_logger(), "Publishing MuJoCo ground truth: %s (%s -> %s, body-frame twist)",
+                  config.odom_topic.c_str(), config.world_frame.c_str(), config.base_body.c_str());
+      return true;
+    }
+
+    rclcpp::Node::SharedPtr node_;
+    rclcpp::Publisher<nav_msgs::msg::Odometry>::SharedPtr odom_pub_;
+    std::unique_ptr<tf2_ros::TransformBroadcaster> tf_broadcaster_;
+    const mjModel* resolved_model_ = nullptr;
+    int base_body_id_ = -1;
+    int freejoint_id_ = -1;
+    mjtNum next_publish_time_ = 0.0;
+  };
+
+  std::unique_ptr<MujocoGroundTruthOdom> ground_truth_odom;
 
   using Seconds = std::chrono::duration<double>;
 
@@ -468,8 +748,13 @@ namespace
               syncSim = d->time;
               sim.speed_changed = false;
 
+              // Servo ownership is explicit: legs are updated at every physics
+              // tick before mj_step; arm/gripper remain in mjcb_control.
+              if (ros_low_level_bridge) ros_low_level_bridge->Apply(m, d);
               // run single step, let next iteration deal with timing
               mj_step(m, d);
+              if (ros_low_level_bridge) ros_low_level_bridge->Publish(m, d);
+              if (ground_truth_odom) ground_truth_odom->Publish(m, d);
               stepped = true;
             }
 
@@ -509,8 +794,13 @@ namespace
                   }
                 }
 
+                // Recalculate leg PD from the latest held q_des before every
+                // 0.002 s physics step; do not hold a 50 Hz torque.
+                if (ros_low_level_bridge) ros_low_level_bridge->Apply(m, d);
                 // call mj_step
                 mj_step(m, d);
+                if (ros_low_level_bridge) ros_low_level_bridge->Publish(m, d);
+                if (ground_truth_odom) ground_truth_odom->Publish(m, d);
                 stepped = true;
 
                 // break if reset
@@ -634,6 +924,7 @@ __attribute__((used, visibility("default"))) extern "C" void _mj_rosettaError(co
 // run event loop
 int main(int argc, char **argv)
 {
+  rclcpp::init(argc, argv);
 
   // display an error if running on macOS under Rosetta 2
 #if defined(__APPLE__) && defined(__AVX__)
@@ -672,8 +963,15 @@ int main(int argc, char **argv)
   string path_mujoco = mujoco_dir ;
   std::cout << "Path to main.cc: " << mujoco_dir << std::endl;
   string config_name = "config.yaml";
-  if (argc == 3 && std::string(argv[1]) == "--config") config_name = argv[2];
-  string path_config = string(mujoco_dir) + "/" + config_name;
+  for (int i = 1; i + 1 < argc; ++i) {
+    if (std::string(argv[i]) == "--config") {
+      config_name = argv[i + 1];
+      break;
+    }
+  }
+  const std::filesystem::path requested_config(config_name);
+  const string path_config = requested_config.is_absolute() ? requested_config.string() :
+      (std::filesystem::path(mujoco_dir) / requested_config).string();
   std::cout << "Path to main.cc: new " << path_config << std::endl;
   YAML::Node yaml_node = YAML::LoadFile(path_config);
   config.robot = yaml_node["robot"].as<std::string>();
@@ -682,7 +980,10 @@ int main(int argc, char **argv)
   config.domain_id = yaml_node["domain_id"].as<int>();
   config.interface = yaml_node["interface"].as<std::string>();
   config.enable_unitree_bridge = yaml_node["enable_unitree_bridge"] ? yaml_node["enable_unitree_bridge"].as<int>() : 1;
+  config.enable_ros_bridge = yaml_node["enable_ros_bridge"] ? yaml_node["enable_ros_bridge"].as<int>() : 0;
   config.print_scene_information = yaml_node["print_scene_information"].as<int>();
+  config.odom_topic = yaml_node["odom_topic"] ? yaml_node["odom_topic"].as<std::string>() : "/state_estimation";
+  config.world_frame = yaml_node["world_frame"] ? yaml_node["world_frame"].as<std::string>() : "map";
   config.enable_elastic_band = yaml_node["enable_elastic_band"].as<int>();
   config.use_joystick = yaml_node["use_joystick"].as<int>();
   config.joystick_type = yaml_node["joystick_type"].as<std::string>();
@@ -719,6 +1020,8 @@ int main(int argc, char **argv)
   }
 
   if (config.robot == "go2_rars01") mjcb_control = Go2Rars01HomeHold;
+  if (config.enable_ros_bridge) ros_low_level_bridge = std::make_unique<MujocoRosLowLevelBridge>();
+  ground_truth_odom = std::make_unique<MujocoGroundTruthOdom>();
 
   // start physics thread
   std::thread physicsthreadhandle(&PhysicsThread, sim.get(), filename);
@@ -726,6 +1029,7 @@ int main(int argc, char **argv)
   sim->RenderLoop();
   physicsthreadhandle.join();
 
+  rclcpp::shutdown();
   pthread_exit(NULL);
   return 0;
 }

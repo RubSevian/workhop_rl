@@ -3,10 +3,13 @@ robot_scene: "scene.xml"
 base_body: "base"
 domain_id: 1
 interface: "lo"
-enable_unitree_bridge: 0  # enable only with a verified DDS-capable interface
+enable_unitree_bridge: 0  # SDK2 private DDS bridge is not used in Stage 4.
+enable_ros_bridge: 1
 use_joystick: 0
 joystick_type: "xbox"
 joystick_device: "/dev/input/js0"
 joystick_bits: 16
 print_scene_information: 1
 enable_elastic_band: 0
+odom_topic: "/state_estimation"
+world_frame: "map"
