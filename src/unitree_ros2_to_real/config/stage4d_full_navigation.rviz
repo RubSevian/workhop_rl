@@ -46,17 +46,11 @@ Visualization Manager:
     - Class: rviz_default_plugins/Odometry
       Name: ground_truth
       Topic: /sim/ground_truth_odom
-    - Class: rviz_default_plugins/MarkerArray
-      Name: robot_replica_gt_lio
-      Topic: /stage4d/robot_model
-    - Class: rviz_default_plugins/Path
-      Name: robot_ground_truth_trail
-      Topic: /stage4d/ground_truth_path
-      Color: 0; 255; 0
-    - Class: rviz_default_plugins/Path
-      Name: robot_pointlio_trail
-      Topic: /stage4d/pointlio_path
-      Color: 0; 128; 255
+    - Class: rviz_default_plugins/RobotModel
+      Name: Go2_RARS01
+      Robot Description: robot_description
+      Visual Enabled: true
+      Collision Enabled: false
   Global Options:
     Fixed Frame: camera_init
   Name: root
