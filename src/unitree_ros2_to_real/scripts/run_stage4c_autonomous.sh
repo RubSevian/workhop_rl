@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 
-WORKSHOP_ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)
+SCRIPT_PATH=$(readlink -f "${BASH_SOURCE[0]}")
+WORKSHOP_ROOT=$(cd "$(dirname "$SCRIPT_PATH")/../../.." && pwd)
 cd "$WORKSHOP_ROOT"
 source /opt/ros/humble/setup.bash
 source ../autonomy_nav_go2/install/setup.bash
