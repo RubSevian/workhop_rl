@@ -16,6 +16,8 @@ find_package(nav_msgs REQUIRED)
 find_package(geometry_msgs REQUIRED)
 find_package(tf2_ros REQUIRED)
 find_package(unitree_go REQUIRED)
+find_package(sensor_msgs REQUIRED)
+find_package(std_srvs REQUIRED)
 
 file(GLOB SIM_SRC
     src/joystick/joystick.cc
@@ -33,7 +35,7 @@ set(SIM_DEPENDENCIES
 
 add_executable(unitree_mujoco ${SIM_SRC} src/main.cc)
 target_link_libraries(unitree_mujoco ${SIM_DEPENDENCIES})
-ament_target_dependencies(unitree_mujoco rclcpp nav_msgs geometry_msgs tf2_ros unitree_go)
+ament_target_dependencies(unitree_mujoco rclcpp nav_msgs geometry_msgs tf2_ros std_msgs sensor_msgs std_srvs unitree_go)
 
 add_executable(test_unitree_sdk2 test/test_unitree_sdk2.cpp)
 target_link_libraries(test_unitree_sdk2 unitree_sdk2)

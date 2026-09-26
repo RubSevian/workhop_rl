@@ -28,6 +28,7 @@
 #include <stdexcept>
 #include <array>
 #include <atomic>
+#include <sstream>
 
 #include <filesystem>
 
@@ -45,6 +46,12 @@
 #include <unitree_go/msg/low_cmd.hpp>
 #include <unitree_go/msg/low_state.hpp>
 #include <std_msgs/msg/float64.hpp>
+#include <std_msgs/msg/int64.hpp>
+#include <std_msgs/msg/string.hpp>
+#include <sensor_msgs/msg/imu.hpp>
+#include <sensor_msgs/msg/point_cloud2.hpp>
+#include <sensor_msgs/point_cloud2_iterator.hpp>
+#include <std_srvs/srv/set_bool.hpp>
 
 #define MUJOCO_PLUGIN_DIR "mujoco_plugin"
 
@@ -99,6 +106,12 @@ namespace
 
     std::string odom_topic = "/state_estimation";
     std::string world_frame = "map";
+
+    double lidar_rate = 10.0;
+    int lidar_horizontal_samples = 360;
+    int lidar_vertical_lines = 18;
+    double lidar_min_range = 0.5;
+    double lidar_max_range = 100.0;
 
     int enable_elastic_band = 0;
     int band_attached_link = 0;
@@ -375,6 +388,309 @@ namespace
   };
 
   std::unique_ptr<MujocoGroundTruthOdom> ground_truth_odom;
+
+  // Publishes cumulative contact diagnostics at 50 Hz.  MuJoCo's world body
+  // (body id 0) contains environment geometry; robot geometry is attached to
+  // descendant bodies.  Floor/foot contacts are expected and excluded from
+  // the obstacle counter, while robot/world contacts are reported explicitly.
+  class MujocoCollisionDiagnostics {
+  public:
+    MujocoCollisionDiagnostics()
+        : node_(std::make_shared<rclcpp::Node>("mujoco_collision_diagnostics")) {
+      auto qos = rclcpp::QoS(1).transient_local();
+      count_pub_ = node_->create_publisher<std_msgs::msg::Int64>(
+          "/mujoco/non_floor_contact_count", qos);
+      unexpected_floor_pub_ = node_->create_publisher<std_msgs::msg::Int64>(
+          "/mujoco/unexpected_floor_contact_count", qos);
+      diagnostics_pub_ = node_->create_publisher<std_msgs::msg::String>(
+          "/mujoco/collision_diagnostics", qos);
+    }
+
+    void Observe(const mjModel* model, const mjData* data) {
+      if (!Resolve(model)) return;
+      bool environment_contact = false;
+      for (int i = 0; i < data->ncon; ++i) {
+        const int geom1 = data->contact[i].geom1;
+        const int geom2 = data->contact[i].geom2;
+        const bool floor1 = geom1 == floor_geom_id_;
+        const bool floor2 = geom2 == floor_geom_id_;
+        const bool robot1 = IsRobotGeom(model, geom1);
+        const bool robot2 = IsRobotGeom(model, geom2);
+        if (floor1 || floor2) {
+          const int other = floor1 ? geom2 : geom1;
+          if (IsRobotGeom(model, other) && !IsExpectedFoot(model, other)) {
+            ++unexpected_floor_contact_count_;
+            if (first_unexpected_floor_geoms_.empty()) {
+              first_unexpected_floor_geoms_ = GeomName(model, other) + " <-> floor";
+            }
+          }
+          continue;
+        }
+        if ((robot1 && !robot2) || (robot2 && !robot1)) {
+          ++non_floor_contact_count_;
+          environment_contact = true;
+          if (first_contact_time_ < 0.0) {
+            first_contact_time_ = data->time;
+            first_contact_geoms_ = GeomName(model, geom1) + " <-> " + GeomName(model, geom2);
+          }
+        }
+      }
+      if (environment_contact) ++non_floor_contact_steps_;
+      if (data->time + 1.0e-9 < next_publish_time_) return;
+      next_publish_time_ = data->time + 0.02;
+      std_msgs::msg::Int64 count;
+      count.data = non_floor_contact_count_;
+      count_pub_->publish(count);
+      count.data = unexpected_floor_contact_count_;
+      unexpected_floor_pub_->publish(count);
+      std_msgs::msg::String diagnostics;
+      std::ostringstream json;
+      json << "{\"non_floor_environment_contact_count\":" << non_floor_contact_count_
+           << ",\"non_floor_environment_contact_steps\":" << non_floor_contact_steps_
+           << ",\"unexpected_robot_floor_contact_count\":" << unexpected_floor_contact_count_
+           << ",\"first_non_floor_contact_time_s\":";
+      if (first_contact_time_ < 0.0) json << "null";
+      else json << first_contact_time_;
+      json << ",\"first_non_floor_contact_geoms\":";
+      if (first_contact_geoms_.empty()) json << "null";
+      else json << "\"" << first_contact_geoms_ << "\"";
+      json << ",\"first_unexpected_floor_contact_geoms\":";
+      if (first_unexpected_floor_geoms_.empty()) json << "null";
+      else json << "\"" << first_unexpected_floor_geoms_ << "\"";
+      json << "}";
+      diagnostics.data = json.str();
+      diagnostics_pub_->publish(diagnostics);
+    }
+
+  private:
+    bool Resolve(const mjModel* model) {
+      if (resolved_model_ == model) return floor_geom_id_ >= 0;
+      resolved_model_ = model;
+      floor_geom_id_ = mj_name2id(model, mjOBJ_GEOM, "floor");
+      next_publish_time_ = 0.0;
+      return floor_geom_id_ >= 0;
+    }
+
+    static bool IsRobotGeom(const mjModel* model, int geom_id) {
+      return geom_id >= 0 && geom_id < model->ngeom && model->geom_bodyid[geom_id] > 0;
+    }
+
+    static std::string GeomName(const mjModel* model, int geom_id) {
+      const char* name = mj_id2name(model, mjOBJ_GEOM, geom_id);
+      const char* body = mj_id2name(model, mjOBJ_BODY, model->geom_bodyid[geom_id]);
+      std::string result = name ? std::string(name) : ("geom_" + std::to_string(geom_id));
+      return result + "@" + (body ? std::string(body) : "body_" + std::to_string(model->geom_bodyid[geom_id]));
+    }
+
+    static bool IsExpectedFoot(const mjModel* model, int geom_id) {
+      const std::string geom = GeomName(model, geom_id);
+      const int body_id = model->geom_bodyid[geom_id];
+      const char* body_name = mj_id2name(model, mjOBJ_BODY, body_id);
+      const std::string body = body_name ? std::string(body_name) : "";
+      auto has_foot_token = [](const std::string& value) {
+        return value.find("foot") != std::string::npos || value.find("toe") != std::string::npos;
+      };
+      return has_foot_token(geom) || has_foot_token(body);
+    }
+
+    rclcpp::Node::SharedPtr node_;
+    rclcpp::Publisher<std_msgs::msg::Int64>::SharedPtr count_pub_;
+    rclcpp::Publisher<std_msgs::msg::Int64>::SharedPtr unexpected_floor_pub_;
+    rclcpp::Publisher<std_msgs::msg::String>::SharedPtr diagnostics_pub_;
+    const mjModel* resolved_model_ = nullptr;
+    int floor_geom_id_ = -1;
+    mjtNum next_publish_time_ = 0.0;
+    int64_t non_floor_contact_count_ = 0;
+    int64_t non_floor_contact_steps_ = 0;
+    int64_t unexpected_floor_contact_count_ = 0;
+    mjtNum first_contact_time_ = -1.0;
+    std::string first_contact_geoms_;
+    std::string first_unexpected_floor_geoms_;
+  };
+
+  std::unique_ptr<MujocoCollisionDiagnostics> collision_diagnostics;
+
+  // Minimal deterministic simulated UNILIDAR + IMU bridge.  It samples the
+  // existing MuJoCo imu sensors and raycasts from the model's radar body; no
+  // ground-truth pose is used to fabricate points or estimator output.
+  class MujocoPointLioSensorBridge {
+  public:
+    explicit MujocoPointLioSensorBridge(const SimulationConfig& cfg)
+        : node_(std::make_shared<rclcpp::Node>("mujoco_pointlio_sensor_bridge")),
+          lidar_rate_(cfg.lidar_rate), horizontal_samples_(cfg.lidar_horizontal_samples),
+          vertical_lines_(cfg.lidar_vertical_lines), min_range_(cfg.lidar_min_range),
+          max_range_(cfg.lidar_max_range) {
+      imu_pub_ = node_->create_publisher<sensor_msgs::msg::Imu>("/unilidar/imu", 20);
+      cloud_pub_ = node_->create_publisher<sensor_msgs::msg::PointCloud2>("/unilidar/cloud", 5);
+      lidar_toggle_ = node_->create_service<std_srvs::srv::SetBool>(
+          "/mujoco/lidar_enable", [this](const std::shared_ptr<std_srvs::srv::SetBool::Request> req,
+                                           std::shared_ptr<std_srvs::srv::SetBool::Response> res) {
+            lidar_enabled_.store(req->data); res->success = true;
+            res->message = req->data ? "simulated LiDAR enabled" : "simulated LiDAR disabled";
+          });
+      imu_toggle_ = node_->create_service<std_srvs::srv::SetBool>(
+          "/mujoco/imu_enable", [this](const std::shared_ptr<std_srvs::srv::SetBool::Request> req,
+                                         std::shared_ptr<std_srvs::srv::SetBool::Response> res) {
+            imu_enabled_.store(req->data); res->success = true;
+            res->message = req->data ? "simulated IMU enabled" : "simulated IMU disabled";
+          });
+      spin_thread_ = std::thread([this] { rclcpp::spin(node_); });
+    }
+
+    ~MujocoPointLioSensorBridge() {
+      if (spin_thread_.joinable()) spin_thread_.join();
+    }
+
+    void Publish(const mjModel* model, const mjData* data) {
+      if (!Resolve(model)) return;
+      if (data->time + 1.0e-9 < last_sim_time_) {
+        next_lidar_time_ = data->time;
+        physics_ticks_ = 0;
+      }
+      last_sim_time_ = data->time;
+      ++physics_ticks_;
+      if (imu_enabled_.load() && (physics_ticks_ % 2) == 0) PublishImu(model, data);
+      if (lidar_enabled_.load() && data->time + 1.0e-9 >= next_lidar_time_) {
+        PublishLidar(model, data);
+        next_lidar_time_ = data->time + 1.0 / std::max(1.0, lidar_rate_);
+      }
+    }
+
+  private:
+    static int SensorAddress(const mjModel* model, const char* name, int dimension) {
+      const int sensor = mj_name2id(model, mjOBJ_SENSOR, name);
+      if (sensor < 0 || model->sensor_dim[sensor] != dimension) return -1;
+      return model->sensor_adr[sensor];
+    }
+
+    bool Resolve(const mjModel* model) {
+      if (resolved_model_ == model) return ready_;
+      resolved_model_ = model;
+      radar_body_id_ = mj_name2id(model, mjOBJ_BODY, "radar");
+      base_body_id_ = mj_name2id(model, mjOBJ_BODY, "base");
+      imu_quat_adr_ = SensorAddress(model, "imu_quat", 4);
+      imu_gyro_adr_ = SensorAddress(model, "imu_gyro", 3);
+      imu_acc_adr_ = SensorAddress(model, "imu_acc", 3);
+      ready_ = radar_body_id_ >= 0 && base_body_id_ >= 0 && imu_quat_adr_ >= 0 &&
+               imu_gyro_adr_ >= 0 && imu_acc_adr_ >= 0;
+      next_lidar_time_ = 0.0;
+      last_sim_time_ = -1.0e30;
+      if (ready_) {
+        RCLCPP_INFO(node_->get_logger(),
+                    "Point-LIO sensors ready: /unilidar/imu=250Hz, /unilidar/cloud=%.1fHz, frame=unilidar, scan=%dx%d",
+                    lidar_rate_, vertical_lines_, horizontal_samples_);
+      } else {
+        RCLCPP_ERROR(node_->get_logger(), "Point-LIO sensor bridge missing radar/body or IMU sensors");
+      }
+      return ready_;
+    }
+
+    builtin_interfaces::msg::Time SimStamp(mjtNum seconds) const {
+      builtin_interfaces::msg::Time stamp;
+      const int64_t total_ns = static_cast<int64_t>(seconds * 1.0e9);
+      stamp.sec = static_cast<int32_t>(total_ns / 1000000000LL);
+      stamp.nanosec = static_cast<uint32_t>(total_ns % 1000000000LL);
+      return stamp;
+    }
+
+    void PublishImu(const mjModel*, const mjData* data) {
+      sensor_msgs::msg::Imu msg;
+      msg.header.stamp = SimStamp(data->time);
+      msg.header.frame_id = "imu";
+      msg.orientation.w = data->sensordata[imu_quat_adr_ + 0];
+      msg.orientation.x = data->sensordata[imu_quat_adr_ + 1];
+      msg.orientation.y = data->sensordata[imu_quat_adr_ + 2];
+      msg.orientation.z = data->sensordata[imu_quat_adr_ + 3];
+      msg.angular_velocity.x = data->sensordata[imu_gyro_adr_ + 0];
+      msg.angular_velocity.y = data->sensordata[imu_gyro_adr_ + 1];
+      msg.angular_velocity.z = data->sensordata[imu_gyro_adr_ + 2];
+      msg.linear_acceleration.x = data->sensordata[imu_acc_adr_ + 0];
+      msg.linear_acceleration.y = data->sensordata[imu_acc_adr_ + 1];
+      msg.linear_acceleration.z = data->sensordata[imu_acc_adr_ + 2];
+      imu_pub_->publish(msg);
+      if (!logged_imu_) {
+        logged_imu_ = true;
+        RCLCPP_INFO(node_->get_logger(),
+                    "Stationary IMU sample frame=%s gyro=[%.3f %.3f %.3f] acc=[%.3f %.3f %.3f]",
+                    msg.header.frame_id.c_str(), msg.angular_velocity.x, msg.angular_velocity.y,
+                    msg.angular_velocity.z, msg.linear_acceleration.x, msg.linear_acceleration.y,
+                    msg.linear_acceleration.z);
+      }
+    }
+
+    void PublishLidar(const mjModel* model, const mjData* data) {
+      const int count = std::max(1, vertical_lines_) * std::max(1, horizontal_samples_);
+      sensor_msgs::msg::PointCloud2 cloud;
+      cloud.header.stamp = SimStamp(data->time);
+      cloud.header.frame_id = "unilidar";
+      sensor_msgs::PointCloud2Modifier modifier(cloud);
+      modifier.setPointCloud2Fields(5,
+          "x", 1, sensor_msgs::msg::PointField::FLOAT32,
+          "y", 1, sensor_msgs::msg::PointField::FLOAT32,
+          "z", 1, sensor_msgs::msg::PointField::FLOAT32,
+          "intensity", 1, sensor_msgs::msg::PointField::FLOAT32,
+          "time", 1, sensor_msgs::msg::PointField::FLOAT32);
+      modifier.resize(count);
+      sensor_msgs::PointCloud2Iterator<float> x_it(cloud, "x");
+      sensor_msgs::PointCloud2Iterator<float> y_it(cloud, "y");
+      sensor_msgs::PointCloud2Iterator<float> z_it(cloud, "z");
+      sensor_msgs::PointCloud2Iterator<float> intensity_it(cloud, "intensity");
+      sensor_msgs::PointCloud2Iterator<float> time_it(cloud, "time");
+      const mjtNum* origin = data->xpos + 3 * radar_body_id_;
+      const mjtNum* rotation = data->xmat + 9 * radar_body_id_;
+      const double scan_period = 1.0 / std::max(1.0, lidar_rate_);
+      for (int row = 0; row < std::max(1, vertical_lines_); ++row) {
+        const double vertical = (-15.0 + 30.0 * row / std::max(1, vertical_lines_ - 1)) * M_PI / 180.0;
+        for (int col = 0; col < std::max(1, horizontal_samples_); ++col) {
+          const double horizontal = 2.0 * M_PI * col / std::max(1, horizontal_samples_);
+          const double local_dir[3] = {std::cos(vertical) * std::cos(horizontal),
+                                       std::cos(vertical) * std::sin(horizontal), std::sin(vertical)};
+          mjtNum world_dir[3] = {
+              rotation[0] * local_dir[0] + rotation[1] * local_dir[1] + rotation[2] * local_dir[2],
+              rotation[3] * local_dir[0] + rotation[4] * local_dir[1] + rotation[5] * local_dir[2],
+              rotation[6] * local_dir[0] + rotation[7] * local_dir[1] + rotation[8] * local_dir[2]};
+          int geom_id[1] = {-1};
+          const mjtNum distance = mj_ray(model, data, origin, world_dir, nullptr, 1, base_body_id_, geom_id);
+          const bool valid = geom_id[0] >= 0 && distance >= min_range_ && distance <= max_range_;
+          const float range = static_cast<float>(valid ? distance : max_range_);
+          *x_it = range * static_cast<float>(local_dir[0]);
+          *y_it = range * static_cast<float>(local_dir[1]);
+          *z_it = range * static_cast<float>(local_dir[2]);
+          *intensity_it = valid ? 1.0F : 0.0F;
+          *time_it = static_cast<float>(scan_period * col / std::max(1, horizontal_samples_));
+          ++x_it; ++y_it; ++z_it; ++intensity_it; ++time_it;
+        }
+      }
+      cloud_pub_->publish(cloud);
+    }
+
+    rclcpp::Node::SharedPtr node_;
+    rclcpp::Publisher<sensor_msgs::msg::Imu>::SharedPtr imu_pub_;
+    rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr cloud_pub_;
+    rclcpp::Service<std_srvs::srv::SetBool>::SharedPtr lidar_toggle_;
+    rclcpp::Service<std_srvs::srv::SetBool>::SharedPtr imu_toggle_;
+    std::thread spin_thread_;
+    std::atomic<bool> lidar_enabled_{true};
+    std::atomic<bool> imu_enabled_{true};
+    const mjModel* resolved_model_ = nullptr;
+    int radar_body_id_ = -1;
+    int base_body_id_ = -1;
+    int imu_quat_adr_ = -1;
+    int imu_gyro_adr_ = -1;
+    int imu_acc_adr_ = -1;
+    bool ready_ = false;
+    bool logged_imu_ = false;
+    uint64_t physics_ticks_ = 0;
+    mjtNum next_lidar_time_ = 0.0;
+    mjtNum last_sim_time_ = -1.0e30;
+    double lidar_rate_;
+    int horizontal_samples_;
+    int vertical_lines_;
+    double min_range_;
+    double max_range_;
+  };
+
+  std::unique_ptr<MujocoPointLioSensorBridge> pointlio_sensor_bridge;
 
   using Seconds = std::chrono::duration<double>;
 
@@ -760,6 +1076,8 @@ namespace
               mj_step(m, d);
               if (ros_low_level_bridge) ros_low_level_bridge->Publish(m, d);
               if (ground_truth_odom) ground_truth_odom->Publish(m, d);
+              if (collision_diagnostics) collision_diagnostics->Observe(m, d);
+              if (pointlio_sensor_bridge) pointlio_sensor_bridge->Publish(m, d);
               stepped = true;
             }
 
@@ -806,6 +1124,8 @@ namespace
                 mj_step(m, d);
                 if (ros_low_level_bridge) ros_low_level_bridge->Publish(m, d);
                 if (ground_truth_odom) ground_truth_odom->Publish(m, d);
+                if (collision_diagnostics) collision_diagnostics->Observe(m, d);
+              if (pointlio_sensor_bridge) pointlio_sensor_bridge->Publish(m, d);
                 stepped = true;
 
                 // break if reset
@@ -989,6 +1309,11 @@ int main(int argc, char **argv)
   config.print_scene_information = yaml_node["print_scene_information"].as<int>();
   config.odom_topic = yaml_node["odom_topic"] ? yaml_node["odom_topic"].as<std::string>() : "/state_estimation";
   config.world_frame = yaml_node["world_frame"] ? yaml_node["world_frame"].as<std::string>() : "map";
+  config.lidar_rate = yaml_node["lidar_rate"] ? yaml_node["lidar_rate"].as<double>() : 10.0;
+  config.lidar_horizontal_samples = yaml_node["lidar_horizontal_samples"] ? yaml_node["lidar_horizontal_samples"].as<int>() : 360;
+  config.lidar_vertical_lines = yaml_node["lidar_vertical_lines"] ? yaml_node["lidar_vertical_lines"].as<int>() : 18;
+  config.lidar_min_range = yaml_node["lidar_min_range"] ? yaml_node["lidar_min_range"].as<double>() : 0.5;
+  config.lidar_max_range = yaml_node["lidar_max_range"] ? yaml_node["lidar_max_range"].as<double>() : 100.0;
   config.enable_elastic_band = yaml_node["enable_elastic_band"].as<int>();
   config.use_joystick = yaml_node["use_joystick"].as<int>();
   config.joystick_type = yaml_node["joystick_type"].as<std::string>();
@@ -1027,6 +1352,8 @@ int main(int argc, char **argv)
   if (config.robot == "go2_rars01") mjcb_control = Go2Rars01HomeHold;
   if (config.enable_ros_bridge) ros_low_level_bridge = std::make_unique<MujocoRosLowLevelBridge>();
   ground_truth_odom = std::make_unique<MujocoGroundTruthOdom>();
+  collision_diagnostics = std::make_unique<MujocoCollisionDiagnostics>();
+  pointlio_sensor_bridge = std::make_unique<MujocoPointLioSensorBridge>(config);
 
   // start physics thread
   std::thread physicsthreadhandle(&PhysicsThread, sim.get(), filename);

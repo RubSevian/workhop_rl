@@ -18,7 +18,7 @@ from geometry_msgs.msg import PointStamped, PoseStamped, TwistStamped
 from nav_msgs.msg import Odometry, Path as NavPath
 from rclpy.node import Node
 from rclpy.qos import DurabilityPolicy, QoSProfile
-from std_msgs.msg import Bool
+from std_msgs.msg import Bool, String
 
 
 def wrap_pi(value: float) -> float:
@@ -57,6 +57,8 @@ class Stage4BNavigationTest(Node):
         self.goal_yaw = None
         self.samples = []
         self.commands = []
+        self.latest_command = None
+        self.collision = {}
         self.arrival_time = None
         self.reached_goal = False
         self.finished = False
@@ -69,6 +71,9 @@ class Stage4BNavigationTest(Node):
         self.path_pub = self.create_publisher(NavPath, "/path", 10)
         self.odom_sub = self.create_subscription(Odometry, "/state_estimation", self.odom_cb, 10)
         self.cmd_sub = self.create_subscription(TwistStamped, "/cmd_vel", self.cmd_cb, 10)
+        collision_qos = QoSProfile(depth=1, durability=DurabilityPolicy.TRANSIENT_LOCAL)
+        self.collision_sub = self.create_subscription(
+            String, "/mujoco/collision_diagnostics", self.collision_cb, collision_qos)
         self.timer = self.create_timer(0.1, self.tick)
         self.started_at = time.monotonic()
 
@@ -103,6 +108,16 @@ class Stage4BNavigationTest(Node):
                 "x": x,
                 "y": y,
                 "yaw": yaw,
+                "gt_vx_body": float(msg.twist.twist.linear.x),
+                "gt_vy_body": float(msg.twist.twist.linear.y),
+                "gt_wz": float(msg.twist.twist.angular.z),
+                "cmd_vx": self.latest_command[0] if self.latest_command else None,
+                "cmd_vy": self.latest_command[1] if self.latest_command else None,
+                "cmd_wz": self.latest_command[2] if self.latest_command else None,
+                "goal_vehicle_x": (math.cos(yaw) * (self.goal[0] - x) +
+                                   math.sin(yaw) * (self.goal[1] - y)),
+                "goal_vehicle_y": (-math.sin(yaw) * (self.goal[0] - x) +
+                                   math.cos(yaw) * (self.goal[1] - y)),
             })
             if self.active and self.arrival_time is None and goal_error <= self.stop_distance:
                 self.arrival_time = time.monotonic()
@@ -115,8 +130,15 @@ class Stage4BNavigationTest(Node):
     def cmd_cb(self, msg: TwistStamped):
         values = (msg.twist.linear.x, msg.twist.linear.y, msg.twist.angular.z)
         if all(math.isfinite(float(value)) for value in values):
+            self.latest_command = values
             self.commands.append({"t": time.monotonic() - self.started_at,
                                   "vx": values[0], "vy": values[1], "wz": values[2]})
+
+    def collision_cb(self, msg: String):
+        try:
+            self.collision = json.loads(msg.data)
+        except (TypeError, json.JSONDecodeError):
+            self.get_logger().warning("Ignoring malformed MuJoCo collision diagnostics")
 
     def publish_route(self):
         if self.start is None or self.goal is None or not self.active:
@@ -130,13 +152,19 @@ class Stage4BNavigationTest(Node):
         route = NavPath()
         route.header.stamp, route.header.frame_id = now, "vehicle"
         # pathFollower captures the current vehicle pose when it receives each
-        # refreshed path; use dense points to make segment tracking measurable.
+        # refreshed path. Transform the one fixed world goal into that current
+        # vehicle frame before publishing, so the physical target never moves.
+        x, y = self.odom.pose.pose.position.x, self.odom.pose.pose.position.y
+        yaw = yaw_from_quaternion(self.odom.pose.pose.orientation)
+        dx, dy = self.goal[0] - x, self.goal[1] - y
+        goal_x_vehicle = math.cos(yaw) * dx + math.sin(yaw) * dy
+        goal_y_vehicle = -math.sin(yaw) * dx + math.cos(yaw) * dy
         for index in range(21):
             u = index / 20.0
             pose = PoseStamped()
             pose.header = route.header
-            pose.pose.position.x = self.goal_x_local * u
-            pose.pose.position.y = self.goal_y_local * u
+            pose.pose.position.x = goal_x_vehicle * u
+            pose.pose.position.y = goal_y_vehicle * u
             pose.pose.orientation.w = 1.0
             route.poses.append(pose)
         self.path_pub.publish(route)
@@ -168,6 +196,14 @@ class Stage4BNavigationTest(Node):
         self.active_pub.publish(Bool(data=False))
         errors = [sample["goal_error_gt_m"] for sample in self.samples]
         cross = [sample["cross_track_m"] for sample in self.samples]
+        tracked = [sample for sample in self.samples if sample["cmd_vx"] is not None]
+        def tracking_metric(command_key, gt_key, absolute=False):
+            values = [sample[command_key] - sample[gt_key] for sample in tracked]
+            if not values:
+                return None
+            if absolute:
+                return sum(abs(value) for value in values) / len(values)
+            return math.sqrt(sum(value * value for value in values) / len(values))
         post = [sample for sample in self.samples if self.arrival_time and
                 self.started_at + sample["t"] >= self.arrival_time]
         final = self.samples[-1] if self.samples else {}
@@ -192,6 +228,20 @@ class Stage4BNavigationTest(Node):
             "cmd_max_abs_wz": max((abs(c["wz"]) for c in self.commands), default=0.0),
             "samples": len(self.samples),
             "commands": len(self.commands),
+            "fixed_goal_world_m": list(self.goal) if self.goal else None,
+            "fixed_start_world_m": list(self.start[:2]) if self.start else None,
+            "non_floor_environment_contact_count": self.collision.get("non_floor_environment_contact_count", 0),
+            "non_floor_environment_contact_steps": self.collision.get("non_floor_environment_contact_steps", 0),
+            "unexpected_robot_floor_contact_count": self.collision.get("unexpected_robot_floor_contact_count", 0),
+            "first_non_floor_contact_time_s": self.collision.get("first_non_floor_contact_time_s"),
+            "first_non_floor_contact_geoms": self.collision.get("first_non_floor_contact_geoms"),
+            "first_unexpected_floor_contact_geoms": self.collision.get("first_unexpected_floor_contact_geoms"),
+            "vx_tracking_rmse": tracking_metric("cmd_vx", "gt_vx_body"),
+            "vy_tracking_rmse": tracking_metric("cmd_vy", "gt_vy_body"),
+            "wz_tracking_rmse": tracking_metric("cmd_wz", "gt_wz"),
+            "vx_tracking_mae": tracking_metric("cmd_vx", "gt_vx_body", True),
+            "vy_tracking_mae": tracking_metric("cmd_vy", "gt_vy_body", True),
+            "wz_tracking_mae": tracking_metric("cmd_wz", "gt_wz", True),
         }
         self.report_path.parent.mkdir(parents=True, exist_ok=True)
         self.report_path.write_text(json.dumps(metrics, indent=2) + "\n", encoding="utf-8")

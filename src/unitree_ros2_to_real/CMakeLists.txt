@@ -146,6 +146,9 @@ install(DIRECTORY launch/
 
 install(PROGRAMS scripts/manual_twist_test.py
                  scripts/stage4b_navigation_test.py
+                 scripts/pointlio_state_adapter.py
+                 scripts/pointcloud_fields_check.py
+                 scripts/stage4c_pointlio_evaluator.py
   DESTINATION lib/${PROJECT_NAME}
 )
 

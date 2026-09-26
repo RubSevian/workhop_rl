@@ -1,6 +1,7 @@
 from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument
 from launch.substitutions import LaunchConfiguration
+from launch_ros.parameter_descriptions import ParameterValue
 from launch_ros.actions import Node
 
 
@@ -44,7 +45,7 @@ def generate_launch_description():
                 "stopDisThre": 0.2,
                 "goalCloseDis": 1.0,
                 "maxSpeed": 0.35,
-                "maxYawRate": LaunchConfiguration("max_yaw_rate"),
+                "maxYawRate": ParameterValue(LaunchConfiguration("max_yaw_rate"), value_type=float),
                 "autonomyMode": True,
                 "autonomySpeed": 0.35,
                 "odomTimeoutSec": 0.5,

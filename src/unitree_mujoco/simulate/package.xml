@@ -12,8 +12,10 @@
   <depend>unitree_api</depend>
   <depend>rclcpp</depend>
   <depend>std_msgs</depend>
+  <depend>std_srvs</depend>
   <depend>geometry_msgs</depend>
   <depend>nav_msgs</depend>
+  <depend>sensor_msgs</depend>
   <depend>tf2_ros</depend>
   <depend>rosbag2_cpp</depend>
 
