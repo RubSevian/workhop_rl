@@ -62,6 +62,7 @@ class Stage4CEvaluator(Node):
         self.latest_cmd = None
         self.pointlio_ready = False
         self.auto_start = bool(args.auto_start)
+        self.start_delay = float(args.start_delay)
 
     def ready_cb(self, msg):
         self.pointlio_ready = bool(msg.data)
@@ -115,6 +116,8 @@ class Stage4CEvaluator(Node):
         return tx + math.cos(da) * x - math.sin(da) * y, ty + math.sin(da) * x + math.cos(da) * y, wrap(a + da)
 
     def start_route(self):
+        if time.monotonic() - self.started < self.start_delay:
+            return False
         if self.gt is None or self.lio is None or not self.pointlio_ready:
             return False
         gx, gy, a = self.gt.pose.pose.position.x, self.gt.pose.pose.position.y, yaw(self.gt.pose.pose.orientation)
@@ -127,6 +130,10 @@ class Stage4CEvaluator(Node):
         return True
 
     def start_navigation(self, _, response):
+        if time.monotonic() - self.started < self.start_delay:
+            response.success = False
+            response.message = f"Stand-up hold active; retry after {self.start_delay:.1f} s"
+            return response
         if not self.start_route():
             response.success = False
             response.message = "Point-LIO/GT odometry is not ready"
@@ -196,6 +203,7 @@ def main():
     parser = argparse.ArgumentParser(); parser.add_argument("--mode", choices=["service", "static"], default="service")
     parser.add_argument("--goal-x", type=float, default=1.0); parser.add_argument("--goal-y", type=float, default=0.0)
     parser.add_argument("--duration", type=float, default=20.0); parser.add_argument("--stop-distance", type=float, default=0.2)
+    parser.add_argument("--start-delay", type=float, default=12.0)
     parser.add_argument("--auto-start", type=lambda value: value.lower() in ("1", "true", "yes"), default=False)
     parser.add_argument("--report", type=Path, default=Path("/tmp/stage4c_pointlio_report.json")); args, _ = parser.parse_known_args()
     rclpy.init(); node = Stage4CEvaluator(args)
