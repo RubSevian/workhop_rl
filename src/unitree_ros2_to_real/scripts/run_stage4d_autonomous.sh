@@ -1,5 +1,4 @@
 #!/usr/bin/env bash
-set -u
 set -o pipefail
 SCRIPT_PATH=$(readlink -f "${BASH_SOURCE[0]}")
 WORKSHOP_ROOT=$(cd "$(dirname "$SCRIPT_PATH")/../../.." && pwd)
@@ -7,6 +6,8 @@ cd "$WORKSHOP_ROOT"
 source /opt/ros/humble/setup.bash
 source ../autonomy_nav_go2/install/setup.bash
 source install/setup.bash
+# ROS setup scripts are not nounset-safe; enable strict variables only afterwards.
+set -u
 WORKSPACE_ROOT=$(cd ../.. && pwd)
 RUN_DIR=${STAGE4D_RUN_DIR:-"$WORKSPACE_ROOT/stage4d_runs/$(date +%Y%m%d_%H%M%S)"}
 CASE_SECONDS=${STAGE4D_CASE_SECONDS:-25}
