@@ -2,9 +2,6 @@
 """Planner-estimate-only markers; these never influence navigation."""
 import rclpy
 from diagnostic_msgs.msg import DiagnosticArray
-from nav_msgs.msg import Odometry
-from geometry_msgs.msg import TransformStamped
-from tf2_ros import TransformBroadcaster
 from rclpy.node import Node
 from rclpy.qos import DurabilityPolicy, QoSProfile
 from visualization_msgs.msg import Marker
@@ -22,26 +19,12 @@ class PlannerVisualization(Node):
         self.values = dict(DEFAULTS)
         retained = QoSProfile(depth=1, durability=DurabilityPolicy.TRANSIENT_LOCAL)
         self.footprint = self.create_publisher(Marker, '/stage4d/planner_footprint', retained)
-        # Sole dynamic Point-LIO TF publisher: together with the existing
-        # static map->camera_init, aft_mapped->sensor and sensor->vehicle links
-        # it makes planner-frame markers visible in map without ground truth.
-        self.tf = TransformBroadcaster(self)
-        self.create_subscription(Odometry, '/state_estimation', self.estimated_pose, 10)
+        # Point-LIO itself is the sole owner of camera_init -> aft_mapped.
+        # This node is visualization-only and deliberately publishes no TF.
         self.domain = self.create_publisher(Marker, '/stage4d/planner_search_domain', retained)
         self.text = self.create_publisher(Marker, '/stage4d/planner_status_marker', retained)
         self.create_subscription(DiagnosticArray, '/local_planner/status', self.status, retained)
         self.create_timer(0.2, self.publish)
-
-    def estimated_pose(self, odometry):
-        transform = TransformStamped()
-        transform.header.stamp = odometry.header.stamp
-        transform.header.frame_id = 'camera_init'
-        transform.child_frame_id = 'aft_mapped'
-        transform.transform.translation.x = odometry.pose.pose.position.x
-        transform.transform.translation.y = odometry.pose.pose.position.y
-        transform.transform.translation.z = odometry.pose.pose.position.z
-        transform.transform.rotation = odometry.pose.pose.orientation
-        self.tf.sendTransform(transform)
 
     def status(self, message):
         for status in message.status:

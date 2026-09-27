@@ -46,7 +46,8 @@ def generate_launch_description():
         Node(package='tf2_ros', executable='static_transform_publisher', name='aft_mapped_to_body', output='screen',
              arguments=['0', '0', '0', '0', '0', '0', 'aft_mapped', 'body']),
         Node(package='tf2_ros', executable='static_transform_publisher', name='sensor_to_vehicle', output='screen',
-             arguments=['0', '0', '0', '0', '0', '0', 'sensor', 'vehicle']),
+             # sensor is the IMU origin; child vehicle is the Go2 base origin.
+             arguments=['0.02557', '0', '-0.04232', '0', '0', '0', 'sensor', 'vehicle']),
         Node(package='terrain_analysis', executable='terrainAnalysis', name='terrainAnalysis', output='screen',
              parameters=[{'worldFrame': 'map'}]),
         Node(package='terrain_analysis_ext', executable='terrainAnalysisExt', name='terrainAnalysisExt', output='screen',
@@ -61,7 +62,9 @@ def generate_launch_description():
         IncludeLaunchDescription(
             AnyLaunchDescriptionSource(PathJoinSubstitution([local, 'launch', 'local_planner.launch'])),
             launch_arguments={
-                'sensorOffsetX': '0.0', 'sensorOffsetY': '0.0', 'cameraOffsetZ': '0.0',
+                # /state_estimation is IMU-centred; original localPlanner algebra subtracts
+                # sensorOffset in the body yaw direction, so -0.02557 recovers base XY.
+                'sensorOffsetX': '-0.02557', 'sensorOffsetY': '0.0', 'cameraOffsetZ': '0.0',
                 'autonomyMode': 'true', 'autonomySpeed': '0.35', 'maxSpeed': '0.35',
                 'is_real_robot': 'false', 'sendSportCommand': 'false',
                 'odomTimeoutSec': '0.5', 'pathTimeoutSec': '0.5', 'allowStaticPath': 'false',
