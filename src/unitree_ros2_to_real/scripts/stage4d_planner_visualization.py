@@ -7,7 +7,7 @@ from rclpy.qos import DurabilityPolicy, QoSProfile
 from visualization_msgs.msg import Marker
 
 DEFAULTS = {
-    'vehicle_length': 0.30, 'vehicle_width': 0.70, 'adjacent_range': 3.0,
+    'vehicle_length': 0.62, 'vehicle_width': 0.40, 'adjacent_range': 3.0,
     'path_scale': 0.75, 'path_range': 3.0, 'correspondence_search_radius': 0.55,
     'candidate_paths_total': 0, 'candidate_paths_blocked': 0,
     'candidate_paths_scored': 0, 'selected_group_id': -1,

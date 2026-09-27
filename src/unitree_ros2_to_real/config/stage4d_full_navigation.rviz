@@ -118,6 +118,11 @@ Visualization Manager:
             Value: /stage4d/planner_status_marker
         - Class: rviz_default_plugins/MarkerArray
           Enabled: false
+          Name: LocalPlanner collision envelope — correspondence cells
+          Topic:
+            Value: /stage4d/localplanner_collision_envelope
+        - Class: rviz_default_plugins/MarkerArray
+          Enabled: false
           Name: FAR graph
           Topic:
             Value: /viz_graph_topic
