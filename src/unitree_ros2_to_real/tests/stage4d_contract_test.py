@@ -57,6 +57,10 @@ class Stage4DOriginalStackContract(unittest.TestCase):
         self.assertIn('group="0"', scene)
         rviz = (ROOT/'config/stage4d_full_navigation.rviz').read_text()
         for token in ('MuJoCo world grid', '/utlidar/cloud', '/utlidar/transformed_cloud', '/registered_scan',
-                      '/terrain_map', '/terrain_map_ext', '/stage4d/scene_markers', 'Fixed Frame: map'):
+                      '/terrain_map', '/terrain_map_ext', '/stage4d/scene_markers', 'Fixed Frame: map',
+                      '/stage4d/ground_truth_path', '/stage4d/planner_footprint', '/free_paths'):
             self.assertIn(token, rviz)
+        launch = (ROOT/'launch/stage4d_full_navigation.launch.py').read_text()
+        self.assertIn('go2_rars01_stage4d_rviz.urdf', launch)
+        self.assertIn('stage4d_planner_visualization.py', launch)
 if __name__ == '__main__': unittest.main()

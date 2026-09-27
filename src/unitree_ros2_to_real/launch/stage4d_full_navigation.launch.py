@@ -12,7 +12,7 @@ def generate_launch_description():
     point_lio = FindPackageShare('point_lio_unilidar')
     far = FindPackageShare('far_planner')
     local = FindPackageShare('local_planner')
-    robot_urdf = PathJoinSubstitution([FindPackageShare('unitree_legged_real'), 'config', 'go2_rars01_rviz.urdf'])
+    robot_urdf = PathJoinSubstitution([FindPackageShare('unitree_legged_real'), 'config', 'go2_rars01_stage4d_rviz.urdf'])
     return LaunchDescription([
         SetParameter(name='use_sim_time', value=True),
         DeclareLaunchArgument('policy_path'),
@@ -77,6 +77,10 @@ def generate_launch_description():
         Node(package='robot_state_publisher', executable='robot_state_publisher', name='stage4d_robot_state_publisher', output='screen',
              parameters=[{'robot_description': ParameterValue(Command(['cat ', robot_urdf]), value_type=str)}],
              remappings=[('joint_states', '/stage4d/joint_states')]),
+        # Full RobotModel and the BLUE GT path are visualization/evaluation only.
+        Node(package='unitree_legged_real', executable='stage4d_rviz_robot.py', output='screen'),
+        Node(package='unitree_legged_real', executable='stage4d_planner_visualization.py', output='screen'),
+        Node(package='unitree_legged_real', executable='stage4d_navigation_explainer.py', output='screen'),
         Node(package='unitree_legged_real', executable='stage4d_scene_markers.py', output='screen', arguments=['--scene', PathJoinSubstitution([FindPackageShare('unitree_mujoco'), 'scene', 'scene_stage4d.xml'])]),
         Node(package='unitree_legged_real', executable='stage4d_full_navigation_evaluator.py', output='screen'),
         Node(package='rviz2', executable='rviz2', condition=IfCondition(LaunchConfiguration('rviz')), output='screen',

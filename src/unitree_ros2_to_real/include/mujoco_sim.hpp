@@ -106,6 +106,7 @@ private:
     rclcpp::Subscription<geometry_msgs::msg::TwistStamped>::SharedPtr cmd_vel_sub;
     rclcpp::Subscription<std_msgs::msg::Bool>::SharedPtr navigation_active_sub;
     rclcpp::Publisher<geometry_msgs::msg::TwistStamped>::SharedPtr safe_command_pub;
+    rclcpp::Publisher<std_msgs::msg::Bool>::SharedPtr rl_ready_pub;
     RobotController controller;
     NavigationCommandAdapter command_adapter_;
     uint64_t command_diagnostic_tick_ = 0;

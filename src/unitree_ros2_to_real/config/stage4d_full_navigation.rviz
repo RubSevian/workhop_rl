@@ -1,87 +1,219 @@
 Panels:
   - Class: rviz_common/Displays
     Name: Displays
+  - Class: rviz_common/Views
+    Name: Views
+  - Class: rviz_common/Tool Properties
+    Name: Tool Properties
 Visualization Manager:
   Class: ""
   Displays:
-    - Class: rviz_default_plugins/Grid
+    - Class: rviz_common/Group
+      Name: MAIN — Stage4D truth
       Enabled: true
-      Name: MuJoCo world grid
-      Plane: XY
-      Cell Size: 1
-      Plane Cell Count: 20
-    - Class: rviz_default_plugins/Axes
+      Displays:
+        - Class: rviz_default_plugins/Grid
+          Enabled: true
+          Name: MuJoCo world grid
+          Plane: XY
+          Cell Size: 1
+          Plane Cell Count: 20
+        - Class: rviz_default_plugins/Axes
+          Enabled: true
+          Name: Map axes
+          Reference Frame: map
+          Length: 1
+          Radius: 0.04
+        - Class: rviz_default_plugins/RobotModel
+          Enabled: true
+          Name: Robot — full Go2 + RARS01 (/robot_description)
+          Alpha: 1.0
+          Description Source: Topic
+          Description Topic:
+            Value: /robot_description
+          Robot Description: /robot_description
+          TF Prefix: ""
+          Update Interval: 0.0
+          Visual Enabled: true
+          Collision Enabled: false
+        - Class: rviz_default_plugins/MarkerArray
+          Enabled: true
+          Name: Scene — MuJoCo semantic obstacles
+          Topic:
+            Value: /stage4d/scene_markers
+        - Class: rviz_default_plugins/Marker
+          Enabled: true
+          Name: FAR route — GREEN
+          Topic:
+            Value: /viz_path_topic
+        - Class: rviz_default_plugins/Path
+          Enabled: true
+          Name: MuJoCo actual trajectory — BLUE
+          Topic:
+            Value: /stage4d/ground_truth_path
+          Color: 0; 90; 255
+          Line Style: Lines
+          Line Width: 0.05
+        - Class: rviz_default_plugins/Path
+          Enabled: false
+          Name: Local planner path — ORANGE (manual debug only)
+          Topic:
+            Value: /path
+          Color: 255; 150; 0
+          Line Style: Lines
+          Line Width: 0.05
+        - Class: rviz_default_plugins/Path
+          Enabled: true
+          Name: Point-LIO trajectory — CYAN
+          Topic:
+            Value: /point_lio/path
+          Color: 0; 230; 230
+          Line Style: Lines
+          Line Width: 0.035
+        - Class: rviz_default_plugins/PointCloud2
+          Enabled: true
+          Name: LiDAR — registered scan
+          Topic:
+            Value: /registered_scan
+          Style: Points
+          Size (m): 0.03
+          Color Transformer: FlatColor
+          Color: 180; 220; 255
+        - Class: rviz_default_plugins/PointCloud2
+          Enabled: true
+          Name: LocalPlanner obstacles — RED
+          Topic:
+            Value: /stage4d/localplanner_obstacles_viz
+          Style: Points
+          Size (m): 0.04
+          Color Transformer: FlatColor
+          Color: 255; 20; 20
+        - Class: rviz_default_plugins/Marker
+          Enabled: true
+          Name: Planner footprint parameters — PURPLE
+          Topic:
+            Value: /stage4d/planner_footprint
+    - Class: rviz_common/Group
+      Name: PLANNER DEBUG — candidate semantics (manual debug only)
+      Enabled: false
+      Displays:
+        - Class: rviz_default_plugins/PointCloud2
+          Enabled: true
+          Name: Local planner — free candidate paths
+          Topic:
+            Value: /free_paths
+          Style: Points
+          Size (m): 0.02
+          Color Transformer: FlatColor
+          Color: 190; 235; 235
+        - Class: rviz_default_plugins/Marker
+          Enabled: false
+          Name: Planner search domain
+          Topic:
+            Value: /stage4d/planner_search_domain
+        - Class: rviz_default_plugins/Marker
+          Enabled: true
+          Name: Planner status overlay
+          Topic:
+            Value: /stage4d/planner_status_marker
+        - Class: rviz_default_plugins/MarkerArray
+          Enabled: false
+          Name: FAR graph
+          Topic:
+            Value: /viz_graph_topic
+        - Class: rviz_default_plugins/MarkerArray
+          Enabled: false
+          Name: FAR nodes
+          Topic:
+            Value: /viz_node_topic
+        - Class: rviz_default_plugins/MarkerArray
+          Enabled: false
+          Name: FAR contour
+          Topic:
+            Value: /viz_contour_topic
+        - Class: rviz_default_plugins/MarkerArray
+          Enabled: false
+          Name: FAR grid
+          Topic:
+            Value: /viz_grid_map_topic
+    - Class: rviz_common/Group
+      Name: SENSOR DEBUG — raw and terrain semantics
       Enabled: true
-      Name: Map axes
-      Reference Frame: map
-      Length: 1
-      Radius: 0.04
-    - Class: rviz_default_plugins/RobotModel
-      Enabled: true
-      Name: MuJoCo Go2 model (actual pose and joints)
-      Robot Description: robot_description
-      Visual Enabled: true
-      Collision Enabled: false
-    - Class: rviz_default_plugins/MarkerArray
-      Enabled: true
-      Name: MuJoCo semantic scene
-      Topic:
-        Value: /stage4d/scene_markers
-    - Class: rviz_default_plugins/Path
-      Enabled: true
-      Name: Point-LIO trajectory
-      Topic:
-        Value: /point_lio/path
-    - Class: rviz_default_plugins/Path
-      Enabled: true
-      Name: Local path
-      Topic:
-        Value: /path
-    - Class: rviz_default_plugins/Marker
-      Enabled: true
-      Name: FAR selected path
-      Topic:
-        Value: /viz_path_topic
-    - Class: rviz_default_plugins/PointCloud2
-      Enabled: false
-      Name: Registered scan (enable for sensor debugging)
-      Topic:
-        Value: /registered_scan
-    - Class: rviz_default_plugins/PointCloud2
-      Enabled: false
-      Name: Terrain map (enable for planner debugging)
-      Topic:
-        Value: /terrain_map
-    - Class: rviz_default_plugins/PointCloud2
-      Enabled: false
-      Name: Extended terrain map (enable for planner debugging)
-      Topic:
-        Value: /terrain_map_ext
-    - Class: rviz_default_plugins/Marker
-      Enabled: false
-      Name: FAR graph (debug)
-      Topic:
-        Value: /viz_graph_topic
-    - Class: rviz_default_plugins/Marker
-      Enabled: false
-      Name: FAR nodes (debug)
-      Topic:
-        Value: /viz_node_topic
-    - Class: rviz_default_plugins/Marker
-      Enabled: false
-      Name: FAR contour (debug)
-      Topic:
-        Value: /viz_contour_topic
-    - Class: rviz_default_plugins/PointCloud2
-      Enabled: false
-      Name: Raw L1 emulation (debug)
-      Topic:
-        Value: /utlidar/cloud
-    - Class: rviz_default_plugins/PointCloud2
-      Enabled: false
-      Name: Transformed L1 (debug)
-      Topic:
-        Value: /utlidar/transformed_cloud
+      Displays:
+        - Class: rviz_default_plugins/PointCloud2
+          Enabled: false
+          Name: Raw LiDAR — MuJoCo L1 emulation
+          Topic:
+            Value: /utlidar/cloud
+          Style: Points
+          Size (m): 0.03
+        - Class: rviz_default_plugins/PointCloud2
+          Enabled: false
+          Name: Transformed LiDAR — original transform_sensors
+          Topic:
+            Value: /utlidar/transformed_cloud
+          Style: Points
+          Size (m): 0.03
+        - Class: rviz_default_plugins/PointCloud2
+          Enabled: false
+          Name: Terrain map — localPlanner input
+          Topic:
+            Value: /terrain_map
+          Style: Points
+          Size (m): 0.03
+        - Class: rviz_default_plugins/PointCloud2
+          Enabled: false
+          Name: Terrain map ext — FAR input
+          Topic:
+            Value: /terrain_map_ext
+          Style: Points
+          Size (m): 0.03
+        - Class: rviz_default_plugins/PointCloud2
+          Enabled: false
+          Name: FAR free terrain — PALE GREEN
+          Topic:
+            Value: /stage4d/far_free_viz
+          Style: Points
+          Size (m): 0.03
+          Color Transformer: FlatColor
+          Color: 160; 255; 160
+        - Class: rviz_default_plugins/PointCloud2
+          Enabled: false
+          Name: FAR obstacle terrain — MAGENTA
+          Topic:
+            Value: /stage4d/far_obstacles_viz
+          Style: Points
+          Size (m): 0.03
+          Color Transformer: FlatColor
+          Color: 200; 0; 100
   Global Options:
+    Background Color: 48; 48; 48
     Fixed Frame: map
+  Tools:
+    - Class: rviz_default_plugins/Interact
+      Hide Inactive Objects: true
+    - Class: rviz_default_plugins/MoveCamera
+    - Class: rviz_default_plugins/Select
+    - Class: rviz_default_plugins/FocusCamera
+    - Class: rviz_default_plugins/Measure
+  Views:
+    Current:
+      Class: rviz_default_plugins/Orbit
+      Distance: 6.0
+      Focal Point:
+        X: 0.0
+        Y: 0.0
+        Z: 0.35
+      Name: Current View
+      Near Clip Distance: 0.01
+      Pitch: 0.65
+      Target Frame: <Fixed Frame>
+      Value: Orbit (rviz)
+      Yaw: 0.78
+    Saved: ~
   Name: root
+Window Geometry:
+  Height: 900
+  Width: 1400
+  Views:
+    collapsed: false

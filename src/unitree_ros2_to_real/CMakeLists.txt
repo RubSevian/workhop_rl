@@ -157,6 +157,9 @@ install(PROGRAMS scripts/manual_twist_test.py
                  scripts/run_stage4d_autonomous.sh
                  scripts/stage4d_rviz_robot.py
                  scripts/stage4d_robot_state_bridge.py
+                 scripts/stage4d_planner_visualization.py
+                 scripts/stage4d_navigation_explainer.py
+                 scripts/stage4d_navigation_status.py
                  scripts/stage4d_graph_bootstrap.py
                  scripts/stage4d_odometry_path.py
                  scripts/stage4d_scene_markers.py

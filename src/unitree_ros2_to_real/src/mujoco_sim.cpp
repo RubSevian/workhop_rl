@@ -340,6 +340,9 @@ InterfaceRos::InterfaceRos() : Node("low_level_cmd_sender"), command_adapter_(0.
         navigation_active_topic, rclcpp::QoS(1).transient_local(),
         std::bind(&InterfaceRos::NavigationActiveHandler, this, _1));
     safe_command_pub = create_publisher<geometry_msgs::msg::TwistStamped>("/rl/safe_command", 10);
+    rl_ready_pub = create_publisher<std_msgs::msg::Bool>(
+        "/stage4d/rl_ready", rclcpp::QoS(1).transient_local());
+    rl_ready_pub->publish(std_msgs::msg::Bool().set__data(false));
     // Wall time is UI-only.  Policy inference is scheduled from sequential
     // physics LowState ticks in LowStateHandler (10 x 0.002 s = 0.020 s).
     timer_ = create_wall_timer(std::chrono::milliseconds(10), std::bind(&InterfaceRos::timer_callback_cmd, this));
@@ -614,6 +617,10 @@ void InterfaceRos::RunPolicyTick(const unitree_go::msg::LowState& state) {
         controller.change_mode(RobotController::MODE_RL);
         RCLCPP_INFO(get_logger(), "Stage-4 auto sequence: RL mode enabled");
     }
+    // Retained signal: autonomous navigation starts only after stand-up and RL.
+    std_msgs::msg::Bool rl_ready;
+    rl_ready.data = controller.standup_done && controller.control_mode == RobotController::MODE_RL;
+    rl_ready_pub->publish(rl_ready);
 
     // float x = 0.0f, y= 0.0f;
     // if (keyboard_state.w_pressed) x += 0.5f;
@@ -648,8 +655,17 @@ void InterfaceRos::publish_motor_state(const std::array<unitree_go::msg::MotorSt
     sensor_msgs::msg::JointState msg;
     msg.header.stamp = this->now();
     msg.header.frame_id = "base";
-    for (int i = 0; i < 12; i++) {
-        msg.name.push_back("joint_" + std::to_string(i));
+    // This order is the Unitree/MuJoCo low-state order, not FL/FR visual order.
+    // Keep names with their measured slots so RobotModel never has to infer them.
+    static constexpr std::array<const char*, 20> motor_names = {
+        "FR_hip_joint", "FR_thigh_joint", "FR_calf_joint",
+        "FL_hip_joint", "FL_thigh_joint", "FL_calf_joint",
+        "RR_hip_joint", "RR_thigh_joint", "RR_calf_joint",
+        "RL_hip_joint", "RL_thigh_joint", "RL_calf_joint",
+        "joint1", "joint2", "joint3", "joint4", "joint5", "joint6",
+        "gripper_left_joint", "gripper_right_joint"};
+    for (size_t i = 0; i < motor_names.size(); ++i) {
+        msg.name.emplace_back(motor_names[i]);
         msg.position.push_back(motor_state[i].q);
         msg.velocity.push_back(motor_state[i].dq);
         msg.effort.push_back(motor_state[i].tau_est);
