@@ -3,4 +3,5 @@ install/
 log/
 src/libtorch
 .vscode/
-
+**/__pycache__/
+*.py[cod]
