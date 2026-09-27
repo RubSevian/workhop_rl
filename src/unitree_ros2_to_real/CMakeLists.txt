@@ -164,6 +164,8 @@ install(PROGRAMS scripts/manual_twist_test.py
                  scripts/stage4d_odometry_path.py
                  scripts/stage4d_scene_markers.py
                  scripts/stage4d_terrain_diagnostics.py
+                 scripts/stage4d_localization_extrinsic_diagnostics.py
+                 scripts/stage4d_replanning_trace.py
   DESTINATION lib/${PROJECT_NAME}
 )
 

@@ -129,7 +129,12 @@ class NavigationExplainer(Node):
                 'disagreement': (abs(estimated_remaining - actual_remaining)
                                  if estimated_remaining is not None and actual_remaining is not None else None),
             },
-            'pointlio_vs_ground_truth_xy_error_m': localization_error,
+            # `/state_estimation` is an IMU pose while GT odom is a base pose;
+            # this latest-message separation is deliberately not a localization
+            # error.  Use stage4d_localization_extrinsic_diagnostics.py for the
+            # time-aligned IMU-vs-IMU metric.
+            'unsynchronized_pointlio_imu_to_gt_base_xy_separation_m': localization_error,
+            'localization_audit_topic': '/stage4d/localization_extrinsic_metrics',
             'readiness': {
                 'pre_goal_ready': self.readiness.get('pre_goal_ready'),
                 'post_goal_ready': self.readiness.get('post_goal_ready'),
@@ -141,6 +146,9 @@ class NavigationExplainer(Node):
                 'goal_reached': self.far.get('goal_reached'),
                 'planning_failed': self.far.get('planning_failed'),
                 'path_size': self.far.get('path_size'),
+                'goal_original_xyz': [number(self.far, f'goal_original_{axis}') for axis in 'xyz'],
+                'goal_current_xyz': [number(self.far, f'goal_current_{axis}') for axis in 'xyz'],
+                'goal_adjustment_distance_m': number(self.far, 'goal_adjustment_distance'),
             },
             'local_planner': {
                 'reason': self.local.get('code', 'WAITING_FOR_STATUS'),

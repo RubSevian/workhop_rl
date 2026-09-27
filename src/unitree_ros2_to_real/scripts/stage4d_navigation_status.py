@@ -45,7 +45,11 @@ class Status(Node):
         print(f'  remaining: planner={self.fmt(remaining.get("pointlio_planner"))}; '
               f'MuJoCo={self.fmt(remaining.get("mujoco_actual"))}; '
               f'disagreement={self.fmt(remaining.get("disagreement"))}')
-        print(f'  Point-LIO vs MuJoCo XY error: {self.fmt(state.get("pointlio_vs_ground_truth_xy_error_m"))}')
+        print('  localization audit: use /stage4d/localization_extrinsic_metrics for synchronized IMU-vs-IMU error')
+        print(f'  unsynchronized Point-LIO IMU to GT base separation: '
+              f'{self.fmt(state.get("unsynchronized_pointlio_imu_to_gt_base_xy_separation_m"))} (not a localization metric)')
+        print(f'  FAR goals: original={far.get("goal_original_xyz")}; current={far.get("goal_current_xyz")}; '
+              f'adjustment={self.fmt(far.get("goal_adjustment_distance_m"))}')
         print(f'  readiness: pre={ready.get("pre_goal_ready")}; post={ready.get("post_goal_ready")}; '
               f'blockers={ready.get("blockers")}')
         print(f'  command: cmd_vel={command.get("cmd_vel")}; safe={command.get("rl_safe_command")}')

@@ -43,10 +43,14 @@
 #include "yaml-cpp/yaml.h"
 #include <rclcpp/rclcpp.hpp>
 #include <nav_msgs/msg/odometry.hpp>
+#include <geometry_msgs/msg/point_stamped.hpp>
 #include <geometry_msgs/msg/transform_stamped.hpp>
+#include <geometry_msgs/msg/twist_stamped.hpp>
 #include <tf2_ros/transform_broadcaster.h>
 #include <unitree_go/msg/low_cmd.hpp>
 #include <unitree_go/msg/low_state.hpp>
+#include <std_msgs/msg/bool.hpp>
+#include <std_msgs/msg/empty.hpp>
 #include <std_msgs/msg/float64.hpp>
 #include <std_msgs/msg/int64.hpp>
 #include <std_msgs/msg/string.hpp>
@@ -122,6 +126,12 @@ namespace
     int enable_elastic_band = 0;
     int band_attached_link = 0;
 
+    // Optional Stage4D-only mouse goal control.  Disabled for every generic
+    // simulation config unless explicitly enabled below.
+    int enable_interactive_goal_click = 0;
+    double goal_click_drag_threshold_px = 5.0;
+    std::vector<std::string> goal_click_walkable_geoms = {"floor"};
+
   } config;
 
   builtin_interfaces::msg::Time SimStamp(mjtNum seconds) {
@@ -147,6 +157,125 @@ namespace
     rclcpp::Publisher<rosgraph_msgs::msg::Clock>::SharedPtr pub_;
   };
   std::unique_ptr<MujocoClockPublisher> mujoco_clock;
+
+  // Stage4D application bridge layered on top of the generic viewer click
+  // event.  It is intentionally the only component that knows ROS topics.
+  class MujocoNavigationGoalBridge {
+  public:
+    explicit MujocoNavigationGoalBridge(const SimulationConfig& config)
+        : world_frame_(config.world_frame), walkable_geoms_(config.goal_click_walkable_geoms),
+          node_(std::make_shared<rclcpp::Node>("mujoco_click_goal_bridge")) {
+      goal_pub_ = node_->create_publisher<geometry_msgs::msg::PointStamped>("/goal_point", 10);
+      cancel_pub_ = node_->create_publisher<std_msgs::msg::Empty>("/navigation_cancel", 10);
+      diagnostic_pub_ = node_->create_publisher<std_msgs::msg::String>("/mujoco/click_goal_diagnostics", 10);
+      navigation_active_sub_ = node_->create_subscription<std_msgs::msg::Bool>(
+          "/navigation_active", rclcpp::QoS(1).transient_local(),
+          [this](const std_msgs::msg::Bool::SharedPtr msg) { navigation_active_.store(msg->data); });
+      spin_thread_ = std::thread([this] { rclcpp::spin(node_); });
+    }
+
+    ~MujocoNavigationGoalBridge() {
+      if (spin_thread_.joinable()) spin_thread_.join();
+    }
+
+    void HandleSceneClick(const mj::Simulate::SceneClickEvent& event) {
+      if (event.action == mj::Simulate::SceneClickEvent::Action::kPrimaryClick) {
+        CancelNavigation();
+        return;
+      }
+
+      if (!event.hit) {
+        Reject("NO_SCENE_HIT", "<background>");
+        return;
+      }
+      if (std::find(walkable_geoms_.begin(), walkable_geoms_.end(), event.geom_name) ==
+          walkable_geoms_.end()) {
+        Reject("NON_WALKABLE_GEOM", event.geom_name.empty() ? "<unnamed>" : event.geom_name);
+        return;
+      }
+
+      geometry_msgs::msg::PointStamped goal;
+      goal.header.stamp = node_->now();
+      goal.header.frame_id = world_frame_;
+      goal.point.x = event.world[0];
+      goal.point.y = event.world[1];
+      goal.point.z = event.world[2];
+      goal_pub_->publish(goal);
+      navigation_active_.store(true);
+      {
+        std::lock_guard<std::mutex> lock(marker_mutex_);
+        marker_active_ = true;
+        marker_point_ = event.world;
+      }
+      PublishDiagnostic("SET", true, event.world, event.geom_name);
+      RCLCPP_INFO(node_->get_logger(), "[CLICK_GOAL][SET] frame=%s point=(%.3f, %.3f, %.3f) geom=%s",
+                  world_frame_.c_str(), event.world[0], event.world[1], event.world[2],
+                  event.geom_name.c_str());
+    }
+
+    void DrawMarker(mjvScene& scene) const {
+      std::array<double, 3> point;
+      {
+        std::lock_guard<std::mutex> lock(marker_mutex_);
+        if (!marker_active_) return;
+        point = marker_point_;
+      }
+      if (scene.ngeom >= scene.maxgeom) return;
+      mjtNum size[3] = {0.10, 0.0, 0.0};
+      mjtNum pos[3] = {point[0], point[1], point[2] + 0.05};
+      mjtNum mat[9] = {1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0};
+      float rgba[4] = {1.0F, 0.82F, 0.08F, 1.0F};  // yellow: distinct from FAR/ground-truth paths
+      mjv_initGeom(&scene.geoms[scene.ngeom++], mjGEOM_SPHERE, size, pos, mat, rgba);
+    }
+
+  private:
+    void CancelNavigation() {
+      if (!navigation_active_.exchange(false)) {
+        RCLCPP_DEBUG(node_->get_logger(), "[CLICK_GOAL][CANCEL] ignored: navigation is already inactive");
+        return;
+      }
+      std_msgs::msg::Empty cancel;
+      cancel_pub_->publish(cancel);
+      {
+        std::lock_guard<std::mutex> lock(marker_mutex_);
+        marker_active_ = false;
+      }
+      PublishDiagnostic("CANCEL", false, {0.0, 0.0, 0.0}, "");
+      RCLCPP_INFO(node_->get_logger(), "[CLICK_GOAL][CANCEL] navigation cancelled by plain left click");
+    }
+
+    void Reject(const char* reason, const std::string& geom) {
+      PublishDiagnostic(reason, navigation_active_.load(), {0.0, 0.0, 0.0}, geom);
+      RCLCPP_WARN(node_->get_logger(), "[CLICK_GOAL][REJECT] reason=%s geom=%s", reason, geom.c_str());
+    }
+
+    void PublishDiagnostic(const std::string& action, bool active,
+                           const std::array<double, 3>& point, const std::string& geom) {
+      std_msgs::msg::String message;
+      std::ostringstream stream;
+      stream << "{\"active\":" << (active ? "true" : "false")
+             << ",\"last_action\":\"" << action << "\""
+             << ",\"x\":" << point[0] << ",\"y\":" << point[1]
+             << ",\"z\":" << point[2];
+      if (!geom.empty()) stream << ",\"geom\":\"" << geom << "\"";
+      stream << "}";
+      message.data = stream.str();
+      diagnostic_pub_->publish(message);
+    }
+
+    std::string world_frame_;
+    std::vector<std::string> walkable_geoms_;
+    rclcpp::Node::SharedPtr node_;
+    rclcpp::Publisher<geometry_msgs::msg::PointStamped>::SharedPtr goal_pub_;
+    rclcpp::Publisher<std_msgs::msg::Empty>::SharedPtr cancel_pub_;
+    rclcpp::Publisher<std_msgs::msg::String>::SharedPtr diagnostic_pub_;
+    rclcpp::Subscription<std_msgs::msg::Bool>::SharedPtr navigation_active_sub_;
+    std::thread spin_thread_;
+    std::atomic<bool> navigation_active_{false};
+    mutable std::mutex marker_mutex_;
+    bool marker_active_ = false;
+    std::array<double, 3> marker_point_ = {0.0, 0.0, 0.0};
+  };
 
   // Stage-4 uses the native ROS message transport, not SDK2's private DDS
   // channel.  It prevents the SDK2 allocator crash on localhost and exactly
@@ -1403,6 +1532,16 @@ int main(int argc, char **argv)
   config.lidar_min_range = yaml_node["lidar_min_range"] ? yaml_node["lidar_min_range"].as<double>() : 0.5;
   config.lidar_max_range = yaml_node["lidar_max_range"] ? yaml_node["lidar_max_range"].as<double>() : 100.0;
   config.sensor_start_delay = yaml_node["sensor_start_delay"] ? yaml_node["sensor_start_delay"].as<double>() : 12.0;
+  config.enable_interactive_goal_click = yaml_node["enable_interactive_goal_click"]
+      ? yaml_node["enable_interactive_goal_click"].as<int>() : 0;
+  config.goal_click_drag_threshold_px = yaml_node["goal_click_drag_threshold_px"]
+      ? yaml_node["goal_click_drag_threshold_px"].as<double>() : 5.0;
+  if (yaml_node["goal_click_walkable_geoms"]) {
+    config.goal_click_walkable_geoms.clear();
+    for (const auto& geom : yaml_node["goal_click_walkable_geoms"]) {
+      config.goal_click_walkable_geoms.push_back(geom.as<std::string>());
+    }
+  }
   config.enable_elastic_band = yaml_node["enable_elastic_band"].as<int>();
   config.use_joystick = yaml_node["use_joystick"].as<int>();
   config.joystick_type = yaml_node["joystick_type"].as<std::string>();
@@ -1438,6 +1577,20 @@ int main(int argc, char **argv)
     std::cout << "Unitree DDS bridge disabled by config; running MuJoCo physics/viewer only." << std::endl;
   }
 
+  std::unique_ptr<MujocoNavigationGoalBridge> navigation_goal_bridge;
+  if (config.enable_interactive_goal_click) {
+    navigation_goal_bridge = std::make_unique<MujocoNavigationGoalBridge>(config);
+    sim->ConfigureSceneClick(true, config.goal_click_drag_threshold_px);
+    sim->SetSceneClickCallback([bridge = navigation_goal_bridge.get()](const mj::Simulate::SceneClickEvent& event) {
+      bridge->HandleSceneClick(event);
+    });
+    sim->SetSceneOverlayCallback([bridge = navigation_goal_bridge.get()](mjvScene& scene) {
+      bridge->DrawMarker(scene);
+    });
+    std::cout << "Interactive Stage4D goal click enabled: Ctrl+LMB floor=set, LMB=cancel, drag threshold="
+              << config.goal_click_drag_threshold_px << " px" << std::endl;
+  }
+
   if (config.robot == "go2_rars01") mjcb_control = Go2Rars01HomeHold;
   if (config.enable_ros_bridge) ros_low_level_bridge = std::make_unique<MujocoRosLowLevelBridge>();
   mujoco_clock = std::make_unique<MujocoClockPublisher>();
@@ -1452,7 +1605,12 @@ int main(int argc, char **argv)
   sim->exitrequest.store(true);
   physicsthreadhandle.join();
 
+  // Remove callbacks before the ROS bridge is torn down; Simulate itself
+  // outlives this local bridge object.
+  sim->SetSceneClickCallback({});
+  sim->SetSceneOverlayCallback({});
   rclcpp::shutdown();
+  navigation_goal_bridge.reset();
   pointlio_sensor_bridge.reset();
   collision_diagnostics.reset();
   ground_truth_odom.reset();

@@ -51,6 +51,47 @@ class Stage4DOriginalStackContract(unittest.TestCase):
         self.assertTrue(config.startswith('far_planner:\n  ros__parameters:'))
         self.assertIn('stage4d_terrain_diagnostics.py', launch)
 
+    def test_click_to_navigate_contract(self):
+        config = (WORKHOP/'src/unitree_mujoco/simulate/config_go2_rars01_stage4d.yaml').read_text()
+        self.assertIn('enable_interactive_goal_click: 1', config)
+        self.assertIn('goal_click_drag_threshold_px: 5.0', config)
+        self.assertIn('- floor', config)
+
+        header = (WORKHOP/'src/unitree_mujoco/simulate/src/mujoco/simulate.h').read_text()
+        viewer = (WORKHOP/'src/unitree_mujoco/simulate/src/mujoco/simulate.cc').read_text()
+        for token in ('SceneClickEvent', 'ConfigureSceneClick', 'SetSceneClickCallback',
+                      'SetSceneOverlayCallback'):
+            self.assertIn(token, header)
+        for token in ('mjv_select(', 'scene_click_drag_threshold_px_',
+                      'scene_click_dragged_', 'SceneClickEvent::Action::kCtrlPrimaryClick'):
+            self.assertIn(token, viewer)
+        self.assertNotIn('rclcpp', viewer)
+
+        main = (WORKHOP/'src/unitree_mujoco/simulate/src/main.cc').read_text()
+        for token in ('MujocoNavigationGoalBridge', '/goal_point', '/navigation_cancel',
+                      '/cmd_vel', 'goal_click_walkable_geoms', 'mjGEOM_SPHERE',
+                      'world_frame_'):
+            self.assertIn(token, main)
+
+        far_header = (AUTONOMY/'src/route_planner/far_planner/include/far_planner/far_planner.h').read_text()
+        far_source = (AUTONOMY/'src/route_planner/far_planner/src/far_planner.cpp').read_text()
+        graph_header = (AUTONOMY/'src/route_planner/far_planner/include/far_planner/graph_planner.h').read_text()
+        visualizer = (AUTONOMY/'src/route_planner/far_planner/src/planner_visualizer.cpp').read_text()
+        self.assertIn('navigation_cancel_sub_', far_header)
+        self.assertIn('NavigationCancelCallBack', far_source)
+        self.assertIn('graph_planner_.CancelGoal()', far_source)
+        self.assertIn('ClearNavigationVisuals()', far_source)
+        self.assertIn('inline void CancelGoal()', graph_header)
+        self.assertIn('ClearNavigationVisuals()', visualizer)
+        cancel_body = far_source[far_source.index('void FARMaster::NavigationCancelCallBack'):far_source.index('void FARMaster::WaypointCallBack')]
+        self.assertNotIn('ResetEnvironmentAndGraph()', cancel_body)
+        self.assertNotIn('ResetCurrentGraph()', cancel_body)
+
+        stop_script = (ROOT/'scripts/stage4d_stop_navigation.py').read_text()
+        self.assertIn("'/navigation_cancel'", stop_script)
+        self.assertIn("'/cmd_vel'", stop_script)
+        self.assertNotIn("'/goal_point'", stop_script)
+
     def test_scene_and_rviz(self):
         scene = (WORKHOP/'src/unitree_mujoco/unitree_robots/go2_rars01/scene_stage4d.xml').read_text()
         self.assertIn('name="stage4d_obstacle_single_01"', scene)

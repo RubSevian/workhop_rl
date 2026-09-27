@@ -17,6 +17,7 @@
 #include <algorithm>
 #include <atomic>
 #include <chrono>
+#include <cmath>
 #include <climits>
 #include <cstdio>
 #include <cstring>
@@ -1446,6 +1447,48 @@ namespace
     mjui_update(-1, -1, ui, state, con);
   }
 
+  struct SceneSelection
+  {
+    bool hit = false;
+    std::array<double, 3> world = {0.0, 0.0, 0.0};
+    int geom_id = -1;
+    int body_id = -1;
+    int flex_id = -1;
+    int skin_id = -1;
+    std::string geom_name;
+  };
+
+  // Keep all picking math in MuJoCo's native selector.  Both the stock
+  // double-click selection and the optional scene-click callback use this.
+  SceneSelection SelectScene(mj::Simulate *sim, const mjuiState &state)
+  {
+    SceneSelection selection;
+    const mjrRect r = state.rect[3];
+    if (!sim->m_ || r.width <= 0 || r.height <= 0) return selection;
+
+    mjtNum point[3] = {0.0, 0.0, 0.0};
+    int geom = -1;
+    int flex = -1;
+    int skin = -1;
+    const int body = mjv_select(sim->m_, sim->d_, &sim->opt,
+                                static_cast<mjtNum>(r.width) / r.height,
+                                (state.x - r.left) / r.width,
+                                (state.y - r.bottom) / r.height,
+                                &sim->scn, point, &geom, &flex, &skin);
+    selection.hit = body >= 0;
+    selection.body_id = body;
+    selection.geom_id = geom;
+    selection.flex_id = flex;
+    selection.skin_id = skin;
+    for (int i = 0; i < 3; ++i) selection.world[i] = point[i];
+    if (geom >= 0)
+    {
+      const char *name = mj_id2name(sim->m_, mjOBJ_GEOM, geom);
+      if (name) selection.geom_name = name;
+    }
+    return selection;
+  }
+
   // handle UI event
   void UiEvent(mjuiState *state)
   {
@@ -1899,9 +1942,20 @@ namespace
     // 3D press
     if (state->type == mjEVENT_PRESS && state->mouserect == 3)
     {
-      // set perturbation
+      if (sim->scene_click_enabled_ && state->left)
+      {
+        sim->scene_click_tracking_ = true;
+        sim->scene_click_ctrl_ = state->control;
+        sim->scene_click_dragged_ = false;
+        sim->scene_click_press_x_ = state->x;
+        sim->scene_click_press_y_ = state->y;
+      }
+
+      // In interactive scene-click mode Ctrl+LMB is reserved for the optional
+      // application callback.  All stock behavior remains unchanged otherwise.
       int newperturb = 0;
-      if (state->control && sim->pert.select > 0 && (sim->m_ || sim->is_passive_))
+      if (state->control && sim->pert.select > 0 && (sim->m_ || sim->is_passive_) &&
+          !(sim->scene_click_enabled_ && state->left))
       {
         // right: translate;  left: rotate
         if (state->right)
@@ -1918,8 +1972,10 @@ namespace
         }
       }
 
-      // handle double-click
-      if (state->doubleclick && (sim->m_ || sim->is_passive_))
+      // Preserve normal double-click selection.  In interactive mode, a
+      // left double-click is handled as two short scene clicks instead.
+      if (state->doubleclick && (sim->m_ || sim->is_passive_) &&
+          !(sim->scene_click_enabled_ && state->left))
       {
         sim->pending_.select = true;
         std::memcpy(&sim->pending_.select_state, state, sizeof(sim->pending_.select_state));
@@ -1935,6 +1991,22 @@ namespace
     // 3D release
     if (state->type == mjEVENT_RELEASE && state->dragrect == 3 && (sim->m_ || sim->is_passive_))
     {
+      if (sim->scene_click_tracking_)
+      {
+        const double dx = static_cast<double>(state->x - sim->scene_click_press_x_);
+        const double dy = static_cast<double>(state->y - sim->scene_click_press_y_);
+        sim->scene_click_dragged_ = sim->scene_click_dragged_ ||
+            std::hypot(dx, dy) > sim->scene_click_drag_threshold_px_;
+        if (!sim->scene_click_dragged_)
+        {
+          sim->pending_.scene_click = true;
+          sim->pending_.scene_click_ctrl = sim->scene_click_ctrl_;
+          std::memcpy(&sim->pending_.scene_click_state, state,
+                      sizeof(sim->pending_.scene_click_state));
+        }
+        sim->scene_click_tracking_ = false;
+      }
+
       // stop perturbation
       sim->pert.active = 0;
       sim->pending_.newperturb = 0;
@@ -1944,6 +2016,14 @@ namespace
     // 3D move
     if (state->type == mjEVENT_MOVE && state->dragrect == 3 && (sim->m_ || sim->is_passive_))
     {
+      if (sim->scene_click_tracking_)
+      {
+        const double dx = static_cast<double>(state->x - sim->scene_click_press_x_);
+        const double dy = static_cast<double>(state->y - sim->scene_click_press_y_);
+        sim->scene_click_dragged_ = sim->scene_click_dragged_ ||
+            std::hypot(dx, dy) > sim->scene_click_drag_threshold_px_;
+      }
+
       // determine action based on mouse button
       mjtMouse action;
       if (state->right)
@@ -2030,6 +2110,22 @@ namespace mujoco
   {
     mjv_defaultScene(&scn);
     mjv_defaultSceneState(&scnstate_);
+  }
+
+  void Simulate::ConfigureSceneClick(bool enabled, double drag_threshold_px)
+  {
+    scene_click_enabled_ = enabled;
+    scene_click_drag_threshold_px_ = std::max(0.0, drag_threshold_px);
+  }
+
+  void Simulate::SetSceneClickCallback(SceneClickCallback callback)
+  {
+    scene_click_callback_ = std::move(callback);
+  }
+
+  void Simulate::SetSceneOverlayCallback(SceneOverlayCallback callback)
+  {
+    scene_overlay_callback_ = std::move(callback);
   }
 
   // synchronize model and data
@@ -2268,6 +2364,24 @@ namespace mujoco
       pending_.newperturb = 0;
     }
 
+    if (pending_.scene_click)
+    {
+      SceneClickEvent event;
+      event.action = pending_.scene_click_ctrl ? SceneClickEvent::Action::kCtrlPrimaryClick
+                                                : SceneClickEvent::Action::kPrimaryClick;
+      if (event.action == SceneClickEvent::Action::kCtrlPrimaryClick)
+      {
+        const SceneSelection selection = SelectScene(this, pending_.scene_click_state);
+        event.hit = selection.hit;
+        event.world = selection.world;
+        event.geom_id = selection.geom_id;
+        event.body_id = selection.body_id;
+        event.geom_name = selection.geom_name;
+      }
+      if (scene_click_callback_) scene_click_callback_(event);
+      pending_.scene_click = false;
+    }
+
     if (pending_.select)
     {
       // determine selection mode
@@ -2285,60 +2399,40 @@ namespace mujoco
         selmode = 2;
       }
 
-      // find geom and 3D click point, get corresponding body
-      mjrRect r = pending_.select_state.rect[3];
-      mjtNum selpnt[3];
-      int selgeom, selflex, selskin;
-      int selbody = mjv_select(m_, d_, &this->opt,
-                               static_cast<mjtNum>(r.width) / r.height,
-                               (pending_.select_state.x - r.left) / r.width,
-                               (pending_.select_state.y - r.bottom) / r.height,
-                               &this->scn, selpnt, &selgeom, &selflex, &selskin);
+      const SceneSelection selection = SelectScene(this, pending_.select_state);
 
       // set lookat point, start tracking is requested
       if (selmode == 2 || selmode == 3)
       {
-        // copy selpnt if anything clicked
-        if (selbody >= 0)
+        if (selection.hit)
         {
-          mju_copy3(this->cam.lookat, selpnt);
+          this->cam.lookat[0] = selection.world[0];
+          this->cam.lookat[1] = selection.world[1];
+          this->cam.lookat[2] = selection.world[2];
         }
-
-        // switch to tracking camera if dynamic body clicked
-        if (selmode == 3 && selbody > 0)
+        if (selmode == 3 && selection.body_id > 0)
         {
-          // mujoco camera
           this->cam.type = mjCAMERA_TRACKING;
-          this->cam.trackbodyid = selbody;
+          this->cam.trackbodyid = selection.body_id;
           this->cam.fixedcamid = -1;
-
-          // UI camera
           this->camera = 1;
           pending_.ui_update_rendering = true;
         }
       }
-
-      // set body selection
+      else if (selection.hit)
+      {
+        this->pert.select = selection.body_id;
+        this->pert.flexselect = selection.flex_id;
+        this->pert.skinselect = selection.skin_id;
+        mjtNum tmp[3] = {selection.world[0], selection.world[1], selection.world[2]};
+        mju_sub3(tmp, tmp, d_->xpos + 3 * this->pert.select);
+        mju_mulMatTVec(this->pert.localpos, d_->xmat + 9 * this->pert.select, tmp, 3, 3);
+      }
       else
       {
-        if (selbody >= 0)
-        {
-          // record selection
-          this->pert.select = selbody;
-          this->pert.flexselect = selflex;
-          this->pert.skinselect = selskin;
-
-          // compute localpos
-          mjtNum tmp[3];
-          mju_sub3(tmp, selpnt, d_->xpos + 3 * this->pert.select);
-          mju_mulMatTVec(this->pert.localpos, d_->xmat + 9 * this->pert.select, tmp, 3, 3);
-        }
-        else
-        {
-          this->pert.select = 0;
-          this->pert.flexselect = -1;
-          this->pert.skinselect = -1;
-        }
+        this->pert.select = 0;
+        this->pert.flexselect = -1;
+        this->pert.skinselect = -1;
       }
       pending_.select = false;
     }
@@ -2388,6 +2482,11 @@ namespace mujoco
 
       mjopt_prev_ = scnstate_.model.opt;
       warn_vgeomfull_prev_ = scnstate_.data.warning[mjWARN_VGEOMFULL].number;
+    }
+
+    if (scene_overlay_callback_)
+    {
+      scene_overlay_callback_(this->scn);
     }
 
     // update settings

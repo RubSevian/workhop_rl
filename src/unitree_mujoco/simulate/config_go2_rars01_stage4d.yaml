@@ -20,3 +20,10 @@ lidar_min_range: 0.5
 lidar_max_range: 100.0
 # Let MuJoCo settle and the RL standing phase complete before Point-LIO initializes.
 sensor_start_delay: 12.0
+
+# Stage4D interactive MuJoCo viewport control. Ctrl+LMB short-click on a
+# walkable geom sets/replaces the goal; plain LMB short-click cancels it.
+enable_interactive_goal_click: 1
+goal_click_drag_threshold_px: 5.0
+goal_click_walkable_geoms:
+  - floor
