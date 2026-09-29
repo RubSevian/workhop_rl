@@ -90,9 +90,29 @@ Visualization Manager:
           Color: 255; 20; 20
         - Class: rviz_default_plugins/Marker
           Enabled: true
-          Name: Planner footprint parameters — PURPLE
+          Name: Robot - Rectangle Reference
           Topic:
-            Value: /stage4d/planner_footprint
+            Value: /stage4d/robot_rectangle_reference
+        - Class: rviz_default_plugins/Marker
+          Enabled: true
+          Name: Robot - Ellipse Reference
+          Topic:
+            Value: /stage4d/robot_ellipse_reference
+        - Class: rviz_default_plugins/MarkerArray
+          Enabled: true
+          Name: Planner - Selected Local Path and Broad Collision Envelope
+          Topic:
+            Value: /stage4d/localplanner_collision_envelope
+        - Class: rviz_default_plugins/MarkerArray
+          Enabled: true
+          Name: Goal - Requested, FAR Effective and Tolerances
+          Topic:
+            Value: /stage4d/goal_markers
+        - Class: rviz_default_plugins/Marker
+          Enabled: false
+          Name: Planner - Exact Orientation-Aware Footprint (experimental)
+          Topic:
+            Value: /stage4d/exact_orientation_aware_footprint
     - Class: rviz_common/Group
       Name: PLANNER DEBUG — candidate semantics (manual debug only)
       Enabled: false
@@ -116,11 +136,7 @@ Visualization Manager:
           Name: Planner status overlay
           Topic:
             Value: /stage4d/planner_status_marker
-        - Class: rviz_default_plugins/MarkerArray
-          Enabled: false
-          Name: LocalPlanner collision envelope — correspondence cells
-          Topic:
-            Value: /stage4d/localplanner_collision_envelope
+
         - Class: rviz_default_plugins/MarkerArray
           Enabled: false
           Name: FAR graph

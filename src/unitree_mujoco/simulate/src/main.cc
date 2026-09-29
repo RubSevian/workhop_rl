@@ -290,7 +290,7 @@ namespace
       lowcmd_sub_ = node_->create_subscription<unitree_go::msg::LowCmd>(
           "lowcmd", 10,
           [this](const unitree_go::msg::LowCmd::SharedPtr msg) {
-            for (int i = 0; i < 12; ++i) {
+            for (int i = 0; i < 20; ++i) {
               const auto& motor = msg->motor_cmd[i];
               if (!std::isfinite(motor.q) || !std::isfinite(motor.dq) ||
                   !std::isfinite(motor.kp) || !std::isfinite(motor.kd) ||
@@ -327,8 +327,7 @@ namespace
         if (!timed_out) command = latest_command_;
       }
       if (timed_out) command = SafeStandingCommand();
-      // Only the 12 Go2 leg actuators are commandable through this interface.
-      // RARS01 remains exclusively under Go2Rars01HomeHold at ctrl[12:20].
+      // Arm PD is evaluated inside mjcb_control; legs are updated here.
       for (int i = 0; i < 12; ++i) {
         const int actuator = leg_actuator_ids_[i];
         const auto& motor = command.motor_cmd[i];
@@ -338,6 +337,46 @@ namespace
         data->ctrl[actuator] = std::clamp(raw, -limit, limit);
         if (raw != data->ctrl[actuator]) ++torque_saturation_count_;
       }
+    }
+
+    // This is called by MuJoCo at 500 Hz.  A complete recent command owns
+    // the arm; otherwise the existing home hold remains active.
+    bool ApplyArm(const mjModel* model, mjData* data) {
+      if (!Resolve(model)) return false;
+      unitree_go::msg::LowCmd command;
+      {
+        std::lock_guard<std::mutex> lock(command_mutex_);
+        if (!have_command_ ||
+            std::chrono::steady_clock::now() - last_command_time_ >
+                std::chrono::milliseconds(100)) {
+          return false;
+        }
+        command = latest_command_;
+      }
+      for (int i = 0; i < 8; ++i) {
+        const auto& motor = command.motor_cmd[12 + i];
+        const int joint = rars_joint_ids_[i];
+        if (motor.kp <= 0.0F || motor.kd < 0.0F ||
+            motor.q < model->jnt_range[2 * joint] ||
+            motor.q > model->jnt_range[2 * joint + 1]) {
+          return false;
+        }
+      }
+      for (int i = 0; i < 8; ++i) {
+        const int joint = rars_joint_ids_[i];
+        const int actuator = rars_actuator_ids_[i];
+        const auto& motor = command.motor_cmd[12 + i];
+        const double q = data->qpos[model->jnt_qposadr[joint]];
+        const double dq = data->qvel[model->jnt_dofadr[joint]];
+        const double gravity_and_coriolis = data->qfrc_bias[model->jnt_dofadr[joint]];
+        const double torque = motor.tau + gravity_and_coriolis +
+                              motor.kp * (motor.q - q) +
+                              motor.kd * (motor.dq - dq);
+        data->ctrl[actuator] = std::clamp(
+            torque, model->actuator_ctrlrange[2 * actuator],
+            model->actuator_ctrlrange[2 * actuator + 1]);
+      }
+      return true;
     }
 
     void Publish(const mjModel* model, const mjData* data) {
@@ -405,6 +444,10 @@ namespace
                                       "RR_hip", "RR_thigh", "RR_calf", "RL_hip", "RL_thigh", "RL_calf"};
       const char* joints[] = {"joint1", "joint2", "joint3", "joint4", "joint5", "joint6",
                               "gripper_left_joint", "gripper_right_joint"};
+      const char* arm_actuators[] = {
+          "joint1_motor", "joint2_motor", "joint3_motor", "joint4_motor",
+          "joint5_motor", "joint6_motor", "gripper_left_motor",
+          "gripper_right_motor"};
       try {
         for (int i = 0; i < 12; ++i) {
           leg_actuator_ids_[i] = mj_name2id(model, mjOBJ_ACTUATOR, actuator_names[i]);
@@ -416,7 +459,9 @@ namespace
         }
         for (int i = 0; i < 8; ++i) {
           rars_joint_ids_[i] = mj_name2id(model, mjOBJ_JOINT, joints[i]);
-          if (rars_joint_ids_[i] < 0) throw std::runtime_error("Missing RARS01 joint");
+          rars_actuator_ids_[i] = mj_name2id(model, mjOBJ_ACTUATOR, arm_actuators[i]);
+          if (rars_joint_ids_[i] < 0 || rars_actuator_ids_[i] != 12 + i)
+            throw std::runtime_error("Missing or reordered RARS01 joint/actuator");
         }
         imu_quat_adr_ = SensorAddress(model, "imu_quat", 4);
         imu_gyro_adr_ = SensorAddress(model, "imu_gyro", 3);
@@ -425,7 +470,7 @@ namespace
         std_msgs::msg::Float64 physics_dt;
         physics_dt.data = model->opt.timestep;
         physics_dt_pub_->publish(physics_dt);
-        RCLCPP_INFO(node_->get_logger(), "ROS low-level bridge ready: /lowcmd -> 12 Go2 legs, /lowstate <- 20 motors");
+        RCLCPP_INFO(node_->get_logger(), "ROS low-level bridge ready: /lowcmd -> 12 Go2 legs + 8 RARS01 joints, /lowstate <- 20 motors");
       } catch (const std::exception& error) {
         RCLCPP_ERROR(node_->get_logger(), "ROS low-level bridge disabled: %s", error.what());
       }
@@ -451,6 +496,7 @@ namespace
     std::array<int, 12> leg_vel_adr_{};
     std::array<int, 12> leg_force_adr_{};
     std::array<int, 8> rars_joint_ids_{};
+    std::array<int, 8> rars_actuator_ids_{};
     int imu_quat_adr_ = -1;
     int imu_gyro_adr_ = -1;
     int imu_acc_adr_ = -1;
@@ -909,6 +955,7 @@ namespace
   // arm/gripper actuators in the combined model at every MuJoCo physics step.
   void Go2Rars01HomeHold(const mjModel* model, mjData* data) {
     if (model->nu < 20) return;
+    if (ros_low_level_bridge && ros_low_level_bridge->ApplyArm(model, data)) return;
     const char* joints[] = {"joint1", "joint2", "joint3", "joint4", "joint5", "joint6", "gripper_left_joint", "gripper_right_joint"};
     const char* actuators[] = {"joint1_motor", "joint2_motor", "joint3_motor", "joint4_motor", "joint5_motor", "joint6_motor", "gripper_left_motor", "gripper_right_motor"};
     const double kp[] = {20, 20, 20, 6, 6, 6, 20, 20};

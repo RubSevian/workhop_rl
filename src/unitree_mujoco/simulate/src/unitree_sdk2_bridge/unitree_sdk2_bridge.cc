@@ -76,6 +76,14 @@ void UnitreeSdk2Bridge::LowCmdGoHandler(const void *msg)
                                 cmd->motor_cmd()[i].kp() * (cmd->motor_cmd()[i].q() - mj_data_->sensordata[leg_pos_sensor_adr_[i]]) +
                                 cmd->motor_cmd()[i].kd() * (cmd->motor_cmd()[i].dq() - mj_data_->sensordata[leg_vel_sensor_adr_[i]]);
         }
+        for (int i = 0; i < 8; ++i) {
+            const int joint = rars01_joint_ids_[i];
+            if (joint < 0) continue;
+            const auto& motor = cmd->motor_cmd()[12 + i];
+            const double q = mj_data_->qpos[mj_model_->jnt_qposadr[joint]];
+            const double dq = mj_data_->qvel[mj_model_->jnt_dofadr[joint]];
+            mj_data_->ctrl[12 + i] = motor.tau() + motor.kp() * (motor.q() - q) + motor.kd() * (motor.dq() - dq);
+        }
     }
 }
 
@@ -91,6 +99,14 @@ void UnitreeSdk2Bridge::LowCmdHgHandler(const void *msg)
                                 cmd->motor_cmd()[i].kp() * (cmd->motor_cmd()[i].q() - mj_data_->sensordata[leg_pos_sensor_adr_[i]]) +
                                 cmd->motor_cmd()[i].kd() * (cmd->motor_cmd()[i].dq() - mj_data_->sensordata[leg_vel_sensor_adr_[i]]);
         }
+        for (int i = 0; i < 8; ++i) {
+            const int joint = rars01_joint_ids_[i];
+            if (joint < 0) continue;
+            const auto& motor = cmd->motor_cmd()[12 + i];
+            const double q = mj_data_->qpos[mj_model_->jnt_qposadr[joint]];
+            const double dq = mj_data_->qvel[mj_model_->jnt_dofadr[joint]];
+            mj_data_->ctrl[12 + i] = motor.tau() + motor.kp() * (motor.q() - q) + motor.kd() * (motor.dq() - dq);
+        }
     }
 }
 
@@ -104,8 +120,9 @@ void UnitreeSdk2Bridge::PublishLowStateGo()
             low_state_go_.motor_state()[i].dq() = mj_data_->sensordata[leg_vel_sensor_adr_[i]];
             low_state_go_.motor_state()[i].tau_est() = mj_data_->sensordata[leg_force_sensor_adr_[i]];
         }
-        // Combined Go2+RARS01 model: publish arm/gripper measurement only.
-        // No LowCmd slot beyond the first 12 is ever applied to mj_data_->ctrl.
+        // Combined Go2+RARS01 model: publish the simulated arm/gripper state.
+        // Slots 12..19 are applied only when this combined model owns the
+        // matching MuJoCo actuators; no real RARS transport is involved.
         for (int i = 0; i < 8; ++i) {
             const int joint = rars01_joint_ids_[i];
             if (joint >= 0) {

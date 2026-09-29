@@ -4,6 +4,9 @@
 // Это комментарий, описывающий основную цель программы: продемонстрировать, как отправлять команды моторам Unitree Go2 с использованием ROS2.
 
 #include "mujoco_sim.hpp"
+
+#include <algorithm>
+#include <cmath>
 // Create a low_level_cmd_sender class for low state receive
 // Это комментарий, указывающий на цель создания класса `low_level_cmd_sender`.
 
@@ -339,6 +342,10 @@ InterfaceRos::InterfaceRos() : Node("low_level_cmd_sender"), command_adapter_(0.
     navigation_active_sub = create_subscription<std_msgs::msg::Bool>(
         navigation_active_topic, rclcpp::QoS(1).transient_local(),
         std::bind(&InterfaceRos::NavigationActiveHandler, this, _1));
+    const std::string arm_target_topic = declare_parameter<std::string>(
+        "arm_target_topic", "/rars01/arm_target");
+    arm_target_sub = create_subscription<sensor_msgs::msg::JointState>(
+        arm_target_topic, 10, std::bind(&InterfaceRos::ArmTargetHandler, this, _1));
     safe_command_pub = create_publisher<geometry_msgs::msg::TwistStamped>("/rl/safe_command", 10);
     rl_ready_pub = create_publisher<std_msgs::msg::Bool>(
         "/stage4d/rl_ready", rclcpp::QoS(1).transient_local());
@@ -417,7 +424,86 @@ void InterfaceRos::CmdVelHandler(const geometry_msgs::msg::TwistStamped::SharedP
 }
 
 void InterfaceRos::NavigationActiveHandler(const std_msgs::msg::Bool::SharedPtr msg) {
+    navigation_active_ = msg->data;
     command_adapter_.SetNavigationActive(msg->data);
+}
+
+void InterfaceRos::ArmTargetHandler(const sensor_msgs::msg::JointState::SharedPtr msg) {
+    static constexpr std::array<const char*, 8> kNames = {
+        "joint1", "joint2", "joint3", "joint4", "joint5", "joint6",
+        "gripper_left_joint", "gripper_right_joint"};
+    if (msg->name.size() != msg->position.size()) {
+        RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 2000,
+                             "Rejected arm target: JointState name/position sizes differ");
+        return;
+    }
+    std::array<float, 8> target{};
+    std::array<bool, 8> found{};
+    for (size_t message_index = 0; message_index < msg->name.size(); ++message_index) {
+        for (size_t joint_index = 0; joint_index < kNames.size(); ++joint_index) {
+            if (msg->name[message_index] == kNames[joint_index]) {
+                const double value = msg->position[message_index];
+                if (!std::isfinite(value)) {
+                    RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 2000,
+                                         "Rejected non-finite arm target");
+                    return;
+                }
+                target[joint_index] = static_cast<float>(value);
+                found[joint_index] = true;
+            }
+        }
+    }
+    if (!std::all_of(found.begin(), found.end(), [](bool value) { return value; })) {
+        RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 2000,
+                             "Rejected arm target: all six arm and two gripper joints are required");
+        return;
+    }
+    if (navigation_active_) {
+        RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 2000,
+                             "Rejected arm target while navigation is active");
+        return;
+    }
+    arm_target_ = target;
+    arm_target_active_ = true;
+    arm_target_stamp_ = std::chrono::steady_clock::now();
+}
+
+void InterfaceRos::OverlayArmTarget(unitree_go::msg::LowCmd& cmd) {
+    if (!arm_target_active_) return;
+    const auto release_arm = [&cmd]() {
+        for (size_t index = 12; index < 20; ++index) {
+            auto& motor = cmd.motor_cmd[index];
+            motor.kp = 0.0F;
+            motor.kd = 0.0F;
+            motor.tau = 0.0F;
+        }
+    };
+    if (navigation_active_) {
+        arm_target_active_ = false;
+        release_arm();
+        return;
+    }
+    const auto age = std::chrono::steady_clock::now() - arm_target_stamp_;
+    if (age > std::chrono::milliseconds(250)) {
+        arm_target_active_ = false;
+        release_arm();
+        RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 2000,
+                             "Arm target watchdog expired; releasing simulation-only arm command");
+        return;
+    }
+    static constexpr std::array<float, 8> kKp = {20.0F, 20.0F, 20.0F, 6.0F,
+                                                   6.0F, 6.0F, 20.0F, 20.0F};
+    static constexpr std::array<float, 8> kKd = {1.0F, 1.0F, 1.0F, 0.4F,
+                                                   0.4F, 0.4F, 0.2F, 0.2F};
+    for (size_t index = 0; index < arm_target_.size(); ++index) {
+        auto& motor = cmd.motor_cmd[12 + index];
+        motor.mode = 0x01;
+        motor.q = arm_target_[index];
+        motor.dq = 0.0F;
+        motor.kp = kKp[index];
+        motor.kd = kKd[index];
+        motor.tau = 0.0F;
+    }
 }
 
 void InterfaceRos::init_cmd() {
@@ -539,6 +625,12 @@ void InterfaceRos::timer_callback_cmd() {
     // The timer must never drive policy inference: it only dispatches GLFW
     // input, which is consumed by the next physics-scheduled policy tick.
     glfwPollEvents();
+    // The original RARS pose controller sends targets at 100 Hz. The same
+    // rate is used here, exclusively through the MuJoCo LowCmd bridge.
+    if (arm_target_active_ && latest_state) {
+        OverlayArmTarget(low_cmd);
+        send_command(low_cmd);
+    }
 }
 
 void InterfaceRos::RunPolicyTick(const unitree_go::msg::LowState& state) {
@@ -611,6 +703,7 @@ void InterfaceRos::RunPolicyTick(const unitree_go::msg::LowState& state) {
 
 
     low_cmd = controller.update(state);
+    OverlayArmTarget(low_cmd);
     send_command(low_cmd);
     ++policy_update_count_;
     if (auto_start_rl_ && controller.standup_done && controller.control_mode == RobotController::MODE_STANDUP) {

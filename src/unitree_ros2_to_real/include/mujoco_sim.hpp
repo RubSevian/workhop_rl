@@ -24,6 +24,9 @@
 
 #include <GLFW/glfw3.h>
 
+#include <array>
+#include <chrono>
+
 class RobotController {
 public:
     RobotController();
@@ -90,6 +93,10 @@ private:
     static void key_callback(GLFWwindow* window , int key , int scancode, int action , int mods);
     void CmdVelHandler(const geometry_msgs::msg::TwistStamped::SharedPtr msg);
     void NavigationActiveHandler(const std_msgs::msg::Bool::SharedPtr msg);
+    // Simulation-only RARS01 target ingress. This node is not linked to, and
+    // never opens, the real RARS serial SDK.
+    void ArmTargetHandler(const sensor_msgs::msg::JointState::SharedPtr msg);
+    void OverlayArmTarget(unitree_go::msg::LowCmd& cmd);
       // heightmap from real robot (published by go2_heightmap_node)
     void HeightmapImageHandler(const sensor_msgs::msg::Image::SharedPtr msg);
 
@@ -105,6 +112,7 @@ private:
     rclcpp::Subscription<sensor_msgs::msg::Image>::SharedPtr heightmap_sub;
     rclcpp::Subscription<geometry_msgs::msg::TwistStamped>::SharedPtr cmd_vel_sub;
     rclcpp::Subscription<std_msgs::msg::Bool>::SharedPtr navigation_active_sub;
+    rclcpp::Subscription<sensor_msgs::msg::JointState>::SharedPtr arm_target_sub;
     rclcpp::Publisher<geometry_msgs::msg::TwistStamped>::SharedPtr safe_command_pub;
     rclcpp::Publisher<std_msgs::msg::Bool>::SharedPtr rl_ready_pub;
     RobotController controller;
@@ -117,6 +125,10 @@ private:
     uint32_t physics_steps_per_policy_ = 0;
     bool auto_start_rl_ = false;
     bool auto_standup_started_ = false;
+    bool navigation_active_ = false;
+    bool arm_target_active_ = false;
+    std::array<float, 8> arm_target_{};
+    std::chrono::steady_clock::time_point arm_target_stamp_{};
 
     GLFWwindow * window ;
     struct KeyboardState {

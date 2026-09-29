@@ -1,8 +1,8 @@
 from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription
-from launch.conditions import IfCondition
+from launch.conditions import IfCondition, UnlessCondition
 from launch.launch_description_sources import AnyLaunchDescriptionSource, PythonLaunchDescriptionSource
-from launch.substitutions import Command, LaunchConfiguration, PathJoinSubstitution
+from launch.substitutions import Command, EnvironmentVariable, LaunchConfiguration, PathJoinSubstitution
 from launch_ros.actions import Node, SetParameter
 from launch_ros.parameter_descriptions import ParameterValue
 from launch_ros.substitutions import FindPackageShare
@@ -22,6 +22,10 @@ def generate_launch_description():
         DeclareLaunchArgument('far_config', default_value=PathJoinSubstitution([far, 'config', 'sim_pointlio.yaml'])),
         DeclareLaunchArgument('sim_imu_calibration', default_value=PathJoinSubstitution([FindPackageShare('unitree_legged_real'), 'config', 'stage4d_sim_imu_calibration.yaml'])),
         DeclareLaunchArgument('rviz', default_value='true'),
+        DeclareLaunchArgument('enable_far', default_value='true'),
+        DeclareLaunchArgument('enable_local_planner', default_value='true'),
+        DeclareLaunchArgument('far_converge_distance', default_value=EnvironmentVariable('STAGE4D_FAR_CONVERGE_DISTANCE', default_value='0.25')),
+        DeclareLaunchArgument('goal_close_dis', default_value=EnvironmentVariable('STAGE4D_GOAL_CLOSE_DIS', default_value='0.40')),
         Node(package='unitree_mujoco', executable='unitree_mujoco', output='screen',
              arguments=['--config', LaunchConfiguration('mujoco_config')]),
         Node(package='unitree_legged_real', executable='mujoco_sim', output='screen', parameters=[{
@@ -52,8 +56,8 @@ def generate_launch_description():
              parameters=[{'worldFrame': 'map'}]),
         Node(package='terrain_analysis_ext', executable='terrainAnalysisExt', name='terrainAnalysisExt', output='screen',
              parameters=[{'worldFrame': 'map', 'checkTerrainConn': False}]),
-        Node(package='far_planner', executable='far_planner', name='far_planner', output='screen',
-             parameters=[LaunchConfiguration('far_config')],
+        Node(package='far_planner', executable='far_planner', name='far_planner', output='screen', condition=IfCondition(LaunchConfiguration('enable_far')),
+             parameters=[LaunchConfiguration('far_config'), {'g_planner/converge_distance': LaunchConfiguration('far_converge_distance')}],
              remappings=[('/odom_world', '/state_estimation'), ('/terrain_cloud', '/terrain_map_ext'),
                          ('/scan_cloud', '/terrain_map'), ('/terrain_local_cloud', '/registered_scan')]),
         IncludeLaunchDescription(PythonLaunchDescriptionSource(PathJoinSubstitution([FindPackageShare('graph_decoder'), 'launch', 'decoder.launch']))),
@@ -61,6 +65,7 @@ def generate_launch_description():
         # These are the explicit Stage4D simulation/autonomy overrides only.
         IncludeLaunchDescription(
             AnyLaunchDescriptionSource(PathJoinSubstitution([local, 'launch', 'local_planner.launch'])),
+            condition=IfCondition(LaunchConfiguration('enable_local_planner')),
             launch_arguments={
                 # /state_estimation is IMU-centred; original localPlanner algebra subtracts
                 # sensorOffset in the body yaw direction, so -0.02557 recovers base XY.
@@ -68,11 +73,19 @@ def generate_launch_description():
                 'autonomyMode': 'true', 'autonomySpeed': '0.35', 'maxSpeed': '0.35',
                 'is_real_robot': 'false', 'sendSportCommand': 'false',
                 'odomTimeoutSec': '0.5', 'pathTimeoutSec': '0.5', 'allowStaticPath': 'false',
-                'goalCloseDis': '0.3',
+                'stage4dGoalCloseDis': LaunchConfiguration('goal_close_dis'),
                 # Stage4D already owns this identity transform; retain the
                 # original sensor->camera publisher because no equivalent exists.
                 'publishSensorToVehicleTf': 'false', 'publishSensorToCameraTf': 'true',
             }.items()),
+        # Mode B: external replay is the sole /path owner; no FAR/localPlanner.
+        Node(package='local_planner', executable='pathFollower', name='pathFollower', output='screen',
+             condition=UnlessCondition(LaunchConfiguration('enable_local_planner')), parameters=[{
+                 'sensorOffsetX': -0.02557, 'sensorOffsetY': 0.0, 'twoWayDrive': False,
+                 'maxSpeed': 0.35, 'autonomyMode': True, 'autonomySpeed': 0.35,
+                 'goalCloseDis': LaunchConfiguration('goal_close_dis'), 'is_real_robot': False, 'sendSportCommand': False,
+                 'odomTimeoutSec': 0.5, 'pathTimeoutSec': 0.5, 'allowStaticPath': False,
+                 'followerMotionModel': 'holonomic'}]),
         Node(package='unitree_legged_real', executable='stage4d_readiness.py', output='screen'),
         Node(package='unitree_legged_real', executable='stage4d_terrain_diagnostics.py', output='screen'),
         # Visualization is isolated under sim_visual_* and never supplies navigation TF.
