@@ -84,7 +84,8 @@ class NavManipM0(Node):
         self.odometry_at = 0.0
         self.arm_measurements = {}
         self.arm_measurements_at = 0.0
-        self.settle_count = 0
+        self.settle_started_at = None
+        self.settle_last_velocity = {"linear_mps": None, "yaw_rate_deg_s": None}
         self.anchor = None
         self.max_anchor_xy_m = 0.0
         self.max_anchor_yaw_rad = 0.0
@@ -135,7 +136,10 @@ class NavManipM0(Node):
         self.navigation_ready = bool(message.data)
 
     def on_goal_reached(self, message):
-        if self.goal_sent:
+        if self.goal_sent and message.data and not self.goal_reached:
+            self.goal_reached = True
+            self.result["far_reached_pose"] = self.pose_record()
+        elif self.goal_sent:
             self.goal_reached = bool(message.data)
 
     def on_navigation_active(self, message):
@@ -146,11 +150,14 @@ class NavManipM0(Node):
         self.odometry_at = time.monotonic()
         if self.state == "BASE_SETTLE":
             velocity = message.twist.twist
-            moving = math.hypot(velocity.linear.x, velocity.linear.y)
-            if moving <= self.args.settle_linear_mps and abs(velocity.angular.z) <= self.args.settle_angular_rps:
-                self.settle_count += 1
+            linear = math.hypot(velocity.linear.x, velocity.linear.y)
+            yaw_rate_deg_s = abs(math.degrees(velocity.angular.z))
+            self.settle_last_velocity = {"linear_mps": linear, "yaw_rate_deg_s": yaw_rate_deg_s}
+            if linear <= self.args.settle_linear_mps and yaw_rate_deg_s <= self.args.max_yaw_rate_deg_s:
+                if self.settle_started_at is None:
+                    self.settle_started_at = time.monotonic()
             else:
-                self.settle_count = 0
+                self.settle_started_at = None
         if self.anchor is not None:
             x, y, heading = self.base_pose()
             self.max_anchor_xy_m = max(
@@ -166,6 +173,13 @@ class NavManipM0(Node):
     def on_arm_state(self, message):
         self.arm_measurements = dict(zip(message.name, message.position))
         self.arm_measurements_at = time.monotonic()
+
+    def pose_record(self):
+        pose = self.base_pose()
+        if pose is None:
+            return None
+        x, y, heading = pose
+        return {"x": x, "y": y, "yaw_deg": math.degrees(heading)}
 
     def base_pose(self):
         if self.odometry is None:
@@ -342,14 +356,19 @@ class NavManipM0(Node):
             if not self.goal_sent and self.navigation_ready and self.goal_publisher.get_subscription_count():
                 self.publish_goal()
             if self.goal_sent and self.goal_reached:
+                self.result["base_settle_begin_pose"] = self.pose_record()
+                self.settle_started_at = None
                 self.transition("BASE_SETTLE")
             return
         if self.state == "BASE_SETTLE":
-            if now - self.odometry_at <= 0.25 and self.settle_count >= self.args.settle_samples:
+            pose_fresh = now - self.odometry_at <= self.args.max_pose_age_s
+            settled_for = 0.0 if self.settle_started_at is None else now - self.settle_started_at
+            self.result["settle_duration_s"] = settled_for
+            self.result["settle_velocity"] = self.settle_last_velocity
+            if pose_fresh and settled_for >= self.args.settle_hold_s:
                 x, y, heading = self.base_pose()
-                self.anchor = {
-                    "x": x, "y": y, "yaw_deg": math.degrees(heading)
-                }
+                self.anchor = {"x": x, "y": y, "yaw_deg": math.degrees(heading)}
+                self.result["manip_anchor_pose"] = self.anchor
                 self.transition("SAVE_MANIP_ANCHOR")
             return
         if self.state == "SAVE_MANIP_ANCHOR":
@@ -424,8 +443,9 @@ def parse_arguments():
     parser.add_argument("--arm-duration-s", type=float, default=2.0)
     parser.add_argument("--grasp-hold-s", type=float, default=1.0)
     parser.add_argument("--settle-linear-mps", type=float, default=0.03)
-    parser.add_argument("--settle-angular-rps", type=float, default=0.05)
-    parser.add_argument("--settle-samples", type=int, default=10)
+    parser.add_argument("--settle-hold-s", type=float, default=0.75)
+    parser.add_argument("--max-yaw-rate-deg-s", type=float, default=3.0)
+    parser.add_argument("--max-pose-age-s", type=float, default=0.20)
     parser.add_argument("--arm-joint-tolerance-rad", type=float, default=0.05)
     parser.add_argument(
         "--graspnet-root",

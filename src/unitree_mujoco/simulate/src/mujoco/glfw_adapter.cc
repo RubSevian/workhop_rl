@@ -247,6 +247,16 @@ namespace mujoco
            Glfw().glfwGetKey(window_, GLFW_KEY_RIGHT_ALT) == GLFW_PRESS;
   }
 
+  bool GlfwAdapter::IsLeftAltKeyPressed() const
+  {
+    return Glfw().glfwGetKey(window_, GLFW_KEY_LEFT_ALT) == GLFW_PRESS;
+  }
+
+  bool GlfwAdapter::IsRightAltKeyCode(int key) const
+  {
+    return key == GLFW_KEY_RIGHT_ALT;
+  }
+
   bool GlfwAdapter::IsCtrlKeyPressed() const
   {
     return Glfw().glfwGetKey(window_, GLFW_KEY_LEFT_CONTROL) == GLFW_PRESS ||

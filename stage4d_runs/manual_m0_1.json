@@ -1,0 +1,43 @@
+{
+  "abort_reason": "MANUAL_IK_FAILED: TARGET_POSE_UNREACHABLE arm=(-0.76,-0.04,-0.33)m; best error=161.8mm/115.9deg (fixed TCP orientation)",
+  "cancelled": false,
+  "complete": false,
+  "detail": "MANUAL_IK_FAILED",
+  "duration_s": 0.7793254609568976,
+  "ik": {
+    "error": "TARGET_POSE_UNREACHABLE arm=(-0.76,-0.04,-0.33)m; best error=161.8mm/115.9deg (fixed TCP orientation)",
+    "success": false
+  },
+  "max_anchor_xy_error_m": 3.7241535930398855e-06,
+  "max_anchor_yaw_error_deg": 0.00014714986277412226,
+  "real_serial_opened": false,
+  "schema": "stage4d_manual_manip_m0_1/v1",
+  "simulation_only": true,
+  "states": [
+    {
+      "at_s": 0.0,
+      "detail": "await sustained base settle",
+      "state": "MANUAL_TARGET_SET"
+    },
+    {
+      "at_s": 0.008,
+      "detail": "",
+      "state": "MANUAL_IK_CHECK"
+    },
+    {
+      "at_s": 0.779,
+      "detail": "TARGET_POSE_UNREACHABLE arm=(-0.76,-0.04,-0.33)m; best error=161.8mm/115.9deg (fixed TCP orientation)",
+      "state": "MANUAL_IK_FAILED"
+    }
+  ],
+  "target_arm": [
+    -0.7557092454923633,
+    -0.03862468578545363,
+    -0.3302818238059982
+  ],
+  "target_world": [
+    1.620456393682053,
+    0.06411430411846875,
+    0.05000000000000045
+  ]
+}

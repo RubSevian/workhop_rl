@@ -52,6 +52,8 @@ namespace mujoco
     bool IsRightMouseButtonPressed() const override;
 
     bool IsAltKeyPressed() const override;
+    bool IsLeftAltKeyPressed() const override;
+    bool IsRightAltKeyCode(int key) const override;
     bool IsCtrlKeyPressed() const override;
     bool IsShiftKeyPressed() const override;
 

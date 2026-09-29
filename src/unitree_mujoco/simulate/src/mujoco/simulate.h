@@ -71,17 +71,19 @@ namespace mujoco
     // application-specific types so the viewer remains reusable outside ROS.
     struct SceneClickEvent
     {
-      enum class Action { kPrimaryClick, kCtrlPrimaryClick };
+      enum class Action { kPrimaryClick, kCtrlPrimaryClick, kAltPrimaryClick, kCancelManualTarget };
       Action action = Action::kPrimaryClick;
       bool hit = false;
       std::array<double, 3> world = {0.0, 0.0, 0.0};
       int geom_id = -1;
       int body_id = -1;
       std::string geom_name;
+      std::string body_name;
     };
 
     using SceneClickCallback = std::function<void(const SceneClickEvent&)>;
     using SceneOverlayCallback = std::function<void(mjvScene&)>;
+    using SceneHudCallback = std::function<void(const mjrRect&, mjrContext&)>;
 
     // create object and initialize the simulate ui
     Simulate(
@@ -98,6 +100,7 @@ namespace mujoco
     void ConfigureSceneClick(bool enabled, double drag_threshold_px);
     void SetSceneClickCallback(SceneClickCallback callback);
     void SetSceneOverlayCallback(SceneOverlayCallback callback);
+    void SetSceneHudCallback(SceneHudCallback callback);
 
     void UpdateHField(int hfieldid);
     void UpdateMesh(int meshid);
@@ -197,6 +200,8 @@ namespace mujoco
       mjuiState select_state;
       bool scene_click;
       bool scene_click_ctrl;
+      bool scene_click_alt;
+      bool scene_cancel_manual_target;
       mjuiState scene_click_state;
       bool ui_update_simulation;
       bool ui_update_physics;
@@ -210,11 +215,13 @@ namespace mujoco
     double scene_click_drag_threshold_px_ = 5.0;
     bool scene_click_tracking_ = false;
     bool scene_click_ctrl_ = false;
+    bool scene_click_alt_ = false;
     bool scene_click_dragged_ = false;
     int scene_click_press_x_ = 0;
     int scene_click_press_y_ = 0;
     SceneClickCallback scene_click_callback_;
     SceneOverlayCallback scene_overlay_callback_;
+    SceneHudCallback scene_hud_callback_;
 
     SimulateMutex mtx;
     std::condition_variable_any cond_loadrequest;

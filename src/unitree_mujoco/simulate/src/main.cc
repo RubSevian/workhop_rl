@@ -18,6 +18,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <iostream>
+#include <iomanip>
 #include <memory>
 #include <mutex>
 #include <new>
@@ -44,6 +45,7 @@
 #include <rclcpp/rclcpp.hpp>
 #include <nav_msgs/msg/odometry.hpp>
 #include <geometry_msgs/msg/point_stamped.hpp>
+#include <geometry_msgs/msg/pose_stamped.hpp>
 #include <geometry_msgs/msg/transform_stamped.hpp>
 #include <geometry_msgs/msg/twist_stamped.hpp>
 #include <tf2_ros/transform_broadcaster.h>
@@ -131,6 +133,9 @@ namespace
     int enable_interactive_goal_click = 0;
     double goal_click_drag_threshold_px = 5.0;
     std::vector<std::string> goal_click_walkable_geoms = {"floor"};
+    int enable_manual_manip_target = 0;
+    int enable_mujoco_hud = 1;
+    int allow_manual_manip_during_navigation = 0;
 
   } config;
 
@@ -170,7 +175,13 @@ namespace
       diagnostic_pub_ = node_->create_publisher<std_msgs::msg::String>("/mujoco/click_goal_diagnostics", 10);
       navigation_active_sub_ = node_->create_subscription<std_msgs::msg::Bool>(
           "/navigation_active", rclcpp::QoS(1).transient_local(),
-          [this](const std_msgs::msg::Bool::SharedPtr msg) { navigation_active_.store(msg->data); });
+          [this](const std_msgs::msg::Bool::SharedPtr msg) {
+            navigation_active_.store(msg->data);
+            if (!msg->data) {
+              std::lock_guard<std::mutex> lock(marker_mutex_);
+              marker_active_ = false;
+            }
+          });
       spin_thread_ = std::thread([this] { rclcpp::spin(node_); });
     }
 
@@ -183,6 +194,7 @@ namespace
         CancelNavigation();
         return;
       }
+      if (event.action != mj::Simulate::SceneClickEvent::Action::kCtrlPrimaryClick) return;
 
       if (!event.hit) {
         Reject("NO_SCENE_HIT", "<background>");
@@ -275,6 +287,157 @@ namespace
     mutable std::mutex marker_mutex_;
     bool marker_active_ = false;
     std::array<double, 3> marker_point_ = {0.0, 0.0, 0.0};
+  };
+
+  // M0.1 manual UI is a transport-only bridge: it publishes a picked world
+  // point and renders status supplied by the manipulation state machine.
+  class MujocoManualManipTargetBridge {
+  public:
+    explicit MujocoManualManipTargetBridge(const SimulationConfig& config)
+        : world_frame_(config.world_frame), hud_enabled_(config.enable_mujoco_hud != 0),
+          allow_during_navigation_(config.allow_manual_manip_during_navigation != 0),
+          node_(std::make_shared<rclcpp::Node>("mujoco_manual_manip_target_bridge")) {
+      target_pub_ = node_->create_publisher<geometry_msgs::msg::PoseStamped>(
+          "/stage4d/manual_manip_target", 10);
+      cancel_pub_ = node_->create_publisher<std_msgs::msg::Empty>(
+          "/stage4d/manual_manip_cancel", 10);
+      navigation_active_sub_ = node_->create_subscription<std_msgs::msg::Bool>(
+          "/navigation_active", rclcpp::QoS(1).transient_local(),
+          [this](const std_msgs::msg::Bool::SharedPtr msg) { navigation_active_.store(msg->data); });
+      manual_status_sub_ = node_->create_subscription<std_msgs::msg::String>(
+          "/stage4d/manual_manip_status", 10,
+          [this](const std_msgs::msg::String::SharedPtr msg) {
+            std::lock_guard<std::mutex> lock(mutex_);
+            manual_status_ = msg->data;
+          });
+      spin_thread_ = std::thread([this] { rclcpp::spin(node_); });
+    }
+
+    ~MujocoManualManipTargetBridge() {
+      if (spin_thread_.joinable()) spin_thread_.join();
+    }
+
+    void HandleSceneClick(const mj::Simulate::SceneClickEvent& event) {
+      if (event.action == mj::Simulate::SceneClickEvent::Action::kCancelManualTarget) {
+        Cancel();
+        return;
+      }
+      if (event.action != mj::Simulate::SceneClickEvent::Action::kAltPrimaryClick) return;
+      if (navigation_active_.load() && !allow_during_navigation_) {
+        SetMessage("MANUAL TARGET REJECTED — NAV ACTIVE");
+        return;
+      }
+      if (!event.hit) {
+        SetMessage("MANUAL TARGET REJECTED — NO SCENE HIT");
+        return;
+      }
+      // body 0 is world terrain; named stage4d_landmarks are static obstacles.
+      // Every Go2/RARS01 body has another id, so clicks on robot links reject.
+      if (event.body_id != 0 && event.body_name != "stage4d_landmarks") {
+        SetMessage("MANUAL TARGET REJECTED — ROBOT/LINK");
+        return;
+      }
+      const std::array<double, 3> center = {event.world[0], event.world[1], event.world[2] + 0.05};
+      geometry_msgs::msg::PoseStamped target;
+      target.header.stamp = node_->now();
+      target.header.frame_id = world_frame_;
+      target.pose.position.x = center[0];
+      target.pose.position.y = center[1];
+      target.pose.position.z = center[2];
+      target.pose.orientation.w = 1.0;
+      target_pub_->publish(target);
+      {
+        std::lock_guard<std::mutex> lock(mutex_);
+        target_active_ = true;
+        target_world_ = center;
+        manual_status_ = "MANUAL_TARGET_SET; IK=PENDING";
+      }
+      RCLCPP_INFO(node_->get_logger(), "[MANUAL_TARGET][SET] world=(%.3f, %.3f, %.3f) geom=%s",
+                  center[0], center[1], center[2], event.geom_name.c_str());
+    }
+
+    void DrawMarker(mjvScene& scene) const {
+      std::array<double, 3> target;
+      {
+        std::lock_guard<std::mutex> lock(mutex_);
+        if (!target_active_) return;
+        target = target_world_;
+      }
+      if (scene.ngeom >= scene.maxgeom) return;
+      const mjtNum size[3] = {0.05, 0.0, 0.0};
+      const mjtNum pos[3] = {target[0], target[1], target[2]};
+      const mjtNum mat[9] = {1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0};
+      const float rgba[4] = {0.05F, 0.95F, 0.85F, 1.0F};
+      mjv_initGeom(&scene.geoms[scene.ngeom++], mjGEOM_SPHERE, size, pos, mat, rgba);
+    }
+
+    void DrawHud(const mjrRect& rect, mjrContext& context) const {
+      if (!hud_enabled_) return;
+      std::string status;
+      std::array<double, 3> target;
+      bool active = false;
+      {
+        std::lock_guard<std::mutex> lock(mutex_);
+        status = manual_status_;
+        target = target_world_;
+        active = target_active_;
+      }
+      const char* profile = std::getenv("STAGE4D_PROFILE");
+      std::ostringstream left, right;
+      // Keep diagnostics inside the HUD instead of one clipped horizontal line.
+      for (std::size_t index = 0; (index = status.find("; ", index)) != std::string::npos;) {
+        status.replace(index, 2, "\n");
+        ++index;
+      }
+      left << "STAGE4D M0.1\n"
+           << "NAV: " << (navigation_active_.load() ? "ACTIVE" : "IDLE / SETTLED") << "\n"
+           << "PROFILE: " << (profile ? profile : "baseline") << "\n"
+           << "MANIP: " << (status.empty() ? "MANUAL_IDLE" : status) << "\n";
+      if (active) left << "TARGET WORLD: " << std::fixed << std::setprecision(2)
+                       << target[0] << " " << target[1] << " " << target[2] << "\n";
+      const char* oa_exact = std::getenv("STAGE4D_ENABLE_ORIENTATION_AWARE_CHECK");
+      const char* narrow_selection = std::getenv("STAGE4D_ENABLE_NARROW_RECOVERED_SELECTION");
+      right << "searchRadius: " << (std::getenv("STAGE4D_SEARCH_RADIUS") ? std::getenv("STAGE4D_SEARCH_RADIUS") : "0.55") << "\n"
+            << "collision: BROAD\n"
+            << "OA exact: " << (oa_exact ? oa_exact : "false") << "; narrow: "
+            << (narrow_selection ? narrow_selection : "false") << "\n"
+            << "Ctrl+LMB: yellow nav goal; LMB: cancel nav\n"
+            << "LAlt+LMB: cyan arm target (+5 cm)\n"
+            << "RAlt: cancel arm + HOME";
+      mjr_overlay(mjFONT_NORMAL, mjGRID_TOPRIGHT, rect, left.str().c_str(), right.str().c_str(), &context);
+    }
+
+  private:
+    void Cancel() {
+      cancel_pub_->publish(std_msgs::msg::Empty());
+      {
+        std::lock_guard<std::mutex> lock(mutex_);
+        target_active_ = false;
+        manual_status_ = "CANCEL -> RETURN HOME";
+      }
+      RCLCPP_INFO(node_->get_logger(), "[MANUAL_TARGET][CANCEL] requested safe return home");
+    }
+
+    void SetMessage(const std::string& message) {
+      std::lock_guard<std::mutex> lock(mutex_);
+      manual_status_ = message;
+      RCLCPP_WARN(node_->get_logger(), "%s", message.c_str());
+    }
+
+    std::string world_frame_;
+    bool hud_enabled_ = true;
+    bool allow_during_navigation_ = false;
+    rclcpp::Node::SharedPtr node_;
+    rclcpp::Publisher<geometry_msgs::msg::PoseStamped>::SharedPtr target_pub_;
+    rclcpp::Publisher<std_msgs::msg::Empty>::SharedPtr cancel_pub_;
+    rclcpp::Subscription<std_msgs::msg::Bool>::SharedPtr navigation_active_sub_;
+    rclcpp::Subscription<std_msgs::msg::String>::SharedPtr manual_status_sub_;
+    std::thread spin_thread_;
+    std::atomic<bool> navigation_active_{false};
+    mutable std::mutex mutex_;
+    bool target_active_ = false;
+    std::array<double, 3> target_world_ = {0.0, 0.0, 0.0};
+    std::string manual_status_ = "MANUAL_IDLE";
   };
 
   // Stage-4 uses the native ROS message transport, not SDK2's private DDS
@@ -1589,6 +1752,18 @@ int main(int argc, char **argv)
       config.goal_click_walkable_geoms.push_back(geom.as<std::string>());
     }
   }
+  config.enable_manual_manip_target = yaml_node["enable_manual_manip_target"]
+      ? yaml_node["enable_manual_manip_target"].as<int>() : 0;
+  config.enable_mujoco_hud = yaml_node["enable_mujoco_hud"]
+      ? yaml_node["enable_mujoco_hud"].as<int>() : 1;
+  const char* hud_env = std::getenv("STAGE4D_MUJOCO_HUD");
+  if (hud_env != nullptr) {
+    config.enable_mujoco_hud = (std::strcmp(hud_env, "0") != 0 &&
+                                std::strcmp(hud_env, "false") != 0 &&
+                                std::strcmp(hud_env, "FALSE") != 0);
+  }
+  config.allow_manual_manip_during_navigation = yaml_node["allow_manual_manip_during_navigation"]
+      ? yaml_node["allow_manual_manip_during_navigation"].as<int>() : 0;
   config.enable_elastic_band = yaml_node["enable_elastic_band"].as<int>();
   config.use_joystick = yaml_node["use_joystick"].as<int>();
   config.joystick_type = yaml_node["joystick_type"].as<std::string>();
@@ -1625,17 +1800,29 @@ int main(int argc, char **argv)
   }
 
   std::unique_ptr<MujocoNavigationGoalBridge> navigation_goal_bridge;
-  if (config.enable_interactive_goal_click) {
+  std::unique_ptr<MujocoManualManipTargetBridge> manual_manip_bridge;
+  if (config.enable_interactive_goal_click)
     navigation_goal_bridge = std::make_unique<MujocoNavigationGoalBridge>(config);
+  if (config.enable_manual_manip_target)
+    manual_manip_bridge = std::make_unique<MujocoManualManipTargetBridge>(config);
+  if (navigation_goal_bridge || manual_manip_bridge) {
     sim->ConfigureSceneClick(true, config.goal_click_drag_threshold_px);
-    sim->SetSceneClickCallback([bridge = navigation_goal_bridge.get()](const mj::Simulate::SceneClickEvent& event) {
-      bridge->HandleSceneClick(event);
+    sim->SetSceneClickCallback([nav = navigation_goal_bridge.get(), manual = manual_manip_bridge.get()](
+        const mj::Simulate::SceneClickEvent& event) {
+      if (nav) nav->HandleSceneClick(event);
+      if (manual) manual->HandleSceneClick(event);
     });
-    sim->SetSceneOverlayCallback([bridge = navigation_goal_bridge.get()](mjvScene& scene) {
-      bridge->DrawMarker(scene);
+    sim->SetSceneOverlayCallback([nav = navigation_goal_bridge.get(), manual = manual_manip_bridge.get()](mjvScene& scene) {
+      if (nav) nav->DrawMarker(scene);
+      if (manual) manual->DrawMarker(scene);
     });
-    std::cout << "Interactive Stage4D goal click enabled: Ctrl+LMB floor=set, LMB=cancel, drag threshold="
-              << config.goal_click_drag_threshold_px << " px" << std::endl;
+    if (manual_manip_bridge) {
+      sim->SetSceneHudCallback([manual = manual_manip_bridge.get()](const mjrRect& rect, mjrContext& context) {
+        manual->DrawHud(rect, context);
+      });
+    }
+    std::cout << "Interactive Stage4D: Ctrl+LMB goal, LMB cancel goal, LeftAlt+LMB manual target, RightAlt cancel manual target"
+              << std::endl;
   }
 
   if (config.robot == "go2_rars01") mjcb_control = Go2Rars01HomeHold;
@@ -1645,18 +1832,17 @@ int main(int argc, char **argv)
   collision_diagnostics = std::make_unique<MujocoCollisionDiagnostics>();
   pointlio_sensor_bridge = std::make_unique<MujocoPointLioSensorBridge>(config);
 
-  // start physics thread
   std::thread physicsthreadhandle(&PhysicsThread, sim.get(), filename);
-  // start simulation UI loop (blocking call)
   sim->RenderLoop();
   sim->exitrequest.store(true);
   physicsthreadhandle.join();
 
-  // Remove callbacks before the ROS bridge is torn down; Simulate itself
-  // outlives this local bridge object.
+  // Viewer callbacks hold raw bridge pointers, so clear them first.
   sim->SetSceneClickCallback({});
   sim->SetSceneOverlayCallback({});
+  sim->SetSceneHudCallback({});
   rclcpp::shutdown();
+  manual_manip_bridge.reset();
   navigation_goal_bridge.reset();
   pointlio_sensor_bridge.reset();
   collision_diagnostics.reset();

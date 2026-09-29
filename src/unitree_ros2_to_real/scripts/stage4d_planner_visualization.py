@@ -8,6 +8,7 @@ from geometry_msgs.msg import Point, PointStamped
 from nav_msgs.msg import Path
 from rclpy.node import Node
 from rclpy.qos import DurabilityPolicy, QoSProfile
+from std_msgs.msg import Empty
 from visualization_msgs.msg import Marker, MarkerArray
 
 DEFAULTS={"vehicle_length":0.62,"vehicle_width":0.40,"path_scale":0.75,
@@ -23,12 +24,35 @@ class Visualizer(Node):
   self.ellipse=self.create_publisher(Marker,"/stage4d/robot_ellipse_reference",q)
   self.exact=self.create_publisher(Marker,"/stage4d/exact_orientation_aware_footprint",q)
   self.goals=self.create_publisher(MarkerArray,"/stage4d/goal_markers",q)
-  self.path=None;self.requested=None;self.effective=None
+  self.path=None;self.requested=None;self.effective=None;self.waypoint=None
   self.create_subscription(DiagnosticArray,"/local_planner/status",self.status,q)
   self.create_subscription(Path,"/path",lambda m:setattr(self,"path",m),10)
-  self.create_subscription(PointStamped,"/goal_point",lambda m:setattr(self,"requested",m),10)
-  self.create_subscription(PointStamped,"/way_point",lambda m:setattr(self,"effective",m),10)
+  self.create_subscription(PointStamped,"/goal_point",self.on_goal,10)
+  self.create_subscription(PointStamped,"/way_point",self.on_waypoint,10)
+  self.create_subscription(DiagnosticArray,"/far/planner_status",self.far_status,q)
+  self.create_subscription(Empty,"/navigation_cancel",self.on_cancel,10)
   self.create_timer(.2,self.publish)
+ def on_goal(self,msg):
+  self.requested=msg;self.effective=None;self.waypoint=None
+  self.clear_goals()
+ def on_waypoint(self,msg):
+  if self.requested is not None:self.waypoint=msg
+ def on_cancel(self,_msg):
+  self.requested=None;self.effective=None;self.waypoint=None
+  self.clear_goals()
+ def clear_goals(self):
+  marker=self.marker(Marker.SPHERE,"Goal - Requested");marker.action=Marker.DELETEALL
+  arr=MarkerArray();arr.markers=[marker];self.goals.publish(arr)
+ def far_status(self,msg):
+  if self.requested is None:return
+  for status in msg.status:
+   if status.name!="far_planner":continue
+   values={item.key:item.value for item in status.values}
+   try:coords=[float(values["goal_current_"+axis]) for axis in "xyz"]
+   except (KeyError,ValueError):return
+   if not all(math.isfinite(value) for value in coords):return
+   point=PointStamped();point.header.frame_id="map"
+   point.point=Point(x=coords[0],y=coords[1],z=coords[2]);self.effective=point
  def status(self,msg):
   for status in msg.status:
    if status.name!="local_planner":continue
@@ -60,12 +84,22 @@ class Visualizer(Node):
    point=pose.pose.position;line.points.append(point);copy=Point();copy.x,copy.y,copy.z=point.x,point.y,.015;envelope.points.append(copy)
   arr.markers=[line,envelope];self.markers.publish(arr)
  def publish_goals(self):
-  if not self.requested and not self.effective:return
+  if not self.requested and not self.effective and not self.waypoint:return
   arr=MarkerArray()
   if self.requested:
-   m=self.marker(Marker.SPHERE,"Goal - Requested",0,self.requested.header.frame_id);m.pose.position=self.requested.point;m.pose.position.z+=.08;m.scale.x=m.scale.y=m.scale.z=.14;m.color.r,m.color.g,m.color.b,m.color.a=1.,.85,.05,1.;arr.markers.append(m)
+   m=self.marker(Marker.SPHERE,"Goal - Requested",0,self.requested.header.frame_id)
+   p=self.requested.point;m.pose.position=Point(x=p.x,y=p.y,z=p.z+.08)
+   m.scale.x=m.scale.y=m.scale.z=.14;m.color.r,m.color.g,m.color.b,m.color.a=1.,.85,.05,1.;arr.markers.append(m)
   if self.effective:
-   m=self.marker(Marker.SPHERE,"Goal - FAR Effective",1,self.effective.header.frame_id);m.pose.position=self.effective.point;m.pose.position.z+=.08;m.scale.x=m.scale.y=m.scale.z=.14;m.color.r,m.color.g,m.color.b,m.color.a=.05,1.,.25,1.;arr.markers.extend([m,self.circle(2,self.effective.point,self.far_tol,(.05,1.,.25,.8),"Goal - FAR convergence tolerance"),self.circle(3,self.effective.point,self.stop_tol,(.1,.55,1.,.7),"Goal - follower stop tolerance")])
+   m=self.marker(Marker.SPHERE,"Goal - FAR Effective",1,self.effective.header.frame_id)
+   p=self.effective.point;m.pose.position=Point(x=p.x,y=p.y,z=p.z+.08)
+   m.scale.x=m.scale.y=m.scale.z=.14;m.color.r,m.color.g,m.color.b,m.color.a=.05,1.,.25,1.
+   arr.markers.extend([m,self.circle(2,p,self.far_tol,(.05,1.,.25,.8),"Goal - FAR convergence tolerance")])
+  if self.waypoint:
+   p=self.waypoint.point;m=self.marker(Marker.SPHERE,"FAR - Current waypoint",4,self.waypoint.header.frame_id)
+   m.pose.position=Point(x=p.x,y=p.y,z=p.z+.06)
+   m.scale.x=m.scale.y=m.scale.z=.09;m.color.r,m.color.g,m.color.b,m.color.a=.1,.55,1.,.95
+   arr.markers.extend([m,self.circle(3,p,self.stop_tol,(.1,.55,1.,.7),"FAR waypoint - follower stop tolerance")])
   self.goals.publish(arr)
  def publish(self):
   self.publish_geometry(self.v["vehicle_length"],self.v["vehicle_width"]);self.publish_path();self.publish_goals()

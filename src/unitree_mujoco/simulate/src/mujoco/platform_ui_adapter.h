@@ -67,6 +67,8 @@ namespace mujoco
     virtual bool IsRightMouseButtonPressed() const = 0;
 
     virtual bool IsAltKeyPressed() const = 0;
+    virtual bool IsLeftAltKeyPressed() const = 0;
+    virtual bool IsRightAltKeyCode(int key) const = 0;
     virtual bool IsCtrlKeyPressed() const = 0;
     virtual bool IsShiftKeyPressed() const = 0;
 

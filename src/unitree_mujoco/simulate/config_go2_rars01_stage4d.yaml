@@ -25,5 +25,11 @@ sensor_start_delay: 12.0
 # walkable geom sets/replaces the goal; plain LMB short-click cancels it.
 enable_interactive_goal_click: 1
 goal_click_drag_threshold_px: 5.0
+# M0.1 manual arm-target UI.  This only publishes a world-frame PoseStamped;
+# the ROS manipulation state machine owns IK and safe arm motion.
+enable_manual_manip_target: 1
+enable_mujoco_hud: 1
+allow_manual_manip_during_navigation: 0
+
 goal_click_walkable_geoms:
   - floor

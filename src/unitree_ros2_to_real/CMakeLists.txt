@@ -168,6 +168,7 @@ install(PROGRAMS scripts/manual_twist_test.py
                  scripts/stage4d_replanning_trace.py
                  scripts/stage4d_geometry_audit.py
                  scripts/stage4d_nav_manip_m0.py
+                 scripts/stage4d_manual_manip_target.py
   DESTINATION lib/${PROJECT_NAME}
 )
 

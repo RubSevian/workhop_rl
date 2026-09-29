@@ -1456,6 +1456,7 @@ namespace
     int flex_id = -1;
     int skin_id = -1;
     std::string geom_name;
+    std::string body_name;
   };
 
   // Keep all picking math in MuJoCo's native selector.  Both the stock
@@ -1486,6 +1487,11 @@ namespace
       const char *name = mj_id2name(sim->m_, mjOBJ_GEOM, geom);
       if (name) selection.geom_name = name;
     }
+    if (body >= 0)
+    {
+      const char *name = mj_id2name(sim->m_, mjOBJ_BODY, body);
+      if (name) selection.body_name = name;
+    }
     return selection;
   }
 
@@ -1494,6 +1500,14 @@ namespace
   {
     mj::Simulate *sim = static_cast<mj::Simulate *>(state->userdata);
 
+    // GLFW callbacks remain owned by PlatformUIAdapter. Right Alt is reserved
+    // for Stage4D manual-target cancellation; all other keys use stock UI.
+    if (sim->scene_click_enabled_ && state->type == mjEVENT_KEY &&
+        sim->platform_ui->IsRightAltKeyCode(state->key))
+    {
+      sim->pending_.scene_cancel_manual_target = true;
+      return;
+    }
     // call UI 0 if event is directed to it
     if ((state->dragrect == sim->ui0.rectid) ||
         (state->dragrect == 0 && state->mouserect == sim->ui0.rectid) ||
@@ -1946,6 +1960,7 @@ namespace
       {
         sim->scene_click_tracking_ = true;
         sim->scene_click_ctrl_ = state->control;
+        sim->scene_click_alt_ = sim->platform_ui->IsLeftAltKeyPressed();
         sim->scene_click_dragged_ = false;
         sim->scene_click_press_x_ = state->x;
         sim->scene_click_press_y_ = state->y;
@@ -2001,6 +2016,7 @@ namespace
         {
           sim->pending_.scene_click = true;
           sim->pending_.scene_click_ctrl = sim->scene_click_ctrl_;
+          sim->pending_.scene_click_alt = sim->scene_click_alt_;
           std::memcpy(&sim->pending_.scene_click_state, state,
                       sizeof(sim->pending_.scene_click_state));
         }
@@ -2126,6 +2142,11 @@ namespace mujoco
   void Simulate::SetSceneOverlayCallback(SceneOverlayCallback callback)
   {
     scene_overlay_callback_ = std::move(callback);
+  }
+
+  void Simulate::SetSceneHudCallback(SceneHudCallback callback)
+  {
+    scene_hud_callback_ = std::move(callback);
   }
 
   // synchronize model and data
@@ -2367,9 +2388,11 @@ namespace mujoco
     if (pending_.scene_click)
     {
       SceneClickEvent event;
-      event.action = pending_.scene_click_ctrl ? SceneClickEvent::Action::kCtrlPrimaryClick
-                                                : SceneClickEvent::Action::kPrimaryClick;
-      if (event.action == SceneClickEvent::Action::kCtrlPrimaryClick)
+      event.action = pending_.scene_click_alt ? SceneClickEvent::Action::kAltPrimaryClick
+                     : pending_.scene_click_ctrl ? SceneClickEvent::Action::kCtrlPrimaryClick
+                                                 : SceneClickEvent::Action::kPrimaryClick;
+      if (event.action == SceneClickEvent::Action::kCtrlPrimaryClick ||
+          event.action == SceneClickEvent::Action::kAltPrimaryClick)
       {
         const SceneSelection selection = SelectScene(this, pending_.scene_click_state);
         event.hit = selection.hit;
@@ -2377,9 +2400,17 @@ namespace mujoco
         event.geom_id = selection.geom_id;
         event.body_id = selection.body_id;
         event.geom_name = selection.geom_name;
+        event.body_name = selection.body_name;
       }
       if (scene_click_callback_) scene_click_callback_(event);
       pending_.scene_click = false;
+    }
+    if (pending_.scene_cancel_manual_target)
+    {
+      SceneClickEvent event;
+      event.action = SceneClickEvent::Action::kCancelManualTarget;
+      if (scene_click_callback_) scene_click_callback_(event);
+      pending_.scene_cancel_manual_target = false;
     }
 
     if (pending_.select)
@@ -2997,6 +3028,11 @@ namespace mujoco
     }
 
     // show help
+    if (scene_hud_callback_)
+    {
+      scene_hud_callback_(rect, this->platform_ui->mjr_context());
+    }
+
     if (this->help)
     {
       mjr_overlay(mjFONT_NORMAL, mjGRID_TOPLEFT, rect, help_title, help_content,

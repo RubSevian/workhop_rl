@@ -98,6 +98,8 @@ def generate_launch_description():
         Node(package='unitree_legged_real', executable='stage4d_planner_visualization.py', output='screen'),
         Node(package='unitree_legged_real', executable='stage4d_navigation_explainer.py', output='screen'),
         Node(package='unitree_legged_real', executable='stage4d_scene_markers.py', output='screen', arguments=['--scene', PathJoinSubstitution([FindPackageShare('unitree_mujoco'), 'scene', 'scene_stage4d.xml'])]),
+        # M0.1 simulation-only terminal executor; dormant until a Left-Alt target is set in MuJoCo.
+        Node(package='unitree_legged_real', executable='stage4d_manual_manip_target.py', output='screen'),
         Node(package='unitree_legged_real', executable='stage4d_full_navigation_evaluator.py', output='screen'),
         Node(package='rviz2', executable='rviz2', condition=IfCondition(LaunchConfiguration('rviz')), output='screen',
              arguments=['-d', PathJoinSubstitution([FindPackageShare('unitree_legged_real'), 'config', 'stage4d_full_navigation.rviz'])]),
