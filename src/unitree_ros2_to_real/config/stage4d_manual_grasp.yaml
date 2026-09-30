@@ -1,0 +1,15 @@
+# Stage4D simulation-only manual target and safety gates.
+# Values are read by stage4d_full_navigation.launch.py at startup.
+target_diameter_m: 0.10          # Visual marker only; not a physical MuJoCo object.
+virtual_grasp_width_m: 0.04      # Requested gripper opening, independent of marker size.
+floor_z_m: 0.0
+floor_margin_m: 0.0008           # 0.8 mm: experimental MuJoCo-only value.
+arm_collision_margin_m: 0.000    # 0 mm: reject penetration for blocking collision classes.
+arm_self_collision_monitor_only: true  # Stage4D sim: report arm-arm distances, do not reject.
+frame_warn_translation_m: 0.005
+frame_warn_rotation_deg: 0.5
+frame_fail_translation_m: 0.020
+frame_fail_rotation_deg: 2.0
+
+# RARS01 actuator limits, command_limit_epsilon_rad and jaw geometry remain
+# authoritative in repos/rars01_graspnet/config/default.yaml (real + sim).

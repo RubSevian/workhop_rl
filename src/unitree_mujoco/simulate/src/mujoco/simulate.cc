@@ -1954,9 +1954,13 @@ namespace
     }
 
     // 3D press
+    // MuJoCo swaps mjuiState.left/right under Alt for camera controls.
+    // Stage4D scene clicks must use the physical left button instead.
+    const bool scene_primary = sim->scene_click_enabled_ &&
+        sim->platform_ui->IsLeftMouseButtonPressed();
     if (state->type == mjEVENT_PRESS && state->mouserect == 3)
     {
-      if (sim->scene_click_enabled_ && state->left)
+      if (scene_primary)
       {
         sim->scene_click_tracking_ = true;
         sim->scene_click_ctrl_ = state->control;
@@ -1970,7 +1974,7 @@ namespace
       // application callback.  All stock behavior remains unchanged otherwise.
       int newperturb = 0;
       if (state->control && sim->pert.select > 0 && (sim->m_ || sim->is_passive_) &&
-          !(sim->scene_click_enabled_ && state->left))
+          !scene_primary)
       {
         // right: translate;  left: rotate
         if (state->right)
@@ -1990,7 +1994,7 @@ namespace
       // Preserve normal double-click selection.  In interactive mode, a
       // left double-click is handled as two short scene clicks instead.
       if (state->doubleclick && (sim->m_ || sim->is_passive_) &&
-          !(sim->scene_click_enabled_ && state->left))
+          !scene_primary)
       {
         sim->pending_.select = true;
         std::memcpy(&sim->pending_.select_state, state, sizeof(sim->pending_.select_state));
@@ -2006,7 +2010,7 @@ namespace
     // 3D release
     if (state->type == mjEVENT_RELEASE && state->dragrect == 3 && (sim->m_ || sim->is_passive_))
     {
-      if (sim->scene_click_tracking_)
+      if (sim->scene_click_tracking_ && !sim->platform_ui->IsLeftMouseButtonPressed())
       {
         const double dx = static_cast<double>(state->x - sim->scene_click_press_x_);
         const double dy = static_cast<double>(state->y - sim->scene_click_press_y_);

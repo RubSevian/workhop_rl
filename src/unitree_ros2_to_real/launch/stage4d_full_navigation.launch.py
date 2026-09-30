@@ -1,5 +1,11 @@
+import math
+import os
+from pathlib import Path
+
+import yaml
+
 from launch import LaunchDescription
-from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription
+from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription, SetEnvironmentVariable
 from launch.conditions import IfCondition, UnlessCondition
 from launch.launch_description_sources import AnyLaunchDescriptionSource, PythonLaunchDescriptionSource
 from launch.substitutions import Command, EnvironmentVariable, LaunchConfiguration, PathJoinSubstitution
@@ -8,7 +14,30 @@ from launch_ros.parameter_descriptions import ParameterValue
 from launch_ros.substitutions import FindPackageShare
 
 
+def _manual_grasp_settings():
+    default_path = Path(__file__).resolve().parent.parent / 'config' / 'stage4d_manual_grasp.yaml'
+    path = Path(os.environ.get('STAGE4D_MANUAL_GRASP_CONFIG', str(default_path)))
+    settings = yaml.safe_load(path.read_text(encoding='utf-8'))
+    if not isinstance(settings, dict):
+        raise ValueError(f'Invalid Stage4D manual grasp config: {path}')
+    names = ('target_diameter_m', 'virtual_grasp_width_m', 'floor_z_m',
+             'floor_margin_m', 'arm_collision_margin_m', 'frame_warn_translation_m',
+             'frame_warn_rotation_deg', 'frame_fail_translation_m', 'frame_fail_rotation_deg')
+    for name in names:
+        value = float(settings[name])
+        if not math.isfinite(value) or (name != 'floor_z_m' and value < 0):
+            raise ValueError(f'Invalid {name} in {path}: {value}')
+        settings[name] = value
+    settings['arm_self_collision_monitor_only'] = settings.get('arm_self_collision_monitor_only', False)
+    if not isinstance(settings['arm_self_collision_monitor_only'], bool):
+        raise ValueError(f'Invalid arm_self_collision_monitor_only in {path}')
+    if settings['target_diameter_m'] <= 0 or settings['virtual_grasp_width_m'] <= 0:
+        raise ValueError(f'Target diameter and grasp width must be positive in {path}')
+    return settings
+
+
 def generate_launch_description():
+    manual = _manual_grasp_settings()
     point_lio = FindPackageShare('point_lio_unilidar')
     far = FindPackageShare('far_planner')
     local = FindPackageShare('local_planner')
@@ -18,10 +47,22 @@ def generate_launch_description():
         DeclareLaunchArgument('policy_path'),
         DeclareLaunchArgument('rl_config_path'),
         DeclareLaunchArgument('mujoco_config', default_value='config_go2_rars01_stage4d.yaml'),
+        DeclareLaunchArgument('rars01_arm_sim_config', default_value=PathJoinSubstitution(
+            [FindPackageShare('unitree_mujoco'), 'config', 'rars01_arm_sim.yaml'])),
+        SetEnvironmentVariable('STAGE4D_RARS01_ARM_SIM_CONFIG', LaunchConfiguration('rars01_arm_sim_config')),
         DeclareLaunchArgument('pointlio_config', default_value=PathJoinSubstitution([point_lio, 'config', 'utlidar_sim.yaml'])),
         DeclareLaunchArgument('far_config', default_value=PathJoinSubstitution([far, 'config', 'sim_pointlio.yaml'])),
         DeclareLaunchArgument('sim_imu_calibration', default_value=PathJoinSubstitution([FindPackageShare('unitree_legged_real'), 'config', 'stage4d_sim_imu_calibration.yaml'])),
         DeclareLaunchArgument('rviz', default_value='true'),
+        DeclareLaunchArgument('enable_mujoco_hud', default_value=EnvironmentVariable('STAGE4D_MUJOCO_HUD', default_value='true')),
+        SetEnvironmentVariable('STAGE4D_MUJOCO_HUD', LaunchConfiguration('enable_mujoco_hud')),
+        DeclareLaunchArgument('enable_manual_manip_target', default_value=EnvironmentVariable('STAGE4D_ENABLE_MANUAL_MANIP_TARGET', default_value='true')),
+        DeclareLaunchArgument('arm_collision_margin_m', default_value=str(manual['arm_collision_margin_m'])),
+        SetEnvironmentVariable('STAGE4D_MANUAL_TARGET_DIAMETER_M', str(manual['target_diameter_m'])),
+        DeclareLaunchArgument('enable_planner_visualization', default_value=EnvironmentVariable('STAGE4D_ENABLE_PLANNER_VISUALIZATION', default_value='true')),
+        DeclareLaunchArgument('enable_navigation_explainer', default_value=EnvironmentVariable('STAGE4D_ENABLE_NAVIGATION_EXPLAINER', default_value='true')),
+        DeclareLaunchArgument('enable_full_navigation_evaluator', default_value=EnvironmentVariable('STAGE4D_ENABLE_FULL_NAVIGATION_EVALUATOR', default_value='true')),
+        DeclareLaunchArgument('enable_rviz_robot_visualization', default_value=EnvironmentVariable('STAGE4D_ENABLE_RVIZ_ROBOT_VISUALIZATION', default_value='true')),
         DeclareLaunchArgument('enable_far', default_value='true'),
         DeclareLaunchArgument('enable_local_planner', default_value='true'),
         DeclareLaunchArgument('far_converge_distance', default_value=EnvironmentVariable('STAGE4D_FAR_CONVERGE_DISTANCE', default_value='0.25')),
@@ -30,7 +71,8 @@ def generate_launch_description():
              arguments=['--config', LaunchConfiguration('mujoco_config')]),
         Node(package='unitree_legged_real', executable='mujoco_sim', output='screen', parameters=[{
              'policy_path': LaunchConfiguration('policy_path'), 'rl_config_path': LaunchConfiguration('rl_config_path'),
-             'initial_navigation_active': False, 'auto_start_rl': True}]),
+             'initial_navigation_active': False, 'auto_start_rl': True,
+             'rars01_arm_sim_config': LaunchConfiguration('rars01_arm_sim_config')}]),
         # Unchanged original raw-sensor boundary: MuJoCo publishes /utlidar/*;
         # transform_sensors remains the sole raw->body conversion.
         Node(package='transform_sensors', executable='transform_everything', name='transform_everything', output='screen',
@@ -94,13 +136,26 @@ def generate_launch_description():
              parameters=[{'robot_description': ParameterValue(Command(['cat ', robot_urdf]), value_type=str)}],
              remappings=[('joint_states', '/stage4d/joint_states')]),
         # Full RobotModel and the BLUE GT path are visualization/evaluation only.
-        Node(package='unitree_legged_real', executable='stage4d_rviz_robot.py', output='screen'),
-        Node(package='unitree_legged_real', executable='stage4d_planner_visualization.py', output='screen'),
-        Node(package='unitree_legged_real', executable='stage4d_navigation_explainer.py', output='screen'),
+        Node(package='unitree_legged_real', executable='stage4d_rviz_robot.py', output='screen', condition=IfCondition(LaunchConfiguration('enable_rviz_robot_visualization'))),
+        Node(package='unitree_legged_real', executable='stage4d_planner_visualization.py', output='screen', condition=IfCondition(LaunchConfiguration('enable_planner_visualization'))),
+        Node(package='unitree_legged_real', executable='stage4d_navigation_explainer.py', output='screen', condition=IfCondition(LaunchConfiguration('enable_navigation_explainer'))),
         Node(package='unitree_legged_real', executable='stage4d_scene_markers.py', output='screen', arguments=['--scene', PathJoinSubstitution([FindPackageShare('unitree_mujoco'), 'scene', 'scene_stage4d.xml'])]),
-        # M0.1 simulation-only terminal executor; dormant until a Left-Alt target is set in MuJoCo.
-        Node(package='unitree_legged_real', executable='stage4d_manual_manip_target.py', output='screen'),
-        Node(package='unitree_legged_real', executable='stage4d_full_navigation_evaluator.py', output='screen'),
+        # M0.2 simulation-only terminal executor; dormant until a Left-Alt target is set in MuJoCo.
+        Node(package='unitree_mujoco', executable='stage4d_arm_shadow_checker', output='screen',
+             parameters=[{'margin_m': LaunchConfiguration('arm_collision_margin_m'),
+                          'monitor_self_collisions': bool(manual['arm_self_collision_monitor_only'])}],
+             condition=IfCondition(LaunchConfiguration('enable_manual_manip_target'))),
+        Node(package='unitree_legged_real', executable='stage4d_manual_manip_target.py', output='screen',
+             arguments=['--virtual-grasp-width-m', str(manual['virtual_grasp_width_m']),
+                        '--floor-z-m', str(manual['floor_z_m']),
+                        '--floor-margin-m', str(manual['floor_margin_m']),
+                        '--frame-warn-translation-m', str(manual['frame_warn_translation_m']),
+                        '--frame-warn-rotation-deg', str(manual['frame_warn_rotation_deg']),
+                        '--frame-fail-translation-m', str(manual['frame_fail_translation_m']),
+                        '--frame-fail-rotation-deg', str(manual['frame_fail_rotation_deg'])],
+             additional_env={'PATH': [EnvironmentVariable('RARS01_GRASPNET_ROOT', default_value='/home/ruben/go2_diploma_sim2sim/repos/rars01_graspnet'), '/.venv/bin:', EnvironmentVariable('PATH')]},
+             condition=IfCondition(LaunchConfiguration('enable_manual_manip_target'))),
+        Node(package='unitree_legged_real', executable='stage4d_full_navigation_evaluator.py', output='screen', condition=IfCondition(LaunchConfiguration('enable_full_navigation_evaluator'))),
         Node(package='rviz2', executable='rviz2', condition=IfCondition(LaunchConfiguration('rviz')), output='screen',
              arguments=['-d', PathJoinSubstitution([FindPackageShare('unitree_legged_real'), 'config', 'stage4d_full_navigation.rviz'])]),
     ])

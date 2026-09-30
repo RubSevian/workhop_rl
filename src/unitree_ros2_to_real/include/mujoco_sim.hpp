@@ -18,6 +18,7 @@
 #include "rl_agent.h"
 #include "motor_crc.h"
 #include "navigation_command_adapter.hpp"
+#include "rars01_arm_sim_gains.hpp"
 
 
 //keyboard
@@ -39,6 +40,7 @@ public:
     std::string get_robot_name() const;
     int get_num_motors() const;
     void set_command(float x, float y, float z);
+    void set_arm_target(const std::array<float, 6>& target);
     void set_heightmap(const std::array<float, 17*11>& hm);
         // enum StateID {
     //     STATE_INIT,
@@ -116,6 +118,7 @@ private:
     rclcpp::Publisher<geometry_msgs::msg::TwistStamped>::SharedPtr safe_command_pub;
     rclcpp::Publisher<std_msgs::msg::Bool>::SharedPtr rl_ready_pub;
     RobotController controller;
+    rars01_sim::ArmGains arm_sim_gains_;
     NavigationCommandAdapter command_adapter_;
     uint64_t command_diagnostic_tick_ = 0;
     uint64_t last_physics_tick_ = 0;

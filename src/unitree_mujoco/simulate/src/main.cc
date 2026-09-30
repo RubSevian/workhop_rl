@@ -42,6 +42,7 @@
 #include "unitree_sdk2_bridge/unitree_sdk2_bridge.h"
 #include <pthread.h>
 #include "yaml-cpp/yaml.h"
+#include "rars01_arm_sim_gains.hpp"
 #include <rclcpp/rclcpp.hpp>
 #include <nav_msgs/msg/odometry.hpp>
 #include <geometry_msgs/msg/point_stamped.hpp>
@@ -138,6 +139,8 @@ namespace
     int allow_manual_manip_during_navigation = 0;
 
   } config;
+
+  rars01_sim::ArmGains rars01_arm_gains;
 
   builtin_interfaces::msg::Time SimStamp(mjtNum seconds) {
     const int64_t total_ns = static_cast<int64_t>(seconds * 1.0e9);
@@ -296,6 +299,9 @@ namespace
     explicit MujocoManualManipTargetBridge(const SimulationConfig& config)
         : world_frame_(config.world_frame), hud_enabled_(config.enable_mujoco_hud != 0),
           allow_during_navigation_(config.allow_manual_manip_during_navigation != 0),
+          target_radius_m_([] { const char* value = std::getenv("STAGE4D_MANUAL_TARGET_DIAMETER_M");
+            const double diameter = value ? std::atof(value) : 0.10;
+            return std::isfinite(diameter) && diameter > 0.0 ? diameter * 0.5 : 0.05; }()),
           node_(std::make_shared<rclcpp::Node>("mujoco_manual_manip_target_bridge")) {
       target_pub_ = node_->create_publisher<geometry_msgs::msg::PoseStamped>(
           "/stage4d/manual_manip_target", 10);
@@ -337,7 +343,7 @@ namespace
         SetMessage("MANUAL TARGET REJECTED — ROBOT/LINK");
         return;
       }
-      const std::array<double, 3> center = {event.world[0], event.world[1], event.world[2] + 0.05};
+      const std::array<double, 3> center = {event.world[0], event.world[1], event.world[2] + target_radius_m_};
       geometry_msgs::msg::PoseStamped target;
       target.header.stamp = node_->now();
       target.header.frame_id = world_frame_;
@@ -364,7 +370,7 @@ namespace
         target = target_world_;
       }
       if (scene.ngeom >= scene.maxgeom) return;
-      const mjtNum size[3] = {0.05, 0.0, 0.0};
+      const mjtNum size[3] = {target_radius_m_, 0.0, 0.0};
       const mjtNum pos[3] = {target[0], target[1], target[2]};
       const mjtNum mat[9] = {1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0};
       const float rgba[4] = {0.05F, 0.95F, 0.85F, 1.0F};
@@ -426,6 +432,7 @@ namespace
 
     std::string world_frame_;
     bool hud_enabled_ = true;
+    double target_radius_m_ = 0.05;
     bool allow_during_navigation_ = false;
     rclcpp::Node::SharedPtr node_;
     rclcpp::Publisher<geometry_msgs::msg::PoseStamped>::SharedPtr target_pub_;
@@ -675,6 +682,7 @@ namespace
     MujocoGroundTruthOdom()
         : node_(std::make_shared<rclcpp::Node>("mujoco_ground_truth_odom")) {
       odom_pub_ = node_->create_publisher<nav_msgs::msg::Odometry>(config.odom_topic, 10);
+      arm_base_pub_ = node_->create_publisher<geometry_msgs::msg::PoseStamped>("/sim/rars_base_pose", 10);
     }
 
     void Publish(const mjModel* model, const mjData* data) {
@@ -714,18 +722,30 @@ namespace
       odom.twist.twist.linear.y = body_velocity[4];
       odom.twist.twist.linear.z = body_velocity[5];
       odom_pub_->publish(odom);
+      // Authoritative arm-base pose from the same MuJoCo state and timestamp.
+      geometry_msgs::msg::PoseStamped arm_pose;
+      arm_pose.header = odom.header;
+      arm_pose.pose.position.x = data->xpos[3 * arm_base_body_id_];
+      arm_pose.pose.position.y = data->xpos[3 * arm_base_body_id_ + 1];
+      arm_pose.pose.position.z = data->xpos[3 * arm_base_body_id_ + 2];
+      arm_pose.pose.orientation.w = data->xquat[4 * arm_base_body_id_];
+      arm_pose.pose.orientation.x = data->xquat[4 * arm_base_body_id_ + 1];
+      arm_pose.pose.orientation.y = data->xquat[4 * arm_base_body_id_ + 2];
+      arm_pose.pose.orientation.z = data->xquat[4 * arm_base_body_id_ + 3];
+      arm_base_pub_->publish(arm_pose);
 
     }
 
   private:
     bool Resolve(const mjModel* model) {
-      if (resolved_model_ == model) return freejoint_id_ >= 0 && base_body_id_ >= 0;
+      if (resolved_model_ == model) return freejoint_id_ >= 0 && base_body_id_ >= 0 && arm_base_body_id_ >= 0;
       resolved_model_ = model;
       base_body_id_ = mj_name2id(model, mjOBJ_BODY, config.base_body.c_str());
+      arm_base_body_id_ = mj_name2id(model, mjOBJ_BODY, "base_link");
       freejoint_id_ = mj_name2id(model, mjOBJ_JOINT, "base_freejoint");
       next_publish_time_ = 0.0;
       last_sim_time_ = -1.0e30;
-      if (base_body_id_ < 0 || freejoint_id_ < 0 || model->jnt_type[freejoint_id_] != mjJNT_FREE) {
+      if (base_body_id_ < 0 || arm_base_body_id_ < 0 || freejoint_id_ < 0 || model->jnt_type[freejoint_id_] != mjJNT_FREE) {
         RCLCPP_ERROR(node_->get_logger(),
                      "Cannot publish ground-truth odometry: need body '%s' and freejoint 'base_freejoint'",
                      config.base_body.c_str());
@@ -738,6 +758,8 @@ namespace
 
     rclcpp::Node::SharedPtr node_;
     rclcpp::Publisher<nav_msgs::msg::Odometry>::SharedPtr odom_pub_;
+    rclcpp::Publisher<geometry_msgs::msg::PoseStamped>::SharedPtr arm_base_pub_;
+    int arm_base_body_id_ = -1;
     const mjModel* resolved_model_ = nullptr;
     int base_body_id_ = -1;
     int freejoint_id_ = -1;
@@ -1121,13 +1143,14 @@ namespace
     if (ros_low_level_bridge && ros_low_level_bridge->ApplyArm(model, data)) return;
     const char* joints[] = {"joint1", "joint2", "joint3", "joint4", "joint5", "joint6", "gripper_left_joint", "gripper_right_joint"};
     const char* actuators[] = {"joint1_motor", "joint2_motor", "joint3_motor", "joint4_motor", "joint5_motor", "joint6_motor", "gripper_left_motor", "gripper_right_motor"};
-    const double kp[] = {20, 20, 20, 6, 6, 6, 20, 20};
-    const double kd[] = {1, 1, 1, .4, .4, .4, .2, .2};
+    // Arm gains come from the dedicated simulation YAML; gripper gains stay unchanged.
     for (int i = 0; i < 8; ++i) {
       int jid = mj_name2id(model, mjOBJ_JOINT, joints[i]);
       int aid = mj_name2id(model, mjOBJ_ACTUATOR, actuators[i]);
       if (jid < 0 || aid != 12 + i) return;
-      double tau = -kp[i] * data->qpos[model->jnt_qposadr[jid]] - kd[i] * data->qvel[model->jnt_dofadr[jid]];
+      const double kp = i < 6 ? rars01_arm_gains.position_kp[i] : rars01_sim::kGripperKp;
+      const double kd = i < 6 ? rars01_arm_gains.position_kd[i] : rars01_sim::kGripperKd;
+      double tau = -kp * data->qpos[model->jnt_qposadr[jid]] - kd * data->qvel[model->jnt_dofadr[jid]];
       const double lower = model->actuator_ctrlrange[2 * aid];
       const double upper = model->actuator_ctrlrange[2 * aid + 1];
       data->ctrl[aid] = std::max(lower, std::min(upper, tau));
@@ -1727,6 +1750,19 @@ int main(int argc, char **argv)
   std::cout << "Path to main.cc: new " << path_config << std::endl;
   YAML::Node yaml_node = YAML::LoadFile(path_config);
   config.robot = yaml_node["robot"].as<std::string>();
+  if (config.robot == "go2_rars01") {
+    const char* override_path = std::getenv("STAGE4D_RARS01_ARM_SIM_CONFIG");
+    const std::string gains_path = override_path && *override_path
+        ? override_path : (std::filesystem::path(mujoco_dir) / "rars01_arm_sim.yaml").string();
+    try {
+      rars01_arm_gains = rars01_sim::LoadArmGains(gains_path);
+    } catch (const std::exception& error) {
+      std::cerr << error.what() << std::endl;
+      rclcpp::shutdown();
+      return EXIT_FAILURE;
+    }
+    std::cout << "RARS01 arm sim gains loaded from " << gains_path << std::endl;
+  }
   config.robot_scene = yaml_node["robot_scene"].as<std::string>();
   config.base_body = yaml_node["base_body"] ? yaml_node["base_body"].as<std::string>() : "base_link";
   config.domain_id = yaml_node["domain_id"].as<int>();

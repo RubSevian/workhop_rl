@@ -101,7 +101,8 @@ target_link_libraries(lcm_server ${EXTRA_LIBS})
 
 
 add_executable(mujoco_sim src/mujoco_sim.cpp src/motor_crc.cpp src/navigation_command_adapter.cpp)
-target_link_libraries(mujoco_sim ${UNITREE_GO2_LIBS} ${EXTRA_LIBS} ${TORCH_LIBRARIES} glfw)
+target_include_directories(mujoco_sim PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../unitree_mujoco/simulate/include)
+target_link_libraries(mujoco_sim ${UNITREE_GO2_LIBS} ${EXTRA_LIBS} ${TORCH_LIBRARIES} glfw yaml-cpp)
 ament_target_dependencies(mujoco_sim rclcpp unitree_rl_controller sensor_msgs geometry_msgs ${DEPENDENCY_LIST})
 
 add_executable(go2_heightmap_node
@@ -169,6 +170,8 @@ install(PROGRAMS scripts/manual_twist_test.py
                  scripts/stage4d_geometry_audit.py
                  scripts/stage4d_nav_manip_m0.py
                  scripts/stage4d_manual_manip_target.py
+                 scripts/stage4d_manual_grasp_geometry.py
+                 scripts/stage4d_real_grasp_planner.py
   DESTINATION lib/${PROJECT_NAME}
 )
 

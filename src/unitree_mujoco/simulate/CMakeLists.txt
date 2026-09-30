@@ -35,8 +35,13 @@ set(SIM_DEPENDENCIES
 
 
 add_executable(unitree_mujoco ${SIM_SRC} src/main.cc)
+target_include_directories(unitree_mujoco PRIVATE include)
 target_link_libraries(unitree_mujoco ${SIM_DEPENDENCIES})
 ament_target_dependencies(unitree_mujoco rclcpp nav_msgs geometry_msgs tf2_ros std_msgs sensor_msgs std_srvs rosgraph_msgs unitree_go)
+
+add_executable(stage4d_arm_shadow_checker src/stage4d_arm_shadow_checker.cc)
+target_link_libraries(stage4d_arm_shadow_checker mujoco::mujoco)
+ament_target_dependencies(stage4d_arm_shadow_checker rclcpp nav_msgs sensor_msgs std_msgs)
 
 add_executable(test_unitree_sdk2 test/test_unitree_sdk2.cpp)
 target_link_libraries(test_unitree_sdk2 unitree_sdk2)
@@ -45,9 +50,11 @@ add_executable(jstest src/joystick/jstest.cc src/joystick/joystick.cc)
 
 set(mujoco_dir "${CMAKE_CURRENT_SOURCE_DIR}")
 target_compile_definitions(unitree_mujoco PRIVATE "mujoco_dir=\"${mujoco_dir}\"")
+target_compile_definitions(stage4d_arm_shadow_checker PRIVATE "mujoco_dir=\"${mujoco_dir}\"")
 
 install(TARGETS
     unitree_mujoco
+    stage4d_arm_shadow_checker
     DESTINATION lib/${PROJECT_NAME}
 )
 
@@ -56,5 +63,6 @@ install(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/../unitree_robots/go2_rars01/gener
 install(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/../unitree_robots/go2_rars01/assets/ DESTINATION share/${PROJECT_NAME}/assets)
 install(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/../unitree_robots/go2/assets/ DESTINATION share/${PROJECT_NAME}/assets/go2)
 install(FILES ${CMAKE_CURRENT_SOURCE_DIR}/../unitree_robots/go2_rars01/scene_stage4d.xml DESTINATION share/${PROJECT_NAME}/scene)
+install(FILES ${CMAKE_CURRENT_SOURCE_DIR}/rars01_arm_sim.yaml DESTINATION share/${PROJECT_NAME}/config)
 
 ament_package()

@@ -18,23 +18,26 @@ from pathlib import Path
 
 import numpy as np
 import rclpy
+from stage4d_manual_grasp_geometry import (
+    floor_clearance, gripper_from_project_config, message_pose_matrix,
+    stamp_seconds, static_mount_contract, transform_error,
+)
 from rclpy.clock import Clock, ClockType
+from rclpy.callback_groups import ReentrantCallbackGroup
+from rclpy.executors import ExternalShutdownException, MultiThreadedExecutor
 from geometry_msgs.msg import PoseStamped
 from nav_msgs.msg import Odometry
 from rclpy.node import Node
 from sensor_msgs.msg import JointState
-from std_msgs.msg import Bool, Empty, String
+from std_msgs.msg import Bool, Empty, String, Float64MultiArray
 
 ARM_NAMES = ("joint1", "joint2", "joint3", "joint4", "joint5", "joint6")
 GRIPPER_NAMES = ("gripper_left_joint", "gripper_right_joint")
 JOINT_NAMES = ARM_NAMES + GRIPPER_NAMES
-HOME_Q = np.array([0.0, 1.0, 1.0, -0.5, 0.0, 0.0])
-REST_Q = np.zeros(6)
 GRIPPER_OPEN_M = 0.040
 GRIPPER_CLOSED_M = 0.005
-TARGET_RATE_HZ = 20.0
-# MJCF: base -> arm_mount_link (-.03,0,.058) -> RARS base_link (.074304,0,.0145).
-RARS_BASE_OFFSET_IN_GO2 = np.array([0.044304, 0.0, 0.0725])
+TARGET_RATE_HZ = 100.0
+SHADOW_CHECK_TIMEOUT_S = 90.0  # Full 100 Hz path is checked before any arm command.
 
 
 def yaw_from_quaternion(q):
@@ -44,17 +47,29 @@ def yaw_from_quaternion(q):
 class ManualManipTarget(Node):
     """Manual MuJoCo target state machine with navigation and settle interlocks."""
 
-    def __init__(self, args, kinematics, trajectory, rotation):
+    def __init__(self, args, kinematics, trajectory, geometry, mount_contract):
         super().__init__("stage4d_manual_manip_target")
-        self.args, self.kinematics, self.trajectory, self.rotation = args, kinematics, trajectory, rotation
+        self.args, self.kinematics, self.trajectory = args, kinematics, trajectory
+        self.sensor_group = ReentrantCallbackGroup()
+        self.geometry, self.mount_contract, self.mount_transform = geometry, mount_contract[0], mount_contract[1]
+        self.arm_base_pose = None
+        self.arm_base_at = 0.0
+        self.target_stamp = None
+        self.target_frame = None
+        self.world_arm = None
         self.arm_pub = self.create_publisher(JointState, "/rars01/arm_target", 10)
         self.status_pub = self.create_publisher(String, "/stage4d/manual_manip_status", 10)
+        self.collision_pub = self.create_publisher(Float64MultiArray, "/stage4d/arm_trajectory_check_request", 10)
+        self.collision_request_id = None
+        self.collision_response = None
         self._subscriptions = [
             self.create_subscription(PoseStamped, "/stage4d/manual_manip_target", self.on_target, 10),
             self.create_subscription(Empty, "/stage4d/manual_manip_cancel", self.on_cancel, 10),
             self.create_subscription(Bool, "/navigation_active", self.on_navigation_active, 10),
-            self.create_subscription(Odometry, "/sim/ground_truth_odom", self.on_odometry, 10),
-            self.create_subscription(JointState, "/go2/motor_state", self.on_motor_state, 10),
+            self.create_subscription(Odometry, "/sim/ground_truth_odom", self.on_odometry, 10, callback_group=self.sensor_group),
+            self.create_subscription(PoseStamped, "/sim/rars_base_pose", self.on_arm_base_pose, 10, callback_group=self.sensor_group),
+            self.create_subscription(JointState, "/go2/motor_state", self.on_motor_state, 10, callback_group=self.sensor_group),
+            self.create_subscription(String, "/stage4d/arm_trajectory_check_result", self.on_collision_result, 10),
         ]
         self.timer = self.create_timer(1.0 / TARGET_RATE_HZ, self.tick, clock=Clock(clock_type=ClockType.STEADY_TIME))
         self.state = "MANUAL_IDLE"
@@ -76,6 +91,7 @@ class ManualManipTarget(Node):
         self.last_arm_target = None
         self.last_error = ""
         self.cancel_requested = False
+        self.cancel_home_pending = False
         self.result = self.new_result()
         self.run_started_at = time.monotonic()
         self.publish_status()
@@ -125,6 +141,15 @@ class ManualManipTarget(Node):
             delta = math.atan2(math.sin(yaw - self.anchor[2]), math.cos(yaw - self.anchor[2]))
             self.max_anchor_yaw_rad = max(self.max_anchor_yaw_rad, abs(delta))
 
+    def on_collision_result(self, message):
+        try:
+            response = json.loads(message.data)
+        except (ValueError, TypeError):
+            return
+        if response.get("id") == self.collision_request_id:
+            self.collision_response = response
+    def on_arm_base_pose(self, message):
+        self.arm_base_pose, self.arm_base_at = message, time.monotonic()
     def on_motor_state(self, message):
         self.motor = dict(zip(message.name, message.position))
         self.motor_at = time.monotonic()
@@ -141,6 +166,8 @@ class ManualManipTarget(Node):
         self.result = self.new_result()
         self.run_started_at = time.monotonic()
         self.target_world = np.array([message.pose.position.x, message.pose.position.y, message.pose.position.z])
+        self.target_stamp = stamp_seconds(message.header.stamp)
+        self.target_frame = message.header.frame_id
         self.target_arm = None
         self.anchor = None
         self.max_anchor_xy_m = self.max_anchor_yaw_rad = 0.0
@@ -158,10 +185,6 @@ class ManualManipTarget(Node):
             return None
         p, q = self.odometry.pose.pose.position, self.odometry.pose.pose.orientation
         return float(p.x), float(p.y), yaw_from_quaternion(q)
-
-    def base_rotation(self):
-        q = self.odometry.pose.pose.orientation
-        return self.rotation.from_quat([q.x, q.y, q.z, q.w]).as_matrix()
 
     def base_settled(self):
         return (not self.navigation_active and self.odometry is not None and
@@ -181,46 +204,60 @@ class ManualManipTarget(Node):
         return float(np.max(np.abs(actual - self.last_arm_target)))
 
     def world_to_arm_target(self):
-        x, y, _ = self.base_pose()
-        p_base_world = np.array([x, y, self.odometry.pose.pose.position.z])
-        p_arm = self.base_rotation().T @ (self.target_world - p_base_world) - RARS_BASE_OFFSET_IN_GO2
-        target = np.eye(4)
-        target[:3, :3] = self.kinematics.forward(HOME_Q)[:3, :3]
-        target[:3, 3] = p_arm
-        return target
+        if self.target_frame != "map" or self.odometry is None or self.arm_base_pose is None:
+            raise RuntimeError("FRAME_CONTRACT_FAILED: target/map or authoritative pose missing")
+        if time.monotonic() - self.arm_base_at > self.args.max_pose_age_s:
+            raise RuntimeError("FRAME_CONTRACT_FAILED: stale RARS base pose")
+        if self.mount_contract["state"] == "FAILED":
+            raise RuntimeError("STATIC_MOUNT_CONTRACT_FAILED")
+        go2 = message_pose_matrix(self.odometry.pose.pose)
+        arm = message_pose_matrix(self.arm_base_pose.pose)
+        reconstructed = go2 @ self.mount_transform
+        distance, angle = transform_error(reconstructed, arm)
+        stamps = [self.target_stamp, stamp_seconds(self.odometry.header.stamp),
+                  stamp_seconds(self.arm_base_pose.header.stamp)]
+        skew_ms = (max(stamps) - min(stamps)) * 1000.0
+        state = ("FAILED" if distance > self.args.frame_fail_translation_m or angle > self.args.frame_fail_rotation_deg
+                 else "WARNING" if distance > self.args.frame_warn_translation_m or angle > self.args.frame_warn_rotation_deg
+                 else "GOOD")
+        self.result["frame"] = {"state": state, "static_mount": self.mount_contract,
+            "target_world_xyz_m": self.target_world.tolist(), "go2_world_xyz_m": go2[:3, 3].tolist(),
+            "go2_world_quaternion_xyzw": [getattr(self.odometry.pose.pose.orientation, key) for key in ("x", "y", "z", "w")],
+            "rars_world_xyz_m": arm[:3, 3].tolist(), "reconstructed_rars_world_xyz_m": reconstructed[:3, 3].tolist(),
+            "translation_difference_mm": distance * 1000.0, "rotation_difference_deg": angle,
+            "target_stamp_s": stamps[0], "go2_stamp_s": stamps[1], "rars_stamp_s": stamps[2],
+            "max_stamp_skew_ms": skew_ms}
+        if state == "FAILED":
+            raise RuntimeError("FRAME_CONTRACT_FAILED %.1fmm/%.2fdeg skew=%.1fms" % (distance * 1000, angle, skew_ms))
+        if state == "WARNING":
+            self.get_logger().warn("FRAME_CONTRACT_WARNING %.1fmm/%.2fdeg skew=%.1fms" % (distance * 1000, angle, skew_ms))
+        self.world_arm = arm
+        center = np.linalg.inv(arm) @ np.r_[self.target_world, 1.0]
+        self.result["frame"]["grasp_center_arm_xyz_m"] = center[:3].tolist()
+        return center[:3]
 
     def build_plan(self):
         current = self.measured_arm()
         if current is None:
             raise RuntimeError("ARM_STATE_UNAVAILABLE")
-        self.target_arm = self.world_to_arm_target()
-        pregrasp = self.target_arm.copy()
-        pregrasp[:3, 3] -= 0.06 * pregrasp[:3, 0]
-        # Check the picked point with the fixed M0.1 TCP orientation before
-        # planning a trajectory. A floor click can be visually close but place
-        # the target below the arm workspace or outside its joint limits.
-        reach = self.trajectory.solve_pose_ik(
-            self.kinematics, self.target_arm, HOME_Q, random_starts=8,
-            joint_margin_rad=0.05, position_tolerance_m=0.002,
-            rotation_tolerance_deg=2.0)
-        if not reach.success:
-            x, y, z = self.target_arm[:3, 3]
-            raise RuntimeError(
-                "TARGET_POSE_UNREACHABLE arm=(%.2f,%.2f,%.2f)m; "
-                "best error=%.1fmm/%.1fdeg (fixed TCP orientation)" %
-                (x, y, z, reach.position_error_m * 1000.0, reach.rotation_error_deg))
-        initial = self.trajectory.minimum_jerk_samples(current, HOME_Q, self.args.arm_duration_s, TARGET_RATE_HZ, 0.05)
-        pre = self.trajectory.track_cartesian_trajectory(self.kinematics, HOME_Q, pregrasp,
-            duration_s=self.args.arm_duration_s, rate_hz=TARGET_RATE_HZ, max_joint_step_rad=0.05,
-            joint_margin_rad=0.05, position_tolerance_m=0.002, rotation_tolerance_deg=2.0)
-        target = self.trajectory.track_cartesian_trajectory(self.kinematics, pre[-1], self.target_arm,
-            duration_s=self.args.arm_duration_s, rate_hz=TARGET_RATE_HZ, max_joint_step_rad=0.05,
-            joint_margin_rad=0.05, position_tolerance_m=0.002, rotation_tolerance_deg=2.0)
-        home = self.trajectory.track_cartesian_trajectory(self.kinematics, target[-1], self.kinematics.forward(HOME_Q),
-            duration_s=self.args.arm_duration_s, rate_hz=TARGET_RATE_HZ, max_joint_step_rad=0.05,
-            joint_margin_rad=0.05, position_tolerance_m=0.002, rotation_tolerance_deg=2.0)
-        rest = self.trajectory.minimum_jerk_samples(home[-1], REST_Q, self.args.arm_duration_s, TARGET_RATE_HZ, 0.05)
-        return {"initial": initial, "pregrasp": pre, "target": target, "home": home, "rest": rest}
+        center = self.world_to_arm_target()
+        from stage4d_real_grasp_planner import plan_real_grasp
+        diagnostics = {}
+        self.result["planning_diagnostics"] = diagnostics
+        stages, metadata = plan_real_grasp(
+            center, current, self.world_arm, self.geometry,
+            self.args.virtual_grasp_width_m, self.args.urdf,
+            self.real_config, self.args.floor_z_m, self.args.floor_margin_m, diagnostics=diagnostics)
+        self.target_arm = metadata.pop("target_tcp")
+        self.result["grasp"] = {
+            "selected_orientation": metadata.pop("orientation"),
+            "grasp_center_arm_xyz_m": center.tolist(),
+            "grasp_tcp_arm_xyz_m": self.target_arm[:3, 3].tolist(),
+            "virtual_grasp_width_m": self.args.virtual_grasp_width_m}
+        self.result["floor_clearance"] = metadata.pop("floor_clearance")
+        metadata["ready_joints"] = metadata["ready_joints"].tolist()
+        self.result["real_grasp_trajectory"] = metadata
+        return stages
 
     def publish_arm(self, joints, gripper):
         msg = JointState(); msg.header.stamp = self.get_clock().now().to_msg()
@@ -242,26 +279,59 @@ class ManualManipTarget(Node):
         error = self.arm_error()
         if error is not None and error <= self.args.arm_joint_tolerance_rad:
             return True
-        if time.monotonic() - self.stage_started_at > self.args.arm_duration_s + 6.0:
+        if time.monotonic() - self.stage_started_at > max(self.args.arm_duration_s, len(self.plan[self.stage_name]) / TARGET_RATE_HZ) + 6.0:
             self.request_cancel("ARM_TRACKING_TIMEOUT -> RETURN HOME")
         return False
 
     def request_cancel(self, reason):
-        current = self.measured_arm()
         self.cancel_requested = True
         self.last_error = reason
-        if current is None:
-            self.clear_to_idle("CANCELLED: ARM STATE UNAVAILABLE")
+        if self.state in ("MANUAL_TARGET_SET", "MANUAL_IK_CHECK", "MANUAL_COLLISION_CHECK"):
+            self.clear_to_idle("MANUAL_CANCELLED_NO_ARM_COMMAND")
             return
-        self.plan = {
-            "home": self.trajectory.minimum_jerk_samples(current, HOME_Q, self.args.arm_duration_s, TARGET_RATE_HZ, 0.05),
-            "rest": self.trajectory.minimum_jerk_samples(HOME_Q, REST_Q, self.args.arm_duration_s, TARGET_RATE_HZ, 0.05),
-        }
-        self.begin("home")
+        current = self.measured_arm()
+        if (current is None or self.arm_base_pose is None or
+                time.monotonic() - self.arm_base_at > self.args.max_pose_age_s):
+            self.clear_to_idle("CANCELLED: ARM/BASE STATE UNAVAILABLE")
+            return
+        from rars01_graspnet.real_grasp_trajectory import joint_motion_samples
+        from stage4d_real_grasp_planner import OfflineArm
+        config = self.real_config["robot"]
+        rate = float(config["rars01"]["command_rate_hz"])
+        limits = np.asarray(config["rars01"]["position_velocity_limits_rad_s"][:6])
+        home_q = np.asarray(config["rars01"]["home_joints_rad"], dtype=float).reshape(6)
+        arm = OfflineArm(self.args.urdf, current)
+        try:
+            home, duration = joint_motion_samples(current, home_q,
+                float(config["ready_pose"]["duration"]), 1.0/rate, limits)
+            floor_clearance({"home": home}, arm, self.geometry,
+                message_pose_matrix(self.arm_base_pose.pose), self.args.floor_z_m,
+                self.args.floor_margin_m, self.args.virtual_grasp_width_m)
+        except (RuntimeError, ValueError) as error:
+            self.last_error = "CANCEL_HOME_UNSAFE: " + str(error)
+            self.clear_to_idle("MANUAL_CANCELLED_NO_UNVALIDATED_HOME")
+            return
+        self.plan = {"home": home}
+        self.cancel_home_pending = True
+        self.world_arm = message_pose_matrix(self.arm_base_pose.pose)
+        self.result["cancel_home"] = {"duration_s": duration, "samples": len(home)}
+        self.collision_request_id = int(time.monotonic_ns() % 1000000000)
+        self.collision_response = None
+        request = Float64MultiArray()
+        data = []
+        for joints in home:
+            data.extend([float(value) for value in joints])
+            data.extend([self.stage_gripper, self.stage_gripper])
+        request.data = [float(self.collision_request_id), float(len(home))] + data
+        if self.collision_pub.get_subscription_count() == 0:
+            self.clear_to_idle("MANUAL_CANCELLED_SHADOW_UNAVAILABLE")
+            return
+        self.collision_pub.publish(request)
+        self.transition("MANUAL_COLLISION_CHECK", "validate cancel HOME before command")
 
     def clear_to_idle(self, detail):
         self.result["complete"] = detail == "MANUAL_COMPLETE"
-        if detail == "MANUAL_IK_FAILED":
+        if detail != "MANUAL_COMPLETE":
             self.result["abort_reason"] = self.last_error
         self.result["cancelled"] = self.cancel_requested
         self.result["max_anchor_xy_error_m"] = self.max_anchor_xy_m
@@ -274,9 +344,12 @@ class ManualManipTarget(Node):
         path.write_text(json.dumps(self.result, indent=2, sort_keys=True) + "\n")
         pending_target = self.pending_target
         self.pending_target = None
+        self.collision_request_id = None
+        self.collision_response = None
         self.target_world = self.target_arm = self.anchor = None
         self.last_arm_target = None
         self.cancel_requested = False
+        self.cancel_home_pending = False
         self.transition("MANUAL_IDLE", detail)
         if pending_target is not None:
             self.on_target(pending_target)
@@ -304,7 +377,70 @@ class ManualManipTarget(Node):
                 self.transition("MANUAL_IK_FAILED", str(error))
                 self.clear_to_idle("MANUAL_IK_FAILED")
                 return
-            self.begin("initial")
+            samples = []
+            for stage in ("initial", "pregrasp", "target", "retreat", "home"):
+                gripper = GRIPPER_OPEN_M if stage in ("initial", "pregrasp", "target") else GRIPPER_CLOSED_M
+                for joints in self.plan[stage]:
+                    samples.extend([float(v) for v in joints])
+                    samples.extend([gripper, gripper])
+                if stage == "target":
+                    samples.extend([float(v) for v in self.plan["target"][-1]])
+                    samples.extend([GRIPPER_CLOSED_M, GRIPPER_CLOSED_M])
+            self.collision_request_id = int(time.monotonic_ns() % 1000000000)
+            self.collision_response = None
+            request = Float64MultiArray()
+            request.data = [float(self.collision_request_id), float(len(samples) // 8)] + samples
+            if self.collision_pub.get_subscription_count() == 0:
+                self.last_error = "SHADOW_CHECKER_UNAVAILABLE"
+                self.transition("MANUAL_COLLISION_REJECTED", self.last_error)
+                self.clear_to_idle("MANUAL_COLLISION_REJECTED")
+                return
+            self.collision_pub.publish(request)
+            self.transition("MANUAL_COLLISION_CHECK")
+            return
+        if self.state == "MANUAL_COLLISION_CHECK":
+            if self.collision_response is not None:
+                self.result["collision"] = self.collision_response
+                if not self.collision_response.get("ok", False):
+                    self.last_error = self.collision_response.get("reason", "COLLISION_REJECTED")
+                    self.transition("MANUAL_COLLISION_REJECTED", self.last_error)
+                    self.clear_to_idle("MANUAL_COLLISION_REJECTED")
+                    return
+                measured = self.measured_arm()
+                if (not self.base_settled() or self.arm_base_pose is None or
+                        time.monotonic() - self.arm_base_at > self.args.max_pose_age_s or
+                        measured is None):
+                    self.last_error = "START_STATE_STALE_AFTER_IK"
+                    self.transition("MANUAL_COLLISION_REJECTED", self.last_error)
+                    self.clear_to_idle("MANUAL_COLLISION_REJECTED")
+                    return
+                shift_m, turn_deg = transform_error(
+                    self.world_arm, message_pose_matrix(self.arm_base_pose.pose))
+                first_stage = "home" if self.cancel_home_pending else "initial"
+                joint_shift = float(np.max(np.abs(measured - self.plan[first_stage][0])))
+                frame_warning = (shift_m > self.args.frame_warn_translation_m or
+                                 turn_deg > self.args.frame_warn_rotation_deg)
+                self.result["start_state_recheck"] = {
+                    "base_translation_m": shift_m, "base_rotation_deg": turn_deg,
+                    "arm_joint_shift_rad": joint_shift,
+                    "frame_state": "WARNING" if frame_warning else "GOOD"}
+                if frame_warning:
+                    self.get_logger().warn("START_FRAME_WARNING %.1fmm/%.2fdeg" %
+                                           (shift_m * 1000.0, turn_deg))
+                if (shift_m > self.args.frame_fail_translation_m or
+                        turn_deg > self.args.frame_fail_rotation_deg or
+                        joint_shift > self.args.arm_joint_tolerance_rad):
+                    self.last_error = "START_STATE_CHANGED_AFTER_IK"
+                    self.transition("MANUAL_COLLISION_REJECTED", self.last_error)
+                    self.clear_to_idle("MANUAL_COLLISION_REJECTED")
+                    return
+                self.begin(first_stage, self.stage_gripper if self.cancel_home_pending else GRIPPER_OPEN_M)
+                self.cancel_home_pending = False
+                return
+            if time.monotonic() - self.stage_started_at > SHADOW_CHECK_TIMEOUT_S:
+                self.last_error = "SHADOW_CHECK_TIMEOUT"
+                self.transition("MANUAL_COLLISION_REJECTED", self.last_error)
+                self.clear_to_idle("MANUAL_COLLISION_REJECTED")
             return
         if self.state == "MANUAL_INITIAL" and self.stream():
             self.begin("pregrasp"); return
@@ -315,12 +451,19 @@ class ManualManipTarget(Node):
         if self.state == "MANUAL_SIM_GRASP":
             self.publish_arm(self.plan["target"][-1], GRIPPER_CLOSED_M)
             if time.monotonic() - self.stage_started_at >= self.args.grasp_hold_s:
-                self.begin("home")
+                self.begin("retreat", GRIPPER_CLOSED_M)
             return
+        if self.state == "MANUAL_RETREAT" and self.stream():
+            self.begin("home", GRIPPER_CLOSED_M); return
         if self.state == "MANUAL_HOME" and self.stream():
-            self.begin("rest"); return
-        if self.state == "MANUAL_REST" and self.stream():
-            self.clear_to_idle("MANUAL_COMPLETE" if not self.cancel_requested else "MANUAL_CANCELLED_HOME")
+            if self.cancel_requested:
+                self.clear_to_idle("MANUAL_CANCELLED_HOME")
+            elif (self.max_anchor_xy_m > self.args.frame_fail_translation_m or
+                  math.degrees(self.max_anchor_yaw_rad) > self.args.frame_fail_rotation_deg):
+                self.last_error = "BASE_DRIFT_EXCEEDED"
+                self.clear_to_idle("MANUAL_BASE_DRIFT_EXCEEDED")
+            else:
+                self.clear_to_idle("MANUAL_COMPLETE")
 
 
 def parse_args():
@@ -334,28 +477,51 @@ def parse_args():
     p.add_argument("--max-pose-age-s", type=float, default=0.20)
     p.add_argument("--arm-joint-tolerance-rad", type=float, default=0.05)
     p.add_argument("--allow-manual-manip-during-navigation", action="store_true")
+    p.add_argument("--virtual-grasp-width-m", type=float, default=float(os.getenv("STAGE4D_VIRTUAL_GRASP_WIDTH_M", "0.04")))
+    p.add_argument("--pregrasp-distance-m", type=float, default=0.08)
+    p.add_argument("--floor-z-m", type=float, default=0.0)
+    p.add_argument("--floor-margin-m", type=float, default=float(os.getenv("STAGE4D_FLOOR_MARGIN_M", "0.0008")))
+    p.add_argument("--frame-warn-translation-m", type=float, default=float(os.getenv("STAGE4D_FRAME_WARN_TRANSLATION_M", "0.005")))
+    p.add_argument("--frame-warn-rotation-deg", type=float, default=float(os.getenv("STAGE4D_FRAME_WARN_ROTATION_DEG", "0.5")))
+    p.add_argument("--frame-fail-translation-m", type=float, default=float(os.getenv("STAGE4D_FRAME_FAIL_TRANSLATION_M", "0.020")))
+    p.add_argument("--frame-fail-rotation-deg", type=float, default=float(os.getenv("STAGE4D_FRAME_FAIL_ROTATION_DEG", "2.0")))
+    p.add_argument("--mjcf", default=os.environ.get("STAGE4D_MJCF_PATH", "/home/ruben/go2_diploma_sim2sim/repos/workhop_rl/src/unitree_mujoco/unitree_robots/go2_rars01/go2_rars01.xml"))
     p.add_argument("--graspnet-root", default=os.environ.get("RARS01_GRASPNET_ROOT", "/home/ruben/go2_diploma_sim2sim/repos/rars01_graspnet"))
-    p.add_argument("--urdf", default="/home/ruben/go2_diploma_sim2sim/repos/rars01_description/urdf/rars01_control.urdf")
+    p.add_argument("--urdf", default=None, help="optional assertion of grasp default.yaml URDF path")
     return p.parse_known_args()[0]
 
 
 def main():
     args = parse_args()
-    if not (Path(args.graspnet_root) / "rars01_graspnet" / "ik.py").is_file() or not Path(args.urdf).is_file():
+    if not (Path(args.graspnet_root) / "rars01_graspnet" / "ik.py").is_file():
+        raise SystemExit("M0.1 needs the existing transport-free rars01_graspnet package")
         raise SystemExit("M0.1 needs the existing transport-free rars01_graspnet package and control URDF")
     sys.path.insert(0, args.graspnet_root)
-    from scipy.spatial.transform import Rotation
-    from rars01_graspnet.kinematics import RarsKinematics
-    from rars01_graspnet import trajectory
+    from rars01_graspnet.config import load_config, robot_kinematics_config
+    config = load_config()
+    canonical_urdf = robot_kinematics_config(config)[0]
+    if args.urdf is not None and Path(args.urdf).resolve() != canonical_urdf:
+        raise SystemExit("Stage4D URDF override differs from grasp default.yaml")
+    if not canonical_urdf.is_file():
+        raise SystemExit("RARS01 control URDF from grasp default.yaml is missing")
+    args.urdf = str(canonical_urdf)
+    from rars01_graspnet.gripper_geometry import RarsGripperGeometry
+    geometry = gripper_from_project_config(config, RarsGripperGeometry)
+    mount_contract = static_mount_contract(args.mjcf)
     rclpy.init()
-    node = ManualManipTarget(args, RarsKinematics(args.urdf, "base_link", "End_link"), trajectory, Rotation)
+    node = ManualManipTarget(args, None, None, geometry, mount_contract)
+    node.real_config = config
+    executor = MultiThreadedExecutor(num_threads=2)
+    executor.add_node(node)
     try:
-        rclpy.spin(node)
-    except KeyboardInterrupt:
-        node.request_cancel("PROCESS INTERRUPTED")
+        executor.spin()
+    except (KeyboardInterrupt, ExternalShutdownException):
+        pass
     finally:
+        executor.shutdown()
         node.destroy_node()
-        if rclpy.ok(): rclpy.shutdown()
+        if rclpy.ok():
+            rclpy.shutdown()
 
 
 if __name__ == "__main__":

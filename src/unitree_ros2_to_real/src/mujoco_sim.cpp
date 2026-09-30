@@ -39,6 +39,12 @@ void RobotController::set_command(float x, float y, float z) {
     agent.obs.command = torch::tensor({x, y, z});
 }
 
+void RobotController::set_arm_target(const std::array<float, 6>& target) {
+    for (size_t i = 0; i < target.size(); ++i) {
+        agent.obs.arm_target.index({static_cast<int64_t>(i)}) = target[i];
+    }
+}
+
 void RobotController::initializeRL(const std::string& config_path, const std::string& model_path) {
     try {
         if (!config_path.empty()) {
@@ -297,13 +303,12 @@ void RobotController::update_dof_state(const std::array<unitree_go::msg::MotorSt
         agent.obs.dof_pos.index({net2joint_indexes[i]}) = motor_state[i].q;
         agent.obs.dof_vel.index({net2joint_indexes[i]}) = motor_state[i].dq;
     }
-    // Phase-3 Sim2Sim transport: slots 12..17 are measured RARS01 joints.
-    // They are read-only for the Unitree bridge; arm_target is the home hold.
+    // Slots 12..17 are measured RARS01 joints. The target is set separately
+    // from the active arm command before each policy update.
     for (int i = 0; i < 6; ++i) {
         agent.obs.arm_pos.index({i}) = motor_state[12 + i].q;
         agent.obs.arm_vel.index({i}) = motor_state[12 + i].dq;
     }
-    agent.obs.arm_target = torch::zeros({6}, torch::kFloat32);
 }
 float RobotController::jointLinearInterpolation(float initPos, float targetPos, float rate) {
     rate = std::min(std::max(rate, 0.0f), 1.0f);
@@ -318,6 +323,11 @@ void RobotController::set_heightmap(const std::array<float, 17*11>& hm)
 
 // InterfaceRos implementation
 InterfaceRos::InterfaceRos() : Node("low_level_cmd_sender"), command_adapter_(0.5) {
+    const std::string arm_config_path = declare_parameter<std::string>(
+        "rars01_arm_sim_config",
+        std::string(CONFIG_BASE_DIR) + "/../unitree_mujoco/simulate/rars01_arm_sim.yaml");
+    arm_sim_gains_ = rars01_sim::LoadArmGains(arm_config_path);
+    RCLCPP_INFO(get_logger(), "RARS01 arm sim gains loaded from %s", arm_config_path.c_str());
     cmd_puber = create_publisher<unitree_go::msg::LowCmd>("lowcmd", 10);
     low_cmd_pub = create_publisher<unitree_go::msg::LowCmd>("go2/low_cmd", 10);
     imu_pub = create_publisher<sensor_msgs::msg::Imu>("go2/imu", 10);
@@ -491,17 +501,13 @@ void InterfaceRos::OverlayArmTarget(unitree_go::msg::LowCmd& cmd) {
                              "Arm target watchdog expired; releasing simulation-only arm command");
         return;
     }
-    static constexpr std::array<float, 8> kKp = {20.0F, 20.0F, 20.0F, 6.0F,
-                                                   6.0F, 6.0F, 20.0F, 20.0F};
-    static constexpr std::array<float, 8> kKd = {1.0F, 1.0F, 1.0F, 0.4F,
-                                                   0.4F, 0.4F, 0.2F, 0.2F};
     for (size_t index = 0; index < arm_target_.size(); ++index) {
         auto& motor = cmd.motor_cmd[12 + index];
         motor.mode = 0x01;
         motor.q = arm_target_[index];
         motor.dq = 0.0F;
-        motor.kp = kKp[index];
-        motor.kd = kKd[index];
+        motor.kp = static_cast<float>(index < 6 ? arm_sim_gains_.position_kp[index] : rars01_sim::kGripperKp);
+        motor.kd = static_cast<float>(index < 6 ? arm_sim_gains_.position_kd[index] : rars01_sim::kGripperKd);
         motor.tau = 0.0F;
     }
 }
@@ -702,6 +708,14 @@ void InterfaceRos::RunPolicyTick(const unitree_go::msg::LowState& state) {
 
 
 
+    // Match the policy observation to the arm command applied on this tick.
+    // Without a fresh command, the simulator holds the zero-angle home target.
+    std::array<float, 6> policy_arm_target{};
+    if (arm_target_active_ && !navigation_active_ &&
+        std::chrono::steady_clock::now() - arm_target_stamp_ <= std::chrono::milliseconds(250)) {
+        std::copy_n(arm_target_.begin(), policy_arm_target.size(), policy_arm_target.begin());
+    }
+    controller.set_arm_target(policy_arm_target);
     low_cmd = controller.update(state);
     OverlayArmTarget(low_cmd);
     send_command(low_cmd);
