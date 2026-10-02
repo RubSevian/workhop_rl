@@ -241,22 +241,32 @@ class ManualManipTarget(Node):
         if current is None:
             raise RuntimeError("ARM_STATE_UNAVAILABLE")
         center = self.world_to_arm_target()
-        from stage4d_real_grasp_planner import plan_real_grasp
+        from stage4d_real_grasp_planner import plan_manual_ik, plan_real_grasp
         diagnostics = {}
         self.result["planning_diagnostics"] = diagnostics
-        stages, metadata = plan_real_grasp(
+        planner = plan_manual_ik if self.args.manual_target_mode == "ik_only" else plan_real_grasp
+        stages, metadata = planner(
             center, current, self.world_arm, self.geometry,
             self.args.virtual_grasp_width_m, self.args.urdf,
             self.real_config, self.args.floor_z_m, self.args.floor_margin_m, diagnostics=diagnostics)
         self.target_arm = metadata.pop("target_tcp")
-        self.result["grasp"] = {
-            "selected_orientation": metadata.pop("orientation"),
-            "grasp_center_arm_xyz_m": center.tolist(),
-            "grasp_tcp_arm_xyz_m": self.target_arm[:3, 3].tolist(),
-            "virtual_grasp_width_m": self.args.virtual_grasp_width_m}
+        orientation = metadata.pop("orientation")
+        if self.args.manual_target_mode == "ik_only":
+            self.result["manual_target"] = {
+                "mode": "ik_only", "selected_orientation": orientation,
+                "target_arm_xyz_m": center.tolist(),
+                "end_link_arm_xyz_m": self.target_arm[:3, 3].tolist()}
+        else:
+            self.result["grasp"] = {
+                "selected_orientation": orientation,
+                "grasp_center_arm_xyz_m": center.tolist(),
+                "grasp_tcp_arm_xyz_m": self.target_arm[:3, 3].tolist(),
+                "virtual_grasp_width_m": self.args.virtual_grasp_width_m}
         self.result["floor_clearance"] = metadata.pop("floor_clearance")
         metadata["ready_joints"] = metadata["ready_joints"].tolist()
-        self.result["real_grasp_trajectory"] = metadata
+        report_key = ("manual_ik_trajectory" if self.args.manual_target_mode == "ik_only"
+                      else "real_grasp_trajectory")
+        self.result[report_key] = metadata
         return stages
 
     def publish_arm(self, joints, gripper):
@@ -378,12 +388,15 @@ class ManualManipTarget(Node):
                 self.clear_to_idle("MANUAL_IK_FAILED")
                 return
             samples = []
-            for stage in ("initial", "pregrasp", "target", "retreat", "home"):
-                gripper = GRIPPER_OPEN_M if stage in ("initial", "pregrasp", "target") else GRIPPER_CLOSED_M
+            stages = (("initial", "target", "home") if self.args.manual_target_mode == "ik_only"
+                      else ("initial", "pregrasp", "target", "retreat", "home"))
+            for stage in stages:
+                gripper = (GRIPPER_OPEN_M if self.args.manual_target_mode == "ik_only" or
+                           stage in ("initial", "pregrasp", "target") else GRIPPER_CLOSED_M)
                 for joints in self.plan[stage]:
                     samples.extend([float(v) for v in joints])
                     samples.extend([gripper, gripper])
-                if stage == "target":
+                if stage == "target" and self.args.manual_target_mode != "ik_only":
                     samples.extend([float(v) for v in self.plan["target"][-1]])
                     samples.extend([GRIPPER_CLOSED_M, GRIPPER_CLOSED_M])
             self.collision_request_id = int(time.monotonic_ns() % 1000000000)
@@ -443,11 +456,15 @@ class ManualManipTarget(Node):
                 self.clear_to_idle("MANUAL_COLLISION_REJECTED")
             return
         if self.state == "MANUAL_INITIAL" and self.stream():
-            self.begin("pregrasp"); return
+            self.begin("target" if self.args.manual_target_mode == "ik_only" else "pregrasp"); return
         if self.state == "MANUAL_PREGRASP" and self.stream():
             self.begin("target"); return
         if self.state == "MANUAL_TARGET" and self.stream():
-            self.transition("MANUAL_SIM_GRASP"); return
+            if self.args.manual_target_mode == "ik_only":
+                self.begin("home", GRIPPER_OPEN_M)
+            else:
+                self.transition("MANUAL_SIM_GRASP")
+            return
         if self.state == "MANUAL_SIM_GRASP":
             self.publish_arm(self.plan["target"][-1], GRIPPER_CLOSED_M)
             if time.monotonic() - self.stage_started_at >= self.args.grasp_hold_s:
@@ -478,6 +495,7 @@ def parse_args():
     p.add_argument("--arm-joint-tolerance-rad", type=float, default=0.05)
     p.add_argument("--allow-manual-manip-during-navigation", action="store_true")
     p.add_argument("--virtual-grasp-width-m", type=float, default=float(os.getenv("STAGE4D_VIRTUAL_GRASP_WIDTH_M", "0.04")))
+    p.add_argument("--manual-target-mode", choices=("ik_only", "simulated_grasp"), default="ik_only")
     p.add_argument("--pregrasp-distance-m", type=float, default=0.08)
     p.add_argument("--floor-z-m", type=float, default=0.0)
     p.add_argument("--floor-margin-m", type=float, default=float(os.getenv("STAGE4D_FLOOR_MARGIN_M", "0.0008")))

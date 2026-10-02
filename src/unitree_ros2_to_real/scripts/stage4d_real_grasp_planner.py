@@ -50,6 +50,105 @@ def _joint_limit_diagnostic(samples, lower, upper):
             "violation_rad": float(violations[sample_index, joint_index])}
 
 
+def plan_manual_ik(center_arm, measured, world_arm, geometry, grasp_width_m,
+                   urdf, config, floor_z_m, floor_margin_m, diagnostics=None):
+    """Position-only manual reach test. GraspNet, not a viewer click, selects grasp poses."""
+    from scipy.optimize import least_squares
+    from rars01_graspnet.kinematics import RarsKinematics
+
+    arm = OfflineArm(urdf, measured)
+    lower, upper, epsilon, limit_source = arm_limit_contract(config, arm.model)
+    arm.model.lowerPositionLimit[:6] = lower
+    arm.model.upperPositionLimit[:6] = upper
+    robot = config["robot"]
+    grasp_cfg = config["grasp_pipeline"]["grasp"]
+    tolerance = float(grasp_cfg["cartesian_ik"]["ik_position_tolerance_m"])
+    rate = float(robot["rars01"]["command_rate_hz"])
+    if abs(rate - 100.0) > 1e-9:
+        raise ValueError("REAL_COMMAND_RATE_NOT_100HZ")
+    dt = 1.0 / rate
+    velocity_limits = np.asarray(robot["rars01"]["position_velocity_limits_rad_s"][:6], dtype=float)
+    home = np.asarray(robot["rars01"]["home_joints_rad"], dtype=float).reshape(6)
+    start = command_positions_within_limits(np.asarray(measured, dtype=float), lower, upper, epsilon)
+    ready_cfg = robot["ready_pose"]
+    ready_pose = tuple(float(ready_cfg[key]) for key in ("x", "y", "z", "roll", "pitch")) + (0.0,)
+    checker = IkChecker(arm, retry_count=int(grasp_cfg["ik_retry_count"]),
+                        position_tolerance_m=tolerance,
+                        orientation_tolerance_rad=np.deg2rad(float(
+                            grasp_cfg["cartesian_ik"]["ik_orientation_tolerance_deg"])))
+    ready = checker.solve(*ready_pose, reference_joints=start)
+    if not ready.success:
+        raise RuntimeError("REAL_READY_IK_FAILED")
+
+    target = np.asarray(center_arm, dtype=float).reshape(3)
+    chain = RarsKinematics(urdf, "base_link", "End_link")
+    max_radius = sum(float(np.linalg.norm(joint.T_origin[:3, 3])) for joint in chain.chain)
+    if diagnostics is not None:
+        diagnostics["geometric_reach_bound_m"] = max_radius
+    if not np.all(np.isfinite(target)) or np.linalg.norm(target) > max_radius:
+        raise RuntimeError("MANUAL_TARGET_OUTSIDE_GEOMETRIC_REACH")
+    frame = arm.model.frames[arm.model.getFrameId("End_link")].name
+
+    def residual(joints):
+        position, _, _ = compute_fk(arm.model, pad_q_for_model(arm.model, joints, 6),
+                                    frame_name=frame)
+        return position - target
+
+    rng = np.random.default_rng(7)
+    starts = [np.clip(ready.joints, lower, upper), (lower + upper) * 0.5]
+    starts.extend(rng.uniform(lower, upper) for _ in range(int(grasp_cfg["ik_candidate_limit"])))
+    accepted = []
+    best_error = float("inf")
+    for seed in starts:
+        result = least_squares(residual, seed, bounds=(lower, upper), max_nfev=250)
+        error = float(np.linalg.norm(residual(result.x)))
+        best_error = min(best_error, error)
+        if error <= tolerance:
+            accepted.append((float(np.linalg.norm((result.x - ready.joints) / (upper - lower))),
+                             result.x.copy(), error))
+    if diagnostics is not None:
+        diagnostics.update({"mode": "ik_only", "target_end_link_arm_xyz_m": target.tolist(),
+                            "position_tolerance_m": tolerance, "best_position_error_m": best_error,
+                            "ik_seeds": len(starts), "accepted_ik_solutions": len(accepted),
+                            "limit_source": limit_source})
+    if not accepted:
+        raise RuntimeError("MANUAL_POSITION_IK_FAILED: best_position_error_m=%.6f" % best_error)
+
+    accepted.sort(key=lambda item: item[0])
+    rejects = []
+    for _, target_joints, error in accepted:
+        try:
+            stages = {}
+            durations = {}
+            stages["initial"], durations["initial"] = joint_motion_samples(
+                start, ready.joints, float(ready_cfg["duration"]), dt, velocity_limits)
+            stages["target"], durations["target"] = joint_motion_samples(
+                ready.joints, target_joints, float(robot["motion"]["grasp_duration_s"]), dt,
+                velocity_limits)
+            stages["home"], durations["home"] = joint_motion_samples(
+                target_joints, home, float(ready_cfg["duration"]), dt, velocity_limits)
+            samples = np.concatenate([np.asarray(stages[key]) for key in ("initial", "target", "home")])
+            if not np.all(np.isfinite(samples)) or np.any(samples < lower - 1e-9) or np.any(samples > upper + 1e-9):
+                raise RuntimeError("JOINT_LIMIT_REJECTED")
+            peak_velocity = np.max(np.abs(np.diff(samples, axis=0)), axis=0) / dt
+            if np.any(peak_velocity > velocity_limits + 1e-8):
+                raise RuntimeError("VELOCITY_LIMIT_REJECTED")
+            clearance = floor_clearance(stages, arm, geometry, world_arm,
+                                        floor_z_m, floor_margin_m, grasp_width_m)
+            _, _, target_tcp = compute_fk(arm.model,
+                                          pad_q_for_model(arm.model, target_joints, 6),
+                                          frame_name=frame)
+            return stages, {"orientation": "unconstrained", "target_tcp": target_tcp,
+                            "ready_joints": ready.joints, "position_error_m": error,
+                            "durations_s": durations, "sample_count": len(samples),
+                            "command_rate_hz": rate, "max_velocity_rad_s": peak_velocity.tolist(),
+                            "velocity_limits_rad_s": velocity_limits.tolist(),
+                            "floor_clearance": clearance, "candidate_rejections": rejects}
+        except (RuntimeError, ValueError) as error_reason:
+            rejects.append(str(error_reason))
+    raise RuntimeError("NO_SAFE_MANUAL_IK_TRAJECTORY: " + str(rejects))
+
+
 def plan_real_grasp(center_arm, measured, world_arm, geometry, grasp_width_m,
                     urdf, config, floor_z_m, floor_margin_m, diagnostics=None):
     """Return the executable real-driver samples or exact rejection reasons."""

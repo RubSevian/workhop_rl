@@ -33,6 +33,8 @@ def _manual_grasp_settings():
         raise ValueError(f'Invalid arm_self_collision_monitor_only in {path}')
     if settings['target_diameter_m'] <= 0 or settings['virtual_grasp_width_m'] <= 0:
         raise ValueError(f'Target diameter and grasp width must be positive in {path}')
+    if settings.get('manual_target_mode') not in ('ik_only', 'simulated_grasp'):
+        raise ValueError(f'Invalid manual_target_mode in {path}')
     return settings
 
 
@@ -146,7 +148,8 @@ def generate_launch_description():
                           'monitor_self_collisions': bool(manual['arm_self_collision_monitor_only'])}],
              condition=IfCondition(LaunchConfiguration('enable_manual_manip_target'))),
         Node(package='unitree_legged_real', executable='stage4d_manual_manip_target.py', output='screen',
-             arguments=['--virtual-grasp-width-m', str(manual['virtual_grasp_width_m']),
+             arguments=['--manual-target-mode', manual['manual_target_mode'],
+                        '--virtual-grasp-width-m', str(manual['virtual_grasp_width_m']),
                         '--floor-z-m', str(manual['floor_z_m']),
                         '--floor-margin-m', str(manual['floor_margin_m']),
                         '--frame-warn-translation-m', str(manual['frame_warn_translation_m']),
