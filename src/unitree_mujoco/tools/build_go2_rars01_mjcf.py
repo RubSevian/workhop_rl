@@ -226,6 +226,21 @@ def add_runtime_layers(
             head.find("geom").set("class", "go2_collision")
     base.insert(0, ET.Element("freejoint", {"name": "base_freejoint"}))
     ET.SubElement(base, "site", {"name": "imu", "pos": "-0.02557 0 0.04232"})
+    # Stage4D virtual load: a separate inertial body, disconnected at reset.
+    end = next(b for b in base.iter("body") if b.get("name") == "End_link")
+    ET.SubElement(end, "site", {"name": "virtual_payload_attach_site", "pos": "-0.04 0 0",
+                               "size": "0.008", "rgba": "1 0 0 0.8", "group": "3"})
+    payload = ET.SubElement(root.find("worldbody"), "body",
+        {"name": "virtual_payload", "pos": "0 0 -10", "gravcomp": "1"})
+    ET.SubElement(payload, "freejoint", {"name": "virtual_payload_freejoint"})
+    ET.SubElement(payload, "geom", {"name": "virtual_payload_geom", "type": "box",
+        "size": "0.03 0.03 0.03", "mass": "0.5", "contype": "0", "conaffinity": "0", "group": "1",
+        "rgba": "0.8 0.5 0.1 0"})
+    equality = root.find("equality")
+    if equality is None:
+        equality = ET.SubElement(root, "equality")
+    ET.SubElement(equality, "weld", {"name": "virtual_payload_weld", "body1": "End_link",
+        "body2": "virtual_payload", "relpose": "-0.04 0 0 1 0 0 0", "active": "false"})
 
     for section_name in ("actuator", "sensor", "keyframe"):
         existing = root.find(section_name)
@@ -281,6 +296,7 @@ def add_runtime_layers(
         0.1, 0.8, -1.5,
         -0.1, 0.8, -1.5,
         *([0] * 8),
+        0, 0, -10, 1, 0, 0, 0,
     ]
     keyframe = ET.SubElement(root, "keyframe")
     ET.SubElement(

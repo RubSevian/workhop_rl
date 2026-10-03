@@ -35,6 +35,19 @@ def _manual_grasp_settings():
         raise ValueError(f'Target diameter and grasp width must be positive in {path}')
     if settings.get('manual_target_mode') not in ('ik_only', 'simulated_grasp'):
         raise ValueError(f'Invalid manual_target_mode in {path}')
+    payload = settings.setdefault('virtual_payload', {})
+    enabled = os.environ.get('STAGE4D_VIRTUAL_PAYLOAD_ENABLED', str(payload.get('enabled', False)).lower())
+    if enabled not in ('true', 'false'):
+        raise ValueError('STAGE4D_VIRTUAL_PAYLOAD_ENABLED must be true or false')
+    payload['enabled'] = enabled == 'true'
+    payload['mass_kg'] = float(os.environ.get('STAGE4D_PAYLOAD_MASS_KG', payload.get('mass_kg', 0.5)))
+    payload['offset_end_link_m'] = [float(v) for v in payload.get('offset_end_link_m', [-0.04, 0, 0])]
+    payload['hold_s'] = float(payload.get('hold_s', 2.0))
+    if (not math.isfinite(payload['mass_kg']) or payload['mass_kg'] < 0 or
+            len(payload['offset_end_link_m']) != 3 or
+            not all(math.isfinite(v) for v in payload['offset_end_link_m']) or
+            not math.isfinite(payload['hold_s']) or payload['hold_s'] < 2.0):
+        raise ValueError(f'Invalid virtual_payload in {path}')
     return settings
 
 
@@ -61,6 +74,9 @@ def generate_launch_description():
         DeclareLaunchArgument('enable_manual_manip_target', default_value=EnvironmentVariable('STAGE4D_ENABLE_MANUAL_MANIP_TARGET', default_value='true')),
         DeclareLaunchArgument('arm_collision_margin_m', default_value=str(manual['arm_collision_margin_m'])),
         SetEnvironmentVariable('STAGE4D_MANUAL_TARGET_DIAMETER_M', str(manual['target_diameter_m'])),
+        SetEnvironmentVariable('STAGE4D_VIRTUAL_PAYLOAD_ENABLED', str(manual['virtual_payload']['enabled']).lower()),
+        SetEnvironmentVariable('STAGE4D_PAYLOAD_MASS_KG', str(manual['virtual_payload']['mass_kg'])),
+        SetEnvironmentVariable('STAGE4D_PAYLOAD_OFFSET_M', ' '.join(map(str, manual['virtual_payload']['offset_end_link_m']))),
         DeclareLaunchArgument('enable_planner_visualization', default_value=EnvironmentVariable('STAGE4D_ENABLE_PLANNER_VISUALIZATION', default_value='true')),
         DeclareLaunchArgument('enable_navigation_explainer', default_value=EnvironmentVariable('STAGE4D_ENABLE_NAVIGATION_EXPLAINER', default_value='true')),
         DeclareLaunchArgument('enable_full_navigation_evaluator', default_value=EnvironmentVariable('STAGE4D_ENABLE_FULL_NAVIGATION_EVALUATOR', default_value='true')),
@@ -149,6 +165,8 @@ def generate_launch_description():
              condition=IfCondition(LaunchConfiguration('enable_manual_manip_target'))),
         Node(package='unitree_legged_real', executable='stage4d_manual_manip_target.py', output='screen',
              arguments=['--manual-target-mode', manual['manual_target_mode'],
+                        '--payload-enabled', str(manual['virtual_payload']['enabled']).lower(),
+                        '--payload-hold-s', str(manual['virtual_payload']['hold_s']),
                         '--virtual-grasp-width-m', str(manual['virtual_grasp_width_m']),
                         '--floor-z-m', str(manual['floor_z_m']),
                         '--floor-margin-m', str(manual['floor_margin_m']),

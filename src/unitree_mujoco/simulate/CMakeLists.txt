@@ -65,4 +65,13 @@ install(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/../unitree_robots/go2/assets/ DEST
 install(FILES ${CMAKE_CURRENT_SOURCE_DIR}/../unitree_robots/go2_rars01/scene_stage4d.xml DESTINATION share/${PROJECT_NAME}/scene)
 install(FILES ${CMAKE_CURRENT_SOURCE_DIR}/rars01_arm_sim.yaml DESTINATION share/${PROJECT_NAME}/config)
 
+if(BUILD_TESTING)
+  enable_testing()
+  add_executable(test_virtual_payload test/test_virtual_payload.cpp)
+  target_include_directories(test_virtual_payload PRIVATE include)
+  target_link_libraries(test_virtual_payload mujoco::mujoco)
+  add_test(NAME virtual_payload COMMAND test_virtual_payload
+    ${CMAKE_CURRENT_SOURCE_DIR}/../unitree_robots/go2_rars01/scene_stage4d.xml)
+endif()
+
 ament_package()

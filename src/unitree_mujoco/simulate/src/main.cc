@@ -43,6 +43,7 @@
 #include <pthread.h>
 #include "yaml-cpp/yaml.h"
 #include "rars01_arm_sim_gains.hpp"
+#include "virtual_payload_bridge.hpp"
 #include <rclcpp/rclcpp.hpp>
 #include <nav_msgs/msg/odometry.hpp>
 #include <geometry_msgs/msg/point_stamped.hpp>
@@ -165,6 +166,7 @@ namespace
     rclcpp::Publisher<rosgraph_msgs::msg::Clock>::SharedPtr pub_;
   };
   std::unique_ptr<MujocoClockPublisher> mujoco_clock;
+  std::unique_ptr<MujocoVirtualPayloadBridge> virtual_payload_bridge;
 
   // Stage4D application bridge layered on top of the generic viewer click
   // event.  It is intentionally the only component that knows ROS topics.
@@ -1373,6 +1375,14 @@ namespace
       sim.run = 0;
     }
 
+    try {
+      if (virtual_payload_bridge) virtual_payload_bridge->Initialize(mnew);
+    } catch (const std::exception& error) {
+      std::snprintf(sim.load_error, sizeof(sim.load_error), "Payload initialization failed: %s", error.what());
+      std::cerr << sim.load_error << std::endl;
+      mj_deleteModel(mnew);
+      return nullptr;
+    }
     return mnew;
   }
 
@@ -1515,6 +1525,7 @@ namespace
 
               // Servo ownership is explicit: legs are updated at every physics
               // tick before mj_step; arm/gripper remain in mjcb_control.
+              if (virtual_payload_bridge) virtual_payload_bridge->Apply(m, d);
               if (ros_low_level_bridge) ros_low_level_bridge->Apply(m, d);
               // run single step, let next iteration deal with timing
               mj_step(m, d);
@@ -1564,6 +1575,7 @@ namespace
 
                 // Recalculate leg PD from the latest held q_des before every
                 // 0.002 s physics step; do not hold a 50 Hz torque.
+                if (virtual_payload_bridge) virtual_payload_bridge->Apply(m, d);
                 if (ros_low_level_bridge) ros_low_level_bridge->Apply(m, d);
                 // call mj_step
                 mj_step(m, d);
@@ -1592,6 +1604,7 @@ namespace
           // paused
           else
           {
+            if (virtual_payload_bridge) virtual_payload_bridge->Apply(m, d);
             // run mj_forward, to update rendering and joint sliders
             mj_forward(m, d);
             sim.speed_changed = true;
@@ -1855,6 +1868,7 @@ int main(int argc, char **argv)
     if (manual_manip_bridge) {
       sim->SetSceneHudCallback([manual = manual_manip_bridge.get()](const mjrRect& rect, mjrContext& context) {
         manual->DrawHud(rect, context);
+        if (virtual_payload_bridge) virtual_payload_bridge->DrawHud(rect, context);
       });
     }
     std::cout << "Interactive Stage4D: Ctrl+LMB goal, LMB cancel goal, LeftAlt+LMB manual target, RightAlt cancel manual target"
@@ -1868,6 +1882,7 @@ int main(int argc, char **argv)
   collision_diagnostics = std::make_unique<MujocoCollisionDiagnostics>();
   pointlio_sensor_bridge = std::make_unique<MujocoPointLioSensorBridge>(config);
 
+  virtual_payload_bridge = std::make_unique<MujocoVirtualPayloadBridge>();
   std::thread physicsthreadhandle(&PhysicsThread, sim.get(), filename);
   sim->RenderLoop();
   sim->exitrequest.store(true);
@@ -1878,6 +1893,7 @@ int main(int argc, char **argv)
   sim->SetSceneOverlayCallback({});
   sim->SetSceneHudCallback({});
   rclcpp::shutdown();
+  virtual_payload_bridge.reset();
   manual_manip_bridge.reset();
   navigation_goal_bridge.reset();
   pointlio_sensor_bridge.reset();

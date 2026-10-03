@@ -8,6 +8,7 @@ imports an SDK or opens a physical serial device.
 from __future__ import annotations
 
 import argparse
+import csv
 import json
 import math
 import os
@@ -23,7 +24,7 @@ from stage4d_manual_grasp_geometry import (
     stamp_seconds, static_mount_contract, transform_error,
 )
 from rclpy.clock import Clock, ClockType
-from rclpy.callback_groups import ReentrantCallbackGroup
+from rclpy.callback_groups import ReentrantCallbackGroup, MutuallyExclusiveCallbackGroup
 from rclpy.executors import ExternalShutdownException, MultiThreadedExecutor
 from geometry_msgs.msg import PoseStamped
 from nav_msgs.msg import Odometry
@@ -58,11 +59,32 @@ class ManualManipTarget(Node):
         self.target_frame = None
         self.world_arm = None
         self.arm_pub = self.create_publisher(JointState, "/rars01/arm_target", 10)
+        self.payload_pub = self.create_publisher(Bool, "/stage4d/payload_attach", 10)
+        self.payload_status = {}
+        self.payload_group = MutuallyExclusiveCallbackGroup()
+        self.payload_reset_pending = False
+        self.payload_anchor = None
+        self.payload_hold_start = None
+        self.payload_csv = None
+        self.payload_last_stamp = None
+        self.payload_last_flush = time.monotonic()
+        if args.payload_enabled:
+            path = Path(args.payload_csv)
+            path.parent.mkdir(parents=True, exist_ok=True)
+            self.payload_csv = path.open('w', newline='', buffering=65536)
+            self.payload_writer = csv.writer(self.payload_csv)
+            self.payload_writer.writerow(("sim_time_s", "payload_attached", "payload_mass_kg",
+                "base_x_m", "base_y_m", "base_roll_rad", "base_pitch_rad", "base_yaw_rad",
+                "anchor_x_m", "anchor_y_m", "anchor_yaw_rad", "base_xy_drift_m",
+                "base_yaw_drift_rad", "arm_tracking_max_rad"))
         self.status_pub = self.create_publisher(String, "/stage4d/manual_manip_status", 10)
         self.collision_pub = self.create_publisher(Float64MultiArray, "/stage4d/arm_trajectory_check_request", 10)
         self.collision_request_id = None
         self.collision_response = None
         self._subscriptions = [
+            self.create_subscription(String, "/stage4d/payload_status", self.on_payload_status,
+                                     rclpy.qos.QoSProfile(depth=1, durability=rclpy.qos.DurabilityPolicy.TRANSIENT_LOCAL),
+                                     callback_group=self.payload_group),
             self.create_subscription(PoseStamped, "/stage4d/manual_manip_target", self.on_target, 10),
             self.create_subscription(Empty, "/stage4d/manual_manip_cancel", self.on_cancel, 10),
             self.create_subscription(Bool, "/navigation_active", self.on_navigation_active, 10),
@@ -72,6 +94,8 @@ class ManualManipTarget(Node):
             self.create_subscription(String, "/stage4d/arm_trajectory_check_result", self.on_collision_result, 10),
         ]
         self.timer = self.create_timer(1.0 / TARGET_RATE_HZ, self.tick, clock=Clock(clock_type=ClockType.STEADY_TIME))
+        self.payload_timer = self.create_timer(0.02, self.record_payload,
+            clock=Clock(clock_type=ClockType.STEADY_TIME), callback_group=self.payload_group)
         self.state = "MANUAL_IDLE"
         self.navigation_active = False
         self.odometry = None
@@ -148,6 +172,41 @@ class ManualManipTarget(Node):
             return
         if response.get("id") == self.collision_request_id:
             self.collision_response = response
+
+    def on_payload_status(self, message):
+        try:
+            status = json.loads(message.data)
+        except (ValueError, TypeError):
+            return
+        previous = self.payload_status
+        self.payload_status = status
+        if status.get("reset_count", 0) != previous.get("reset_count", 0):
+            self.payload_anchor = None
+            self.payload_reset_pending = True
+        if status.get("payload_attached") and not previous.get("payload_attached"):
+            self.payload_anchor = self.base_pose()
+
+    def record_payload(self):
+        if self.payload_csv is None or self.odometry is None:
+            return
+        stamp = self.payload_status.get("sim_time_s")
+        if stamp is None or stamp == self.payload_last_stamp:
+            return
+        self.payload_last_stamp = stamp
+        x, y, yaw = self.base_pose()
+        q = self.odometry.pose.pose.orientation
+        roll = math.atan2(2*(q.w*q.x+q.y*q.z), 1-2*(q.x*q.x+q.y*q.y))
+        pitch = math.asin(max(-1., min(1., 2*(q.w*q.y-q.z*q.x))))
+        anchor = self.payload_anchor or (x, y, yaw)
+        yaw_drift = math.atan2(math.sin(yaw-anchor[2]), math.cos(yaw-anchor[2]))
+        error = self.arm_error()
+        self.payload_writer.writerow((stamp, int(self.payload_status.get("payload_attached", False)),
+            self.payload_status.get("payload_mass_kg"), x, y, roll, pitch, yaw,
+            *anchor, math.hypot(x-anchor[0], y-anchor[1]), yaw_drift,
+            float('nan') if error is None else error))
+        if time.monotonic() - self.payload_last_flush >= 1.0:
+            self.payload_csv.flush()
+            self.payload_last_flush = time.monotonic()
     def on_arm_base_pose(self, message):
         self.arm_base_pose, self.arm_base_at = message, time.monotonic()
     def on_motor_state(self, message):
@@ -365,6 +424,12 @@ class ManualManipTarget(Node):
             self.on_target(pending_target)
 
     def tick(self):
+        if self.payload_reset_pending:
+            self.payload_reset_pending = False
+            self.pending_target = None
+            if self.args.payload_enabled and self.state != "MANUAL_IDLE":
+                self.last_error = "PAYLOAD_SIMULATOR_RESET"
+                self.clear_to_idle("PAYLOAD_SIMULATOR_RESET")
         if self.state == "MANUAL_IDLE":
             return
         if self.navigation_active and not self.args.allow_manual_manip_during_navigation:
@@ -460,10 +525,34 @@ class ManualManipTarget(Node):
         if self.state == "MANUAL_PREGRASP" and self.stream():
             self.begin("target"); return
         if self.state == "MANUAL_TARGET" and self.stream():
-            if self.args.manual_target_mode == "ik_only":
+            if self.args.payload_enabled:
+                self.payload_pub.publish(Bool(data=True))
+                self.result["payload_attach_request"] = {"count": 1,
+                    "sim_time_s": self.payload_status.get("sim_time_s")}
+                self.transition("MANUAL_PAYLOAD_ATTACH")
+            elif self.args.manual_target_mode == "ik_only":
                 self.begin("home", GRIPPER_OPEN_M)
             else:
                 self.transition("MANUAL_SIM_GRASP")
+            return
+        if self.state == "MANUAL_PAYLOAD_ATTACH":
+            self.publish_arm(self.plan["target"][-1], self.stage_gripper)
+            if self.payload_status.get("error"):
+                self.request_cancel("PAYLOAD_ATTACH_FAILED: " + self.payload_status["error"])
+            elif self.payload_status.get("payload_attached"):
+                self.result["payload"] = dict(self.payload_status)
+                self.payload_hold_start = self.payload_status["sim_time_s"]
+                self.transition("MANUAL_PAYLOAD_HOLD")
+            elif time.monotonic() - self.stage_started_at > 5.0:
+                self.request_cancel("PAYLOAD_ATTACH_TIMEOUT")
+            return
+        if self.state == "MANUAL_PAYLOAD_HOLD":
+            self.publish_arm(self.plan["target"][-1], self.stage_gripper)
+            if self.payload_status.get("sim_time_s", 0) - self.payload_hold_start >= self.args.payload_hold_s:
+                if self.args.manual_target_mode == "ik_only":
+                    self.begin("home", GRIPPER_OPEN_M)
+                else:
+                    self.transition("MANUAL_SIM_GRASP")
             return
         if self.state == "MANUAL_SIM_GRASP":
             self.publish_arm(self.plan["target"][-1], GRIPPER_CLOSED_M)
@@ -485,7 +574,7 @@ class ManualManipTarget(Node):
 
 def parse_args():
     p = argparse.ArgumentParser(description=__doc__)
-    p.add_argument("--output", default="stage4d_runs/manual_m0_1.json")
+    p.add_argument("--output", default=os.environ.get('STAGE4D_MANUAL_OUTPUT'))
     p.add_argument("--arm-duration-s", type=float, default=2.0)
     p.add_argument("--grasp-hold-s", type=float, default=1.0)
     p.add_argument("--settle-hold-s", type=float, default=0.75)
@@ -496,6 +585,9 @@ def parse_args():
     p.add_argument("--allow-manual-manip-during-navigation", action="store_true")
     p.add_argument("--virtual-grasp-width-m", type=float, default=float(os.getenv("STAGE4D_VIRTUAL_GRASP_WIDTH_M", "0.04")))
     p.add_argument("--manual-target-mode", choices=("ik_only", "simulated_grasp"), default="ik_only")
+    p.add_argument("--payload-enabled", choices=('true', 'false'), default='false')
+    p.add_argument("--payload-hold-s", type=float, default=2.0)
+    p.add_argument("--payload-csv", default=os.environ.get('STAGE4D_PAYLOAD_CSV', 'stage4d_runs/payload.csv'))
     p.add_argument("--pregrasp-distance-m", type=float, default=0.08)
     p.add_argument("--floor-z-m", type=float, default=0.0)
     p.add_argument("--floor-margin-m", type=float, default=float(os.getenv("STAGE4D_FLOOR_MARGIN_M", "0.0008")))
@@ -506,7 +598,14 @@ def parse_args():
     p.add_argument("--mjcf", default=os.environ.get("STAGE4D_MJCF_PATH", "/home/ruben/go2_diploma_sim2sim/repos/workhop_rl/src/unitree_mujoco/unitree_robots/go2_rars01/go2_rars01.xml"))
     p.add_argument("--graspnet-root", default=os.environ.get("RARS01_GRASPNET_ROOT", "/home/ruben/go2_diploma_sim2sim/repos/rars01_graspnet"))
     p.add_argument("--urdf", default=None, help="optional assertion of grasp default.yaml URDF path")
-    return p.parse_known_args()[0]
+    args = p.parse_known_args()[0]
+    args.payload_enabled = args.payload_enabled == 'true'
+    if args.output is None:
+        args.output = (str(Path(args.payload_csv).with_name('manual_payload.json'))
+                       if args.payload_enabled else 'stage4d_runs/manual_m0_1.json')
+    if not math.isfinite(args.payload_hold_s) or args.payload_hold_s < 2:
+        p.error('--payload-hold-s must be finite and >= 2 seconds')
+    return args
 
 
 def main():
@@ -537,6 +636,8 @@ def main():
         pass
     finally:
         executor.shutdown()
+        if node.payload_csv is not None:
+            node.payload_csv.close()
         node.destroy_node()
         if rclpy.ok():
             rclpy.shutdown()

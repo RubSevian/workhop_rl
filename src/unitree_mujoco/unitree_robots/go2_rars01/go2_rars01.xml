@@ -228,6 +228,7 @@
                       <joint name="joint6" pos="0 0 0" axis="1 0 0" range="-2 2" actuatorfrcrange="-7 7" />
                       <geom type="mesh" contype="0" conaffinity="0" group="1" density="0" rgba="0.75294 0.75294 0.75294 1" mesh="link_5_m5" />
                       <body name="End_link" pos="0.195 0 0">
+                        <site name="virtual_payload_attach_site" pos="-0.04 0 0" size="0.008" rgba="1 0 0 0.8" group="3" />
                         <inertial pos="-0.135878 -0.00046489 0.00946022" quat="0.699313 0.712506 -0.04693 0.033084" mass="0.605271" diaginertia="0.00114366 0.00104867 0.000739474" />
                         <geom type="mesh" contype="0" conaffinity="0" group="1" density="0" rgba="0.75294 0.75294 0.75294 1" mesh="End_link" />
                         <body name="gripper_left" pos="-0.0375 0 0">
@@ -256,7 +257,14 @@
       <geom mesh="base_4" material="gray" type="mesh" contype="0" conaffinity="0" group="2" />
       <site name="imu" pos="-0.02557 0 0.04232" />
     </body>
+    <body name="virtual_payload" pos="0 0 -10" gravcomp="1">
+      <freejoint name="virtual_payload_freejoint" />
+      <geom name="virtual_payload_geom" type="box" size="0.03 0.03 0.03" mass="0.5" contype="0" conaffinity="0" group="1" rgba="0.8 0.5 0.1 0" />
+    </body>
   </worldbody>
+  <equality>
+    <weld name="virtual_payload_weld" body1="End_link" body2="virtual_payload" relpose="-0.04 0 0 1 0 0 0" active="false" />
+  </equality>
   <actuator>
     <motor name="FR_hip" joint="FR_hip_joint" ctrlrange="-23.7 23.7" />
     <motor name="FR_thigh" joint="FR_thigh_joint" ctrlrange="-23.7 23.7" />
@@ -347,6 +355,6 @@
     <jointactuatorfrc name="gripper_right_joint_torque" joint="gripper_right_joint" />
   </sensor>
   <keyframe>
-    <key name="home" qpos="0 0 0.3235 1 0 0 0 0.1 0.8 -1.5 -0.1 0.8 -1.5 0.1 0.8 -1.5 -0.1 0.8 -1.5 0 0 0 0 0 0 0 0" ctrl="0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0" />
+    <key name="home" qpos="0 0 0.3235 1 0 0 0 0.1 0.8 -1.5 -0.1 0.8 -1.5 0.1 0.8 -1.5 -0.1 0.8 -1.5 0 0 0 0 0 0 0 0 0 0 -10 1 0 0 0" ctrl="0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0" />
   </keyframe>
 </mujoco>

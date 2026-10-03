@@ -2,6 +2,11 @@
 # Values are read by stage4d_full_navigation.launch.py at startup.
 target_diameter_m: 0.10          # Visual marker only; not a physical MuJoCo object.
 manual_target_mode: ik_only       # Click tests arm reachability; GraspNet owns actual grasp selection.
+virtual_payload:
+  enabled: false                 # Explicit opt-in; ik_only remains unchanged by default.
+  mass_kg: 0.5                   # Override once per run: STAGE4D_PAYLOAD_MASS_KG.
+  offset_end_link_m: [-0.04, 0.0, 0.0]
+  hold_s: 2.0                    # Hold at target after confirmed attachment.
 virtual_grasp_width_m: 0.04      # Requested gripper opening, independent of marker size.
 floor_z_m: 0.0
 floor_margin_m: 0.0008           # 0.8 mm: experimental MuJoCo-only value.
