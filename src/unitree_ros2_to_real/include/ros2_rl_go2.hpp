@@ -1,101 +1,27 @@
+#pragma once
+// R1 controller is diagnostic-only. Actuator transport is deliberately absent.
+#include "real_controller_core.hpp"
+#include "navigation_command_adapter.hpp"
 #include <rclcpp/rclcpp.hpp>
+#include <geometry_msgs/msg/twist_stamped.hpp>
+#include <std_msgs/msg/bool.hpp>
 #include <std_msgs/msg/string.hpp>
-#include <sensor_msgs/msg/joint_state.hpp>
-#include <sensor_msgs/msg/imu.hpp>
-#include <geometry_msgs/msg/wrench_stamped.hpp>
-#include <geometry_msgs/msg/twist.hpp>
-#include <std_msgs/msg/u_int8_multi_array.hpp>
-#include <unitree_go/msg/wireless_controller.hpp>
-// #include <unitree/idl/go2/WirelessController_.hpp>
-// #include <unitree/robot/channel/channel_subscriber.hpp>
-// #include <unitree/robot/channel/channel_publisher.hpp>
-#include <unitree/robot/go2/robot_state/robot_state_client.hpp>
 #include <unitree_go/msg/low_state.hpp>
-#include <unitree_go/msg/imu_state.hpp>
-#include <unitree_go/msg/motor_state.hpp>
-#include <unitree_go/msg/low_cmd.hpp>
-#include <unitree_go/msg/motor_cmd.hpp>
-#include <unitree_go/msg/bms_cmd.hpp>
-#include <torch/torch.h>
-#include "rl_agent.h"
-#include "motor_crc.h"
-#include <algorithm>
-#include <iostream>
-#include <sstream>
-#include <cmath>
-
-
-class RobotController {
-public:
-    RobotController();
-    void initializeRL(const std::string& config_path, const std::string& model_path);
-    unitree_go::msg::LowCmd update(const unitree_go::msg::LowState& state,
-        const unitree_go::msg::WirelessController& joystick);
-    void initial_positions(const std::array<unitree_go::msg::MotorState, 20>& motor_state);
-    void update_dof_state(const std::array<unitree_go::msg::MotorState, 20>& motor_state);
-    float jointLinearInterpolation(float initPos, float targetPos, float rate);
-    std::string get_model_name() const;
-    std::string get_robot_name() const;
-    int get_num_motors() const;
-    void set_command(float x, float y, float z);
-    // enum StateID {
-    //     STATE_INIT,
-    //     STATE_READY
-    // };
-    enum ControlMode {
-        MODE_START = 0,
-        MODE_STANDUP,
-        MODE_DAMPING,
-        MODE_RL
-    };
-
-    ControlMode mode_ = MODE_START;
-    int last_key_ = 0;
-    bool standup_done_ = false;
-
-    int init_count;
-    int motiontime;
-    float runing_time;
-    //StateID robot_state;
-    const double dt;
-    const int Go2_NUM_MOTOR;
-    const std::string ROBOT_NAME;
-    float qInit[12];
-    float qDes[12];
-    const std::vector<int> net2joint_indexes;
-    const std::vector<float> stiffness;
-    const std::vector<float> damping;
-    bool rl_inited_ = false;
-
-private:
-    Agent agent;
-
-};
 
 class InterfaceRos : public rclcpp::Node {
-public:
-    InterfaceRos(const std::string& network_interface);
-    ~InterfaceRos();
-private:
-    void LowStateHandler(const unitree_go::msg::LowState::SharedPtr msg);
-    void JoystickHandler(const unitree_go::msg::WirelessController::SharedPtr msg);
-    void timer_callback_cmd();
-    void send_command(unitree_go::msg::LowCmd& cmd);
-    void init_cmd();
-    void publish_imu(const unitree_go::msg::IMUState& imu_state);
-    void publish_motor_state(const std::array<unitree_go::msg::MotorState, 20>& motor_state);
-
-    rclcpp::TimerBase::SharedPtr timer_;
-    rclcpp::Publisher<unitree_go::msg::LowCmd>::SharedPtr cmd_puber;
-    rclcpp::Publisher<unitree_go::msg::LowCmd>::SharedPtr low_cmd_pub;
-    rclcpp::Publisher<sensor_msgs::msg::Imu>::SharedPtr imu_pub;
-    rclcpp::Publisher<sensor_msgs::msg::JointState>::SharedPtr motor_state_pub;
-    rclcpp::Subscription<unitree_go::msg::LowState>::SharedPtr state_sub;
-    rclcpp::Subscription<unitree_go::msg::WirelessController>::SharedPtr joystick_sub;
-    unitree_go::msg::LowCmd low_cmd;
-    unitree_go::msg::LowState::SharedPtr latest_state;
-    unitree_go::msg::WirelessController joystick;
-    RobotController controller;
-
-    // xKeySwitchUnion unitree_joy;
+ public:
+  InterfaceRos();
+ private:
+  sim2real::RealControllerCore core_;
+  sim2real::OutputGate output_gate_;
+  NavigationCommandAdapter navigation_;
+  double low_state_timeout_=0.5;
+  std::array<double,3> limits_{};
+  bool received_state_=false;
+  NavigationCommandAdapter::TimePoint state_stamp_{};
+  rclcpp::Subscription<unitree_go::msg::LowState>::SharedPtr state_sub_;
+  rclcpp::Subscription<geometry_msgs::msg::TwistStamped>::SharedPtr cmd_sub_;
+  rclcpp::Subscription<std_msgs::msg::Bool>::SharedPtr nav_sub_;
+  rclcpp::Publisher<std_msgs::msg::String>::SharedPtr status_pub_;
+  rclcpp::TimerBase::SharedPtr timer_;
 };

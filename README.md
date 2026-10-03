@@ -1,3 +1,18 @@
+# Sim2Real Phase R1 — Jazzy / Jetson
+
+The `ros2_go2_rars01_real` branch uses the instructions in
+[R1 report](docs/sim2real_r1/PHASE_R1_IMPLEMENTATION_REPORT.md) and the
+[workspace artifact instructions](docs/sim2real_r1/README.md).
+The older instructions below describe the retained simulation stack only.
+**Do not use its Humble setup, Dockerfile or launch files for Phase R1.**
+
+R1 `ros2_rl_go2` starts DISARMED and has no actuator transport or arming API.
+It requires explicit `config_path` and `model_path`. Build and test offline with
+`Torch_DIR` pointing at native aarch64 Torch. The SDK-only `go2_mode_switch`
+is built separately; do not execute it during Phase R1.
+
+---
+
 # workhop_rl
 
 ### How to install and build code

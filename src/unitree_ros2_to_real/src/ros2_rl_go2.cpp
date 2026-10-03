@@ -1,430 +1,65 @@
-/**
- * This example demonstrates how to use ROS2 to send low-level motor commands to Unitree Go2 robot
- */
 #include "ros2_rl_go2.hpp"
+#include <ATen/Parallel.h>
+#include <algorithm>
+#include <cmath>
+#include <stdexcept>
 
-#define INFO_IMU 1
-#define INFO_MOTOR 1
-#define INFO_FOOT_FORCE 1
-#define INFO_BATTERY 1
-#define HIGH_FREQ 1
-#define QUAT_WXYZ 0
-using std::placeholders::_1;
-
-RobotController::RobotController() :
-    init_count(0), motiontime(0), runing_time(0.0),mode_(MODE_START),
-    dt(0.02), Go2_NUM_MOTOR(12), ROBOT_NAME("go2"),
-    net2joint_indexes({3, 4, 5, 0, 1, 2, 9, 10, 11, 6, 7, 8})
-    {
-    std::fill(std::begin(qInit), std::end(qInit), 0.0f);
-    std::fill(std::begin(qDes), std::end(qDes), 0.0f);
-}
-
-std::string RobotController::get_model_name() const {
-    return std::string(agent.params.model_name);
-}
-
-std::string RobotController::get_robot_name() const {
-    return ROBOT_NAME;
-}
-
-int RobotController::get_num_motors() const {
-    return Go2_NUM_MOTOR;
-}
-
-void RobotController::initializeRL(const std::string& config_path, const std::string& model_path) {
+InterfaceRos::InterfaceRos() : Node("rl_locomotion_disarmed") {
+  // Match the measured CPU baseline and leave CPU capacity for Point-LIO.
+  at::set_num_threads(1);
+  at::set_num_interop_threads(1);
+  const auto config=declare_parameter<std::string>("config_path", "");
+  const auto model=declare_parameter<std::string>("model_path", "");
+  if(declare_parameter<bool>("enable_actuator_output", false))
+    throw std::runtime_error("Phase R1 cannot enable actuator output: no motor transport is compiled");
+  core_.Load(config,model); // throws on missing/legacy config or failed model; no fallback
+  const auto deployment=YAML::LoadFile(config)["real_deployment"];
+  low_state_timeout_=deployment["low_state_timeout_sec"].as<double>();
+  limits_={deployment["max_linear_x"].as<double>(),deployment["max_linear_y"].as<double>(),deployment["max_yaw_rate"].as<double>()};
+  navigation_.SetTimeout(deployment["cmd_vel_timeout_sec"].as<double>());
+  const auto cmd_topic=declare_parameter<std::string>("cmd_vel_topic","/cmd_vel");
+  state_sub_=create_subscription<unitree_go::msg::LowState>("/lowstate",rclcpp::SensorDataQoS(),[this](unitree_go::msg::LowState::ConstSharedPtr msg) {
     try {
-        if (!config_path.empty()) {
-            agent.ReadYaml(ROBOT_NAME, config_path);
-        }
-        if (!model_path.empty()) {
-            if (!agent.Load_Model(model_path)) {
-                throw std::runtime_error("Failed to load model from " + model_path);
-            }
-        }
-    } catch (const std::exception& e) {
-        std::cerr << "Error: " << e.what() << std::endl;
-        throw;
+      sim2real::Legs q{},dq{};
+      for(int i=0;i<12;++i) { q[i]=msg->motor_state[i].q; dq[i]=msg->motor_state[i].dq; }
+      double norm=0;
+      for(float v:msg->imu_state.quaternion) { if(!std::isfinite(v)) throw std::runtime_error("Invalid quaternion"); norm+=v*v; }
+      if(norm<1e-16) throw std::runtime_error("Zero quaternion");
+      for(float v:msg->imu_state.gyroscope) if(!std::isfinite(v)) throw std::runtime_error("Invalid gyro");
+      core_.SetMeasuredLegs(q,dq);
+      core_.agent().obs.base_quat=torch::tensor({msg->imu_state.quaternion[1],msg->imu_state.quaternion[2],msg->imu_state.quaternion[3],msg->imu_state.quaternion[0]});
+      core_.agent().obs.ang_vel=torch::tensor({msg->imu_state.gyroscope[0],msg->imu_state.gyroscope[1],msg->imu_state.gyroscope[2]});
+      state_stamp_=NavigationCommandAdapter::Clock::now(); received_state_=true;
+    } catch(const std::exception& e) {
+      received_state_=false; output_gate_.Fault(); core_.RequestMode(sim2real::Mode::FAULT,{});
+      RCLCPP_ERROR(get_logger(),"Feedback rejected: %s",e.what());
     }
+  });
+  cmd_sub_=create_subscription<geometry_msgs::msg::TwistStamped>(cmd_topic,10,[this](geometry_msgs::msg::TwistStamped::ConstSharedPtr msg) {
+    const std::array<double,3> v{msg->twist.linear.x,msg->twist.linear.y,msg->twist.angular.z};
+    for(double x:v) if(!std::isfinite(x)) return; // invalid packets never refresh watchdog
+    navigation_.Accept(std::clamp(v[0],-limits_[0],limits_[0]),std::clamp(v[1],-limits_[1],limits_[1]),std::clamp(v[2],-limits_[2],limits_[2]),NavigationCommandAdapter::Clock::now());
+  });
+  nav_sub_=create_subscription<std_msgs::msg::Bool>("/navigation_active",rclcpp::QoS(1).transient_local(),[this](std_msgs::msg::Bool::ConstSharedPtr msg) { navigation_.SetNavigationActive(msg->data); });
+  status_pub_=create_publisher<std_msgs::msg::String>("/go2/locomotion_status",10);
+  timer_=create_wall_timer(std::chrono::milliseconds(20),[this]() {
+    const auto now=NavigationCommandAdapter::Clock::now();
+    const bool fresh=received_state_ && std::chrono::duration<double>(now-state_stamp_).count()<=low_state_timeout_;
+    const auto cmd=navigation_.GetSafeCommand(now);
+    core_.agent().obs.command=torch::tensor({cmd.value[0],cmd.value[1],cmd.value[2]});
+    // RARS bridge and verified ownership belong to R2. Never invent readiness.
+    const sim2real::Readiness ready{core_.loaded(),fresh,false,false};
+    if(output_gate_.Allows(ready)) throw std::logic_error("R1 gate invariant violated");
+    std_msgs::msg::String status;
+    status.data=core_.mode()==sim2real::Mode::FAULT?"FAULT output_disabled":"DISARMED output_disabled";
+    status.data+=fresh?" lowstate_fresh":" lowstate_unavailable";
+    status_pub_->publish(status);
+  });
+  RCLCPP_INFO(get_logger(),"DISARMED: Phase R1 has no LowCmd publisher, SDK2 channel, serial transport or arming API");
 }
-
-unitree_go::msg::LowCmd RobotController::update(const unitree_go::msg::LowState& state,const unitree_go::msg::WirelessController& joystick) {
-    unitree_go::msg::LowCmd cmd;
-    initial_positions(state.motor_state);
-    update_dof_state(state.motor_state);
-
-    bool valid_imu = (state.imu_state.quaternion[0] != 0.0 || state.imu_state.quaternion[1] != 0.0 ||
-                      state.imu_state.quaternion[2] != 0.0 || state.imu_state.quaternion[3] != 0.0);
-    if (!valid_imu) {
-        std::cerr << "Warning: Invalid IMU data (zero quaternion)" << std::endl;
-    }
-
-    agent.obs.ang_vel.index({0}) = state.imu_state.gyroscope[0];
-    agent.obs.ang_vel.index({1}) = state.imu_state.gyroscope[1];
-    agent.obs.ang_vel.index({2}) = state.imu_state.gyroscope[2];
-    agent.obs.base_quat.index({0}) = state.imu_state.quaternion[1]; // x
-    agent.obs.base_quat.index({1}) = state.imu_state.quaternion[2]; // y
-    agent.obs.base_quat.index({2}) = state.imu_state.quaternion[3]; // z
-    agent.obs.base_quat.index({3}) = state.imu_state.quaternion[0]; // w
-
-        
-    // Обработка данных джойстика
-    agent.obs.command.index({0}) = joystick.ly;
-    agent.obs.command.index({1}) = -joystick.rx;
-    agent.obs.command.index({2}) = -joystick.lx;
-    // std::cout << "Command: ly=" << agent.obs.command.index({0}).item<float>()
-    //           << ", -rx=" << agent.obs.command.index({1}).item<float>()
-    //           << ", -lx=" << agent.obs.command.index({2}).item<float>() << std::endl;
- 
-    if (!rl_inited_) {
-        agent.InitRL();      // создаст history_obs_buf и заполнит reset(...) текущим obs [file:22]
-        rl_inited_ = true;
-    }
-       // --- latch mode by key (как в MuJoCo) ---
-    const int key = joystick.keys;
-    const bool new_cmd = (key != 0 && key != last_key_);
-
-    if (new_cmd) {
-        RCLCPP_INFO(rclcpp::get_logger("RobotController"),
-              "key=%d -> mode=%d, standup_done=%d",
-              key, (int)mode_, (int)standup_done_);
-        if (key == 256) {
-            mode_ = MODE_START;
-            standup_done_ = false;
-        } else if (key == 4096) {
-            mode_ = MODE_STANDUP;
-            standup_done_ = false;
-            motiontime = 0;
-        // // важно: стартовую позу для подъёма снимаем при входе в STANDUP,
-        // // иначе повторный подъём будет от старого qInit (сейчас qInit берётся только первые 10 тиков) [file:141]
-            for (int i = 0; i < Go2_NUM_MOTOR; ++i) {
-            qInit[i] = state.motor_state[i].q;
-            }
-        } else if (key == 16384) {
-            mode_ = MODE_DAMPING;
-        } else if (key == 2048) {
-            mode_ = MODE_RL;
-        }
-    }
-    last_key_ = key;
-
-    switch(mode_){
-        case MODE_START:{
-            for (int i = 0; i < Go2_NUM_MOTOR; i++) {
-                cmd.motor_cmd[i].mode = 0x01;
-                cmd.motor_cmd[i].q   = 0.0f;
-                cmd.motor_cmd[i].dq  = 0.0f;
-                cmd.motor_cmd[i].kp  = 0.0f;
-                cmd.motor_cmd[i].kd  = 0.0f;
-                cmd.motor_cmd[i].tau = 0.0f;
-            }
-        }
-        break;
-        
-        case MODE_DAMPING: {
-        // мягкий hold
-            for (int i = 0; i < Go2_NUM_MOTOR; i++) {
-                cmd.motor_cmd[i].mode = 0x01;
-                cmd.motor_cmd[i].q   = agent.params.default_dof_pos.index({i}).item<float>();
-                cmd.motor_cmd[i].dq  = 0.0f;
-                cmd.motor_cmd[i].kp  = 20.0f;
-                cmd.motor_cmd[i].kd  = 1.5f;
-                cmd.motor_cmd[i].tau = 0.0f;
-            }
-        } break;
-
-        case MODE_STANDUP: {
-            if (motiontime < 500) {
-                float rate = motiontime / 400.0f;
-
-                for (int i = 0; i < Go2_NUM_MOTOR; i++) {
-                qDes[i] = jointLinearInterpolation(
-                    qInit[i],
-                    agent.params.default_dof_pos.index({i}).item<float>(),
-                    rate);
-
-                cmd.motor_cmd[i].mode = 0x01;
-                cmd.motor_cmd[i].q   = qDes[i];
-                cmd.motor_cmd[i].dq  = 0.0f;
-                cmd.motor_cmd[i].kp  = agent.params.fixed_kp.index({i}).item<float>();
-                cmd.motor_cmd[i].kd  = agent.params.fixed_kd.index({i}).item<float>();
-                cmd.motor_cmd[i].tau = 0.0f;
-                }
-
-                if (motiontime % 100 == 0) {
-                std::stringstream ss;
-                ss << "Default_dof_pos: ";
-                for (int i = 0; i < Go2_NUM_MOTOR; i++) {
-                    ss << agent.params.default_dof_pos.index({i}).item<float>() << " ";
-                }
-                std::cout << ss.str() << std::endl;
-                }
-
-                motiontime++;
-            } else {
-                standup_done_ = true;
-                mode_ = MODE_DAMPING;   // закончили подъём -> держим позу до новой команды
-            }
-        } break;
-
-        case MODE_RL: {
-            // safety: если не поднялись — не пускаем RL
-            if (!standup_done_) {
-                mode_ = MODE_DAMPING;
-                break;
-            }
-
-            agent.UpdatePhase(runing_time);
-            torch::Tensor actions = agent.Act();
-
-            for (int i = 0; i < Go2_NUM_MOTOR; i++) {
-                cmd.motor_cmd[i].mode = 0x01;
-                cmd.motor_cmd[i].q   = actions.index({net2joint_indexes[i]}).item<float>();
-                cmd.motor_cmd[i].dq  = 0.0f;
-                cmd.motor_cmd[i].kp  = agent.params.rl_kp.index({i}).item<float>();
-                cmd.motor_cmd[i].kd  = agent.params.rl_kd.index({i}).item<float>();
-                cmd.motor_cmd[i].tau = 0.0f;
-            }
-
-            if (motiontime % 100 == 0) {
-                std::stringstream ss;
-                ss << "Actions: ";
-                for (int i = 0; i < Go2_NUM_MOTOR; i++) {
-                ss << actions.index({net2joint_indexes[i]}).item<float>() << " ";
-                }
-                std::cout << ss.str() << std::endl;
-            }
-        } break;
-
-        default: {
-            // на всякий случай безопасный hold
-            for (int i = 0; i < Go2_NUM_MOTOR; ++i) {
-                cmd.motor_cmd[i].mode = 0x01;
-                cmd.motor_cmd[i].q   = 0.0f;
-                cmd.motor_cmd[i].dq  = 0.0f;
-                cmd.motor_cmd[i].kp  = 0.0f;
-                cmd.motor_cmd[i].kd  = 0.0f;
-                cmd.motor_cmd[i].tau = 0.0f;
-            }
-        } break;
-    }
-
-    runing_time += dt;
-    return cmd;
-    // if (motiontime < 500) {
-    //     float rate = motiontime / 400.0f;
-    //     for (int i = 0; i < Go2_NUM_MOTOR; i++) {
-    //         qDes[i] = jointLinearInterpolation(qInit[i], agent.params.default_dof_pos.index({i}).item<float>(), rate);
-    //         cmd.motor_cmd[i].mode = 0x01; // Torque mode
-    //         cmd.motor_cmd[i].q = qDes[i];
-    //         cmd.motor_cmd[i].dq = 0;
-    //         cmd.motor_cmd[i].kp = agent.params.fixed_kp.index({i}).item<float>();
-    //         cmd.motor_cmd[i].kd = agent.params.fixed_kd.index({i}).item<float>();
-    //         cmd.motor_cmd[i].tau = 0;
-    //     }
-    //     if (motiontime % 100 == 0) {
-    //         std::stringstream ss;
-    //         ss << "Default_dof_pos: ";
-    //         for (int i = 0; i < Go2_NUM_MOTOR; i++) ss << agent.params.default_dof_pos.index({i}).item<float>() << " ";
-    //         std::cout << ss.str() << std::endl;
-    //     }
-    // } else {
-    //     robot_state = STATE_READY;
-    //     agent.UpdatePhase(runing_time);
-    //     torch::Tensor actions = agent.Act();
-    //     for (int i = 0; i < Go2_NUM_MOTOR; i++) {
-    //         cmd.motor_cmd[i].mode = 0x01; // Torque mode
-    //         cmd.motor_cmd[i].q = actions.index({net2joint_indexes[i]}).item<float>();
-    //         cmd.motor_cmd[i].dq = 0;
-    //         cmd.motor_cmd[i].kp = agent.params.rl_kp.index({i}).item<float>();
-    //         cmd.motor_cmd[i].kd = agent.params.rl_kd.index({i}).item<float>();
-    //         cmd.motor_cmd[i].tau = 0;//actions.index({net2joint_indexes[i]}).item<float>();
-    //     }
-    //     if (motiontime % 100 == 0) {
-    //         std::stringstream ss;
-    //         ss << "Actions: ";
-    //         for (int i = 0; i < Go2_NUM_MOTOR; i++) {
-    //             ss << actions.index({net2joint_indexes[i]}).item<float>() << " ";
-    //         }
-    //         std::cout << ss.str() << std::endl;
-    //     }
-    // }
-
-    // motiontime++;
-    // runing_time += dt;
-    // return cmd;
+int main(int argc,char** argv) {
+  rclcpp::init(argc,argv);
+  try { rclcpp::spin(std::make_shared<InterfaceRos>()); }
+  catch(const std::exception& e) { RCLCPP_ERROR(rclcpp::get_logger("sim2real"),"Startup failed closed: %s",e.what()); rclcpp::shutdown(); return 1; }
+  rclcpp::shutdown(); return 0;
 }
-
-void RobotController::initial_positions(const std::array<unitree_go::msg::MotorState, 20>& motor_state) {
-    if (init_count < 10) {
-        for (int i = 0; i < Go2_NUM_MOTOR; i++) {
-            qInit[i] = motor_state[i].q;
-        }
-        if (init_count == 0) {
-            std::stringstream ss;
-            ss << "Initial positions: ";
-            for (int i = 0; i < Go2_NUM_MOTOR; i++) ss << qInit[i] << " ";
-            std::cout << ss.str() << std::endl;
-        }
-        init_count++;
-    }
-}
-
-void RobotController::update_dof_state(const std::array<unitree_go::msg::MotorState, 20>& motor_state) {
-    for (int i = 0; i < Go2_NUM_MOTOR; i++) {
-        agent.obs.dof_pos.index({net2joint_indexes[i]}) = motor_state[i].q;
-        agent.obs.dof_vel.index({net2joint_indexes[i]}) = motor_state[i].dq;
-    }
-}
-
-float RobotController::jointLinearInterpolation(float initPos, float targetPos, float rate) {
-    rate = std::min(std::max(rate, 0.0f), 1.0f);
-    return initPos * (1 - rate) + targetPos * rate;
-}
-
-InterfaceRos::InterfaceRos(const std::string& network_interface) : Node("low_level_cmd_sender") {
-    cmd_puber = create_publisher<unitree_go::msg::LowCmd>("lowcmd", 10);
-    imu_pub = create_publisher<sensor_msgs::msg::Imu>("go2/imu", 10);
-    motor_state_pub = create_publisher<sensor_msgs::msg::JointState>("go2/motor_state", 10);
-    state_sub = create_subscription<unitree_go::msg::LowState>(
-        "lowstate", 10, std::bind(&InterfaceRos::LowStateHandler, this, _1));
-    joystick_sub = create_subscription<unitree_go::msg::WirelessController>(
-        "/wirelesscontroller", 10, std::bind(&InterfaceRos::JoystickHandler, this, _1));
-    timer_ = create_wall_timer(std::chrono::milliseconds(20), std::bind(&InterfaceRos::timer_callback_cmd, this));
-    init_cmd();
-    try {
-        std::string config_path = std::string(CONFIG_BASE_DIR) + "/weights/" + controller.get_robot_name() + "/config.yaml";
-        controller.initializeRL(config_path, "");
-        std::string model_path = std::string(CONFIG_BASE_DIR) + "/weights/" + controller.get_robot_name() + "/" + controller.get_model_name();
-        RCLCPP_INFO(this->get_logger(), "CONFIG_PATH: %s", config_path.c_str());
-        RCLCPP_INFO(this->get_logger(), "MODEL_PATH: %s", model_path.c_str());
-        controller.initializeRL("", model_path);
-    } catch (const std::exception& e) {
-        RCLCPP_ERROR(this->get_logger(), "Error initializing RL: %s", e.what());
-    }
-}
-
-InterfaceRos::~InterfaceRos() {
-    
-}
-
-void InterfaceRos::JoystickHandler(const unitree_go::msg::WirelessController::SharedPtr msg) {
-    joystick = *msg;
-    //RCLCPP_INFO(this->get_logger(), "Joystick: ly=%f, -rx=%f, -lx=%f", joystick.ly, -joystick.rx, -joystick.lx);
-}
-
-
-
-void InterfaceRos::init_cmd() {
-    // low_cmd.head[0] = 0xFE;
-    // low_cmd.head[1] = 0xEF;
-    // low_cmd.level_flag = 0x00;
-    // low_cmd.frame_reserve = 0;
-    for (int i = 0; i < 20; i++) {
-        low_cmd.motor_cmd[i].mode = 0x01;
-        low_cmd.motor_cmd[i].q = PosStopF;
-        low_cmd.motor_cmd[i].dq = VelStopF;
-        low_cmd.motor_cmd[i].kp = 0.0;
-        low_cmd.motor_cmd[i].kd = 0.0;
-        low_cmd.motor_cmd[i].tau = 0.0;
-    }
-    low_cmd.crc = 0;
-}
-
-void InterfaceRos::LowStateHandler(const unitree_go::msg::LowState::SharedPtr msg) {
-    latest_state = msg;
-    publish_imu(msg->imu_state);
-    publish_motor_state(msg->motor_state);
-    // if (INFO_IMU) {
-    //     RCLCPP_INFO(this->get_logger(), "IMU: gyro = [%f, %f, %f], quat = [%f, %f, %f, %f]",
-    //                 msg->imu_state.gyroscope[0], msg->imu_state.gyroscope[1], msg->imu_state.gyroscope[2],
-    //                 msg->imu_state.quaternion[0], msg->imu_state.quaternion[1],
-    //                 msg->imu_state.quaternion[2], msg->imu_state.quaternion[3]);
-    // }
-    // if (INFO_MOTOR) {
-    //     for (int i = 0; i < controller.get_num_motors(); i++) {
-    //         RCLCPP_INFO(this->get_logger(), "Motor state -- num: %d; q: %f; dq: %f; tau: %f",
-    //                     i, msg->motor_state[i].q, msg->motor_state[i].dq, msg->motor_state[i].tau_est);
-    //     }
-    // }
-    // if (INFO_FOOT_FORCE) {
-    //     for (int i = 0; i < 4; i++) {
-    //         RCLCPP_INFO(this->get_logger(), "Foot force -- foot%d: %d", i, msg->foot_force[i]);
-    //         RCLCPP_INFO(this->get_logger(), "Estimated foot force -- foot%d: %d", i, msg->foot_force_est[i]);
-    //     }
-    // }
-    // if (INFO_BATTERY) {
-    //     RCLCPP_INFO(this->get_logger(), "Battery state -- current: %f; voltage: %f",
-    //                 msg->power_a, msg->power_v);
-    // }
-}
-
-void InterfaceRos::timer_callback_cmd() {
-    if (!latest_state) {
-        RCLCPP_WARN(this->get_logger(), "Waiting for first state message");
-        return;
-    }
-    low_cmd = controller.update(*latest_state,joystick);
-    send_command(low_cmd);
-}
-
-void InterfaceRos::publish_imu(const unitree_go::msg::IMUState& imu_state) {
-    sensor_msgs::msg::Imu msg;
-    msg.header.stamp = this->now();
-    msg.header.frame_id = "imu_link";
-    msg.angular_velocity.x = imu_state.gyroscope[0];
-    msg.angular_velocity.y = imu_state.gyroscope[1];
-    msg.angular_velocity.z = imu_state.gyroscope[2];
-    msg.linear_acceleration.x = imu_state.accelerometer[0];
-    msg.linear_acceleration.y = imu_state.accelerometer[1];
-    msg.linear_acceleration.z = imu_state.accelerometer[2];
-    msg.orientation.x = imu_state.quaternion[1];
-    msg.orientation.y = imu_state.quaternion[2];
-    msg.orientation.z = imu_state.quaternion[3];
-    msg.orientation.w = imu_state.quaternion[0];
-    imu_pub->publish(msg);
-}
-
-void InterfaceRos::publish_motor_state(const std::array<unitree_go::msg::MotorState, 20>& motor_state) {
-    sensor_msgs::msg::JointState msg;
-    msg.header.stamp = this->now();
-    msg.header.frame_id = "base";
-    msg.name.resize(controller.get_num_motors());
-    msg.position.resize(controller.get_num_motors());
-    msg.velocity.resize(controller.get_num_motors());
-    msg.effort.resize(controller.get_num_motors());
-    for (int i = 0; i < controller.get_num_motors(); i++) {
-        msg.name[i] = "motor_" + std::to_string(i);
-        msg.position[i] = motor_state[i].q;
-        msg.velocity[i] = motor_state[i].dq;
-        msg.effort[i] = motor_state[i].tau_est;
-    }
-    motor_state_pub->publish(msg);
-}
-
-void InterfaceRos::send_command(unitree_go::msg::LowCmd& cmd) {
-    get_crc(cmd);
-    cmd_puber->publish(cmd);
-}
-
-int main(int argc, char** argv) {
-
-    // std::cout << "Press enter to start";
-    // std::cin.get();
-    // rclcpp::init(argc, argv);
-    // auto node = std::make_shared<InterfaceRos>();
-    // rclcpp::spin(node);
-    // rclcpp::shutdown();
-    rclcpp::init(argc, argv);
-    std::string network_interface = (argc < 2) ? "enp3s0" : argv[1]; // Фиксированный интерфейс по умолчанию
-    RCLCPP_INFO(rclcpp::get_logger("main"), "ChannelFactory initialized with interface: %s", network_interface.c_str());
-    std::cout << "Press enter to start";
-    std::cin.get();
-    auto node = std::make_shared<InterfaceRos>(network_interface);
-    rclcpp::spin(node);
-    rclcpp::shutdown();
-    return 0;
-}
-
-
-

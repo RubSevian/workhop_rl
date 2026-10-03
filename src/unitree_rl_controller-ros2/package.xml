@@ -13,8 +13,6 @@
   <build_depend>nav_msgs</build_depend>
   <build_depend>std_msgs</build_depend>
   <build_depend>geometry_msgs</build_depend>
-  <build_export_depend>roscpp</build_export_depend>
-  <build_export_depend>rospy</build_export_depend>
   <exec_depend>rcl</exec_depend>
   <exec_depend>rosidl_default_runtime</exec_depend>
   <exec_depend>nav_msgs</exec_depend>
@@ -22,6 +20,8 @@
   <exec_depend>geometry_msgs</exec_depend>
   <depend>ros2_unitree_legged_msgs</depend>
   <depend>eigen</depend>
+  <depend>rclcpp</depend>
+  <depend>yaml-cpp</depend>
 
 
   <export>

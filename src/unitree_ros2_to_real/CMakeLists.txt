@@ -1,188 +1,85 @@
-cmake_minimum_required(VERSION 3.5)
+cmake_minimum_required(VERSION 3.16)
 project(unitree_legged_real)
-
-# add_definitions(-DCMAKE_CURRENT_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}")
-
-# set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
-
-# set(CMAKE_BUILD_TYPE Debug)
-# set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -g")
-
-
-# set(CMAKE_BUILD_WITH_INSTALL_RPATH TRUE)
-# set(CMAKE_INSTALL_RPATH_USE_LINK_PATH TRUE)
-
-
+set(CMAKE_CXX_STANDARD 20)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
 find_package(ament_cmake REQUIRED)
 find_package(rclcpp REQUIRED)
-find_package(sensor_msgs REQUIRED)
-find_package(geometry_msgs REQUIRED)
-find_package(std_srvs REQUIRED)
-
-find_package(ros2_unitree_legged_msgs REQUIRED)
-find_package(unitree_rl_controller REQUIRED)
-find_package(unitree_sdk2  REQUIRED)
-find_package(glfw3 REQUIRED)
-
-list(APPEND CMAKE_PREFIX_PATH "/home/ruben/libtorch/")
-find_package(Torch REQUIRED)
-find_library( TORCH_LIBRARIES libtorch_cpu.so libc10.so:
-              PATHS
-              /home/ruben/libtorch/lib/
-              NO_DEFAULT_PATH )
-
-include_directories(
- include
- ${TORCH_INCLUDE_DIRS}
-)
-
-find_package(unitree_go REQUIRED)
-find_package(unitree_api REQUIRED)
-find_package(rclcpp REQUIRED)
 find_package(std_msgs REQUIRED)
-
-find_package(tf2 REQUIRED)
-find_package(tf2_ros REQUIRED)
-find_package(tf2_sensor_msgs REQUIRED)
-
-set (
-  DEPENDENCY_LIST
-  unitree_go
-  rclcpp
-  std_msgs
-  tf2
-  tf2_ros
-)
-
-
-message("-- CMAKE_SYSTEM_PROCESSOR: ${CMAKE_SYSTEM_PROCESSOR}")
-if("${CMAKE_SYSTEM_PROCESSOR}" MATCHES "x86_64.*")
-  set(ARCH amd64)
-else()
-  set(ARCH arm64)
+find_package(geometry_msgs REQUIRED)
+find_package(sensor_msgs REQUIRED)
+find_package(unitree_go REQUIRED)
+find_package(unitree_rl_controller REQUIRED)
+find_package(yaml-cpp REQUIRED)
+if(DEFINED ENV{Torch_DIR} AND NOT Torch_DIR)
+  set(Torch_DIR "$ENV{Torch_DIR}")
 endif()
-set(EXTRA_LIBS -pthread libunitree_legged_sdk_${ARCH}.so lcm)
-
-set(CMAKE_CXX_FLAGS "-O3")
-
-include_directories(
-    include
-    ${CMAKE_SOURCE_DIR}/unitree_legged_sdk/include
-)
-
-install(
- DIRECTORY ${CMAKE_SOURCE_DIR}/unitree_legged_sdk/lib/
- DESTINATION lib
-)
-
-link_directories(${CMAKE_SOURCE_DIR}/unitree_legged_sdk/lib)
-
-# Unitree Go2
-include_directories(library/unitree_sdk2/include)
-link_directories(library/unitree_sdk2/lib/x86_64)
-include_directories(library/unitree_sdk2/thirdparty/include)
-include_directories(library/unitree_sdk2/thirdparty/include/ddscxx)
-link_directories(library/unitree_sdk2/thirdparty/lib/x86_64)
-set(UNITREE_GO2_LIBS -pthread unitree_sdk2 ddsc ddscxx)
-file(GLOB GLOB_UNITREE_SDK2 "${PROJECT_SOURCE_DIR}/library/unitree_sdk2/lib/x86_64/*.so")
-file(GLOB GLOB_UNITREE_SDK2_THIRDPARTY "${PROJECT_SOURCE_DIR}/library/unitree_sdk2/thirdparty/lib/x86_64/*.so")
-install(FILES
-  ${GLOB_UNITREE_SDK2_THIRDPARTY}
-  ${GLOB_UNITREE_SDK2_THIRDPARTY}
-  DESTINATION lib/
-)
-
-add_executable(lcm_server unitree_legged_sdk/examples/lcm_server.cpp)
-target_link_libraries(lcm_server ${EXTRA_LIBS})
-
-# add_executable(ros2_rl src/ros2_rl.cpp)
-# target_link_libraries(ros2_rl ${UNITREE_GO2_LIBS} ${EXTRA_LIBS} ${TORCH_LIBRARIES})
-# ament_target_dependencies(ros2_rl rclcpp ros2_unitree_legged_msgs unitree_rl_controller sensor_msgs)
-
-
-add_executable(mujoco_sim src/mujoco_sim.cpp src/motor_crc.cpp src/navigation_command_adapter.cpp)
-target_include_directories(mujoco_sim PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../unitree_mujoco/simulate/include)
-target_link_libraries(mujoco_sim ${UNITREE_GO2_LIBS} ${EXTRA_LIBS} ${TORCH_LIBRARIES} glfw yaml-cpp)
-ament_target_dependencies(mujoco_sim rclcpp unitree_rl_controller sensor_msgs geometry_msgs ${DEPENDENCY_LIST})
-
-add_executable(go2_heightmap_node
-  src/go2_heightmap_node.cpp
-)
-
-ament_target_dependencies(go2_heightmap_node
-  rclcpp
-  sensor_msgs
-  tf2
-  tf2_ros
-  tf2_sensor_msgs
-)
-
-
-add_executable(ros2_rl_go2 src/ros2_rl_go2.cpp src/motor_crc.cpp)
-target_link_libraries(ros2_rl_go2 ${UNITREE_GO2_LIBS} ${EXTRA_LIBS} ${TORCH_LIBRARIES})
-ament_target_dependencies(ros2_rl_go2 rclcpp unitree_rl_controller sensor_msgs ${DEPENDENCY_LIST})
-
-set(CONFIG_BASE_DIR "${CMAKE_CURRENT_SOURCE_DIR}")
-target_compile_definitions(ros2_rl_go2 PRIVATE "CONFIG_BASE_DIR=\"${CONFIG_BASE_DIR}\"")
-
-set(CONFIG_BASE_DIR "${CMAKE_CURRENT_SOURCE_DIR}")
-target_compile_definitions(mujoco_sim PRIVATE "CONFIG_BASE_DIR=\"${CONFIG_BASE_DIR}\"")
-
-
-install(TARGETS
-    ros2_rl_go2 
-    mujoco_sim
-    go2_heightmap_node
-    lcm_server
-    DESTINATION lib/${PROJECT_NAME}
-)
-
-install(DIRECTORY config/
-  DESTINATION share/${PROJECT_NAME}/config
-)
-
-install(DIRECTORY launch/
-  DESTINATION share/${PROJECT_NAME}/launch
-)
-
-install(PROGRAMS scripts/manual_twist_test.py
-                 scripts/stage4b_navigation_test.py
-                 scripts/pointlio_state_adapter.py
-                 scripts/pointcloud_fields_check.py
-                 scripts/stage4c_pointlio_evaluator.py
-                 scripts/run_stage4c_autonomous.sh
-                 scripts/stage4d_readiness.py
-                 scripts/stage4d_send_goal.py
-                 scripts/stage4d_full_navigation_evaluator.py
-                 scripts/stage4d_stop_navigation.py
-                 scripts/run_stage4d_autonomous.sh
-                 scripts/stage4d_rviz_robot.py
-                 scripts/stage4d_robot_state_bridge.py
-                 scripts/stage4d_planner_visualization.py
-                 scripts/stage4d_navigation_explainer.py
-                 scripts/stage4d_navigation_status.py
-                 scripts/stage4d_graph_bootstrap.py
-                 scripts/stage4d_odometry_path.py
-                 scripts/stage4d_scene_markers.py
-                 scripts/stage4d_terrain_diagnostics.py
-                 scripts/stage4d_localization_extrinsic_diagnostics.py
-                 scripts/stage4d_replanning_trace.py
-                 scripts/stage4d_geometry_audit.py
-                 scripts/stage4d_nav_manip_m0.py
-                 scripts/stage4d_manual_manip_target.py
-                 scripts/stage4d_manual_grasp_geometry.py
-                 scripts/stage4d_real_grasp_planner.py
-  DESTINATION lib/${PROJECT_NAME}
-)
-
+find_package(Torch REQUIRED)
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${TORCH_CXX_FLAGS}")
+# SDK2 is confined to a separate SDK-only executable.
+set(BUILD_EXAMPLES OFF CACHE BOOL "SDK examples" FORCE)
+add_subdirectory(library/unitree_sdk2 EXCLUDE_FROM_ALL)
+add_library(go2_motion_mode STATIC src/go2_motion_mode.cpp)
+target_include_directories(go2_motion_mode PUBLIC include)
+target_link_libraries(go2_motion_mode unitree_sdk2)
+add_executable(go2_mode_switch src/go2_mode_switch.cpp)
+target_link_libraries(go2_mode_switch go2_motion_mode)
+# Vendored CycloneDDS-CXX headers require C++17 with GCC 13 (template destructors).
+# These SDK-only targets do not consume Torch's C++20 headers.
+set_target_properties(go2_motion_mode go2_mode_switch PROPERTIES CXX_STANDARD 17)
+set_target_properties(go2_mode_switch PROPERTIES INSTALL_RPATH "$ORIGIN/sdk2")
+# Private DDS directory for the SDK-only process; never export it to ROS.
+install(DIRECTORY "library/unitree_sdk2/thirdparty/lib/${CMAKE_SYSTEM_PROCESSOR}/"
+  DESTINATION lib/${PROJECT_NAME}/sdk2 FILES_MATCHING PATTERN "*.so*")
+add_library(real_controller_core SHARED src/real_controller_core.cpp src/navigation_command_adapter.cpp)
+target_include_directories(real_controller_core PUBLIC include ${TORCH_INCLUDE_DIRS})
+ament_target_dependencies(real_controller_core unitree_rl_controller)
+target_link_libraries(real_controller_core ${TORCH_LIBRARIES} yaml-cpp)
+add_executable(ros2_rl_go2 src/ros2_rl_go2.cpp)
+target_link_libraries(ros2_rl_go2 real_controller_core ${TORCH_LIBRARIES} yaml-cpp)
+ament_target_dependencies(ros2_rl_go2 rclcpp std_msgs sensor_msgs geometry_msgs unitree_go unitree_rl_controller)
+foreach(target real_controller_core ros2_rl_go2)
+  set_target_properties(${target} PROPERTIES BUILD_RPATH "${TORCH_INSTALL_PREFIX}/lib" INSTALL_RPATH "${TORCH_INSTALL_PREFIX}/lib")
+endforeach()
+# No simulator, LCM, GLFW or CRC target participates in the default real build.
+option(BUILD_LEGACY_SIM "Build retained simulation target" OFF)
+if(BUILD_LEGACY_SIM)
+  find_package(glfw3 REQUIRED)
+  find_package(tf2 REQUIRED)
+  find_package(tf2_ros REQUIRED)
+  find_library(LCM_LIBRARY lcm REQUIRED)
+  if(CMAKE_SYSTEM_PROCESSOR STREQUAL "aarch64")
+    set(LEGACY_ARCH arm64)
+  elseif(CMAKE_SYSTEM_PROCESSOR STREQUAL "x86_64")
+    set(LEGACY_ARCH amd64)
+  else()
+    message(FATAL_ERROR "Unsupported legacy SDK architecture")
+  endif()
+  add_executable(mujoco_sim src/mujoco_sim.cpp src/motor_crc.cpp src/navigation_command_adapter.cpp)
+  target_include_directories(mujoco_sim PRIVATE include ../unitree_mujoco/simulate/include unitree_legged_sdk/include ${TORCH_INCLUDE_DIRS})
+  target_link_libraries(mujoco_sim unitree_sdk2 "${CMAKE_CURRENT_SOURCE_DIR}/unitree_legged_sdk/lib/libunitree_legged_sdk_${LEGACY_ARCH}.so" ${LCM_LIBRARY} ${TORCH_LIBRARIES} glfw yaml-cpp)
+  ament_target_dependencies(mujoco_sim rclcpp unitree_rl_controller sensor_msgs geometry_msgs std_msgs unitree_go tf2 tf2_ros)
+  target_compile_definitions(mujoco_sim PRIVATE CONFIG_BASE_DIR="${CMAKE_CURRENT_SOURCE_DIR}")
+  install(TARGETS mujoco_sim DESTINATION lib/${PROJECT_NAME})
+endif()
+install(TARGETS ros2_rl_go2 go2_mode_switch DESTINATION lib/${PROJECT_NAME})
+install(TARGETS real_controller_core LIBRARY DESTINATION lib)
+install(DIRECTORY config/ DESTINATION share/${PROJECT_NAME}/config)
 if(BUILD_TESTING)
-  add_executable(navigation_command_adapter_test
-    tests/navigation_command_adapter_test.cpp
-    src/navigation_command_adapter.cpp)
+  enable_testing()
+  add_executable(real_controller_contract_test tests/real_controller_contract_test.cpp)
+  target_link_libraries(real_controller_contract_test real_controller_core ${TORCH_LIBRARIES})
+  ament_target_dependencies(real_controller_contract_test unitree_rl_controller)
+  add_test(NAME real_controller_contract_test COMMAND real_controller_contract_test "${R1_CONFIG_PATH}" "${R1_POLICY_PATH}")
+  add_executable(navigation_command_adapter_test tests/navigation_command_adapter_test.cpp src/navigation_command_adapter.cpp)
   target_include_directories(navigation_command_adapter_test PRIVATE include)
+  target_compile_options(navigation_command_adapter_test PRIVATE -UNDEBUG)
   add_test(NAME navigation_command_adapter_test COMMAND navigation_command_adapter_test)
+  add_executable(policy_cpu_test tests/policy_cpu_test.cpp)
+  target_link_libraries(policy_cpu_test real_controller_core ${TORCH_LIBRARIES})
+  ament_target_dependencies(policy_cpu_test unitree_rl_controller)
+  if(NOT R1_POLICY_PATH OR NOT R1_CONFIG_PATH)
+    message(FATAL_ERROR "Tests require explicit R1_POLICY_PATH and R1_CONFIG_PATH")
+  endif()
+  add_test(NAME policy_cpu_test COMMAND policy_cpu_test "${R1_CONFIG_PATH}" "${R1_POLICY_PATH}")
 endif()
-
 ament_package()
-
-

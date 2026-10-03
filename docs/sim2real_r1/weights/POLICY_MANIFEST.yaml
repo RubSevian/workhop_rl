@@ -1,0 +1,20 @@
+policy:
+  file: policy_2.pt
+  format: torchscript
+  sha256: a70b18b88e6ee2fe32de4904559404f4f672dff2396e95ca2c851fdefc5a8cdc
+contract:
+  layout: go2_rars01_unified_v1
+  actor_input_dim: 315
+  actor_output_dim: 12
+  frame_dim: 63
+  history_length: 5
+training:
+  repository: https://github.com/RubSevian/workshop_legged_gym.git
+  branch: walk_diplom_arm_unified_eval_curriculum_symmetric_loss
+  commit: null
+  checkpoint: null
+  status: unverified_provenance
+runtime:
+  device: cpu
+  control_period_ms: 20
+  actuator_transport: absent_in_phase_r1

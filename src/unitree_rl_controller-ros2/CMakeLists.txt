@@ -1,10 +1,9 @@
 cmake_minimum_required(VERSION 3.5)
 project(unitree_rl_controller)
 
-# Default to C++14
-if(NOT CMAKE_CXX_STANDARD)
-  set(CMAKE_CXX_STANDARD 14)
-endif()
+# Installed native Torch requires C++20.
+set(CMAKE_CXX_STANDARD 20)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 if(CMAKE_COMPILER_IS_GNUCXX OR CMAKE_CXX_COMPILER_ID MATCHES "Clang")
   set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -Wextra -Wpedantic")
@@ -20,7 +19,9 @@ find_package(nav_msgs REQUIRED)
 find_package(std_msgs REQUIRED)
 find_package(yaml-cpp REQUIRED)  
 
-set(CMAKE_PREFIX_PATH "/home/ruben/libtorch/share/cmake/Torch")
+if(DEFINED ENV{Torch_DIR} AND NOT Torch_DIR)
+  set(Torch_DIR "$ENV{Torch_DIR}")
+endif()
 find_package(Torch REQUIRED)
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${TORCH_CXX_FLAGS}")
 
@@ -37,6 +38,9 @@ add_library(${PROJECT_NAME} SHARED
 # Линкуем с библиотеками
 target_link_libraries(${PROJECT_NAME} ${TORCH_LIBRARIES} yaml-cpp)  
 
+set_target_properties(${PROJECT_NAME} PROPERTIES
+  BUILD_RPATH "${TORCH_INSTALL_PREFIX}/lib"
+  INSTALL_RPATH "${TORCH_INSTALL_PREFIX}/lib")
 ament_target_dependencies(${PROJECT_NAME} std_msgs rclcpp)
 
 ament_export_dependencies(rclcpp ros2_unitree_legged_msgs geometry_msgs std_msgs yaml-cpp)
@@ -54,6 +58,7 @@ install(DIRECTORY include/
 )
 
 if(BUILD_TESTING)
+  enable_testing()
   add_executable(unified_observation_contract_test
     tests/unified_observation_contract_test.cpp)
   target_link_libraries(unified_observation_contract_test ${PROJECT_NAME} ${TORCH_LIBRARIES})
