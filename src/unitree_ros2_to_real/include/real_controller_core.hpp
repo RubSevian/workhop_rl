@@ -1,5 +1,7 @@
 #pragma once
 #include "rl_agent.h"
+#include "safety_io.hpp"
+#include "rars_bridge.hpp"
 #include <array>
 #include <optional>
 
@@ -34,12 +36,17 @@ class RealControllerCore {
   void Load(const std::string& config, const std::string& policy);
   bool RequestMode(Mode mode, const Readiness& readiness);
   std::optional<Targets> Tick(float elapsed_sec);
+  bool SendTargets(ActuatorTransport& transport, const SafetyReadiness& readiness,
+                   SafetyTime now, float elapsed_sec);
   Mode mode() const { return mode_; }
   bool loaded() const { return loaded_; }
+  SafetyFsm& safety() { return safety_; }
   Agent& agent() { return agent_; }
+  bool SetArmFromBridge(RarsBridge& bridge, SafetyTime now);
   void SetMeasuredLegs(const Legs& q, const Legs& dq);
  private:
   Targets MapTargets(const Legs& q, bool rl) const;
+  SafetyFsm safety_;
   Agent agent_;
   Mode mode_ = Mode::DISARMED;
   bool loaded_ = false;

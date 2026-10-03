@@ -20,17 +20,32 @@ float Positive(const YAML::Node& root, const char* name) {
 Legs PolicyToMotor(const Legs& p) { Legs m{}; for(int i=0;i<12;++i) m[i]=p[motor_to_policy[i]]; return m; }
 Legs MotorToPolicy(const Legs& m) { Legs p{}; for(int i=0;i<12;++i) p[motor_to_policy[i]]=m[i]; return p; }
 void RealControllerCore::Load(const std::string& config, const std::string& policy) {
-  loaded_=false; mode_=Mode::DISARMED;
+  loaded_=false; mode_=Mode::DISARMED; safety_.Disarm();
   if(config.empty() || policy.empty() || !std::filesystem::is_regular_file(config) ||
      !std::filesystem::is_regular_file(policy)) throw std::runtime_error("Explicit existing config_path and model_path required");
   const auto yaml=YAML::LoadFile(config);
   if(yaml["go2_rars01"]["observation_layout"].as<std::string>()!="go2_rars01_unified_v1")
     throw std::runtime_error("Real controller requires unified configuration");
   const auto d=yaml["real_deployment"];
-  if(d["enable_actuator_output"].as<bool>()) throw std::runtime_error("R1 actuator output is unavailable");
+  if(d["enable_actuator_output"].as<bool>()) throw std::runtime_error("R2 read-only profile forbids actuator output");
   if(d["control_period_ms"].as<int>()!=20) throw std::runtime_error("Policy requires 20 ms");
   duration_=Positive(d,"stand_duration_sec"); hold_duration_=Positive(d,"hold_transition_sec");
   for(const auto* name:{"cmd_vel_timeout_sec","low_state_timeout_sec","arm_state_timeout_sec","max_linear_x","max_linear_y","max_yaw_rate"}) Positive(d,name);
+  if(!d["safety"]["startup_disarmed"].as<bool>() || d["safety"]["actuator_output_default"].as<bool>() ||
+     !d["sport_mode"]["require_release_verified"].as<bool>() ||
+     d["remote"]["takeover_chord"].as<std::vector<std::string>>() != std::vector<std::string>{"L1","L2","A"} ||
+     d["remote"]["emergency_chord"].size()!=0 ||
+     !d["rars01"]["zero_calibration_operator_verified"].as<bool>() ||
+     d["rars01"]["zero_calibration_source"].as<std::string>()!="sdk_gui_operator_saved" ||
+     d["rars01"]["per_joint_freshness_proven"].as<bool>())
+    throw std::runtime_error("R2 deployment invariants violated");
+  Positive(d["remote"],"takeover_hold_s"); Positive(d["remote"],"stale_timeout_s");
+  Positive(d["lowstate"],"stale_timeout_s");
+  Positive(d["rars01"],"feedback_timeout_s"); Positive(d["rars01"],"target_timeout_s");
+  safety_.SetSportTimeout(Positive(d["sport_mode"],"observation_timeout_s"));
+  if(d["low_state_timeout_sec"].as<double>()!=d["lowstate"]["stale_timeout_s"].as<double>() ||
+     d["arm_state_timeout_sec"].as<double>()!=d["rars01"]["feedback_timeout_s"].as<double>())
+    throw std::runtime_error("Flat R1 and nested R2 feedback timeouts disagree");
   agent_.ReadYaml("go2_rars01",config);
   if(!agent_.Load_Model(policy)) throw std::runtime_error("TorchScript model loading failed");
   loaded_=true;
@@ -42,8 +57,8 @@ void RealControllerCore::SetMeasuredLegs(const Legs& q, const Legs& dq) {
   agent_.obs.dof_vel=torch::tensor(std::vector<float>(v.begin(),v.end()));
 }
 bool RealControllerCore::RequestMode(Mode next, const Readiness& r) {
-  if(next==Mode::DISARMED) { if(mode_!=Mode::FAULT) mode_=next; return mode_==next; }
-  if(next==Mode::FAULT) { mode_=next; return true; }
+  if(next==Mode::DISARMED) { safety_.Disarm(); if(mode_!=Mode::FAULT) mode_=next; return mode_==next; }
+  if(next==Mode::FAULT) { mode_=next; safety_.Fault(); return true; }
   if(mode_==Mode::FAULT || !loaded_ || !r.All()) return false;
   if(next==Mode::RL && mode_!=Mode::HOLD) return false;
   if(next==Mode::RL) agent_.ResetPolicyState(); // measurements applied before transition
@@ -69,3 +84,24 @@ std::optional<Targets> RealControllerCore::Tick(float elapsed) {
   return MapTargets(q,false);
 }
 }  // namespace sim2real
+
+namespace sim2real {
+bool RealControllerCore::SetArmFromBridge(RarsBridge& bridge, SafetyTime now) {
+ const auto& state=bridge.Poll(now);
+ if(!state.feedback_ready || !state.target_ready || !state.target) return false;
+ agent_.obs.arm_pos=torch::tensor(std::vector<float>(state.q.begin(),state.q.end()));
+ agent_.obs.arm_vel=torch::tensor(std::vector<float>(state.dq.begin(),state.dq.end()));
+ agent_.obs.arm_target=torch::tensor(std::vector<float>(state.target->q.begin(),state.target->q.end()));
+ return true;
+}
+} // namespace sim2real
+
+namespace sim2real {
+bool RealControllerCore::SendTargets(ActuatorTransport& transport, const SafetyReadiness& readiness,
+                                    SafetyTime now, float elapsed_sec) {
+ if(!loaded_ || mode_==Mode::DISARMED || mode_==Mode::FAULT ||
+    !transport.Ready() || !safety_.AllowsOutput(readiness,now)) return false;
+ const auto targets=Tick(elapsed_sec);
+ return targets && transport.Send(MakeLowCmd(targets->q,targets->kp,targets->kd),safety_,readiness,now);
+}
+} // namespace sim2real

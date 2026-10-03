@@ -39,7 +39,7 @@ go2_rars01:
                 "RR_hip_joint", "RR_thigh_joint", "RR_calf_joint"]
   arm_joint_names: ["joint1", "joint2", "joint3", "joint4", "joint5", "joint6"]
 
-# Deployment settings do not alter actor math. R1 has no actuator transport.
+# Deployment settings do not alter actor math. R2 physical output is disabled.
 real_deployment:
   enable_actuator_output: false
   control_period_ms: 20
@@ -51,3 +51,22 @@ real_deployment:
   max_yaw_rate: 0.5
   stand_duration_sec: 8.0
   hold_transition_sec: 1.0
+  remote:
+    takeover_hold_s: 0.75
+    stale_timeout_s: 0.25
+    takeover_chord: [L1, L2, A]
+    emergency_chord: []
+  lowstate:
+    stale_timeout_s: 0.5
+  rars01:
+    feedback_timeout_s: 0.25
+    target_timeout_s: 0.25
+    zero_calibration_source: sdk_gui_operator_saved
+    zero_calibration_operator_verified: true
+    per_joint_freshness_proven: false
+  sport_mode:
+    require_release_verified: true
+    observation_timeout_s: 0.5
+  safety:
+    startup_disarmed: true
+    actuator_output_default: false

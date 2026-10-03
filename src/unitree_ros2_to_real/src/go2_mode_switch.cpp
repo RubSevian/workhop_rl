@@ -8,7 +8,7 @@ namespace {
 
 void PrintUsage(const char* executable) {
   std::cout
-      << "Usage: " << executable << " --interface IFACE [--status | --release-sport-mode]\n"
+      << "Usage: " << executable << " --interface IFACE [--status | --release-sport-mode] [--machine-readable]\n"
       << "\n"
       << "Queries or releases Unitree Go2 sport_mode through SDK2 RobotState.\n"
       << "It never publishes any motor command.\n"
@@ -26,11 +26,14 @@ int main(int argc, char** argv) {
     network_interface = from_environment;
   }
   bool release = false;
+  bool machine_readable = false;
 
   for (int index = 1; index < argc; ++index) {
     const std::string argument = argv[index];
     if (argument == "--interface" && index + 1 < argc) {
       network_interface = argv[++index];
+    } else if (argument == "--machine-readable") {
+      machine_readable = true;
     } else if (argument == "--status") {
       release = false;
     } else if (argument == "--release-sport-mode") {
@@ -48,7 +51,10 @@ int main(int argc, char** argv) {
   const go2_motion_mode::Result result =
       release ? go2_motion_mode::ReleaseSportMode(network_interface)
               : go2_motion_mode::QuerySportMode(network_interface);
-  std::cout << (result.ok ? "OK: " : "ERROR: ") << result.message << "\n";
+  if(machine_readable) {
+    std::cout << sim2real::SportModeName(result.state) << "\n";
+    std::cerr << result.message << "\n";
+  } else std::cout << (result.ok ? "OK: " : "ERROR: ") << result.message << "\n";
 
   // Query is deliberately successful even while sport_mode is active: it is a
   // diagnostic command.  Release succeeds only after verified deactivation.

@@ -22,7 +22,7 @@ Result QuerySportModeWithClient(unitree::robot::go2::RobotStateClient& client) {
   std::vector<unitree::robot::go2::ServiceState> services;
   const int32_t ret = client.ServiceList(services);
   if (ret != 0) {
-    return {false, false, "ServiceList failed with SDK2 return code " + std::to_string(ret)};
+    return {false, false, "ServiceList failed with SDK2 return code " + std::to_string(ret), sim2real::SportMode::ERROR};
   }
 
   for (const auto& service : services) {
@@ -31,10 +31,10 @@ Result QuerySportModeWithClient(unitree::robot::go2::RobotStateClient& client) {
       stream << "sport_mode status=" << service.status
              << " protect=" << service.protect;
       if (service.status == kServiceRunning) {
-        return {true, true, stream.str() + " (Sport Mode active)"};
+        return {true, true, stream.str() + " (Sport Mode active)", sim2real::SportMode::ACTIVE};
       }
       if (service.status == kServiceStopped) {
-        return {true, false, stream.str() + " (Sport Mode released)"};
+        return {true, false, stream.str() + " (Sport Mode released)", sim2real::SportMode::RELEASED};
       }
       return {false, false, stream.str() + " (unknown sport_mode state)"};
     }
@@ -47,7 +47,7 @@ template <typename Operation>
 Result WithRobotStateClient(const std::string& network_interface, Operation operation) {
   if (network_interface.empty()) {
     return {false, false,
-            "network interface is empty; pass --interface IFACE or set GO2_NETWORK_INTERFACE"};
+            "network interface is empty; pass --interface IFACE or set GO2_NETWORK_INTERFACE", sim2real::SportMode::ERROR};
   }
 
   auto* factory = unitree::robot::ChannelFactory::Instance();
@@ -61,7 +61,7 @@ Result WithRobotStateClient(const std::string& network_interface, Operation oper
     return result;
   } catch (const std::exception& error) {
     factory->Release();
-    return {false, false, std::string("SDK2 exception: ") + error.what()};
+    return {false, false, std::string("SDK2 exception: ") + error.what(), sim2real::SportMode::ERROR};
   }
 }
 
@@ -85,7 +85,7 @@ Result ReleaseSportMode(const std::string& network_interface) {
     if (ret != 0) {
       return Result{false, true,
                     "ServiceSwitch(sport_mode, 0) failed with SDK2 return code " +
-                        std::to_string(ret) + ", status=" + std::to_string(status)};
+                        std::to_string(ret) + ", status=" + std::to_string(status), sim2real::SportMode::ERROR};
     }
 
     // The service manager applies the change asynchronously on some firmware.
@@ -101,7 +101,7 @@ Result ReleaseSportMode(const std::string& network_interface) {
       }
     }
 
-    return Result{false, true, "sport_mode remained active after ServiceSwitch(sport_mode, 0)"};
+    return Result{false, true, "sport_mode remained active after ServiceSwitch(sport_mode, 0)", sim2real::SportMode::ACTIVE};
   });
 }
 

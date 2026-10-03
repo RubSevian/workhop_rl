@@ -1,5 +1,5 @@
 #pragma once
-// R1 controller is diagnostic-only. Actuator transport is deliberately absent.
+// R2 read-only diagnostic executable. No actuator publisher or serial owner.
 #include "real_controller_core.hpp"
 #include "navigation_command_adapter.hpp"
 #include <rclcpp/rclcpp.hpp>
@@ -13,7 +13,9 @@ class InterfaceRos : public rclcpp::Node {
   InterfaceRos();
  private:
   sim2real::RealControllerCore core_;
-  sim2real::OutputGate output_gate_;
+  sim2real::LowStateReader lowstate_;
+  sim2real::RemoteSafety remote_;
+  sim2real::SafetyTime diagnostic_stamp_{};
   NavigationCommandAdapter navigation_;
   double low_state_timeout_=0.5;
   std::array<double,3> limits_{};

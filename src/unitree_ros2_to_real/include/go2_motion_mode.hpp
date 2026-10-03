@@ -1,19 +1,21 @@
 #pragma once
 
 #include <string>
+#include "sport_mode_status.hpp"
 
 // This helper intentionally uses only the Unitree SDK2 robot_state service.
-// It never publishes LowCmd and is safe to run before the locomotion process.
+// It never publishes LowCmd. Release changes robot ownership; commissioning only.
 namespace go2_motion_mode {
 
 struct Result {
   bool ok{false};
   bool sport_mode_active{false};
   std::string message;
+  sim2real::SportMode state{sim2real::SportMode::UNKNOWN};
 };
 
 // Query the controller's service table.  A successful result with
-// sport_mode_active == false means that it is safe to claim rt/lowcmd.
+// state == RELEASED proves only that service observation, not actuator readiness.
 Result QuerySportMode(const std::string& network_interface);
 
 // Disable the Unitree sport_mode service when it is active, then verify the
