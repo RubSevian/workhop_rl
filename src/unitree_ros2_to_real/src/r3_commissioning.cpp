@@ -41,6 +41,7 @@ R3Profile LoadR3Profile(const YAML::Node& yaml) {
  p.command_timeout_s=d["cmd_vel_timeout_sec"].as<double>();p.sport_timeout_s=d["sport_mode"]["observation_timeout_s"].as<double>();
  p.lowstate_timeout_s=d["lowstate"]["stale_timeout_s"].as<double>();p.remote_timeout_s=d["remote"]["stale_timeout_s"].as<double>();
  p.arm_timeout_s=d["rars01"]["feedback_timeout_s"].as<double>();
+ if(d["rars01"]["require_home_ready_for_leg_takeover"])p.require_arm_home_ready=d["rars01"]["require_home_ready_for_leg_takeover"].as<bool>();
  p.vx_bound=r["manual"]["max_vx"].as<double>();p.vy_bound=r["manual"]["max_vy"].as<double>();p.wz_bound=r["manual"]["max_wz"].as<double>();
  p.max_command_duration_s=r["manual"]["max_duration_s"].as<double>();p.q_capture_tolerance=r["hold_current_tolerance_rad"].as<double>();
  p.deadline_burst_limit=r["deadline_burst_limit"].as<int>();
@@ -78,6 +79,7 @@ std::vector<std::string> R3Supervisor::Blockers(SafetyTime now,bool physical) co
  if(!Fresh(now,inputs_.arm_stamp,profile_.arm_timeout_s))b.emplace_back("arm_feedback_age");
  if(!Fresh(now,inputs_.target_stamp,profile_.arm_timeout_s))b.emplace_back("arm_target_age");
  if(!inputs_.arm_static_hold)b.emplace_back("arm_static_hold");
+ if(profile_.require_arm_home_ready&&!inputs_.arm_home_ready)b.emplace_back("arm_home_not_ready");
  if(fault_)b.emplace_back("fault_latched");
  if(physical) {
   if(!profile_.gate0_verified)b.emplace_back("gate0_not_passed");
@@ -103,7 +105,8 @@ void R3Supervisor::Observe(const R3Inputs& in,SafetyTime now) {
  if(IsActive() && state_!=R3State::EMERGENCY_DAMP && !Blockers(now).empty())Fault("critical_input_or_ownership",now);
  if(state_==R3State::TAKEOVER_REQUESTED||state_==R3State::PRECHECK||state_==R3State::SPORT_RELEASE_REQUIRED) {
   if(!inputs_.ready.model_loaded||!inputs_.ready.config_valid||!inputs_.ready.lowstate_fresh||!inputs_.ready.remote_fresh||
-     !inputs_.ready.arm_feedback_ready||!inputs_.ready.arm_target_ready||!inputs_.arm_static_hold)state_=R3State::PRECHECK;
+     !inputs_.ready.arm_feedback_ready||!inputs_.ready.arm_target_ready||!inputs_.arm_static_hold||
+     (profile_.require_arm_home_ready&&!inputs_.arm_home_ready))state_=R3State::PRECHECK;
   else state_=Released(now)?R3State::SPORT_RELEASE_VERIFIED:R3State::SPORT_RELEASE_REQUIRED;
  }
 }

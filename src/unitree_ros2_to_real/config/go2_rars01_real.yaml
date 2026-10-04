@@ -59,6 +59,14 @@ real_deployment:
   lowstate:
     stale_timeout_s: 0.5
   rars01:
+    require_home_ready_for_leg_takeover: true
+    auto_home:
+      enabled: true # Physical profile; owner still defaults read_only=true.
+      startup_delay_s: 10.0
+      home_target: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+      home_tolerance_rad: 0.15
+      command_rate_hz: 100.0 # Assigned to ArmConfiguration; caller honors it.
+      enable_once_on_boot: true
     feedback_timeout_s: 0.25
     target_timeout_s: 0.25
     zero_calibration_source: sdk_gui_operator_saved

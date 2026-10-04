@@ -32,6 +32,8 @@ class R3Node final:public rclcpp::Node {
   sdk_helper_=(std::filesystem::read_symlink("/proc/self/exe").parent_path()/"go2_mode_switch").string();
   if(declare_parameter<bool>("enable_actuator_output",false))throw std::runtime_error("startup output must be false; use explicit service gate");
   core_.Load(config,model);const auto y=YAML::LoadFile(config),d=y["real_deployment"],r=d["r3_commissioning"];
+  home_tolerance_=d["rars01"]["auto_home"]["home_tolerance_rad"].as<double>();
+  if(!std::isfinite(home_tolerance_)||home_tolerance_<=0)throw std::runtime_error("Invalid HOME tolerance");
   const auto profile=LoadR3Profile(y);supervisor_=std::make_unique<R3Supervisor>(profile);
   lowstate_=LowStateReader(profile.lowstate_timeout_s);
   remote_=std::make_unique<R3RemoteCommands>(r["remote"]["controlled_abort_chord"].as<std::vector<std::string>>(),r["remote"]["emergency_chord"].as<std::vector<std::string>>(),d["remote"]["takeover_hold_s"].as<double>(),profile.remote_timeout_s);
@@ -50,9 +52,9 @@ class R3Node final:public rclcpp::Node {
    catch(...){inputs_.sport=SportMode::ERROR;inputs_.sport_stamp=SafetyTime{};}
   });
   arm_sub_=create_subscription<std_msgs::msg::String>("/rars01/commissioning/state",10,[this](std_msgs::msg::String::ConstSharedPtr m){
-   std::lock_guard lock(mutex_);inputs_.ready.arm_feedback_ready=false;inputs_.ready.arm_target_ready=false;inputs_.arm_static_hold=false;
+   std::lock_guard lock(mutex_);inputs_.ready.arm_feedback_ready=false;inputs_.ready.arm_target_ready=false;inputs_.arm_static_hold=false;inputs_.arm_home_ready=false;
    try {
-    const auto y=YAML::Load(m->data);const auto now=SafetyClock::now();
+    const auto y=YAML::Load(m->data);const auto now=SafetyClock::now();arm_error_.clear();
     auto q=Six(y["measured_q"]),dq=Six(y["measured_dq"]);
     auto ids=y["motor_ids"].as<std::vector<int>>();auto valid=y["valid"].as<std::vector<bool>>();
     if(ids.size()!=6||valid.size()!=6)throw std::runtime_error("arm identity length");
@@ -66,11 +68,28 @@ class R3Node final:public rclcpp::Node {
     inputs_.ready.arm_feedback_ready=y["feedback_ready"].as<bool>();
     arm_q_=q;arm_dq_=dq;
     inputs_.arm_static_hold=y["static_hold"].as<bool>();
+    // New owner publishes all seven motors. Legacy six-only status cannot pass
+    // the deployment HOME gate; gripper remains excluded from actor tensors.
+    if(y["arm_home_ready"]&&y["arm_home_ready"].as<bool>()) {
+     const auto ids7=y["motor_id"].as<std::vector<int>>();
+     const auto states=y["motor_status"].as<std::vector<int>>();
+     const auto valid7=y["valid7"].as<std::vector<bool>>();
+     const auto q7=y["q"].as<std::vector<float>>(),dq7=y["dq"].as<std::vector<float>>();
+     const auto target7=y["home_target"].as<std::vector<float>>();
+     if(ids7.size()!=7||states.size()!=7||valid7.size()!=7||q7.size()!=7||dq7.size()!=7||target7.size()!=7)
+      throw std::runtime_error("HOME requires seven motor diagnostics");
+     for(size_t i=0;i<7;++i)if(ids7[i]!=int(i+1)||!valid7[i]||states[i]!=1||!std::isfinite(q7[i])||std::abs(q7[i])>home_tolerance_||!std::isfinite(dq7[i])||target7[i]!=0)
+      throw std::runtime_error("HOME motor diagnostics invalid");
+     inputs_.arm_home_ready=y["connected"].as<bool>()&&y["enabled_local"].as<bool>()&&
+      !y["watchdog_tripped"].as<bool>()&&!y["stm32_watchdog_tripped"].as<bool>();
+    }
     if(y["target_valid"].as<bool>()) {
-     arm_target_=Six(y["accepted_target"]);inputs_.target_stamp=TimeNs(y["accepted_ns"].as<int64_t>());
+     arm_target_=Six(y["accepted_target"]);
+     if(inputs_.arm_home_ready)for(float v:arm_target_)if(v!=0)throw std::runtime_error("HOME accepted target must be zero");
+     inputs_.target_stamp=TimeNs(y["accepted_ns"].as<int64_t>());
      inputs_.ready.arm_target_ready=Age(now,inputs_.target_stamp)>=0;
     }
-   }catch(const std::exception& e){arm_error_=e.what();}
+   }catch(const std::exception& e){inputs_.ready.arm_feedback_ready=false;inputs_.ready.arm_target_ready=false;inputs_.arm_static_hold=false;inputs_.arm_home_ready=false;arm_error_=e.what();}
   });
   enable_=create_service<std_srvs::srv::SetBool>("/go2/commissioning/enable_output",[this](const std_srvs::srv::SetBool::Request::SharedPtr req,std_srvs::srv::SetBool::Response::SharedPtr res){
    std::lock_guard lock(mutex_);const auto now=SafetyClock::now();Refresh(now);
@@ -192,12 +211,9 @@ class R3Node final:public rclcpp::Node {
    Refresh(now);SequenceTick(now);
    infer=supervisor_->NeedsPolicy();reset=supervisor_->ConsumePolicyReset();low=lowstate_.snapshot();
    armq=arm_q_;armdq=arm_dq_;target=arm_target_;cmd=supervisor_->command();
-   if(supervisor_->ConsumeArmHoldRequest()) {
-    // Never publish desired targets as accepted. Actual arm hold needs owner ack.
-    std_msgs::msg::String request;request.data="hold_current";
-    if(!arm_hold_pub_)arm_hold_pub_=create_publisher<std_msgs::msg::String>("/rars01/commissioning/hold_request",1);
-    arm_hold_pub_->publish(request);
-   }
+   // Arm lifecycle is independent. Abort/emergency never replaces its HOME
+   // target or issues SDK commands; only consume the historical intent flag.
+   supervisor_->ConsumeArmHoldRequest();
   }
   if(infer) {
    try{
@@ -221,7 +237,9 @@ class R3Node final:public rclcpp::Node {
    <<YAML::Key<<"lowstate_age_s"<<YAML::Value<<lowstate_.AgeMs(now)/1000<<YAML::Key<<"remote_age_s"<<YAML::Value<<remote_->status().remote_age_ms/1000
    <<YAML::Key<<"remote_mask"<<YAML::Value<<remote_->status().button_mask<<YAML::Key<<"remote_buttons"<<YAML::Value<<remote_->status().decoded_buttons
    <<YAML::Key<<"remote_event"<<YAML::Value<<int(last_event_)<<YAML::Key<<"arm_feedback_age_s"<<YAML::Value<<Age(now,inputs_.arm_stamp)
-   <<YAML::Key<<"arm_target_age_s"<<YAML::Value<<Age(now,inputs_.target_stamp)<<YAML::Key<<"arm_ready"<<YAML::Value<<(inputs_.ready.arm_feedback_ready&&inputs_.ready.arm_target_ready)
+   <<YAML::Key<<"arm_target_age_s"<<YAML::Value<<Age(now,inputs_.target_stamp)<<YAML::Key<<"arm_ready"<<YAML::Value<<(inputs_.arm_home_ready&&inputs_.ready.arm_feedback_ready&&inputs_.ready.arm_target_ready&&Age(now,inputs_.arm_stamp)<=supervisor_->profile().arm_timeout_s&&Age(now,inputs_.target_stamp)<=supervisor_->profile().arm_timeout_s)
+   <<YAML::Key<<"arm_home_ready"<<YAML::Value<<(inputs_.arm_home_ready&&Age(now,inputs_.arm_stamp)>=0&&Age(now,inputs_.arm_stamp)<=supervisor_->profile().arm_timeout_s&&Age(now,inputs_.target_stamp)>=0&&Age(now,inputs_.target_stamp)<=supervisor_->profile().arm_timeout_s)
+   <<YAML::Key<<"arm_error"<<YAML::Value<<arm_error_
    <<YAML::Key<<"remote_auto_sequence"<<YAML::Value<<automatic_sequence_
    <<YAML::Key<<"remote_sequence_active"<<YAML::Value<<supervisor_->remote_sequence_active()
    <<YAML::Key<<"remote_sequence_message"<<YAML::Value<<sequence_message_
@@ -238,10 +256,10 @@ class R3Node final:public rclcpp::Node {
  bool sdk_release_pending_=false,automatic_sequence_=true;std::string network_interface_,sdk_helper_,sdk_detail_,sequence_message_;
  bool read_only_=true,pending_manual_=false;std::string output_lock_,arm_error_;
  std::unique_ptr<OutputLease> lease_;std::array<float,6> arm_q_{},arm_dq_{},arm_target_{};
- std::array<double,3> pending_command_{};double pending_duration_=0,last_policy_ms_=0;size_t sent_=0;
+ std::array<double,3> pending_command_{};double pending_duration_=0,last_policy_ms_=0,home_tolerance_=.15;size_t sent_=0;
  SafetyTime pending_stamp_{},last_deadman_{};R3RemoteEvent last_event_=R3RemoteEvent::NONE;
  rclcpp::Publisher<unitree_go::msg::LowCmd>::SharedPtr output_;
- rclcpp::Publisher<std_msgs::msg::String>::SharedPtr status_,arm_hold_pub_;
+ rclcpp::Publisher<std_msgs::msg::String>::SharedPtr status_;
  rclcpp::Subscription<unitree_go::msg::LowState>::SharedPtr low_sub_;
  rclcpp::Subscription<std_msgs::msg::String>::SharedPtr sport_sub_,arm_sub_,stage_sub_,deadman_sub_;
  rclcpp::Service<std_srvs::srv::SetBool>::SharedPtr enable_;

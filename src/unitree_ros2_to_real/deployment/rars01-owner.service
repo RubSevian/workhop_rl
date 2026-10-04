@@ -1,0 +1,24 @@
+[Unit]
+Description=Persistent RARS01 AUTO HOME serial owner
+After=local-fs.target
+
+[Service]
+Type=simple
+User=ruben
+Group=ruben
+SupplementaryGroups=dialout
+EnvironmentFile=/etc/rars01-owner.env
+StateDirectory=rars01-owner
+StateDirectoryMode=0700
+RuntimeDirectory=rars01-owner
+RuntimeDirectoryMode=0700
+ExecStart=/home/ruben/go2_diploma/sim2real/install_r1/unitree_legged_real/share/unitree_legged_real/deployment/run_rars01_owner.sh
+# Hardware faults stay latched in the running process and durable journal.
+# A crashed process also cannot re-enable within the same boot.
+Restart=no
+KillSignal=SIGINT
+TimeoutStopSec=10
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target

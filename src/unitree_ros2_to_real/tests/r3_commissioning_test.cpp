@@ -14,7 +14,7 @@ R3Profile profile(){R3Profile p;p.kp.fill(40);p.kd.fill(1);p.rl_kp.fill(25);p.rl
  p.gate0_verified=p.mapping_verified=p.emergency_validated=p.remote_chords_verified=p.robot_supported=p.lie_down_validated=p.policy_timing_reviewed=true;
  p.emergency_evidence="OFFLINE_MOCK_ONLY";return p;}
 R3Inputs input(double at,SportMode sport=SportMode::RELEASED){R3Inputs in;
- in.ready={true,true,true,true,true,true,true,true,false,true};in.measured_q.fill(.4F);in.arm_static_hold=true;
+ in.ready={true,true,true,true,true,true,true,true,false,true};in.measured_q.fill(.4F);in.arm_static_hold=true;in.arm_home_ready=true;
  in.sport=sport;in.sport_stamp=in.lowstate_stamp=in.remote_stamp=in.arm_stamp=in.target_stamp=t(at);return in;}
 void arm(R3Supervisor& s,double at=0){s.Observe(input(at,SportMode::ACTIVE),t(at));assert(s.state()==R3State::STOCK);assert(s.Takeover(t(at)).success);
  assert(!s.output_enabled());s.Observe(input(at),t(at));assert(s.state()==R3State::SPORT_RELEASE_VERIFIED);assert(s.EnableOutput(true,t(at)).success);}
@@ -103,6 +103,17 @@ void lease(){auto path=std::filesystem::temp_directory_path()/("r3-output-"+std:
  {OutputLease enable_stock(path.string());assert(enable_stock.acquired());OutputLease publishing(path.string());assert(!publishing.acquired());}
  std::filesystem::remove(path);
 }
+void home_readiness_gate_tests(){
+ R3Supervisor blocked(profile());auto in=input(0,SportMode::ACTIVE);in.arm_home_ready=false;
+ blocked.Observe(in,t(0));assert(!blocked.StartRemoteSequence(t(0)).success);
+ assert(blocked.RemoteSequenceNext(t(0))==R3SequenceAction::NONE&&!blocked.output_enabled());
+ R3Supervisor ready(profile());in.arm_home_ready=true;ready.Observe(in,t(0));
+ assert(ready.StartRemoteSequence(t(0)).success);ready.Observe(in,t(0));
+ assert(ready.RemoteSequenceNext(t(0))==R3SequenceAction::RELEASE_SPORT);
+ // Readiness disappears after a chord, before RPC: do not release.
+ R3Supervisor vanished(profile());vanished.Observe(in,t(0));assert(vanished.StartRemoteSequence(t(0)).success);
+ in.arm_home_ready=false;vanished.Observe(in,t(0));assert(vanished.RemoteSequenceNext(t(0))==R3SequenceAction::NONE);
+}
 void automatic_sequence_tests(){
  auto p=profile();R3Supervisor s(p);s.Observe(input(0,SportMode::ACTIVE),t(0));
  assert(s.StartRemoteSequence(t(0)).success);assert(!s.output_enabled());
@@ -133,4 +144,4 @@ void automatic_sequence_tests(){
  R3Supervisor emergency(p);emergency.Observe(input(0,SportMode::ACTIVE),t(0));emergency.StartRemoteSequence(t(0));
  emergency.Emergency(t(0));assert(!emergency.remote_sequence_active());
 }
-int main(){state_tests();gates();remote_tests();lease();automatic_sequence_tests();std::cout<<"PASS R3 synthetic/mocks: measured first HOLD_CURRENT, continuity, RL reset, manual bounds/deadman, abort/lying/stop/stock ordering, critical faults and emergency priority/packet, exclusive output lease; no hardware\n";}
+int main(){state_tests();gates();remote_tests();lease();automatic_sequence_tests();home_readiness_gate_tests();std::cout<<"PASS R3 synthetic/mocks: measured first HOLD_CURRENT, continuity, RL reset, manual bounds/deadman, abort/lying/stop/stock ordering, critical faults and emergency priority/packet, exclusive output lease; no hardware\n";}

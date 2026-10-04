@@ -11,6 +11,7 @@ struct R3Profile {
  std::array<float,12> stand{},kp{},kd{},rl_kp{},rl_kd{};
  std::optional<std::array<float,12>> lie_down;
  std::optional<std::array<float,12>> emergency_kd;
+ bool require_arm_home_ready=true;
  bool policy_timing_reviewed=false;
  bool gate0_verified=false, mapping_verified=false, emergency_validated=false;
  bool remote_chords_verified=false, robot_supported=false, lie_down_validated=false;
@@ -27,7 +28,7 @@ struct R3Inputs {
  std::array<float,12> measured_q{};
  SportMode sport=SportMode::UNKNOWN;
  SafetyTime sport_stamp{},lowstate_stamp{},remote_stamp{},arm_stamp{},target_stamp{};
- bool arm_static_hold=false;
+ bool arm_static_hold=false,arm_home_ready=false;
 };
 struct R3Reply { bool success=false;std::string message; };
 enum class R3SequenceAction { NONE, RELEASE_SPORT, ENABLE_OUTPUT, STAND, RL };
