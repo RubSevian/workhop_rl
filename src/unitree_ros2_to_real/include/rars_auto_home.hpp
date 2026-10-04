@@ -70,6 +70,7 @@ class AutoHomeController {
  AutoHomeStatus status_;
  std::optional<ArmTime> countdown_,enabled_at_,last_read_,next_send_;
  ArmTime next_connect_{};
+ bool have_usable_feedback_=false;
  double age_at_read_s_=0;
 };
 } // namespace sim2real

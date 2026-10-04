@@ -99,12 +99,25 @@ void AutoHomeController::Tick(ArmTime now,bool connect_allowed) {
   status_.enable_attempted=true;
   if(!transport_.Enable()){Fault("enable_failed: "+transport_.Error());return;}
   enabled_at_=now;status_.state=AutoHomeState::HOLD_HOME;next_send_=now;
-  last_read_.reset();status_.feedback_ready=false;status_.arm_home_ready=false;
+  last_read_.reset();have_usable_feedback_=false;status_.feedback_ready=false;status_.arm_home_ready=false;
   // SDK enable can block for its protocol delay. Next callback starts the HOME
   // stream immediately, with readiness false until real feedback arrives.
   return;
  }
- const bool initial_feedback_wait=!last_read_&&Seconds(now,*enabled_at_)<=config_.enable_feedback_grace_s;
+ if(UsableFeedback())have_usable_feedback_=true;
+ const bool initial_feedback_wait=!have_usable_feedback_&&Seconds(now,*enabled_at_)<=config_.enable_feedback_grace_s;
+ // SDK read() returns a USB payload even when motor IDs are still zero. Such
+ // incomplete initial payloads may arrive before CAN replies or the first send.
+ // Do not grant readiness, but permit zero streaming within initial grace.
+ // A reported hardware fault, corrupt valid measurement or wrong nonzero ID
+ // remains fatal immediately, even while waiting for the complete first frame.
+ if(last_read_)for(size_t i=0;i<7;++i){
+  const auto& j=status_.joints;
+  if((j.motor_id[i]!=0&&j.motor_id[i]!=i+1)||
+     (j.valid[i]&&(!std::isfinite(j.position[i])||!std::isfinite(j.velocity[i])||j.error[i]>1))){
+   Fault("motor_feedback_reported_invalid");return;
+  }
+ }
  if(status_.communication.watchdog_tripped||status_.communication.stm32_watchdog_tripped){Fault("runtime_watchdog");return;}
  if(!UsableFeedback()&&!initial_feedback_wait){Fault("runtime_feedback_invalid_stale_or_watchdog");return;}
  // During bounded initial grace, stream HOME even without any feedback. This

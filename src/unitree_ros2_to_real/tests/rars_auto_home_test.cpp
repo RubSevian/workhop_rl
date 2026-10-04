@@ -75,7 +75,8 @@ void readiness(){
  g.Tick(t(0));g.Tick(t(10));g.Tick(t(11.1));assert(g.status().state==AutoHomeState::FAULT_LATCHED&&grace.sends==0);
  Transport fifty;Journal j50;auto c50=config();c50.command_rate_hz=50;AutoHomeController hz50(c50,fifty,j50);start(hz50);
  hz50.Tick(t(10.015));assert(fifty.sends==1);hz50.Tick(t(10.02));assert(fifty.sends==2);
- Transport invalid;invalid.joints.valid[6]=false;Journal ji;AutoHomeController iv(config(),invalid,ji);iv.Tick(t(0));iv.Tick(t(10));iv.Tick(t(10.01));assert(invalid.enables==1&&iv.status().state==AutoHomeState::FAULT_LATCHED);
+ Transport invalid;invalid.joints.valid[6]=false;Journal ji;AutoHomeController iv(config(),invalid,ji);iv.Tick(t(0));iv.Tick(t(10));iv.Tick(t(10.01));assert(invalid.enables==1&&!iv.status().arm_home_ready&&invalid.sends==1);
+ iv.Tick(t(11.01));assert(iv.status().state==AutoHomeState::FAULT_LATCHED);
  // Real STM supplies no feedback until enable/stream: countdown must proceed.
  Transport missing;missing.read_ok=false;Journal jm;AutoHomeController miss(config(),missing,jm);miss.Tick(t(0));miss.Tick(t(9.999));assert(missing.enables==0);
  miss.Tick(t(10));assert(missing.enables==1);miss.Tick(t(10.01));assert(missing.sends==1&&!miss.status().arm_home_ready);
@@ -86,6 +87,28 @@ void readiness(){
  assert(si.status().state==AutoHomeState::FAULT_LATCHED&&!si.status().arm_home_ready&&silent.enables==1);
  const int silent_sends=silent.sends;si.Tick(t(50));assert(silent.sends==silent_sends&&silent.enables==1);
 }
+void incomplete_startup_frame(){
+ // Reproduce real first SDK frame: v2 USB payload exists; no motor CAN IDs yet.
+ Transport tr;tr.joints.motor_id.fill(0);tr.joints.valid.fill(false);tr.joints.position.fill(-12.5F);
+ Journal j;AutoHomeController c(config(),tr,j);c.Tick(t(0));c.Tick(t(10));c.Tick(t(10.01));
+ assert(tr.enables==1&&tr.sends==1&&!c.status().arm_home_ready&&c.status().state==AutoHomeState::HOLD_HOME);
+ tr.joints.motor_id[0]=1;tr.joints.valid[0]=true;tr.joints.position[0]=.02F;c.Tick(t(10.02));
+ assert(tr.sends==2&&!c.status().arm_home_ready);
+ for(size_t i=0;i<7;++i){tr.joints.motor_id[i]=i+1;tr.joints.valid[i]=true;tr.joints.position[i]=.02F;}
+ c.Tick(t(10.03));assert(c.status().arm_home_ready&&tr.enables==1);
+ // Once complete feedback was established, loss of a motor is not startup grace.
+ tr.joints.motor_id[6]=0;tr.joints.valid[6]=false;c.Tick(t(10.04));assert(c.status().state==AutoHomeState::FAULT_LATCHED);
+ Transport forever;forever.joints.motor_id.fill(0);forever.joints.valid.fill(false);Journal jf;AutoHomeController f(config(),forever,jf);
+ f.Tick(t(0));f.Tick(t(10));for(int i=1;i<=110;++i)f.Tick(t(10+i*.01));assert(f.status().state==AutoHomeState::FAULT_LATCHED&&forever.enables==1);
+ // Real fault/nonfinite valid data/wrong ID cannot be hidden by incomplete peers.
+ for(int bad=0;bad<3;++bad){Transport faulty;faulty.joints.motor_id.fill(0);faulty.joints.valid.fill(false);
+  faulty.joints.motor_id[0]=bad==2?7:1;faulty.joints.valid[0]=true;
+  if(bad==0)faulty.joints.error[0]=8;if(bad==1)faulty.joints.position[0]=std::numeric_limits<float>::quiet_NaN();
+  Journal jf2;AutoHomeController fc(config(),faulty,jf2);fc.Tick(t(0));fc.Tick(t(10));
+  if(bad==0)faulty.joints.error[0]=8; // Mock Enable sets normal status.
+  fc.Tick(t(10.01));assert(fc.status().state==AutoHomeState::FAULT_LATCHED&&faulty.sends==0);
+ }
+}
 void journal(){
  auto directory=std::filesystem::temp_directory_path()/("rars-journal-"+std::to_string(getpid()));std::filesystem::create_directory(directory);
  const auto path=(directory/"state").string();
@@ -95,4 +118,4 @@ void journal(){
  {FileAutoHomeJournal fault(path,"boot3");assert(!fault.BlockReason().empty());}
  std::filesystem::remove_all(directory);
 }
-int main(){startup();readiness();journal();std::cout<<"PASS AUTO HOME mock: delay/reconnect, enable once, seven zeros, continuous stream, measured readiness, stale/send/disabled/ID/NaN/watchdogs, persistent fault; no hardware\n";}
+int main(){startup();readiness();incomplete_startup_frame();journal();std::cout<<"PASS AUTO HOME mock: delay/reconnect, enable once, seven zeros, continuous stream, measured readiness, stale/send/disabled/ID/NaN/watchdogs, persistent fault; no hardware\n";}
