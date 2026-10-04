@@ -109,6 +109,18 @@ void incomplete_startup_frame(){
   fc.Tick(t(10.01));assert(fc.status().state==AutoHomeState::FAULT_LATCHED&&faulty.sends==0);
  }
 }
+void external_timer_jitter(){
+ Transport tr;Journal j;AutoHomeController c(config(),tr,j);c.Tick(t(0),true,true);c.Tick(t(10),true,true);
+ for(int i=1;i<=100;++i){const double jitter=i%2?.0002:-.0002;c.Tick(t(10+i*.01+jitter),true,true);}
+ assert(tr.sends==100&&c.status().successful_sends==100&&tr.enables==1&&c.status().arm_home_ready);
+ assert(c.status().last_send_gap_ms>9&&c.status().last_send_gap_ms<11);
+ assert(c.status().max_send_gap_ms<11);
+ const auto count=c.status().successful_sends;tr.send_ok=false;c.Tick(t(11.01),true,true);
+ assert(c.status().successful_sends==count&&c.status().state==AutoHomeState::FAULT_LATCHED);
+ // A delayed external callback sends once, without a catch-up burst.
+ Transport slow;Journal js;AutoHomeController s(config(),slow,js);s.Tick(t(0),true,true);s.Tick(t(10),true,true);
+ s.Tick(t(10.01),true,true);s.Tick(t(10.09),true,true);assert(slow.sends==2);
+}
 void journal(){
  auto directory=std::filesystem::temp_directory_path()/("rars-journal-"+std::to_string(getpid()));std::filesystem::create_directory(directory);
  const auto path=(directory/"state").string();
@@ -118,4 +130,4 @@ void journal(){
  {FileAutoHomeJournal fault(path,"boot3");assert(!fault.BlockReason().empty());}
  std::filesystem::remove_all(directory);
 }
-int main(){startup();readiness();incomplete_startup_frame();journal();std::cout<<"PASS AUTO HOME mock: delay/reconnect, enable once, seven zeros, continuous stream, measured readiness, stale/send/disabled/ID/NaN/watchdogs, persistent fault; no hardware\n";}
+int main(){startup();readiness();incomplete_startup_frame();external_timer_jitter();journal();std::cout<<"PASS AUTO HOME mock: delay/reconnect, enable once, seven zeros, continuous stream, measured readiness, stale/send/disabled/ID/NaN/watchdogs, persistent fault; no hardware\n";}

@@ -84,7 +84,9 @@ class ArmOwner final:public rclcpp::Node {
  }
  private:
  void Poll(){
-  try{home_->Tick(ArmClock::now(),connect_);}catch(const std::exception& e){home_->Fault(std::string("owner_exception: ")+e.what());}
+  // ROS already schedules this callback at ArmConfiguration.command_rate_hz.
+  // A second deadline gate would drop early callbacks under normal jitter.
+  try{home_->Tick(ArmClock::now(),connect_,true);}catch(const std::exception& e){home_->Fault(std::string("owner_exception: ")+e.what());}
   const auto& s=home_->status();
   if(s.state!=last_state_){RCLCPP_INFO(get_logger(),"arm state=%s error=%s",AutoHomeStateName(s.state),s.last_error.c_str());last_state_=s.state;}
   YAML::Emitter e;e<<YAML::Flow<<YAML::BeginMap
@@ -94,6 +96,10 @@ class ArmOwner final:public rclcpp::Node {
    <<YAML::Key<<"enabled_local"<<YAML::Value<<s.communication.enabled
    <<YAML::Key<<"enable_attempted"<<YAML::Value<<s.enable_attempted
    <<YAML::Key<<"command_rate_hz"<<YAML::Value<<home_->config().command_rate_hz
+   <<YAML::Key<<"successful_sends"<<YAML::Value<<s.successful_sends
+   <<YAML::Key<<"first_accepted_ns"<<YAML::Value<<(s.first_accepted_stamp?Ns(*s.first_accepted_stamp):0)
+   <<YAML::Key<<"last_send_gap_ms"<<YAML::Value<<s.last_send_gap_ms
+   <<YAML::Key<<"max_send_gap_ms"<<YAML::Value<<s.max_send_gap_ms
    <<YAML::Key<<"frame_received_ns"<<YAML::Value<<(s.feedback_stamp?Ns(*s.feedback_stamp):0)
    <<YAML::Key<<"common_feedback_age_s"<<YAML::Value<<s.feedback_age_s
    <<YAML::Key<<"feedback_age_s"<<YAML::Value<<s.feedback_age_s

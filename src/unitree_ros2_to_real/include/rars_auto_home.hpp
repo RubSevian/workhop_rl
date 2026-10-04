@@ -53,13 +53,17 @@ struct AutoHomeStatus {
  rars_arm::RarsArm::MotorValues home_error{};
  bool feedback_ready=false,motors_enabled=false,target_fresh=false,arm_home_ready=false,enable_attempted=false;
  double feedback_age_s=-1,target_age_s=-1;
+ uint64_t successful_sends=0;double last_send_gap_ms=0,max_send_gap_ms=0;
+ std::optional<ArmTime> first_accepted_stamp;
  std::optional<ArmTime> feedback_stamp,accepted_stamp;
  std::string last_error;
 };
 class AutoHomeController {
  public:
  AutoHomeController(AutoHomeConfig config,AutoHomeTransport& transport,AutoHomeJournal& journal);
- void Tick(ArmTime now,bool connect_allowed=true);
+ // command_timer_tick is true only for the external configured-rate timer.
+ // Other callers retain the internal rate limiter. Never replay missed slots.
+ void Tick(ArmTime now,bool connect_allowed=true,bool command_timer_tick=false);
  const AutoHomeStatus& status() const {return status_;}
  const AutoHomeConfig& config() const {return config_;}
  void Fault(const std::string& reason);

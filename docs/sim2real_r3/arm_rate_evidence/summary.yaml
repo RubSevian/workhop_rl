@@ -1,0 +1,138 @@
+reason: home_ready_observed_10s
+elapsed_s: 20.90735955100172
+message_count: 2013
+invalid_diagnostics: []
+sport_before:
+  returncode: 0
+  stdout: 'OK: sport_mode status=0 protect=0 (Sport Mode active)
+
+    '
+  stderr: ''
+sport_after:
+  returncode: 0
+  stdout: 'OK: sport_mode status=0 protect=0 (Sport Mode active)
+
+    '
+  stderr: ''
+lowcmd_publishers:
+- node: _CREATED_BY_BARE_DDS_APP_
+  gid: 01106493f8c26ee9500c06c700000e03
+owner_returncode: 0
+last_status:
+  observed_ns: 18446829857931
+  owner_state: HOLD_HOME
+  connected: true
+  enabled_local: true
+  enable_attempted: true
+  command_rate_hz: 100
+  successful_sends: 1010
+  first_accepted_ns: 18436741200089
+  last_send_gap_ms: 9.954289999999999
+  max_send_gap_ms: 11.527635
+  frame_received_ns: 18446820707944
+  common_feedback_age_s: 0.009
+  feedback_age_s: 0.009
+  measured_q:
+  - -0.000190734863
+  - -0.000190734863
+  - -0.000190734863
+  - -0.000190734863
+  - -0.000190734863
+  - -0.000190734863
+  measured_dq:
+  - -0.00244235992
+  - -0.00244235992
+  - 0.00244235992
+  - -0.0073261261
+  - -0.0073261261
+  - 0.0073261261
+  motor_ids:
+  - 1
+  - 2
+  - 3
+  - 4
+  - 5
+  - 6
+  valid:
+  - true
+  - true
+  - true
+  - true
+  - true
+  - true
+  motor_id:
+  - 1
+  - 2
+  - 3
+  - 4
+  - 5
+  - 6
+  - 7
+  motor_status:
+  - 1
+  - 1
+  - 1
+  - 1
+  - 1
+  - 1
+  - 1
+  valid7:
+  - true
+  - true
+  - true
+  - true
+  - true
+  - true
+  - true
+  q:
+  - -0.000190734863
+  - -0.000190734863
+  - -0.000190734863
+  - -0.000190734863
+  - -0.000190734863
+  - -0.000190734863
+  - 0.0036239624
+  dq:
+  - -0.00244235992
+  - -0.00244235992
+  - 0.00244235992
+  - -0.0073261261
+  - -0.0073261261
+  - 0.0073261261
+  - -0.0219783783
+  home_error:
+  - -0.000190734863
+  - -0.000190734863
+  - -0.000190734863
+  - -0.000190734863
+  - -0.000190734863
+  - -0.000190734863
+  - 0.0036239624
+  home_target:
+  - 0
+  - 0
+  - 0
+  - 0
+  - 0
+  - 0
+  - 0
+  feedback_ready: true
+  motors_enabled: true
+  static_hold: true
+  arm_home_ready: true
+  watchdog_armed: true
+  watchdog_tripped: false
+  stm32_watchdog_tripped: false
+  protocol_v2_detected: true
+  per_joint_freshness_proven: false
+  target_age_s: 0
+  target_valid: true
+  last_error: ''
+  accepted_target:
+  - 0
+  - 0
+  - 0
+  - 0
+  - 0
+  - 0
+  accepted_ns: 18446829707944

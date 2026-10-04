@@ -78,7 +78,7 @@ void AutoHomeController::Observe(ArmTime now) {
  status_.target_fresh=status_.accepted_stamp&&status_.target_age_s>=0&&status_.target_age_s<=config_.target_timeout_s;
  status_.arm_home_ready=status_.state==AutoHomeState::HOLD_HOME&&comm.enabled&&status_.feedback_ready&&status_.motors_enabled&&status_.target_fresh&&at_home;
 }
-void AutoHomeController::Tick(ArmTime now,bool connect_allowed) {
+void AutoHomeController::Tick(ArmTime now,bool connect_allowed,bool command_timer_tick) {
  Observe(now);
  if(status_.state==AutoHomeState::FAULT_LATCHED){status_.arm_home_ready=false;status_.target_fresh=false;return;}
  if(!status_.communication.connected){
@@ -126,12 +126,18 @@ void AutoHomeController::Tick(ArmTime now,bool connect_allowed) {
  if(!status_.motors_enabled&&Seconds(now,*enabled_at_)>config_.enable_feedback_grace_s){Fault("motor_disabled_after_enable_grace");return;}
  if(status_.accepted_stamp&&!status_.target_fresh){Fault("home_target_stream_stale");return;}
  if(!status_.accepted_stamp&&Seconds(now,*enabled_at_)>config_.enable_feedback_grace_s){Fault("first_home_target_timeout");return;}
- if(now>=*next_send_){
+ if(command_timer_tick||now>=*next_send_){
   if(!transport_.Send(config_.home_target)){Fault("home_target_send_failed: "+transport_.Error());return;}
-  status_.accepted_stamp=now;
+  if(status_.accepted_stamp){
+   status_.last_send_gap_ms=Seconds(now,*status_.accepted_stamp)*1000;
+   status_.max_send_gap_ms=std::max(status_.max_send_gap_ms,status_.last_send_gap_ms);
+  }
+  if(!status_.first_accepted_stamp)status_.first_accepted_stamp=now;
+  ++status_.successful_sends;status_.accepted_stamp=now;
   const auto period=Duration(1/config_.command_rate_hz);
   // Retain the configured grid, skip missed slots without catch-up bursts.
-  const auto slots=(now-*next_send_)/period+1;*next_send_+=period*slots;
+  if(command_timer_tick)*next_send_=now+period;
+  else {const auto slots=(now-*next_send_)/period+1;*next_send_+=period*slots;}
   status_.target_age_s=0;status_.target_fresh=true;
   // The sample remains measured; a send never substitutes HOME for q/dq.
   bool near=true;for(float error:status_.home_error)near=near&&std::isfinite(error)&&std::abs(error)<=config_.home_tolerance_rad;
