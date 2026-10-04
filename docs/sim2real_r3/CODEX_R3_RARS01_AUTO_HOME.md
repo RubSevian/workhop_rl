@@ -1,5 +1,9 @@
 # CODEX TASK — R3 RARS01 Auto-Home Owner
 
+## Уточнение оператора: feedback после enable (04.10.2026)
+
+Для этой STM motor feedback появляется после enable. До enable нельзя требовать motor feedback для начала startup countdown. Usable startup communication означает успешный SDK connect и работающий receiver. Порядок: connect → 10 с → enable once → немедленный HOME stream → ожидание реального feedback в ограниченном initial grace → HOME readiness. Во время grace readiness false; после timeout fault без повторного enable. LowCmd ног этим уточнением не разрешается.
+
 ## Goal
 
 Implement the real Jetson runtime behavior for RARS01 without modifying `rars_arm_sdk`.

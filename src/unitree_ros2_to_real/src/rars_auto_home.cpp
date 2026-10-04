@@ -89,7 +89,9 @@ void AutoHomeController::Tick(ArmTime now,bool connect_allowed) {
  }
  if(!config_.enabled)return;
  if(!status_.enable_attempted){
-  if(!UsableFeedback()){countdown_.reset();status_.state=AutoHomeState::WAIT_COMMUNICATION;status_.last_error="waiting_valid_seven_motor_communication";return;}
+  // Successful serial/receiver connection is startup communication. This STM
+  // supplies motor feedback only after enable; requiring it here deadlocks boot.
+  if(status_.communication.watchdog_tripped||status_.communication.stm32_watchdog_tripped){Fault("startup_watchdog_reported");return;}
   if(!countdown_)countdown_=now;
   status_.state=AutoHomeState::STARTUP_DELAY;status_.last_error.clear();
   if(Seconds(now,*countdown_)<config_.startup_delay_s)return;
@@ -98,17 +100,15 @@ void AutoHomeController::Tick(ArmTime now,bool connect_allowed) {
   if(!transport_.Enable()){Fault("enable_failed: "+transport_.Error());return;}
   enabled_at_=now;status_.state=AutoHomeState::HOLD_HOME;next_send_=now;
   last_read_.reset();status_.feedback_ready=false;status_.arm_home_ready=false;
-  // SDK enable can block for its protocol delay. Return to read feedback before
-  // the first target, rather than reusing a pre-enable sample after that delay.
+  // SDK enable can block for its protocol delay. Next callback starts the HOME
+  // stream immediately, with readiness false until real feedback arrives.
   return;
  }
- if(!UsableFeedback()){
-  // SDK enable resets receiver statistics. Allow its configured initial grace
-  // only while waiting for the first post-enable frame, never after streaming.
-  if(!status_.accepted_stamp&&!last_read_&&!status_.communication.watchdog_tripped&&
-     !status_.communication.stm32_watchdog_tripped&&Seconds(now,*enabled_at_)<=config_.enable_feedback_grace_s)return;
-  Fault("runtime_feedback_invalid_stale_or_watchdog");return;
- }
+ const bool initial_feedback_wait=!last_read_&&Seconds(now,*enabled_at_)<=config_.enable_feedback_grace_s;
+ if(status_.communication.watchdog_tripped||status_.communication.stm32_watchdog_tripped){Fault("runtime_watchdog");return;}
+ if(!UsableFeedback()&&!initial_feedback_wait){Fault("runtime_feedback_invalid_stale_or_watchdog");return;}
+ // During bounded initial grace, stream HOME even without any feedback. This
+ // matches SDK/GUI: first send arms the feedback watchdog; readiness stays false.
  if(!status_.communication.enabled){Fault("sdk_locally_disabled");return;}
  if(!status_.motors_enabled&&Seconds(now,*enabled_at_)>config_.enable_feedback_grace_s){Fault("motor_disabled_after_enable_grace");return;}
  if(status_.accepted_stamp&&!status_.target_fresh){Fault("home_target_stream_stale");return;}

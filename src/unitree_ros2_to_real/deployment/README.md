@@ -20,7 +20,7 @@ Operator recovery must stop the unit, inspect/correct the fault and safely suppo
 
 SDK destruction on intentional owner shutdown calls its existing best-effort disable. Stopping/restarting the leg controller does not stop this arm service. After runtime faults, actual mechanical behavior depends on the verified STM watchdog and motor firmware.
 
-Communication must include valid feedback from all seven motors before the countdown. If a deployed STM only sends feedback after enable, startup remains WAIT_COMMUNICATION; no fabricated zeros bypass it. After SDK enable resets receiver statistics, the configured initial feedback grace allows waiting for the first new frame without claiming readiness.
+This STM supplies feedback after enable. Countdown starts on a successful SDK serial/receiver connection, without a motor-feedback prerequisite. After 10 s, enable runs once; HOME streaming starts on the next timer callback even while feedback is absent. The existing configured initial feedback grace bounds that startup wait. Readiness remains false until real valid enabled feedback from all seven motors arrives. A missing first frame past grace, a known invalid frame, watchdog trip or stream failure latches fault and stops sends, without re-enable.
 
 ## Versioned workspace helpers
 

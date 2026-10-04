@@ -41,7 +41,7 @@ void startup(){
  delayed.connect_ok=true;waiting.Tick(t(1));waiting.Tick(t(1.01));waiting.Tick(t(11.0));assert(delayed.enables==0);
  waiting.Tick(t(11.01));assert(delayed.enables==1);
  Transport reset;Journal jr;AutoHomeController countdown(config(),reset,jr);countdown.Tick(t(0));
- reset.comm.feedback_received=false;countdown.Tick(t(9));reset.comm.feedback_received=true;countdown.Tick(t(10));
+ reset.comm.connected=false;reset.connect_ok=false;countdown.Tick(t(9));reset.comm.connected=true;countdown.Tick(t(10));
  countdown.Tick(t(19.999));assert(reset.enables==0);countdown.Tick(t(20));assert(reset.enables==1);
  Transport ro;Journal jro;auto disabled=config();disabled.enabled=false;AutoHomeController readonly(disabled,ro,jro);
  readonly.Tick(t(0));readonly.Tick(t(100));assert(ro.enables==0&&ro.sends==0&&!readonly.status().arm_home_ready);
@@ -69,15 +69,22 @@ void readiness(){
  ef.Tick(t(0));ef.Tick(t(10));ef.Tick(t(20));assert(enablefail.enables==1&&ef.status().state==AutoHomeState::FAULT_LATCHED);
  Transport unwritable;Journal jw;jw.writable=false;AutoHomeController uw(config(),unwritable,jw);uw.Tick(t(0));uw.Tick(t(10));assert(unwritable.enables==0);
  Transport postenable;postenable.reset_on_enable=true;Journal jp;AutoHomeController pe(config(),postenable,jp);
- pe.Tick(t(0));pe.Tick(t(10));pe.Tick(t(10.2));assert(pe.status().state==AutoHomeState::HOLD_HOME&&!pe.status().arm_home_ready&&postenable.sends==0);
+ pe.Tick(t(0));pe.Tick(t(10));pe.Tick(t(10.2));assert(pe.status().state==AutoHomeState::HOLD_HOME&&!pe.status().arm_home_ready&&postenable.sends==1);
  postenable.read_ok=true;postenable.comm.feedback_received=true;pe.Tick(t(10.3));assert(pe.status().arm_home_ready&&postenable.enables==1);
  Transport grace;grace.reset_on_enable=true;Journal jg;AutoHomeController g(config(),grace,jg);
  g.Tick(t(0));g.Tick(t(10));g.Tick(t(11.1));assert(g.status().state==AutoHomeState::FAULT_LATCHED&&grace.sends==0);
  Transport fifty;Journal j50;auto c50=config();c50.command_rate_hz=50;AutoHomeController hz50(c50,fifty,j50);start(hz50);
  hz50.Tick(t(10.015));assert(fifty.sends==1);hz50.Tick(t(10.02));assert(fifty.sends==2);
- Transport invalid;invalid.joints.valid[6]=false;Journal ji;AutoHomeController iv(config(),invalid,ji);iv.Tick(t(0));iv.Tick(t(20));assert(invalid.enables==0);
- // No feedback, including gripper, cannot start the countdown.
- Transport missing;missing.read_ok=false;Journal jm;AutoHomeController miss(config(),missing,jm);miss.Tick(t(0));miss.Tick(t(20));assert(missing.enables==0);
+ Transport invalid;invalid.joints.valid[6]=false;Journal ji;AutoHomeController iv(config(),invalid,ji);iv.Tick(t(0));iv.Tick(t(10));iv.Tick(t(10.01));assert(invalid.enables==1&&iv.status().state==AutoHomeState::FAULT_LATCHED);
+ // Real STM supplies no feedback until enable/stream: countdown must proceed.
+ Transport missing;missing.read_ok=false;Journal jm;AutoHomeController miss(config(),missing,jm);miss.Tick(t(0));miss.Tick(t(9.999));assert(missing.enables==0);
+ miss.Tick(t(10));assert(missing.enables==1);miss.Tick(t(10.01));assert(missing.sends==1&&!miss.status().arm_home_ready);
+ miss.Tick(t(10.02));assert(missing.sends==2&&!miss.status().arm_home_ready);
+ missing.read_ok=true;missing.comm.feedback_received=true;miss.Tick(t(10.03));assert(miss.status().arm_home_ready&&missing.enables==1);
+ Transport silent;silent.read_ok=false;Journal jsi;AutoHomeController si(config(),silent,jsi);
+ si.Tick(t(0));si.Tick(t(10));for(int i=1;i<=110;++i)si.Tick(t(10+i*.01));
+ assert(si.status().state==AutoHomeState::FAULT_LATCHED&&!si.status().arm_home_ready&&silent.enables==1);
+ const int silent_sends=silent.sends;si.Tick(t(50));assert(silent.sends==silent_sends&&silent.enables==1);
 }
 void journal(){
  auto directory=std::filesystem::temp_directory_path()/("rars-journal-"+std::to_string(getpid()));std::filesystem::create_directory(directory);

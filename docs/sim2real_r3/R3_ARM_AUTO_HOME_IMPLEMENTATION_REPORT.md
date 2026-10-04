@@ -1,8 +1,10 @@
+> Коррекция 04.10.2026: по уточнению оператора feedback этой STM появляется после enable. Прежняя зависимость countdown от feedback удалена; streaming в initial grace запускается без fabricated measurements. Проверки исправления описаны в R3_AUTO_HOME_ENABLE_ORDER_FIX.md.
+
 # R3 RARS01 AUTO HOME — отчёт реализации
 
 Дата: 04.10.2026. Jetson Orin Nano / aarch64 / ROS 2 Jazzy.
 
-**Реализован отдельный постоянный serial owner: usable communication → 10 с → один SDK enable → непрерывный HOME для всех семи моторов → честный arm_home_ready. Go2 takeover только читает readiness руки. Сборка и все 17 offline-тестов прошли. Физическое удержание HOME пока не проверено.**
+**Реализован отдельный постоянный serial owner: SDK serial/receiver connection → 10 с → один SDK enable → непрерывный HOME для всех семи моторов → честный arm_home_ready. Go2 takeover только читает readiness руки. Сборка и все 17 offline-тестов прошли. Физическое удержание HOME пока не проверено.**
 
 Код реализован по `CODEX_R3_RARS01_AUTO_HOME.md`. Его требование gripper=0 заменяет прежнюю идею захватывать измеренную позицию gripper при старте.
 
@@ -17,7 +19,6 @@ Owner использует только существующие connect/enable/
 ```text
 WAIT_DEVICE
 → подключение с retry (existing port_retry_interval_s, иначе 1 с)
-→ WAIT_COMMUNICATION
 → STARTUP_DELAY: 10 с непрерывно usable feedback
 → SDK enable один раз
 → HOLD_HOME
@@ -27,9 +28,9 @@ runtime fault → FAULT_LATCHED
 
 Standalone owner по умолчанию `read_only=true`, `connect_serial=false`. Подготовленная boot-служба явно выбирает физический профиль `read_only=false`, `connect_serial=true`; deployment config содержит `auto_home.enabled=true`. Это исключает неожиданное enable при обычном диагностическом запуске owner без аргументов.
 
-Задержка начинается после соединения и валидного свежего feedback всех семи expected IDs. Потеря связи/валидности до enable сбрасывает countdown. Отсутствующий USB приводит к безопасным повторным попыткам connect; enable не вызывается. Время кнопки питания Jetson не угадывается.
+Задержка начинается после успешного SDK serial/receiver connection. Motor feedback до enable не требуется: по уточнению оператора эта STM отдаёт его после enable. Потеря соединения до enable сбрасывает countdown. Отсутствующий USB приводит к безопасным повторным попыткам connect; enable не вызывается. Время кнопки питания Jetson не угадывается.
 
-SDK enable содержит свою protocol delay около 200 мс и сброс статистики receiver. Owner после enable ждёт новый feedback; initial feedback grace берётся из existing SDK config, если задан. Во время ожидания readiness false; ни нули вместо измерений, ни фиктивные timestamps не создаются.
+SDK enable содержит свою protocol delay около 200 мс и сброс статистики receiver. Owner после enable сразу запускает HOME stream, одновременно ожидая новый feedback; initial feedback grace берётся из existing SDK config, если задан. Во время ожидания readiness false; ни нули вместо измерений, ни фиктивные timestamps не создаются.
 
 ## HOME и частота потока
 
@@ -57,7 +58,7 @@ Readiness true только когда одновременно:
 - последняя успешная отправка HOME не старше target timeout 0,25 с;
 - абсолютная ошибка каждого из семи measured q относительно HOME ≤ 0,15 рад.
 
-До enable допустим корректный disabled feedback, чтобы communication могла быть проверена без запуска моторов. Это не означает HOME ready. Для enabled motor feedback после enable предусмотрен ограниченный grace; затем отсутствие enabled/normal фиксируется как fault.
+До enable motor feedback может отсутствовать — это не блокирует startup и не является аппаратным диагнозом. Это не означает HOME ready. Для enabled motor feedback после enable предусмотрен ограниченный grace; затем отсутствие enabled/normal фиксируется как fault.
 
 При отсутствии первого feedback q/dq публикуются неизвестными, не fabricated zero. Диагностика содержит owner_state, connected, enabled_local, enable_attempted, command_rate_hz, feedback_age, motor_id[7], motor_status[7], valid7, q[7], dq[7], home_error[7], HOME target, target age/valid, watchdog flags, protocol_v2_detected, arm_home_ready и last_error.
 
@@ -134,7 +135,7 @@ Workspace логи: `build_r3_auto_home_final.log`, `test_r3_auto_home.log`, `sy
 
 ## Что ещё требует физической проверки
 
-1. Приходят ли все семь достоверных feedback до enable на конкретной STM. Если нет — owner останется WAIT_COMMUNICATION; этот precheck не обходится.
+1. После enable + запуска HOME stream должны прийти все семь достоверных feedback в configured grace. До enable feedback для этой STM не требуется. Полнота/свежесть после enable по-прежнему нуждается в физической проверке.
 2. Calibrated zero всех семи моторов, включая физическое закрытое положение gripper, реальные motor IDs/status и HOME tracking.
 3. Фактические 100 Гц, target/feedback ages, SDK/STM watchdog и поведение при пропаже USB/команд. Для protocol v1 отсутствие STM watchdog flag не доказывает проверенную работу watchdog; protocol_v2_detected публикуется отдельно.
 4. Freshness каждого отдельного CAN мотора: `per_joint_freshness_proven=false` сохранён, поскольку common USB frame age не является доказательством индивидуальной CAN freshness.
