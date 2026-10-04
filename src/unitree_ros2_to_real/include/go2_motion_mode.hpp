@@ -22,4 +22,7 @@ Result QuerySportMode(const std::string& network_interface);
 // state by querying the service table again.  No motor command is sent.
 Result ReleaseSportMode(const std::string& network_interface);
 
+// Caller must hold the same output lease as the LowCmd owner, after stop confirmation.
+Result EnableSportMode(const std::string& network_interface);
+
 }  // namespace go2_motion_mode

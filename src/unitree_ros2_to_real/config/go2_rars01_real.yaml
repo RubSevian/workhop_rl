@@ -70,3 +70,30 @@ real_deployment:
   safety:
     startup_disarmed: true
     actuator_output_default: false
+  r3_commissioning:
+    # These confirmations stay false until the corresponding operator gate.
+    gate0_verified: false
+    mapping_imu_verified: false
+    remote_chords_verified: false
+    robot_supported: false
+    policy_timing_reviewed: false
+    lowcmd_period_ms: 2 # SDK go2_low_level example; verify physical cadence separately.
+    hold_current_tolerance_rad: 0.01
+    deadline_burst_limit: 3
+    remote:
+      controlled_abort_chord: [L1, L2, X]
+      emergency_chord: [L1, L2, B]
+    emergency:
+      operator_validated: false
+      evidence: ""
+      motor_kd: null # Never choose damping gains automatically.
+    lie_down:
+      operator_validated: false
+      motor_q: null # Hardware order; operator-verified pose required.
+      duration_s: 8.0
+    manual:
+      max_vx: 0.20
+      max_vy: 0.10
+      max_wz: 0.10
+      max_duration_s: 1.0
+    output_lock: /home/ruben/go2_diploma/sim2real/runtime/go2_lowcmd.lock

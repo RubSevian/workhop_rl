@@ -51,16 +51,20 @@ Result WithRobotStateClient(const std::string& network_interface, Operation oper
   }
 
   auto* factory = unitree::robot::ChannelFactory::Instance();
-  factory->Init(0, network_interface);
+  bool initialized=false;
   try {
-    unitree::robot::go2::RobotStateClient client;
-    client.SetTimeout(5.0F);
-    client.Init();
-    Result result = operation(client);
+    factory->Init(0, network_interface);initialized=true;
+    Result result;
+    {
+      unitree::robot::go2::RobotStateClient client;
+      client.SetTimeout(5.0F);
+      client.Init();
+      result=operation(client);
+    } // DDS clients must be destroyed before releasing their factory.
     factory->Release();
     return result;
   } catch (const std::exception& error) {
-    factory->Release();
+    if(initialized)factory->Release();
     return {false, false, std::string("SDK2 exception: ") + error.what(), sim2real::SportMode::ERROR};
   }
 }
@@ -102,6 +106,24 @@ Result ReleaseSportMode(const std::string& network_interface) {
     }
 
     return Result{false, true, "sport_mode remained active after ServiceSwitch(sport_mode, 0)", sim2real::SportMode::ACTIVE};
+  });
+}
+
+Result EnableSportMode(const std::string& network_interface) {
+  // ServiceSwitch(name,1,status) is documented by the vendored SDK's
+  // example/go2/go2_robot_state_client.cpp. RPC success is not confirmation.
+  return WithRobotStateClient(network_interface, [](auto& client) {
+    Result before=QuerySportModeWithClient(client);
+    if(!before.ok || before.state==sim2real::SportMode::ACTIVE) return before;
+    int32_t status=-1;
+    const int32_t ret=client.ServiceSwitch(kSportModeService,1,status);
+    if(ret!=0) return Result{false,false,"Sport enable RPC failed: "+std::to_string(ret),sim2real::SportMode::ERROR};
+    for(int attempt=0;attempt<15;++attempt) {
+      std::this_thread::sleep_for(std::chrono::milliseconds(200));
+      Result after=QuerySportModeWithClient(client);
+      if(!after.ok || after.state==sim2real::SportMode::ACTIVE) return after;
+    }
+    return Result{false,false,"Sport ACTIVE not observed after enable",sim2real::SportMode::UNKNOWN};
   });
 }
 
