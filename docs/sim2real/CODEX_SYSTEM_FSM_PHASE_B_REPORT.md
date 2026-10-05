@@ -25,3 +25,7 @@ NAV clamp/finite/freshness сохранится. Lie-down target APPROVED; traje
 ## Шаг 2 — профили
 
 Семь строгих launch-профилей и таблица capabilities; неизвестное имя отклоняется. Legacy flags имеют явное отображение. Build PASS; parser/capabilities и frozen differential: 3/3 PASS. Runtime подключается в последующих шагах.
+
+## Шаг 3 — readiness
+
+Разделены HOME для takeover и arm_control_ready для runtime. Navigation/perception/emergency validation — отдельные факты, по умолчанию false. Тест здоровой руки вне HOME и blockers: PASS; build и 4/4 targeted tests PASS.
