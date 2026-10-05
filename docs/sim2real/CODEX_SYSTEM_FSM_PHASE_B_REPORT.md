@@ -37,3 +37,7 @@ R3Supervisor хранит один SystemState (7 значений) и внут�
 ## Шаг 5 — A / capabilities
 
 Startup parser вызывается до загрузки policy и любых физических адаптеров. Legacy launch отображается в immutable profile; конфликт явного profile/flags отклоняется. Services проверяют capabilities/readiness; LEG_SAFETY заканчивает captured hold без stand/RL. Новый A dispatch использует прежний Sport/lease/graph/capture/stand/hold/reset. Build PASS; 7/7 targeted tests PASS, byte-identical A baseline подтверждён. NAV readiness не выводится из cmd_vel.
+
+## Шаг 6 — X
+
+ACTIVE + X закрывает velocity gate и оставляет zero RL до принятого HOME-запроса и свежего подтверждения HOME/settle. Handoff: fresh measured q, первый fixed packet без скачка; lie-down завершается постоянным SYSTEM_HOLD. HOME timeout оставляет RL; invalid/stale/policy fault — central emergency. Lie timeout удерживает последний planned target (после полной интерполяции — approved lie_down_q), output/lease остаются. Dynamics gate false сохраняет zero RL и explicit blocker. Build/8 targeted tests PASS; A differential не изменился. ROS arm IPC подключается в шаге 8, candidate не готов к физическому запуску до завершения wiring.

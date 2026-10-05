@@ -13,7 +13,7 @@ R3Profile profile(){R3Profile p;p.kp.fill(40);p.kd.fill(1);p.rl_kp.fill(25);p.rl
  p.stand.fill(.2F);std::array<float,12> lie;lie.fill(-.3F);p.lie_down=lie;
  std::array<float,12> damping;damping.fill(1.5F);p.emergency_kd=damping;
  p.gate0_verified=p.mapping_verified=p.emergency_validated=p.remote_chords_verified=p.robot_supported=p.lie_down_validated=p.policy_timing_reviewed=true;
- p.emergency_evidence="OFFLINE_MOCK_ONLY";return p;}
+ p.emergency_evidence="OFFLINE_MOCK_ONLY";p.lie_down_timeout_s=12;return p;}
 R3Inputs input(double at,SportMode sport=SportMode::RELEASED){R3Inputs in;
  in.ready={true,true,true,true,true,true,true,true,false,true};in.measured_q.fill(.4F);in.arm_static_hold=true;in.arm_home_ready=true;in.arm_control_ready=true;in.own_output_healthy=true;
  in.sport=sport;in.sport_stamp=in.lowstate_stamp=in.remote_stamp=in.arm_stamp=in.target_stamp=t(at);return in;}
@@ -167,9 +167,8 @@ void automatic_sequence_tests(){
  assert(s.ConsumePolicyReset());assert((s.command()==std::array<double,3>{}));
  assert(s.RemoteSequenceNext(t(10.13))==R3SequenceAction::NONE&&!s.remote_sequence_active());
  assert(s.ControlledAbort(t(10.13)).success);
- assert(s.StartRemoteSequence(t(10.13)).success&&s.state()==R3State::HOLD_CURRENT);
- assert(s.RemoteSequenceNext(t(10.13))==R3SequenceAction::NONE);
- s.Observe(input(10.16),t(10.16));assert(s.RemoteSequenceNext(t(10.16))==R3SequenceAction::STAND);
+ assert(s.NeedsPolicy()&&s.system_state()==SystemState::CONTROLLED_STOP);
+ assert(!s.StartRemoteSequence(t(10.13)).success); // HOME/lie-down completes before A restart
  auto unreviewed=p;unreviewed.policy_timing_reviewed=false;R3Supervisor blocked(unreviewed);
  blocked.Observe(input(0,SportMode::ACTIVE),t(0));assert(!blocked.StartRemoteSequence(t(0)).success);
  assert(!blocked.remote_sequence_active()&&!blocked.output_enabled());
@@ -381,7 +380,8 @@ void real_sequence_and_interruptions(){
  std::array<float,12> stale;stale.fill(.6F);
  assert(!cycle.PolicyResult(*job,stale,2,t(10.125)));
  packet=cycle.Tick(t(10.125));assert(packet&&cycle.AllowsPacket(*packet,t(10.125)));
- for(int i=0;i<12;++i)assert(packet->motor_cmd[i].q==stopped.measured_q[i]&&packet->motor_cmd[i].kp==40&&packet->motor_cmd[i].kd==1);
+ for(int i=0;i<12;++i)assert(packet->motor_cmd[i].q==p.stand[i]&&packet->motor_cmd[i].kp==40&&packet->motor_cmd[i].kd==1);
+ assert(cycle.NeedsPolicy()&&cycle.system_state()==SystemState::CONTROLLED_STOP);
  // Emergency from that hold is exactly passive 0/3, and cannot re-enter RL.
  assert(cycle.Emergency(t(10.125)).success);packet=cycle.Tick(t(10.125));
  assert(packet&&cycle.AllowsPacket(*packet,t(10.125)));
