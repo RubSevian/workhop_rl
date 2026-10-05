@@ -13,7 +13,7 @@ from unitree_go.msg import LowState
 
 assert os.environ.get('ROS_DOMAIN_ID') == '223'
 root = Path(__file__).resolve().parents[1]
-binary = root/'install_r1/unitree_legged_real/lib/unitree_legged_real/go2_r3_commissioning'
+binary = Path(os.environ.get('R3_SMOKE_BINARY', str(root/'install_r1/unitree_legged_real/lib/unitree_legged_real/go2_r3_commissioning')))
 config = Path(os.environ.get('R3_SMOKE_CONFIG_PATH', str(root/'repos/workhop_rl/src/unitree_ros2_to_real/config/go2_rars01_real.yaml')))
 profile_config = yaml.safe_load(config.read_text())
 command = [str(binary), '--ros-args', '-p', 'read_only:=true', '-p', 'enable_actuator_output:=false',
@@ -38,6 +38,9 @@ with (root/'r3_readonly_smoke_node.log').open('w') as log:
         while not status and time.monotonic()<until:
             rclpy.spin_once(node, timeout_sec=.05)
         assert status.get('read_only') is True and status.get('output_enabled') is False, status
+        if 'operation_profile' in status:
+            assert status['operation_profile']=='read_only' and status['capabilities']['leg_output'] is False
+            assert status['state']=='STANDBY' and 'phase' in status and 'legacy_state' in status
         assert status['model_loaded'] and not status['lowcmd_publisher_present'], status
         assert status['remote_test_mode'] is (remote_test and not autonomy), status
         assert status['control_mode']==('autonomy' if autonomy else 'remote_test'),status
@@ -85,6 +88,20 @@ with (root/'r3_readonly_smoke_node.log').open('w') as log:
         assert future.done() and not future.result().success
         assert 'read_only' in future.result().message
         assert node.count_publishers('/lowcmd') == 0
+        if 'operation_profile' in status:
+            from rcl_interfaces.srv import SetParameters
+            from rcl_interfaces.msg import Parameter, ParameterValue, ParameterType
+            changer=node.create_client(SetParameters, '/go2_r3_commissioning/set_parameters')
+            assert changer.wait_for_service(timeout_sec=3)
+            for name, value in [('operation_profile','remote_test'), ('read_only',False), ('motion_commands_enabled',True)]:
+                request=SetParameters.Request()
+                val=ParameterValue()
+                if isinstance(value,bool):val.type=ParameterType.PARAMETER_BOOL;val.bool_value=value
+                else:val.type=ParameterType.PARAMETER_STRING;val.string_value=value
+                request.parameters=[Parameter(name=name,value=val)]
+                changed=changer.call_async(request);rclpy.spin_until_future_complete(node,changed,timeout_sec=3)
+                assert changed.done() and not changed.result().results[0].successful
+            print('PASS immutable profile/legacy parameters refuse runtime upgrade')
         for name in ('request_stand', 'request_rl'):
             c = node.create_client(Trigger, '/go2/commissioning/'+name)
             assert c.wait_for_service(timeout_sec=3)

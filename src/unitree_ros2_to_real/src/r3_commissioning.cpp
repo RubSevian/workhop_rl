@@ -86,8 +86,10 @@ R3Supervisor::R3Supervisor(R3Profile p,OperationProfile operation):profile_(std:
   profile_.lowstate_timeout_s,profile_.remote_timeout_s,profile_.arm_timeout_s,profile_.vx_bound,profile_.vy_bound,
   profile_.wz_bound,profile_.max_command_duration_s,profile_.q_capture_tolerance})
   if(!std::isfinite(v)||v<=0)throw std::invalid_argument("Positive finite commissioning settings required");
- for(double v:{profile_.arm_home_timeout_s,profile_.arm_home_settle_s,profile_.lie_down_timeout_s,profile_.lie_down_tolerance,profile_.lie_down_settle_s})
+ for(double v:{profile_.arm_home_timeout_s,profile_.lie_down_timeout_s,profile_.lie_down_tolerance})
   if(!std::isfinite(v)||v<=0)throw std::invalid_argument("Positive finite controlled-stop criteria required");
+ for(double v:{profile_.arm_home_settle_s,profile_.lie_down_settle_s})
+  if(!std::isfinite(v)||v<0)throw std::invalid_argument("Finite nonnegative optional settle required");
  if(profile_.lie_down_validated&&profile_.lie_down_timeout_s<profile_.lie_down_s)throw std::invalid_argument("Lie timeout before trajectory completes");
  if(profile_.vx_bound>.20||profile_.deadline_burst_limit<1)throw std::invalid_argument("R3 vx bound/valid deadline limit");
  for(float q:profile_.stand)if(!std::isfinite(q)||std::abs(q)>3.5F)throw std::invalid_argument("Stand q outside software contract");
@@ -107,11 +109,19 @@ R3State R3Supervisor::state() const {
 void R3Supervisor::SetPhase(R3State phase){Dispatch(SystemEvent::ADVANCE_PHASE,SafetyTime{},static_cast<SystemPhase>(phase));}
 R3Reply R3Supervisor::Dispatch(SystemEvent e,SafetyTime now,SystemPhase p) {
  if(e==SystemEvent::REQUEST_B)return Emergency(now);
- if(fault_&&e!=SystemEvent::ADVANCE_PHASE&&e!=SystemEvent::INITIALIZE)return Fail("central emergency latched");
+ if(fault_&&e!=SystemEvent::ADVANCE_PHASE&&e!=SystemEvent::INITIALIZE&&e!=SystemEvent::DISABLE_OUTPUT&&e!=SystemEvent::OUTPUT_STOPPED)return Fail("central emergency latched");
  switch(e){
  case SystemEvent::INITIALIZE:if(system_state_!=SystemState::INIT)return Fail("already initialized");system_state_=SystemState::STANDBY;phase_=SystemPhase::DISARMED;return {true,"initialized"};
  case SystemEvent::REQUEST_A:return StartRemoteSequence(now);
  case SystemEvent::REQUEST_X:return ControlledAbort(now);
+ case SystemEvent::REQUEST_HOLD:return RequestHold(now);
+ case SystemEvent::REQUEST_STAND:return RequestStand(now);
+ case SystemEvent::REQUEST_RL:return RequestRl(now);
+ case SystemEvent::REQUEST_LIE_DOWN:return RequestLieDown(now);
+ case SystemEvent::ENABLE_OUTPUT:return EnableOutput(true,now);
+ case SystemEvent::DISABLE_OUTPUT:return EnableOutput(false,now);
+ case SystemEvent::RETURN_TO_STOCK:return RequestReturnToStock(now);
+ case SystemEvent::OUTPUT_STOPPED:ConfirmOutputStopped();return {true,"output stop confirmed"};
  case SystemEvent::CRITICAL_FAULT:Fault("critical_control_fault",now);return {true,"fault latched"};
  case SystemEvent::ADVANCE_PHASE:
   phase_=p;
@@ -209,7 +219,7 @@ std::vector<std::string> R3Supervisor::RemoteSequenceBlockers(SafetyTime now) co
  for(const auto& blocker:r.TakeoverBlockers(capabilities_))if(std::find(b.begin(),b.end(),blocker)==b.end())b.push_back(blocker);
  if(!seen_||(inputs_.sport!=SportMode::ACTIVE&&inputs_.sport!=SportMode::RELEASED)||
     !Fresh(now,inputs_.sport_stamp,profile_.sport_timeout_s))b.emplace_back("sport_state_not_fresh_known");
- if(!profile_.policy_timing_reviewed)b.emplace_back("policy_timing_not_reviewed");
+ if(capabilities_.allow_rl&&!profile_.policy_timing_reviewed)b.emplace_back("policy_timing_not_reviewed");
  return b;
 }
 void R3Supervisor::CancelRemoteSequence(){remote_sequence_=false;release_requested_=false;sequence_hold_started_=false;}
@@ -293,6 +303,7 @@ R3Reply R3Supervisor::RequestLieDown(SafetyTime now) {
 R3Reply R3Supervisor::ControlledAbort(SafetyTime now) {
  CancelRemoteSequence();
  if(!IsActive()||fault_)return Fail("abort requires active custom mode; use emergency for fault");
+ if(capabilities_.takeover_limit==TakeoverLimit::HOLD_CURRENT)return RequestHold(now);
  if(system_state_==SystemState::CONTROLLED_STOP)return {true,"controlled stop already requested"};
  if(system_state_==SystemState::ACTIVE) {
   ++orchestration_generation_;InvalidatePolicyWork();Zero();stop_started_=now;arm_home_accepted_=false;home_settling_=lie_reached_=false;
@@ -436,8 +447,8 @@ std::optional<unitree_go::msg::LowCmd> R3Supervisor::Tick(SafetyTime now) {
  }
  if(system_state_==SystemState::CONTROLLED_STOP&&NeedsPolicy()) {
   const bool home=arm_home_accepted_&&inputs_.arm_home_ready&&inputs_.arm_stamp>=stop_started_&&inputs_.target_stamp>=stop_started_;
-  if(home&&profile_.lie_down&&profile_.lie_down_validated) {
-   if(!home_settling_){home_settling_=true;home_settle_started_=now;Dispatch(SystemEvent::ADVANCE_PHASE,now,SystemPhase::ARM_HOME_SETTLE);}
+  if(home&&LieDownTargetApproved()&&profile_.lie_down_validated) {
+   if(!home_settling_){stop_blocker_.clear();home_settling_=true;home_settle_started_=now;Dispatch(SystemEvent::ADVANCE_PHASE,now,SystemPhase::ARM_HOME_SETTLE);}
    if(std::chrono::duration<double>(now-home_settle_started_).count()>=profile_.arm_home_settle_s) {
     if(!Fresh(now,inputs_.lowstate_stamp,.04)){Fault("pd_handoff_lowstate_stale",now);return Tick(now);}
     Capture(now);Zero();reset_policy_=false;stop_blocker_.clear();
@@ -446,8 +457,8 @@ std::optional<unitree_go::msg::LowCmd> R3Supervisor::Tick(SafetyTime now) {
    }
   }else {
    home_settling_=false;
-   if(home&&(!profile_.lie_down||!profile_.lie_down_validated)) {
-    stop_blocker_="lie_down_dynamics_not_commissioned";Dispatch(SystemEvent::ADVANCE_PHASE,now,SystemPhase::ARM_HOME_BLOCKED);
+   if(home&&(!LieDownTargetApproved()||!profile_.lie_down_validated)) {
+    stop_blocker_=LieDownTargetApproved()?"lie_down_dynamics_not_commissioned":"lie_down_target_not_approved";Dispatch(SystemEvent::ADVANCE_PHASE,now,SystemPhase::ARM_HOME_BLOCKED);
    }else if(std::chrono::duration<double>(now-stop_started_).count()>=profile_.arm_home_timeout_s) {
     stop_blocker_="arm_home_timeout";Dispatch(SystemEvent::ADVANCE_PHASE,now,SystemPhase::ARM_HOME_BLOCKED);
    }else Dispatch(SystemEvent::ADVANCE_PHASE,now,SystemPhase::ARM_RETURN_HOME);

@@ -25,19 +25,19 @@ class R3Node final:public rclcpp::Node {
  public:
  R3Node():Node("go2_r3_commissioning") {
   at::set_num_threads(1);at::set_num_interop_threads(1);
-  const auto config=declare_parameter<std::string>("config_path","");
-  const auto model=declare_parameter<std::string>("model_path","");
   rcl_interfaces::msg::ParameterDescriptor immutable;immutable.read_only=true;
+  const auto config=declare_parameter<std::string>("config_path","",immutable);
+  const auto model=declare_parameter<std::string>("model_path","",immutable);
   const auto profile_name=declare_parameter<std::string>("operation_profile","",immutable);
   std::optional<OperationProfile> explicit_profile;
   if(!profile_name.empty())explicit_profile=ParseOperationProfile(profile_name);
-  read_only_=declare_parameter<bool>("read_only",explicit_profile?!ResolveOperationCapabilities(*explicit_profile).physical_leg_output:true);
-  automatic_sequence_=declare_parameter<bool>("remote_auto_sequence",true);
-  const bool legacy_remote=declare_parameter<bool>("remote_test_mode",false);
-  control_mode_=declare_parameter<std::string>("control_mode","");
+  read_only_=declare_parameter<bool>("read_only",explicit_profile?!ResolveOperationCapabilities(*explicit_profile).physical_leg_output:true,immutable);
+  automatic_sequence_=declare_parameter<bool>("remote_auto_sequence",true,immutable);
+  const bool legacy_remote=declare_parameter<bool>("remote_test_mode",false,immutable);
+  control_mode_=declare_parameter<std::string>("control_mode","",immutable);
   if(control_mode_.empty())control_mode_=explicit_profile&&ResolveOperationCapabilities(*explicit_profile).command_source==CommandSource::NAVIGATION?"autonomy":"remote_test";
   if(control_mode_!="remote_test"&&control_mode_!="autonomy")throw std::runtime_error("control_mode must be remote_test or autonomy");
-  motion_commands_enabled_=declare_parameter<bool>("motion_commands_enabled",explicit_profile?ResolveOperationCapabilities(*explicit_profile).allow_nonzero_velocity:legacy_remote);
+  motion_commands_enabled_=declare_parameter<bool>("motion_commands_enabled",explicit_profile?ResolveOperationCapabilities(*explicit_profile).allow_nonzero_velocity:legacy_remote,immutable);
   const auto operation=explicit_profile.value_or(LegacyOperationProfile(read_only_,control_mode_,motion_commands_enabled_));
   const auto capabilities=ResolveOperationCapabilities(operation);
   if(explicit_profile) {
@@ -47,9 +47,9 @@ class R3Node final:public rclcpp::Node {
       (legacy_remote&&capabilities.command_source!=CommandSource::REMOTE))throw std::runtime_error("Legacy flags conflict with immutable operation_profile");
   }
   remote_test_mode_=control_mode_=="remote_test"&&motion_commands_enabled_;
-  network_interface_=declare_parameter<std::string>("network_interface","");
+  network_interface_=declare_parameter<std::string>("network_interface","",immutable);
   sdk_helper_=(std::filesystem::read_symlink("/proc/self/exe").parent_path()/"go2_mode_switch").string();
-  if(declare_parameter<bool>("enable_actuator_output",false))throw std::runtime_error("startup output must be false; use explicit service gate");
+  if(declare_parameter<bool>("enable_actuator_output",false,immutable))throw std::runtime_error("startup output must be false; use explicit service gate");
   core_.Load(config,model);const auto y=YAML::LoadFile(config),d=y["real_deployment"],r=d["r3_commissioning"];
   // Warm TorchScript before any subscriptions, output publisher or takeover.
   // Discard all warm-up targets; the real RL entry resets history from feedback.
@@ -79,6 +79,13 @@ class R3Node final:public rclcpp::Node {
   sport_sub_=create_subscription<std_msgs::msg::String>("/go2/commissioning/sport_observation",10,[this](std_msgs::msg::String::ConstSharedPtr m){
    std::lock_guard lock(mutex_);try{auto y=YAML::Load(m->data);inputs_.sport=ParseSportMode(y["state"].as<std::string>());inputs_.sport_stamp=TimeNs(y["observed_ns"].as<int64_t>());}
    catch(...){inputs_.sport=SportMode::ERROR;inputs_.sport_stamp=SafetyTime{};}
+  });
+  mission_readiness_sub_=create_subscription<std_msgs::msg::String>("/go2/mission/readiness",10,[this](std_msgs::msg::String::ConstSharedPtr message){
+   std::lock_guard lock(mutex_);mission_navigation_ready_=mission_perception_ready_=false;mission_session_.clear();
+   try{auto y=YAML::Load(message->data);mission_readiness_stamp_=TimeNs(y["observed_ns"].as<int64_t>());mission_session_=y["session_id"].as<std::string>();
+    if(mission_session_.empty())throw std::runtime_error("mission adapter session required");
+    mission_navigation_ready_=y["navigation_ready"].as<bool>();mission_perception_ready_=y["perception_ready"].as<bool>();
+   }catch(...){mission_readiness_stamp_={};}
   });
   arm_home_client_=create_client<std_srvs::srv::Trigger>("/rars01/control/return_home");
   arm_emergency_client_=create_client<std_srvs::srv::Trigger>("/rars01/control/emergency_disable");
@@ -139,19 +146,19 @@ class R3Node final:public rclcpp::Node {
    supervisor_->CancelRemoteSequence();
    const auto result=SetOutput(req->data,now);res->success=result.success;res->message=result.message;
   });
-  Trigger("request_hold",[this](auto now){return supervisor_->RequestHold(now);});
-  Trigger("request_stand",[this](auto now){return supervisor_->RequestStand(now);});
-  Trigger("request_rl",[this](auto now){return supervisor_->RequestRl(now);});
-  Trigger("request_lie_down",[this](auto now){return supervisor_->RequestLieDown(now);});
-  Trigger("controlled_abort",[this](auto now){return supervisor_->ControlledAbort(now);});
-  Trigger("emergency_damp",[this](auto now){return supervisor_->Emergency(now);});
-  Trigger("request_return_to_stock",[this](auto now){return supervisor_->RequestReturnToStock(now);});
+  Trigger("request_hold",[this](auto now){return supervisor_->Dispatch(SystemEvent::REQUEST_HOLD,now);});
+  Trigger("request_stand",[this](auto now){return supervisor_->Dispatch(SystemEvent::REQUEST_STAND,now);});
+  Trigger("request_rl",[this](auto now){return supervisor_->Dispatch(SystemEvent::REQUEST_RL,now);});
+  Trigger("request_lie_down",[this](auto now){return supervisor_->Dispatch(SystemEvent::REQUEST_LIE_DOWN,now);});
+  Trigger("controlled_abort",[this](auto now){return supervisor_->Dispatch(SystemEvent::REQUEST_X,now);});
+  Trigger("emergency_damp",[this](auto now){return supervisor_->Dispatch(SystemEvent::REQUEST_B,now);});
+  Trigger("request_return_to_stock",[this](auto now){return supervisor_->Dispatch(SystemEvent::RETURN_TO_STOCK,now);});
   manual_=create_service<std_srvs::srv::Trigger>("/go2/commissioning/manual_step",[](std_srvs::srv::Trigger::Request::SharedPtr, std_srvs::srv::Trigger::Response::SharedPtr res){
    res->success=false;res->message="use selected remote_test/autonomy command source";
   });
   nav_sub_=create_subscription<geometry_msgs::msg::TwistStamped>("/cmd_vel",rclcpp::QoS(1),[this](geometry_msgs::msg::TwistStamped::ConstSharedPtr m){
    std::lock_guard lock(mutex_);
-   if(control_mode_!="autonomy"||!motion_commands_enabled_)return;
+   if(control_mode_!="autonomy"||!motion_commands_enabled_||supervisor_->system_state()==SystemState::CONTROLLED_STOP||supervisor_->fault_latched())return;
    const std::array<double,3> requested{m->twist.linear.x,m->twist.linear.y,m->twist.angular.z};
    navigation_valid_=false;navigation_command_={};
    if(!std::all_of(requested.begin(),requested.end(),[](double v){return std::isfinite(v);})||
@@ -193,7 +200,7 @@ class R3Node final:public rclcpp::Node {
   const auto event=remote_->Poll(now);Refresh(now);
   switch(event) {
    case R3RemoteEvent::TAKEOVER: {
-    const auto reply=(!read_only_&&automatic_sequence_)?supervisor_->Dispatch(SystemEvent::REQUEST_A,now):supervisor_->Takeover(now);
+    const auto reply=(supervisor_->operation_profile()==OperationProfile::ARM_TEST||(!read_only_&&automatic_sequence_))?supervisor_->Dispatch(SystemEvent::REQUEST_A,now):supervisor_->Takeover(now);
     sequence_message_=reply.message;break;
    }
    case R3RemoteEvent::CONTROLLED_ABORT:supervisor_->Dispatch(SystemEvent::REQUEST_X,now);break;
@@ -210,12 +217,14 @@ class R3Node final:public rclcpp::Node {
  }
  // Called under mutex_; log changes, never every 2ms output tick.
  void TraceState(SafetyTime now) {
-  const auto state=supervisor_->state();const auto& fault=supervisor_->last_fault();
+  const auto state=supervisor_->phase();const auto& fault=supervisor_->last_fault();
   if(traced_state_&&*traced_state_==state&&traced_fault_==fault&&traced_latched_==supervisor_->fault_latched())return;
   traced_state_=state;traced_fault_=fault;traced_latched_=supervisor_->fault_latched();
   const auto errors=StandErrors();const auto worst=std::max_element(errors.begin(),errors.end());
   YAML::Emitter e;e<<YAML::Flow<<YAML::BeginMap
-   <<YAML::Key<<"state"<<YAML::Value<<R3StateName(state)
+   <<YAML::Key<<"state"<<YAML::Value<<SystemStateName(supervisor_->system_state())
+   <<YAML::Key<<"phase"<<YAML::Value<<SystemPhaseName(state)
+   <<YAML::Key<<"legacy_state"<<YAML::Value<<R3StateName(supervisor_->state())
    <<YAML::Key<<"fault"<<YAML::Value<<fault
    <<YAML::Key<<"fault_latched"<<YAML::Value<<traced_latched_
    <<YAML::Key<<"sent_packets"<<YAML::Value<<sent_
@@ -237,7 +246,7 @@ class R3Node final:public rclcpp::Node {
   if(enable&&read_only_)return {false,"read_only=true: physical output not available"};
   if(enable&&count_publishers("/lowcmd")!=0)return {false,"existing LowCmd publisher"};
   if(enable&&!lease_){lease_=std::make_unique<OutputLease>(output_lock_);if(!lease_->acquired()){lease_.reset();return {false,"output lease unavailable"};}}
-  const auto result=supervisor_->EnableOutput(enable,now);
+  const auto result=supervisor_->Dispatch(enable?SystemEvent::ENABLE_OUTPUT:SystemEvent::DISABLE_OUTPUT,now);
   if(enable&&result.success){output_=create_publisher<unitree_go::msg::LowCmd>("/lowcmd",rclcpp::QoS(1));}
   else if(!enable)StopPublisher();
   else if(!sdk_release_pending_)lease_.reset();
@@ -282,8 +291,8 @@ class R3Node final:public rclcpp::Node {
     if(result.success){lowcmd_wait_->Reset();sequence_message_="LowCmd discovery clear; output enabled";}
     break;
    }
-   case R3SequenceAction::STAND:result=supervisor_->RequestStand(now);break;
-   case R3SequenceAction::RL:result=supervisor_->RequestRl(now);break;
+   case R3SequenceAction::STAND:result=supervisor_->Dispatch(SystemEvent::REQUEST_STAND,now);break;
+   case R3SequenceAction::RL:result=supervisor_->Dispatch(SystemEvent::REQUEST_RL,now);break;
    default:break;
   }
   if(!result.success){lowcmd_wait_->Reset();sequence_message_=result.message;supervisor_->Fault("remote_sequence_failed: "+result.message,now);}
@@ -337,10 +346,13 @@ class R3Node final:public rclcpp::Node {
  }
  void Refresh(SafetyTime now) {
   inputs_.ready.lowstate_fresh=lowstate_.Fresh(now);inputs_.ready.remote_fresh=remote_->status().remote_valid;
+  const bool mission_fresh=!mission_session_.empty()&&Age(now,mission_readiness_stamp_)>=0&&Age(now,mission_readiness_stamp_)<=.5;
+  inputs_.navigation_ready=mission_fresh&&mission_navigation_ready_&&nav_cancel_client_->service_is_ready();
+  inputs_.perception_ready=mission_fresh&&mission_perception_ready_&&manipulation_cancel_client_->service_is_ready();
   inputs_.own_output_healthy=output_&&lease_&&lease_->acquired()&&count_publishers("/lowcmd")==1;
   supervisor_->Observe(inputs_,now);supervisor_->ConfirmStockObserved(now);
  }
- void StopPublisher(){supervisor_->EnableOutput(false,SafetyClock::now());output_.reset();if(!sdk_release_pending_)lease_.reset();supervisor_->ConfirmOutputStopped();}
+ void StopPublisher(){supervisor_->Dispatch(SystemEvent::DISABLE_OUTPUT,SafetyClock::now());output_.reset();if(!sdk_release_pending_)lease_.reset();supervisor_->Dispatch(SystemEvent::OUTPUT_STOPPED,SafetyClock::now());}
  void PolicyTick() {
   std::array<float,6> armq,armdq,target;LowStateSnapshot low;std::array<double,3> cmd{};bool infer=false,reset=false;
   std::optional<PolicyTicket> ticket;
@@ -349,7 +361,7 @@ class R3Node final:public rclcpp::Node {
    SdkTick(now);
    Refresh(now);SequenceTick(now);
    remote_test_requested_=RemoteStickCommand(remote_->status(),supervisor_->profile());
-   if(!read_only_&&supervisor_->NeedsPolicy()) {
+   if(!read_only_&&supervisor_->system_state()==SystemState::ACTIVE&&supervisor_->NeedsPolicy()) {
     std::array<double,3> selected{};
     if(motion_commands_enabled_) {
      if(control_mode_=="remote_test")selected=remote_test_requested_;
@@ -382,7 +394,9 @@ class R3Node final:public rclcpp::Node {
   TraceState(now);
   const auto stand_errors=StandErrors();const auto worst_stand=std::max_element(stand_errors.begin(),stand_errors.end());
   const auto blockers=supervisor_->Blockers(now);YAML::Emitter e;
-  e<<YAML::Flow<<YAML::BeginMap<<YAML::Key<<"state"<<YAML::Value<<R3StateName(supervisor_->state())
+  e<<YAML::Flow<<YAML::BeginMap<<YAML::Key<<"state"<<YAML::Value<<SystemStateName(supervisor_->system_state())
+   <<YAML::Key<<"phase"<<YAML::Value<<SystemPhaseName(supervisor_->phase())
+   <<YAML::Key<<"legacy_state"<<YAML::Value<<R3StateName(supervisor_->state())
    <<YAML::Key<<"read_only"<<YAML::Value<<read_only_<<YAML::Key<<"output_enabled"<<YAML::Value<<supervisor_->output_enabled()
    <<YAML::Key<<"lowcmd_publisher_present"<<YAML::Value<<bool(output_)<<YAML::Key<<"sent_packets"<<YAML::Value<<sent_
    <<YAML::Key<<"sport_state"<<YAML::Value<<SportModeName(inputs_.sport)<<YAML::Key<<"sport_age_s"<<YAML::Value<<Age(now,inputs_.sport_stamp)
@@ -399,6 +413,29 @@ class R3Node final:public rclcpp::Node {
    <<YAML::Key<<"motion_command"<<YAML::Value<<std::vector<double>(supervisor_->command().begin(),supervisor_->command().end())
    <<YAML::Key<<"arm_target_age_s"<<YAML::Value<<Age(now,inputs_.target_stamp)<<YAML::Key<<"arm_ready"<<YAML::Value<<(inputs_.arm_home_ready&&inputs_.ready.arm_feedback_ready&&inputs_.ready.arm_target_ready&&Age(now,inputs_.arm_stamp)<=supervisor_->profile().arm_timeout_s&&Age(now,inputs_.target_stamp)<=supervisor_->profile().arm_timeout_s)
    <<YAML::Key<<"arm_home_ready"<<YAML::Value<<(inputs_.arm_home_ready&&Age(now,inputs_.arm_stamp)>=0&&Age(now,inputs_.arm_stamp)<=supervisor_->profile().arm_timeout_s&&Age(now,inputs_.target_stamp)>=0&&Age(now,inputs_.target_stamp)<=supervisor_->profile().arm_timeout_s)
+   <<YAML::Key<<"arm_control_ready"<<YAML::Value<<(inputs_.arm_control_ready&&Age(now,inputs_.arm_stamp)>=0&&Age(now,inputs_.arm_stamp)<=supervisor_->profile().arm_timeout_s&&Age(now,inputs_.target_stamp)>=0&&Age(now,inputs_.target_stamp)<=supervisor_->profile().arm_timeout_s)
+   <<YAML::Key<<"operation_profile"<<YAML::Value<<OperationProfileName(supervisor_->operation_profile())
+   <<YAML::Key<<"command_source"<<YAML::Value<<CommandSourceName(supervisor_->capabilities().command_source)
+   <<YAML::Key<<"capabilities"<<YAML::Value<<YAML::BeginMap
+     <<YAML::Key<<"leg_output"<<YAML::Value<<supervisor_->capabilities().physical_leg_output
+     <<YAML::Key<<"sport_release"<<YAML::Value<<supervisor_->capabilities().allow_sport_release
+     <<YAML::Key<<"rl"<<YAML::Value<<supervisor_->capabilities().allow_rl
+     <<YAML::Key<<"nonzero_velocity"<<YAML::Value<<supervisor_->capabilities().allow_nonzero_velocity
+     <<YAML::Key<<"arm_motion"<<YAML::Value<<supervisor_->capabilities().allow_arm_motion<<YAML::EndMap
+   <<YAML::Key<<"own_output_healthy"<<YAML::Value<<inputs_.own_output_healthy
+   <<YAML::Key<<"navigation_ready"<<YAML::Value<<inputs_.navigation_ready
+   <<YAML::Key<<"perception_ready"<<YAML::Value<<inputs_.perception_ready
+   <<YAML::Key<<"arm_emergency_validated"<<YAML::Value<<inputs_.arm_emergency_validated
+   <<YAML::Key<<"stop_blocker"<<YAML::Value<<supervisor_->stop_blocker()
+   <<YAML::Key<<"arm_home_port"<<YAML::Value<<home_port_status_
+   <<YAML::Key<<"arm_emergency_port"<<YAML::Value<<emergency_port_status_
+   <<YAML::Key<<"navigation_cancel_port"<<YAML::Value<<nav_cancel_status_
+   <<YAML::Key<<"manipulation_cancel_port"<<YAML::Value<<manipulation_cancel_status_
+   <<YAML::Key<<"orchestration_generation"<<YAML::Value<<supervisor_->orchestration_generation()
+   <<YAML::Key<<"fixed_target_motor_q"<<YAML::Value<<std::vector<float>(supervisor_->fixed_target().begin(),supervisor_->fixed_target().end())
+   <<YAML::Key<<"lie_down_target_approved"<<YAML::Value<<supervisor_->LieDownTargetApproved()
+   <<YAML::Key<<"lie_down_dynamics_validated"<<YAML::Value<<supervisor_->profile().lie_down_validated
+   <<YAML::Key<<"critical_control_fault"<<YAML::Value<<(supervisor_->fault_latched()&&supervisor_->last_fault()!="operator_emergency")
    <<YAML::Key<<"arm_error"<<YAML::Value<<arm_error_
    <<YAML::Key<<"measured_motor_q"<<YAML::Value<<std::vector<float>(inputs_.measured_q.begin(),inputs_.measured_q.end())
    <<YAML::Key<<"stand_target_motor_q"<<YAML::Value<<std::vector<float>(supervisor_->profile().stand.begin(),supervisor_->profile().stand.end())
@@ -424,7 +461,7 @@ class R3Node final:public rclcpp::Node {
   std_msgs::msg::String status;status.data=e.c_str();status_->publish(status);
  }
  std::mutex mutex_;RealControllerCore core_;LowStateReader lowstate_;
- std::optional<R3State> traced_state_;std::string traced_fault_;bool traced_latched_=false;
+ std::optional<SystemPhase> traced_state_;std::string traced_fault_;bool traced_latched_=false;
  std::unique_ptr<R3Supervisor> supervisor_;std::unique_ptr<R3RemoteCommands> remote_;R3Inputs inputs_;
  std::future<ModeProcessResult> sdk_future_;SafetyTime sdk_started_{},next_sdk_query_{};
  bool sdk_release_pending_=false,automatic_sequence_=true;std::string network_interface_,sdk_helper_,sdk_detail_,sequence_message_;
@@ -437,7 +474,8 @@ class R3Node final:public rclcpp::Node {
  rclcpp::Publisher<unitree_go::msg::LowCmd>::SharedPtr output_;
  rclcpp::Publisher<std_msgs::msg::String>::SharedPtr status_;
  rclcpp::Subscription<unitree_go::msg::LowState>::SharedPtr low_sub_;
- rclcpp::Subscription<std_msgs::msg::String>::SharedPtr sport_sub_,arm_sub_;
+ rclcpp::Subscription<std_msgs::msg::String>::SharedPtr sport_sub_,arm_sub_,mission_readiness_sub_;
+ bool mission_navigation_ready_=false,mission_perception_ready_=false;SafetyTime mission_readiness_stamp_{};std::string mission_session_;
  rclcpp::Subscription<geometry_msgs::msg::TwistStamped>::SharedPtr nav_sub_;
  rclcpp::Service<std_srvs::srv::SetBool>::SharedPtr enable_;
  rclcpp::Service<std_srvs::srv::Trigger>::SharedPtr manual_;

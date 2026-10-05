@@ -55,3 +55,9 @@ B защёлкивает EMERGENCY_FAULT даже до output; при eligibilit
 ## Шаг 9 — runtime HOME blocker
 
 ACTIVE использует arm_control_ready + прежние реальные freshness/target checks; HOME/static_hold остаются обязательны для takeover и PD/SYSTEM_HOLD. Away-HOME при healthy control не fault, в том числе FULL_MISSION fake fixture. Контрольная потеря health всё ещё central emergency. Build и 12/12 targeted tests PASS, A oracle PASS.
+
+## Шаг 10 — status / launch / config
+
+Статус state теперь global (7 состояний), phase — internal, legacy_state — compatibility projection. Добавлены effective profile/capabilities, control readiness, ports/blockers, generation и target. Все launch capability/config flags имеют read-only descriptors; OpaqueFunction не подставляет конфликтующие legacy defaults. Maintenance services и executor actions проходят Dispatch.
+
+Approved target записан в production и operator trial copies. Dynamics остаются false; arm emergency validation false. Optional settle принимает 0; чужой lie target не выдаётся за approved. README обновлён для candidate install_fsm и реальных ограничений NAV/FULL. Build/15 targeted tests PASS. Launch test первоначально пытался писать ROS logs вне sandbox; log directory перенесён в temporary writable directory, повтор PASS.

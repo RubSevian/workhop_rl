@@ -21,7 +21,8 @@ if r['lie_down']['operator_validated']:
     assert all(math.isfinite(x) and abs(x)<=3.5 for x in r['lie_down']['motor_q'])
 launch=(p/'launch/go2_rars01_r3_commissioning.launch.py').read_text()
 assert "default_value='true'" in launch
-assert "'enable_actuator_output':False" in launch
+assert "enable_actuator_output=False" in launch
+assert "Unknown operation_profile" in launch and "OpaqueFunction" in launch
 monitor=(p/'scripts/r3_sport_monitor.py').read_text()
 assert "'--status'" in monitor
 assert '--release-sport-mode' not in monitor and '--enable-sport-mode' not in monitor

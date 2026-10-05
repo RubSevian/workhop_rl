@@ -14,6 +14,7 @@ def validate(command, duration, bounds=(.20, .10, .10), max_duration=1.0):
 
 def eligible(status, received, now):
     return (0 <= now-received <= .25 and
-            status.get('state') in ('RL_ZERO', 'RL_ACTIVE') and
+            status.get('legacy_state', status.get('state')) in ('RL_ZERO', 'RL_ACTIVE') and
+            status.get('state') not in ('CONTROLLED_STOP', 'EMERGENCY_FAULT') and
             status.get('read_only') is False and status.get('output_enabled') is True and
             status.get('fault_latched') is False and not status.get('blockers', ['unknown']))

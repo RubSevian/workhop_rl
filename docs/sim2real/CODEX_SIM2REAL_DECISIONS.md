@@ -151,3 +151,7 @@ Runtime watchdog, свежесть feedback/targets, проверка motor ID/v
 ## System FSM: PHASE A 05.10.2026
 
 Оператор сообщил об успешной работе текущего RL_ZERO после предыдущего исправления (OPERATOR_REPORTED; новые логи не приложены). По заданию CODEX_SYSTEM_FSM_REFACTOR (1).md выполнены только audit/design и [план PHASE A](CODEX_SYSTEM_FSM_REFACTOR_PLAN.md). Runtime baseline39b78c9 не изменён. PHASE B, новые профили и целевые X с lie-down/B с emergency руки не реализуются до явного approval этого плана. Bench/физические подтверждения новой траектории и emergency руки отсутствуют.
+
+## System FSM: PHASE B approval 05.10.2026
+
+PHASE A утверждена файлом CODEX_SYSTEM_FSM_PHASE_B_APPROVAL.md; внедрение выполнено в отдельном build_fsm/install_fsm, текущий physical install_r1 и процессы не заменяются. Новые профили и X/A/B описаны в [README](README.md), детали/commits/tests — в [отчёте Phase B](CODEX_SYSTEM_FSM_PHASE_B_REPORT.md). NAV clamp сохранён. Lie target approved, trajectory dynamics и arm emergency disable остаются не commissioned; соответствующие flags false. NAV/FULL требуют реальных adapters, которых пока нет. Предыдущие разделы сохраняют историю baseline, не описывают новый X.

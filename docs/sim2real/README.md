@@ -1,36 +1,94 @@
-# Go2 + RARS01: запуск Sim2Real
+# Go2 + RARS01 — System FSM Phase B
 
-Jetson Orin Nano · ROS 2 Jazzy · workspace `/home/ruben/go2_diploma/sim2real`.
+Jetson Orin Nano · ROS 2 Jazzy. Результаты и ограничения: [отчёт Phase B](CODEX_SYSTEM_FSM_PHASE_B_REPORT.md). История решений: [CODEX_SIM2REAL_DECISIONS.md](CODEX_SIM2REAL_DECISIONS.md).
 
-Актуальные параметры и результаты проверок: [CODEX_SIM2REAL_DECISIONS.md](CODEX_SIM2REAL_DECISIONS.md).
+## Сборка и окружение
 
-## 1. Перед запуском
+Candidate установлен отдельно в `install_fsm`. Работающий `install_r1` не заменён. Новые executable и arm RPC используются только после явного перезапуска соответствующего процесса оператором.
 
-- Завершите прежний launch ног. Новая сборка не обновляет уже запущенный процесс.
-- Подключите Go2 к `enP8p1s0`, STM32 руки — к USB.
-- Для первого теста навигацию не запускайте.
-- Для STM32 должен работать один owner: GUI SDK и другие serial-клиенты закройте. Уже работающий owner в `HOLD_HOME` оставьте; второй не запускайте.
-
-## 2. Окружение — в каждом терминале
+В каждом терминале candidate:
 
 ```bash
 unset AMENT_PREFIX_PATH CMAKE_PREFIX_PATH COLCON_PREFIX_PATH
 source /home/ruben/go2_diploma/sim2real/setup.bash
-export ROS_DOMAIN_ID=0
-export RMW_IMPLEMENTATION=rmw_cyclonedds_cpp
-export CYCLONEDDS_URI='<CycloneDDS><Domain><General><Interfaces><NetworkInterface name="enP8p1s0"/></Interfaces><AllowMulticast>true</AllowMulticast></General></Domain></CycloneDDS>'
+source /home/ruben/go2_diploma/sim2real/install_fsm/local_setup.bash
 ```
 
-Если `source` сообщил об ошибке, не переходите к запуску. Humble и окружение `sim2sim_reference` для этого workspace не используются.
+Reference/Humble не используется как runtime. Для физического Ethernet оператор сохраняет прежние domain/RMW/CycloneDDS settings и `enP8p1s0`; для offline read-only достаточно loopback.
 
-## 3. Терминал 1: рука
+## Профили запуска
 
-Пропустите этот шаг, если owner уже работает и держит `HOLD_HOME`.
+`operation_profile` задаётся только при старте. Изменение параметров, сервисы и кнопки не повышают capabilities.
+
+| Профиль | A / ноги | Скорость |
+|---|---|---|
+| `read_only` | Диагностический intent; без Sport release/LowCmd | Нет |
+| `arm_test` | Leg takeover запрещён; bench через единственный arm owner | Нет |
+| `leg_safety_test` | Только захват измеренной позы и fixed hold | Нет |
+| `rl_zero_test` | Прежний полный подъём и RL | Всегда `[0,0,0]` |
+| `remote_test` | Прежний полный подъём и RL | Стики |
+| `nav_test` | Подъём/RL после готовности NAV adapter | `/cmd_vel` |
+| `full_mission` | Дополнительно нужны perception и arm emergency validation | NAV/mission |
+
+Неизвестное имя или конфликт явного profile с legacy flags завершают startup до физических side effects. Legacy launch без profile сохраняет отображение: read_only → `read_only`; motion=false → `rl_zero_test`; remote+motion → `remote_test`; autonomy+motion → `nav_test`.
+
+## Read-only проверка
+
+```bash
+ros2 launch unitree_legged_real go2_rars01_r3_commissioning.launch.py \
+  operation_profile:=read_only \
+  model_path:=/home/ruben/go2_diploma/sim2real/weights/policy_2.pt
+```
+
+В другом терминале:
+
+```bash
+ros2 run unitree_legged_real r3_status --once
+```
+
+`state` — один из INIT/STANDBY/TAKEOVER/ACTIVE/CONTROLLED_STOP/SYSTEM_HOLD/EMERGENCY_FAULT. `phase` показывает этап; `legacy_state` оставлен для прежних диагностических инструментов. Проверяйте `operation_profile`, `arm_control_ready`, `arm_home_ready`, `stop_blocker` и состояния async ports.
+
+## Физический RL-профиль — команда для оператора
+
+Прежний тестовый YAML сохраняет операторские trial gates. Они не доказывают physical PASS новой автоматики X/B.
+
+```bash
+ros2 launch unitree_legged_real go2_rars01_r3_commissioning.launch.py \
+  operation_profile:=rl_zero_test \
+  config_path:=/home/ruben/go2_diploma/sim2real/runtime/r3_first_rl_zero.yaml \
+  model_path:=/home/ruben/go2_diploma/sim2real/weights/policy_2.pt \
+  network_interface:=enP8p1s0
+```
+
+Launch сам не создаёт LowCmd. До A нужны свежие LowState/remote/Sport, HOME и остальные gates. A: Sport release при необходимости → lease/graph verification → measured hold ≥0,02 с → линейный stand 6 с → fixed hold 4 с → policy reset → ACTIVE/phase RL_ZERO. Fixed gains 40/1; после первого policy результата — RL 25/1. Скорость zero не означает нулевые суставные actions.
+
+## Пульт
+
+Удерживать комбинацию ≥0,75 с, затем отпустить. Приоритет B > X > A.
+
+| Кнопки | Действие |
+|---|---|
+| **L1+L2+A** | Takeover и прежний цикл до RL; из SYSTEM_HOLD — fresh measured capture с переиспользованием своей lease/publisher, без повторного release при fresh RELEASED |
+| **L1+L2+X** | Из ACTIVE: закрыть скорости → zero RL → HOME через owner → fresh measured PD handoff → lie-down → постоянный SYSTEM_HOLD |
+| **L1+L2+B** | Защёлкнуть emergency; ноги 0/3 при прежней eligibility; отменить миссии; запросить отдельно валидированный arm disable; без HOME wait и auto recovery |
+
+**Новая динамика lie-down пока не commissioned.** `lie_down.operator_validated=false`: после HOME X сохраняет zero RL и показывает `lie_down_dynamics_not_commissioned`; он не выключает RL и не начинает неподтверждённую траекторию. Approved target FR/FL/RR/RL:
+
+```text
+[0.01,1.30,-2.70, -0.01,1.30,-2.70, -0.30,1.30,-2.70, 0.30,1.30,-2.70]
+```
+
+Duration 8 с, fixed gains 40/1, tolerance 0,15 рад, timeout 12 с и settle 0,2 с — commissioning candidates. Флаги разрешается менять после отдельной проверки динамики, не для обхода blocker. HOME timeout сохраняет zero RL. Lie timeout сохраняет последний planned fixed target и LowCmd. Critical invalid/stale/policy fault переводит в EMERGENCY_FAULT.
+
+**B не задаёт lie-down trajectory.** Arm emergency gate по умолчанию false; принятый service reply не подтверждает физическое отключение. Ctrl+C завершает процесс и не заменяет B.
+
+## Рука
+
+Один serial owner; SDK GUI и второй owner одновременно не запускать. Уже работающий старый owner не получает новые RPC от пересборки. Новые HOME/emergency endpoints появляются при явном запуске candidate owner.
 
 ```bash
 ros2 run unitree_legged_real rars_r3_owner --ros-args \
-  -p read_only:=false \
-  -p connect_serial:=true \
+  -p read_only:=false -p connect_serial:=true \
   -p sdk_config_path:=/home/ruben/go2_diploma/sim2real/repos/rars01_graspnet/config/default.yaml \
   -p config_path:=/home/ruben/go2_diploma/sim2real/repos/workhop_rl/src/unitree_ros2_to_real/config/go2_rars01_real.yaml \
   -p device_path:=/dev/serial/by-id/usb-STMicroelectronics_STM32_Virtual_ComPort_3172366B3233-if00 \
@@ -38,117 +96,23 @@ ros2 run unitree_legged_real rars_r3_owner --ros-args \
   -p journal_path:=/home/ruben/go2_diploma/sim2real/runtime/rars_auto_home/enable-journal
 ```
 
-После соединения owner ждёт 10 секунд, один раз включает моторы и удерживает семь нулевых HOME targets с частотой 100 Гц. Дождитесь `HOLD_HOME`, оставьте терминал работающим. Feedback STM32 появляется после enable.
+Сохраняются connect →10 с→enable один раз→семь нулевых HOME targets 100 Гц. Feedback появляется после enable. Calibration и serial leases прежние; journal только диагностический. Runtime fault останавливает текущую сессию без auto re-enable.
 
-Journal используется только для диагностики и не блокирует новый запуск. При runtime fault текущая сессия останавливается: после проверки причины завершите owner и запустите его заново явно. Файлы serial leases не удаляйте. Подготовленная systemd-служба не запускается этим README.
+`/rars01/control/return_home` принимает idempotent HOME intent только у healthy enabled owner, не вызывает enable. HOME completion проверяется по реальным свежим q/dq/accepted target. `/rars01/control/emergency_disable` запрещён, пока отдельный `rars01.emergency_disable_validated=false`; leg gains на руку не копируются.
 
-## 4. Терминал 2: первый тест RL с нулевой скоростью
+## Стики и NAV
 
-```bash
-ros2 launch unitree_legged_real go2_rars01_r3_commissioning.launch.py \
-  config_path:=/home/ruben/go2_diploma/sim2real/runtime/r3_first_rl_zero.yaml \
-  model_path:=/home/ruben/go2_diploma/sim2real/weights/policy_2.pt \
-  network_interface:=enP8p1s0 \
-  control_mode:=remote_test \
-  motion_commands_enabled:=false \
-  remote_auto_sequence:=true \
-  read_only:=false
-```
+Для стиков выберите `operation_profile:=remote_test`: `ly` ±0,20 м/с вперёд, `-rx` ±0,10 м/с вбок, `-lx` ±0,10 рад/с поворот; deadband 0,01. Нейтраль оставляет RL с zero velocity.
 
-Launch сам не поднимает робота. В этом тесте policy получает нулевую скоростную команду, стики игнорируются, A/X/B действуют. Policy продолжает выдавать суставные цели — это не нулевые action.
+Для NAV выберите `nav_test`. Сохраняются TwistStamped `/cmd_vel`, QoS1, finite/header/receive freshness ≤0,25 с и clamp ±0,20/0,10/0,10. `pathFollower.sendSportCommand=false`. Stale NAV даёт zero velocity, без переключения профиля.
 
-Используется экспериментальный профиль, ранее принятый оператором. Его разрешающие флаги не означают, что физический тест уже пройден.
+Факт `/cmd_vel` не даёт navigation_ready. Реальный adapter должен публиковать `/go2/mission/readiness` с `observed_ns` (steady-clock ns), непустым `session_id`, `navigation_ready`, `perception_ready`, и предоставлять Trigger `/go2/mission/cancel_navigation`; manipulation cancellation — `/rars01/mission/cancel_manipulation`. Readiness TTL 0,5 с. Пока adapters отсутствуют, NAV/FULL блокируются; cancellation отображается unavailable, не PASS. Эти adapters и search/grasp controller не создаются данным FSM refactor.
 
-## 5. Терминал 3: статус и начало теста
+## Диагностика
 
 ```bash
 ros2 topic echo /go2/locomotion_status
-```
-
-До A дождитесь:
-
-- `arm_ready: true`, `arm_home_ready: true`;
-- свежих LowState/remote/Sport и отсутствия `fault_latched`;
-- `STOCK` + `SPORT_ACTIVE`, либо `DISARMED` + `SPORT_RELEASED`, если Sport уже отключён.
-
-Затем удерживайте **L1+L2+A не менее 0,75 с** и отпустите. Последовательность:
-
-```text
-Проверки → отключение Sport → ожидание освобождения LowCmd
-→ измеренный hold → линейный подъём 6 с → удержание 4 с → RL_ZERO
-```
-
-В нулевом тесте ожидаются `state: RL_ZERO`, `motion_command: [0, 0, 0]`. Ожидание SDK/discovery добавляется к времени подъёма.
-
-## 6. Пульт — одинаковый в обоих режимах
-
-Все комбинации удерживаются **не менее 0,75 с**; перед повтором отпустите кнопки.
-
-| Комбинация | Действие |
-|---|---|
-| **L1+L2+A** | Полный цикл до RL; после X — новый явный цикл подъёма и RL |
-| **L1+L2+X** | Выход из RL, удержание измеренной позы с Kp=40, Kd=1 |
-| **L1+L2+B** | Emergency: пассивный damping Kp=0, Kd=3; после него RL заблокирован |
-
-B не задаёт траекторию в лежачую позу. X/B не выключают руку. **Ctrl+C завершает процесс и не заменяет damping по B.**
-
-При fault сохраните `state`, `fault`, `fault_latched`, `policy_ms` и вывод переходов. Не запускайте автоматический повтор опыта.
-
-## 7. Тест управления стиками
-
-В команде раздела 4 замените только:
-
-```text
-motion_commands_enabled:=true
-```
-
-| Ось workshop | Команда | Предел |
-|---|---|---|
-| `ly` | Вперёд / назад | ±0,20 м/с |
-| `-rx` | Влево / вправо | ±0,10 м/с |
-| `-lx` | Поворот | ±0,10 рад/с |
-
-Нейтральные стики дают нулевую скорость; RL остаётся включённым. `/cmd_vel` в этом режиме игнорируется. Не меняйте режим перезапуском controller, оставив робот без выбранного удержания/stock.
-
-## 8. Режим навигации
-
-В команде раздела 4 используйте:
-
-```text
-control_mode:=autonomy
-motion_commands_enabled:=true
-```
-
-- Скорость приходит только из `/cmd_vel` типа `geometry_msgs/msg/TwistStamped`, с теми же пределами.
-- В `pathFollower` обязательно `sendSportCommand:=false` — стек передаёт запросы RL, не Sport RPC.
-- Timestamp должен быть свежим: максимум 0,25 с, без времени из будущего. Без свежих команд скорость становится нулевой.
-- Стики не управляют скоростью; A/X/B продолжают действовать. Навигация не включает takeover сама.
-
-Эта команда запускает controller. LiDAR, IMU-калибровка и полный навигационный стек подключаются отдельным этапом.
-
-## 9. Диагностика
-
-| Симптом | Что проверить |
-|---|---|
-| `package not found` | Окружение раздела 2 загружено без ошибок |
-| Нет commissioning status | Launch controller работает; во всех терминалах одинаковые domain/RMW/interface |
-| `FAULT_LATCHED` у руки | Посмотреть текущий `error`; watchdog останавливает сессию. После устранения причины требуется новый явный запуск owner |
-| A не запускает цикл | `remote_event`, `remote_sequence_message`, `remote_sequence_blockers`, `arm_error`, готовность HOME |
-| Не включается RL | `state`, `fault`, `policy_ms` и сохранённые строки `R3 transition` |
-
-Для policy отдельно выводятся `policy_result_age_s` (время с принятия ответа), `policy_inference_age_s` (возраст текущего расчёта) и `policy_observation_age_s` (возраст LowState последнего принятого расчёта). Watchdog ответа и незавершённого расчёта — 40 мс; данные руки проверяются отдельно. В момент fault эти значения сохраняются в transition log.
-
-Для проверки Sport без переключения режима:
-
-```bash
 ros2 run unitree_legged_real go2_mode_switch --interface enP8p1s0 --status
 ```
 
-
-Для чтения последней диагностической записи руки:
-
-```bash
-cat /home/ruben/go2_diploma/sim2real/runtime/rars_auto_home/enable-journal
-```
-
-Содержимое journal не проверяется при старте. Старые FAULT, ENABLE_ATTEMPT и повреждённые записи не мешают запуску; архивирование для перезапуска больше не требуется. В текущем процессе fault остаётся защёлкнутым и автоматического re-enable нет.
+Watchdog ответа и незавершённого job — прежние 40 мс; captured arm inputs — отдельно 0,25 с. При fault сохраняйте `state`, `phase`, `fault`, `policy_ms`, policy ages и transition log. Старт нового процесса не обновляет уже работающий launch.

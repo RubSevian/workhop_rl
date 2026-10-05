@@ -110,6 +110,11 @@ class R3Supervisor {
  bool ConsumePolicyReset();
  bool ConsumeArmHoldRequest();
  const std::array<double,3>& command() const {return command_;}
+ bool LieDownTargetApproved() const {
+  constexpr std::array<float,12> approved{.01F,1.30F,-2.70F,-.01F,1.30F,-2.70F,-.30F,1.30F,-2.70F,.30F,1.30F,-2.70F};
+  return profile_.lie_down&&*profile_.lie_down==approved;
+ }
+ const std::array<float,12>& fixed_target() const {return target_;}
  const R3Profile& profile() const {return profile_;}
  std::vector<std::string> Blockers(SafetyTime now,bool physical=true) const;
  const std::string& last_fault() const {return last_fault_;}

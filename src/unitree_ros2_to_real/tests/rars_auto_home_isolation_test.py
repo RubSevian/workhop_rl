@@ -7,7 +7,9 @@ core=(p/'src/rars_auto_home.cpp').read_text()
 leg=(p/'src/go2_r3_commissioning.cpp').read_text()
 assert 'setZero(' not in owner+core+leg
 assert '"connect_serial",false' in owner and '"read_only",true' in owner
-assert 'hold_request' not in leg and 'sendPositionTargets' not in leg
+assert 'sendPositionTargets' not in leg and 'sdk_.disable()' in owner
+assert '/rars01/control/return_home' in owner+leg and '/rars01/control/emergency_disable' in owner+leg
+assert 'emergency_disable_validated' in core and 'orchestration_generation()' in leg
 assert 'sdk_->enable' not in leg and 'arm_home_ready' in leg
 assert 'config.motors[i].direction=directions[i]' in owner
 assert 'config.motors[i].zero_offset=z[i]' in owner

@@ -102,6 +102,7 @@ install(FILES launch/go2_rars01_r3_commissioning.launch.py DESTINATION share/${P
 install(PROGRAMS scripts/r3_status.py scripts/r3_manual_cmd.py scripts/r3_sport_monitor.py DESTINATION lib/${PROJECT_NAME})
 install(FILES scripts/r3_manual_lib.py DESTINATION lib/${PROJECT_NAME})
 if(BUILD_TESTING)
+  add_test(NAME system_launch_test COMMAND python3 ${CMAKE_CURRENT_SOURCE_DIR}/tests/system_launch_test.py)
   enable_testing()
   add_executable(system_runtime_readiness_test tests/system_runtime_readiness_test.cpp)
   target_link_libraries(system_runtime_readiness_test real_r3_commissioning)

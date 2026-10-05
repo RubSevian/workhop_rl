@@ -162,6 +162,7 @@ real_deployment:
     zero_calibration_source: sdk_gui_operator_saved
     zero_calibration_operator_verified: true
     per_joint_freshness_proven: false
+    emergency_disable_validated: false
   sport_mode:
     require_release_verified: true
     observation_timeout_s: 0.5
@@ -209,26 +210,34 @@ real_deployment:
       - 3
     lie_down:
       operator_validated: false
+      target_approved: true
+      target_source: physical lying pose / operator-approved 2026-10-05
       motor_q:
-      - 0.0190371275
-      - 1.2886259556
-      - -2.7227
-      - -0.0854357481
-      - 1.3102743626
-      - -2.7227
-      - -0.3393630981
-      - 1.2947366238
-      - -2.7227
-      - 0.3113260865
-      - 1.2863497734
-      - -2.7227
+      - 0.01
+      - 1.3
+      - -2.7
+      - -0.01
+      - 1.3
+      - -2.7
+      - -0.3
+      - 1.3
+      - -2.7
+      - 0.3
+      - 1.3
+      - -2.7
       duration_s: 8.0
+      timeout_s: 12.0
+      reached_tolerance_rad: 0.15
+      settle_s: 0.2
     manual:
       max_vx: 0.2
       max_vy: 0.1
       max_wz: 0.1
       max_duration_s: 1.0
     output_lock: /home/ruben/go2_diploma/sim2real/runtime/go2_lowcmd.lock
+    controlled_stop:
+      arm_home_timeout_s: 10.0
+      arm_home_settle_s: 0.2
   capture_hold_sec: 0.02
 operator_trial_record:
   scope: operator cycle L1+L2+A; remote_test or autonomy command source; reference

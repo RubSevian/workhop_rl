@@ -60,6 +60,7 @@ real_deployment:
   lowstate:
     stale_timeout_s: 0.5
   rars01:
+    emergency_disable_validated: false # Separate arm bench validation; never leg gains.
     require_home_ready_for_leg_takeover: true
     auto_home:
       enabled: true # Physical profile; owner still defaults read_only=true.
@@ -91,21 +92,27 @@ real_deployment:
     hold_current_tolerance_rad: 0.01
     deadline_burst_limit: 3
     remote:
-      controlled_abort_chord: [L1, L2, X] # Operator mode exit: hold captured pose, no automatic lie-down.
+      controlled_abort_chord: [L1, L2, X] # Zero RL -> HOME -> measured PD -> lie-down -> SYSTEM_HOLD.
       emergency_chord: [L1, L2, B]
     emergency:
       operator_validated: false
       evidence: "Source candidate (not physically validated): https://github.com/unitreerobotics/unitree_rl_lab/blob/main/deploy/robots/go2/config/config.yaml and deploy/include/FSM/State_Passive.h; checked 2026-10-04"
       motor_kd: [3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3] # Official Go2 Passive candidate; physical gate stays false.
+    controlled_stop:
+      arm_home_timeout_s: 10.0
+      arm_home_settle_s: 0.2
     lie_down:
-      operator_validated: false
-      # Measured lying pose; calves clipped to the reference model's lower limit.
-      # Hardware FR,FL,RR,RL. Trajectory validation remains false above.
-      motor_q: [0.0190371275, 1.2886259556, -2.7227,
-                -0.0854357481, 1.3102743626, -2.7227,
-                -0.3393630981, 1.2947366238, -2.7227,
-                0.3113260865, 1.2863497734, -2.7227]
+      operator_validated: false # Dynamics/criteria still require commissioning.
+      target_approved: true
+      target_source: physical lying pose / operator-approved 2026-10-05
+      # Hardware FR, FL, RR, RL; approved target, not a claim of trajectory validation.
+      motor_q: [0.01, 1.30, -2.70, -0.01, 1.30, -2.70,
+                -0.30, 1.30, -2.70, 0.30, 1.30, -2.70]
       duration_s: 8.0
+      timeout_s: 12.0
+      reached_tolerance_rad: 0.15
+      settle_s: 0.2
+      # Fixed gains remain actor fixed_kp/fixed_kd = 40/1.
     manual:
       max_vx: 0.20
       max_vy: 0.10
