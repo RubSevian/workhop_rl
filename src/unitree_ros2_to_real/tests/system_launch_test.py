@@ -14,7 +14,7 @@ def context(profile=''):
     c = LaunchContext()
     c.launch_configurations.update(config_path='/offline/config', model_path='/offline/policy',
         network_interface='', operation_profile=profile, remote_auto_sequence='true',
-        remote_test_mode='', control_mode='', motion_commands_enabled='', read_only='')
+        remote_test_mode='', control_mode='', motion_commands_enabled='', read_only='', controlled_stop_lie_down_trial='')
     return c
 for profile in m.PROFILES:
     actions = m._controller(context(profile))
@@ -42,3 +42,8 @@ assert not any(k in params for k in ('read_only', 'remote_test_mode', 'motion_co
 c=context();c.launch_configurations.update(read_only='false', remote_test_mode='true')
 m._controller(c)
 assert captured[-1]['parameters'][0]['remote_test_mode'] is True
+
+c=context('remote_test');c.launch_configurations['controlled_stop_lie_down_trial']='true'
+m._controller(c)
+assert captured[-1]['parameters'][0]['controlled_stop_lie_down_trial'] is True
+assert 'controlled_stop_lie_down_trial' not in params

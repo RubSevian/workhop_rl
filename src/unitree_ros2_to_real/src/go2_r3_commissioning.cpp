@@ -62,7 +62,9 @@ class R3Node final:public rclcpp::Node {
   }
   home_tolerance_=d["rars01"]["auto_home"]["home_tolerance_rad"].as<double>();
   if(!std::isfinite(home_tolerance_)||home_tolerance_<=0)throw std::runtime_error("Invalid HOME tolerance");
-  const auto profile=LoadR3Profile(y);supervisor_=std::make_unique<R3Supervisor>(profile,operation);
+  auto profile=LoadR3Profile(y);
+  profile.controlled_stop_lie_down_trial=declare_parameter<bool>("controlled_stop_lie_down_trial",profile.controlled_stop_lie_down_trial,immutable);
+  supervisor_=std::make_unique<R3Supervisor>(profile,operation);
   lowcmd_wait_=std::make_unique<LowCmdDiscoveryWait>(profile.lowcmd_discovery_timeout_s,profile.lowcmd_clear_duration_s);
   lowstate_=LowStateReader(profile.lowstate_timeout_s);
   remote_=std::make_unique<R3RemoteCommands>(r["remote"]["controlled_abort_chord"].as<std::vector<std::string>>(),r["remote"]["emergency_chord"].as<std::vector<std::string>>(),d["remote"]["takeover_hold_s"].as<double>(),profile.remote_timeout_s);
@@ -357,7 +359,7 @@ class R3Node final:public rclcpp::Node {
   inputs_.own_output_healthy=output_&&lease_&&lease_->acquired()&&cached_publisher_count_==1&&Age(now,graph_stamp_)>=0&&Age(now,graph_stamp_)<=.5;
   supervisor_->Observe(inputs_,now);supervisor_->ConfirmStockObserved(now);
  }
- void StopPublisher(){supervisor_->Dispatch(SystemEvent::DISABLE_OUTPUT,SafetyClock::now());output_.reset();if(!sdk_release_pending_)lease_.reset();supervisor_->Dispatch(SystemEvent::OUTPUT_STOPPED,SafetyClock::now());}
+ void StopPublisher(){supervisor_->Dispatch(SystemEvent::DISABLE_OUTPUT,SafetyClock::now());output_.reset();if(!sdk_release_pending_)lease_.reset();if(!output_&&!lease_)supervisor_->Dispatch(SystemEvent::OUTPUT_STOPPED,SafetyClock::now());}
  void PolicyTick() {
   std::array<float,6> armq,armdq,target;LowStateSnapshot low;std::array<double,3> cmd{};bool infer=false,reset=false;
   std::optional<PolicyTicket> ticket;
@@ -408,6 +410,10 @@ class R3Node final:public rclcpp::Node {
    <<YAML::Key<<"phase"<<YAML::Value<<SystemPhaseName(supervisor_->phase())
    <<YAML::Key<<"legacy_state"<<YAML::Value<<R3StateName(supervisor_->state())
    <<YAML::Key<<"read_only"<<YAML::Value<<read_only_<<YAML::Key<<"output_enabled"<<YAML::Value<<supervisor_->output_enabled()
+   <<YAML::Key<<"custom_leg_output"<<YAML::Value<<YAML::DoubleQuoted<<(output_&&supervisor_->output_enabled()?"ON":"OFF")<<YAML::Auto
+   <<YAML::Key<<"lowcmd_lease_present"<<YAML::Value<<bool(lease_)
+   <<YAML::Key<<"output_stop_confirmed"<<YAML::Value<<supervisor_->output_stopped()
+   <<YAML::Key<<"motor_power_off_confirmed"<<YAML::Value<<false
    <<YAML::Key<<"lowcmd_publisher_present"<<YAML::Value<<bool(output_)<<YAML::Key<<"sent_packets"<<YAML::Value<<sent_
    <<YAML::Key<<"sport_state"<<YAML::Value<<SportModeName(inputs_.sport)<<YAML::Key<<"sport_age_s"<<YAML::Value<<Age(now,inputs_.sport_stamp)
    <<YAML::Key<<"lowstate_age_s"<<YAML::Value<<lowstate_.AgeMs(now)/1000<<YAML::Key<<"remote_age_s"<<YAML::Value<<remote_->status().remote_age_ms/1000
@@ -444,6 +450,8 @@ class R3Node final:public rclcpp::Node {
    <<YAML::Key<<"orchestration_generation"<<YAML::Value<<supervisor_->orchestration_generation()
    <<YAML::Key<<"fixed_target_motor_q"<<YAML::Value<<std::vector<float>(supervisor_->fixed_target().begin(),supervisor_->fixed_target().end())
    <<YAML::Key<<"lie_down_target_approved"<<YAML::Value<<supervisor_->LieDownTargetApproved()
+   <<YAML::Key<<"controlled_stop_lie_down_trial"<<YAML::Value<<supervisor_->profile().controlled_stop_lie_down_trial
+   <<YAML::Key<<"lie_down_commissioning_active"<<YAML::Value<<(supervisor_->profile().controlled_stop_lie_down_trial&&!supervisor_->profile().lie_down_validated&&supervisor_->system_state()==SystemState::CONTROLLED_STOP&&!supervisor_->NeedsPolicy())
    <<YAML::Key<<"lie_down_dynamics_validated"<<YAML::Value<<supervisor_->profile().lie_down_validated
    <<YAML::Key<<"critical_control_fault"<<YAML::Value<<(supervisor_->fault_latched()&&supervisor_->last_fault()!="operator_emergency")
    <<YAML::Key<<"arm_error"<<YAML::Value<<arm_error_

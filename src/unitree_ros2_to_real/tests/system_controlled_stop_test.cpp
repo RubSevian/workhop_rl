@@ -20,11 +20,15 @@ int main(){auto p=system_fixture();R3Supervisor f(p);enter_active(f);
  assert(captured>0);
  for(int n=1;n<=60;++n){double s=captured+n*.002;auto i=system_facts(s);float u=std::clamp(float((s-captured)/p.lie_down_s),0.F,1.F);
   for(int j=0;j<12;++j)i.measured_q[j]=handoff[j]*(1-u)+(*p.lie_down)[j]*u;
-  auto packet=run_tick(f,s,i);assert(packet&&f.AllowsPacket(*packet,time_at(s)));
+  auto packet=run_tick(f,s,i);
+  if(!packet){assert(f.phase()==SystemPhase::LIE_DOWN_OUTPUT_STOPPING&&!f.output_enabled());break;}
+  assert(f.AllowsPacket(*packet,time_at(s)));
   for(int j=0;j<12;++j){assert(std::abs(packet->motor_cmd[j].q-i.measured_q[j])<1e-5);assert(packet->motor_cmd[j].kp==40&&packet->motor_cmd[j].kd==1);}}
- assert(f.system_state()==SystemState::SYSTEM_HOLD&&f.output_enabled()&&!f.NeedsPolicy());
+ assert(f.system_state()==SystemState::CONTROLLED_STOP&&!f.output_enabled()&&!f.NeedsPolicy()&&!f.output_stopped());
+ f.EnableOutput(false,time_at(captured+.120));f.ConfirmOutputStopped();
+ assert(f.system_state()==SystemState::SYSTEM_HOLD&&f.output_stopped());
  assert(f.ControlledAbort(time_at(captured+.120)).success&&f.system_state()==SystemState::SYSTEM_HOLD);
- auto i=system_facts(captured+.122);i.measured_q=*p.lie_down;auto held=run_tick(f,captured+.122,i);for(int j=0;j<12;++j)assert(held->motor_cmd[j].q==(*p.lie_down)[j]);
+ auto i=system_facts(captured+.122);i.measured_q=*p.lie_down;assert(!run_tick(f,captured+.122,i));for(int j=0;j<12;++j)assert(f.fixed_target()[j]==(*p.lie_down)[j]);
  // Critical inputs/policy faults while HOME is moving remain fail-closed.
  for(int bad=0;bad<3;++bad){R3Supervisor x(p);enter_active(x);x.ControlledAbort(time_at(6));auto i=system_facts(6.002,false);
   if(bad==0)i.arm_control_ready=false;if(bad==1)i.arm_stamp=time_at(5);if(bad==2)i.target_stamp=time_at(5);
@@ -36,5 +40,5 @@ int main(){auto p=system_fixture();R3Supervisor f(p);enter_active(f);
  for(int n=1;n<140;++n){double s=6+n*.002;assert(run_tick(blocked,s,system_facts(s)));}
  assert(blocked.phase()==SystemPhase::LIE_DOWN_BLOCKED&&!blocked.fault_latched()&&blocked.output_enabled());
  auto b=blocked.Tick(time_at(6.278));for(int j=0;j<12;++j)assert(b->motor_cmd[j].q==(*p.lie_down)[j]&&b->motor_cmd[j].kp==40);
- std::cout<<"PASS X: zero RL, idempotent HOME, timeout RL, measured PD handoff, smooth approved pose, persistent hold, critical faults and explicit lie timeout target\n";
+ std::cout<<"PASS X: zero RL, idempotent HOME, timeout RL, measured PD handoff, smooth approved pose, confirmed output OFF, critical faults and explicit lie timeout target\n";
 }

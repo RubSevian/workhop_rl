@@ -22,7 +22,8 @@ def _controller(context):
     parameters.update(operation_profile=profile, enable_actuator_output=False,
                       remote_auto_sequence=_boolean(get('remote_auto_sequence')))
     # Empty compatibility args are omitted: the immutable profile supplies defaults.
-    for name in ('read_only', 'remote_test_mode', 'motion_commands_enabled'):
+    for name in ('read_only', 'remote_test_mode', 'motion_commands_enabled',
+                 'controlled_stop_lie_down_trial'):
         value = get(name)
         if value:
             parameters[name] = _boolean(value)
@@ -44,5 +45,6 @@ def generate_launch_description():
         DeclareLaunchArgument('control_mode', default_value=''),
         DeclareLaunchArgument('motion_commands_enabled', default_value=''),
         DeclareLaunchArgument('read_only', default_value=''),
+        DeclareLaunchArgument('controlled_stop_lie_down_trial', default_value=''),
         OpaqueFunction(function=_controller),
     ])

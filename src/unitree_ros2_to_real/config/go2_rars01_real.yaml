@@ -99,6 +99,7 @@ real_deployment:
       evidence: "Source candidate (not physically validated): https://github.com/unitreerobotics/unitree_rl_lab/blob/main/deploy/robots/go2/config/config.yaml and deploy/include/FSM/State_Passive.h; checked 2026-10-04"
       motor_kd: [3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3] # Official Go2 Passive candidate; physical gate stays false.
     controlled_stop:
+      lie_down_trial: false # Explicit launch override permits commissioning, not validation.
       arm_home_timeout_s: 10.0
       arm_home_settle_s: 0.2
     lie_down:

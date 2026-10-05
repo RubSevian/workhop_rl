@@ -9,7 +9,7 @@ int main(){auto p=system_fixture();
   auto ports=f.ConsumePortRequests();assert(ports.arm_emergency&&ports.cancel_navigation&&ports.cancel_manipulation&&!ports.arm_return_home);
   f.Observe(system_facts(.1),time_at(.1));assert(!f.StartRemoteSequence(time_at(.1)).success);
  }
- for(auto phase:{SystemPhase::RL_ZERO,SystemPhase::STAND_TRANSITION,SystemPhase::HOLDING,SystemPhase::ARM_RETURN_HOME,SystemPhase::ARM_HOME_BLOCKED,SystemPhase::ARM_HOME_SETTLE,SystemPhase::PD_CAPTURE,SystemPhase::LIE_DOWN,SystemPhase::LIE_DOWN_VERIFY,SystemPhase::LIE_DOWN_BLOCKED,SystemPhase::LIE_DOWN_HOLD}){
+ for(auto phase:{SystemPhase::RL_ZERO,SystemPhase::STAND_TRANSITION,SystemPhase::HOLDING,SystemPhase::ARM_RETURN_HOME,SystemPhase::ARM_HOME_BLOCKED,SystemPhase::ARM_HOME_SETTLE,SystemPhase::PD_CAPTURE,SystemPhase::LIE_DOWN,SystemPhase::LIE_DOWN_VERIFY,SystemPhase::LIE_DOWN_BLOCKED,SystemPhase::LIE_DOWN_HOLD,SystemPhase::LIE_DOWN_OUTPUT_STOPPING}){
   R3Supervisor f(p);enter_active(f);auto work=f.BeginPolicy(time_at(6));f.Dispatch(SystemEvent::ADVANCE_PHASE,{},phase);
   f.Emergency(time_at(6));assert(f.system_state()==SystemState::EMERGENCY_FAULT&&!f.NeedsPolicy());
   assert(!f.BeginPolicy(time_at(6)));if(work)assert(!f.PolicyResult(*work,p.stand,2,time_at(6)));

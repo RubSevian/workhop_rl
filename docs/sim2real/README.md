@@ -1,6 +1,6 @@
-# Go2 + RARS01 — System FSM Phase B
+# Go2 + RARS01 — System FSM Phase B.1
 
-Jetson Orin Nano · ROS 2 Jazzy. Результаты и ограничения: [отчёт Phase B](CODEX_SYSTEM_FSM_PHASE_B_REPORT.md). История решений: [CODEX_SIM2REAL_DECISIONS.md](CODEX_SIM2REAL_DECISIONS.md).
+Jetson Orin Nano · ROS 2 Jazzy. Результаты и ограничения: [отчёт B.1](CODEX_SYSTEM_FSM_PHASE_B1_REPORT.md); [история Phase B](CODEX_SYSTEM_FSM_PHASE_B_REPORT.md). История решений: [CODEX_SIM2REAL_DECISIONS.md](CODEX_SIM2REAL_DECISIONS.md).
 
 ## Сборка и окружение
 
@@ -68,17 +68,17 @@ Launch сам не создаёт LowCmd. До A нужны свежие LowStat
 
 | Кнопки | Действие |
 |---|---|
-| **L1+L2+A** | Takeover и прежний цикл до RL; из SYSTEM_HOLD — fresh measured capture с переиспользованием своей lease/publisher, без повторного release при fresh RELEASED |
-| **L1+L2+X** | Из ACTIVE: закрыть скорости → zero RL → HOME через owner → fresh measured PD handoff → lie-down → постоянный SYSTEM_HOLD |
+| **L1+L2+A** | Takeover и прежний цикл до RL; из лежащего SYSTEM_HOLD — заново lease/publisher, fresh measured capture, без повторного release при fresh RELEASED |
+| **L1+L2+X** | Из ACTIVE: закрыть скорости → zero RL → HOME через owner → fresh measured PD handoff → lie-down → reached/settle → output OFF, publisher/lease освобождены → SYSTEM_HOLD |
 | **L1+L2+B** | Защёлкнуть emergency; ноги 0/3 при прежней eligibility; отменить миссии; запросить отдельно валидированный arm disable; без HOME wait и auto recovery |
 
-**Новая динамика lie-down пока не commissioned.** `lie_down.operator_validated=false`: после HOME X сохраняет zero RL и показывает `lie_down_dynamics_not_commissioned`; он не выключает RL и не начинает неподтверждённую траекторию. Approved target FR/FL/RR/RL:
+**Новая динамика lie-down пока не commissioned.** `lie_down.operator_validated=false`: после HOME X сохраняет zero RL и показывает `lie_down_dynamics_not_commissioned`; он не выключает RL и не начинает траекторию. Для явно разрешённого commissioning trial добавьте при запуске `controlled_stop_lie_down_trial:=true`; production YAML и validation flags остаются false. Параметр неизменяемый, статус показывает trial и `lie_down_dynamics_validated=false`. Approved target FR/FL/RR/RL:
 
 ```text
 [0.01,1.30,-2.70, -0.01,1.30,-2.70, -0.30,1.30,-2.70, 0.30,1.30,-2.70]
 ```
 
-Duration 8 с, fixed gains 40/1, tolerance 0,15 рад, timeout 12 с и settle 0,2 с — commissioning candidates. Флаги разрешается менять после отдельной проверки динамики, не для обхода blocker. HOME timeout сохраняет zero RL. Lie timeout сохраняет последний planned fixed target и LowCmd. Critical invalid/stale/policy fault переводит в EMERGENCY_FAULT.
+Duration 8 с, fixed gains 40/1, tolerance 0,15 рад, timeout 12 с и settle 0,2 с — commissioning candidates. Для проверки используйте явный trial-флаг; `operator_validated` меняется только после подтверждения динамики. Успешный X отключает custom output после непрерывного reached/settle; электрическое отключение моторов этим не подтверждается. Повторный X в SYSTEM_HOLD ничего не включает. HOME timeout сохраняет zero RL. Lie timeout сохраняет последний planned fixed target и LowCmd. Critical invalid/stale/policy fault переводит в EMERGENCY_FAULT.
 
 **B не задаёт lie-down trajectory.** Arm emergency gate по умолчанию false; принятый service reply не подтверждает физическое отключение. Ctrl+C завершает процесс и не заменяет B.
 
@@ -116,3 +116,31 @@ ros2 run unitree_legged_real go2_mode_switch --interface enP8p1s0 --status
 ```
 
 Watchdog ответа и незавершённого job — прежние 40 мс; captured arm inputs — отдельно 0,25 с. При fault сохраняйте `state`, `phase`, `fault`, `policy_ms`, policy ages и transition log. Старт нового процесса не обновляет уже работающий launch.
+
+## Явный X trial и повторный A
+
+После RL_ZERO smoke и проверки стиков команду запуска ног оператор меняет на:
+
+```bash
+ros2 launch unitree_legged_real go2_rars01_r3_commissioning.launch.py \
+  operation_profile:=remote_test \
+  controlled_stop_lie_down_trial:=true \
+  config_path:=/home/ruben/go2_diploma/sim2real/runtime/r3_first_rl_zero.yaml \
+  model_path:=/home/ruben/go2_diploma/sim2real/weights/policy_2.pt \
+  network_interface:=enP8p1s0
+```
+
+HOME owner запускается отдельно командой выше. A → прежний подъём/RL; X → zero RL до HOME → measured PD → lie-down/settle → SYSTEM_HOLD. Ожидаемые поля: `custom_leg_output: OFF`, `output_enabled: false`, `lowcmd_publisher_present: false`, `lowcmd_lease_present: false`, `output_stop_confirmed: true`; sent_packets больше не растёт. Sport автоматически не включается. Новый A проверяет отсутствие чужих publishers/lease и снова захватывает свежие измеренные углы. Нейтраль стиков даёт zero velocity; REMOTE не слушает NAV.
+
+## Отдельная IMU calibration для NAV
+
+Существующая `autonomy_nav_go2:ros2_Jazzy`, package/executable `calibrate_imu`, управляет Sport API `/api/sport/request` и публикует `/cmd_vel`. Это отдельный Sport-mode тест, не профиль System FSM. Запускайте только при остановленном custom controller/LowCmd OFF и вручную подтверждённом штатном Sport Mode. SYSTEM_HOLD после X оставляет Sport RELEASED и сам по себе этому условию не соответствует. Рука может оставаться HOME.
+
+В терминале сборки navigation workspace с установленным `calibrate_imu`:
+
+```bash
+source install/setup.bash
+ros2 run calibrate_imu calibrate_imu
+```
+
+~2 с zero motion, static bias до15 с, затем положительное вращение Z 1,396 рад/с до35 с, StopMove и запись `~/Desktop/imu_calib_data.yaml`. `transform_everything.py` ожидает именно этот путь. После завершения проверьте файл и перезапустите NAV. Этот utility в рамках B.1 не запускался и не переносился на RL.

@@ -54,6 +54,7 @@ R3Profile LoadR3Profile(const YAML::Node& yaml) {
  p.emergency_validated=r["emergency"]["operator_validated"].as<bool>();p.emergency_evidence=r["emergency"]["evidence"].as<std::string>();
  if(r["emergency"]["motor_kd"] && !r["emergency"]["motor_kd"].IsNull())p.emergency_kd=Array12(r["emergency"]["motor_kd"]);
  if(r["controlled_stop"]){const auto x=r["controlled_stop"];
+  if(x["lie_down_trial"])p.controlled_stop_lie_down_trial=x["lie_down_trial"].as<bool>();
   if(x["arm_home_timeout_s"])p.arm_home_timeout_s=x["arm_home_timeout_s"].as<double>();
   if(x["arm_home_settle_s"])p.arm_home_settle_s=x["arm_home_settle_s"].as<double>();
  }
@@ -90,7 +91,7 @@ R3Supervisor::R3Supervisor(R3Profile p,OperationProfile operation):profile_(std:
   if(!std::isfinite(v)||v<=0)throw std::invalid_argument("Positive finite controlled-stop criteria required");
  for(double v:{profile_.arm_home_settle_s,profile_.lie_down_settle_s})
   if(!std::isfinite(v)||v<0)throw std::invalid_argument("Finite nonnegative optional settle required");
- if(profile_.lie_down_validated&&profile_.lie_down_timeout_s<profile_.lie_down_s)throw std::invalid_argument("Lie timeout before trajectory completes");
+ if((profile_.lie_down_validated||profile_.controlled_stop_lie_down_trial)&&profile_.lie_down_timeout_s<profile_.lie_down_s)throw std::invalid_argument("Lie timeout before trajectory completes");
  if(profile_.vx_bound>.20||profile_.deadline_burst_limit<1)throw std::invalid_argument("R3 vx bound/valid deadline limit");
  for(float q:profile_.stand)if(!std::isfinite(q)||std::abs(q)>3.5F)throw std::invalid_argument("Stand q outside software contract");
  if(profile_.lie_down)for(float q:*profile_.lie_down)if(!std::isfinite(q)||std::abs(q)>3.5F)throw std::invalid_argument("Invalid lie-down pose");
@@ -103,6 +104,7 @@ R3State R3Supervisor::state() const {
  case SystemPhase::PD_CAPTURE:return R3State::HOLD_CURRENT;
  case SystemPhase::LIE_DOWN:case SystemPhase::LIE_DOWN_VERIFY:case SystemPhase::LIE_DOWN_BLOCKED:return R3State::LIE_DOWN_TRANSITION;
  case SystemPhase::LIE_DOWN_HOLD:return R3State::HOLDING;
+ case SystemPhase::LIE_DOWN_OUTPUT_STOPPING:return R3State::OUTPUT_STOPPING;
  default:return static_cast<R3State>(phase_);
  }
 }
@@ -131,7 +133,7 @@ R3Reply R3Supervisor::Dispatch(SystemEvent e,SafetyTime now,SystemPhase p) {
    case SystemPhase::FAULT_LATCHED:case SystemPhase::EMERGENCY_DAMP:system_state_=SystemState::EMERGENCY_FAULT;break;
    case SystemPhase::CONTROLLED_ABORT:case SystemPhase::LIE_DOWN_TRANSITION:
    case SystemPhase::ARM_RETURN_HOME:case SystemPhase::ARM_HOME_BLOCKED:case SystemPhase::ARM_HOME_SETTLE:
-   case SystemPhase::PD_CAPTURE:case SystemPhase::LIE_DOWN:case SystemPhase::LIE_DOWN_VERIFY:case SystemPhase::LIE_DOWN_BLOCKED:system_state_=SystemState::CONTROLLED_STOP;break;
+   case SystemPhase::PD_CAPTURE:case SystemPhase::LIE_DOWN:case SystemPhase::LIE_DOWN_VERIFY:case SystemPhase::LIE_DOWN_BLOCKED:case SystemPhase::LIE_DOWN_OUTPUT_STOPPING:system_state_=SystemState::CONTROLLED_STOP;break;
    case SystemPhase::LIE_DOWN_HOLD:system_state_=SystemState::SYSTEM_HOLD;break;
    case SystemPhase::HOLD_CURRENT:system_state_=capabilities_.takeover_limit==TakeoverLimit::HOLD_CURRENT&&output_enabled_?SystemState::SYSTEM_HOLD:SystemState::TAKEOVER;break;
    default:system_state_=SystemState::TAKEOVER;break;
@@ -227,7 +229,17 @@ R3Reply R3Supervisor::StartRemoteSequence(SafetyTime now) {
  const auto b=RemoteSequenceBlockers(now);
  if(!b.empty()){std::ostringstream out;for(const auto& x:b)out<<x<<',';return Fail(out.str());}
  if(system_state_==SystemState::SYSTEM_HOLD) {
-  if(!inputs_.own_output_healthy||!output_enabled_||!Released(now))return Fail("restart requires own healthy lease/publisher and fresh released Sport");
+  if(!Released(now))return Fail("restart requires fresh released Sport");
+  if(!output_enabled_) {
+   if(!output_stopped_)return Fail("restart requires confirmed publisher/lease shutdown");
+   stop_blocker_.clear();arm_home_accepted_=false;
+   ++orchestration_generation_;ports_={};
+   SetPhase(R3State::TAKEOVER_REQUESTED);
+   remote_sequence_=true;release_requested_=true;sequence_hold_started_=false;
+   return {true,"SYSTEM_HOLD restart: reacquire output; fresh measured -> stand -> hold -> reset -> RL_ZERO"};
+  }
+  // LEG_SAFETY captured hold retains its existing live ownership behavior.
+  if(!inputs_.own_output_healthy)return Fail("restart requires own healthy lease/publisher");
   const auto hold=RequestHold(now);if(!hold.success)return hold;
   stop_blocker_.clear();arm_home_accepted_=false;
   remote_sequence_=true;release_requested_=true;sequence_hold_started_=false;
@@ -265,7 +277,14 @@ R3SequenceAction R3Supervisor::RemoteSequenceNext(SafetyTime now) {
 }
 R3Reply R3Supervisor::EnableOutput(bool enable,SafetyTime now) {
  if(enable&&!capabilities_.physical_leg_output)return Fail("profile_disallows_leg_output");
- if(!enable){InvalidatePolicyWork();CancelRemoteSequence();output_enabled_=false;Zero();SetPhase(fault_?R3State::FAULT_LATCHED:R3State::OUTPUT_STOPPING);return {true,"stop publisher then confirm output stopped"};}
+ if(!enable){
+  if(system_state_==SystemState::SYSTEM_HOLD&&!output_enabled_&&output_stopped_)return {true,"output already stopped"};
+  InvalidatePolicyWork();CancelRemoteSequence();output_enabled_=false;Zero();
+  // Keep the normal X terminal phase until transport confirms publisher AND lease removal.
+  if(phase_!=SystemPhase::LIE_DOWN_OUTPUT_STOPPING)
+   SetPhase(fault_?R3State::FAULT_LATCHED:R3State::OUTPUT_STOPPING);
+  return {true,"stop publisher then confirm output stopped"};
+ }
  if(state()!=R3State::SPORT_RELEASE_VERIFIED||!output_stopped_)return Fail("requires explicit takeover + verified release + previous output stop");
  auto r=Require(now);if(!r.success)return r;
  Capture(now);output_enabled_=true;output_stopped_=false;SetPhase(R3State::LOW_LEVEL_ARMED);Zero();
@@ -303,6 +322,7 @@ R3Reply R3Supervisor::RequestLieDown(SafetyTime now) {
 }
 R3Reply R3Supervisor::ControlledAbort(SafetyTime now) {
  CancelRemoteSequence();
+ if(system_state_==SystemState::SYSTEM_HOLD&&!output_enabled_&&!fault_)return {true,"already in system hold"};
  if(!IsActive()||fault_)return Fail("abort requires active custom mode; use emergency for fault");
  if(capabilities_.takeover_limit==TakeoverLimit::HOLD_CURRENT)return RequestHold(now);
  if(system_state_==SystemState::SYSTEM_HOLD)return {true,"already in persistent system hold"};
@@ -449,7 +469,7 @@ std::optional<unitree_go::msg::LowCmd> R3Supervisor::Tick(SafetyTime now) {
  }
  if(system_state_==SystemState::CONTROLLED_STOP&&NeedsPolicy()) {
   const bool home=arm_home_accepted_&&inputs_.arm_home_ready&&inputs_.arm_stamp>=stop_started_&&inputs_.target_stamp>=stop_started_;
-  if(home&&LieDownTargetApproved()&&profile_.lie_down_validated) {
+  if(home&&LieDownTargetApproved()&&(profile_.lie_down_validated||profile_.controlled_stop_lie_down_trial)) {
    if(!home_settling_){stop_blocker_.clear();home_settling_=true;home_settle_started_=now;Dispatch(SystemEvent::ADVANCE_PHASE,now,SystemPhase::ARM_HOME_SETTLE);}
    if(std::chrono::duration<double>(now-home_settle_started_).count()>=profile_.arm_home_settle_s) {
     if(!Fresh(now,inputs_.lowstate_stamp,.04)){Fault("pd_handoff_lowstate_stale",now);return Tick(now);}
@@ -459,7 +479,7 @@ std::optional<unitree_go::msg::LowCmd> R3Supervisor::Tick(SafetyTime now) {
    }
   }else {
    home_settling_=false;
-   if(home&&(!LieDownTargetApproved()||!profile_.lie_down_validated)) {
+   if(home&&(!LieDownTargetApproved()||!(profile_.lie_down_validated||profile_.controlled_stop_lie_down_trial))) {
     stop_blocker_=LieDownTargetApproved()?"lie_down_dynamics_not_commissioned":"lie_down_target_not_approved";Dispatch(SystemEvent::ADVANCE_PHASE,now,SystemPhase::ARM_HOME_BLOCKED);
    }else if(std::chrono::duration<double>(now-stop_started_).count()>=profile_.arm_home_timeout_s) {
     stop_blocker_="arm_home_timeout";Dispatch(SystemEvent::ADVANCE_PHASE,now,SystemPhase::ARM_HOME_BLOCKED);
@@ -478,8 +498,13 @@ std::optional<unitree_go::msg::LowCmd> R3Supervisor::Tick(SafetyTime now) {
     bool reached=true;for(int i=0;i<12;++i)reached=reached&&std::abs(inputs_.measured_q[i]-target_[i])<=profile_.lie_down_tolerance;
     if(reached){
      if(!lie_reached_){lie_reached_=true;lie_reached_stamp_=now;}
-     if(std::chrono::duration<double>(now-lie_reached_stamp_).count()>=profile_.lie_down_settle_s)
-      Dispatch(SystemEvent::ADVANCE_PHASE,now,SystemPhase::LIE_DOWN_HOLD);
+     if(std::chrono::duration<double>(now-lie_reached_stamp_).count()>=profile_.lie_down_settle_s) {
+      InvalidatePolicyWork();CancelRemoteSequence();Zero();
+      ++orchestration_generation_;ports_={};arm_home_accepted_=false;
+      output_enabled_=false;
+      Dispatch(SystemEvent::ADVANCE_PHASE,now,SystemPhase::LIE_DOWN_OUTPUT_STOPPING);
+      return std::nullopt; // Never substitute a zero-gain packet for transport shutdown.
+     }
     }else lie_reached_=false;
    }
    if(system_state_!=SystemState::SYSTEM_HOLD&&elapsed>=profile_.lie_down_timeout_s){
@@ -545,7 +570,11 @@ bool R3Supervisor::AllowsPacket(const unitree_go::msg::LowCmd& cmd,SafetyTime no
 }
 void R3Supervisor::ConfirmOutputStopped() {
  if(output_enabled_)return;output_stopped_=true;
- if(!fault_)SetPhase(R3State::DISARMED);
+ if(!fault_) {
+  if(phase_==SystemPhase::LIE_DOWN_OUTPUT_STOPPING)
+   Dispatch(SystemEvent::ADVANCE_PHASE,SafetyTime{},SystemPhase::LIE_DOWN_HOLD);
+  else if(phase_!=SystemPhase::LIE_DOWN_HOLD)SetPhase(R3State::DISARMED);
+ }
 }
 R3Reply R3Supervisor::RequestReturnToStock(SafetyTime now) {
  if(output_enabled_||!output_stopped_)return Fail("stop and remove LowCmd publisher first");

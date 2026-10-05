@@ -236,6 +236,7 @@ real_deployment:
       max_duration_s: 1.0
     output_lock: /home/ruben/go2_diploma/sim2real/runtime/go2_lowcmd.lock
     controlled_stop:
+      lie_down_trial: false # Explicit launch override permits commissioning, not validation.
       arm_home_timeout_s: 10.0
       arm_home_settle_s: 0.2
   capture_hold_sec: 0.02

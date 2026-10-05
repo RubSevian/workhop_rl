@@ -19,6 +19,8 @@ profile_config = yaml.safe_load(config.read_text())
 command = [str(binary), '--ros-args', '-p', 'read_only:=true', '-p', 'enable_actuator_output:=false',
            '-p', 'config_path:='+str(config),
            '-p', 'model_path:='+str(root/'weights/policy_2.pt')]
+trial = os.environ.get('R3_LIEDOWN_TRIAL_SMOKE') == '1'
+if trial: command += ['-p','controlled_stop_lie_down_trial:=true']
 autonomy = os.environ.get("R3_AUTONOMY_SMOKE") == "1"
 remote_test = os.environ.get('R3_REMOTE_TEST_SMOKE') == '1'
 command += ['-p', 'remote_test_mode:='+str(remote_test).lower()]
@@ -42,6 +44,10 @@ with (root/'r3_readonly_smoke_node.log').open('w') as log:
             assert status['operation_profile']=='read_only' and status['capabilities']['leg_output'] is False
             assert status['state']=='STANDBY' and 'phase' in status and 'legacy_state' in status
         assert status['model_loaded'] and not status['lowcmd_publisher_present'], status
+        if 'controlled_stop_lie_down_trial' in status:
+            assert status['controlled_stop_lie_down_trial'] is trial and not status['lie_down_dynamics_validated']
+            assert status['custom_leg_output']=='OFF' and not status['lowcmd_lease_present']
+            assert status['output_stop_confirmed'] and not status['motor_power_off_confirmed']
         assert status['remote_test_mode'] is (remote_test and not autonomy), status
         assert status['control_mode']==('autonomy' if autonomy else 'remote_test'),status
         from geometry_msgs.msg import TwistStamped
@@ -93,7 +99,7 @@ with (root/'r3_readonly_smoke_node.log').open('w') as log:
             from rcl_interfaces.msg import Parameter, ParameterValue, ParameterType
             changer=node.create_client(SetParameters, '/go2_r3_commissioning/set_parameters')
             assert changer.wait_for_service(timeout_sec=3)
-            for name, value in [('operation_profile','remote_test'), ('read_only',False), ('motion_commands_enabled',True)]:
+            for name, value in [('operation_profile','remote_test'), ('read_only',False), ('motion_commands_enabled',True), ('controlled_stop_lie_down_trial',not trial)]:
                 request=SetParameters.Request()
                 val=ParameterValue()
                 if isinstance(value,bool):val.type=ParameterType.PARAMETER_BOOL;val.bool_value=value

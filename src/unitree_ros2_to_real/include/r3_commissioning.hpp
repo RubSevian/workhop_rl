@@ -17,6 +17,7 @@ struct R3Profile {
  bool policy_timing_reviewed=false;
  bool gate0_verified=false, mapping_verified=false, emergency_validated=false;
  bool remote_chords_verified=false, robot_supported=false, lie_down_validated=false;
+ bool controlled_stop_lie_down_trial=false;
  std::string emergency_evidence;
  double capture_hold_s=.02,stand_s=8,hold_s=1,lie_down_s=8,sport_timeout_s=.5,command_timeout_s=.25;
  double lowstate_timeout_s=.5,remote_timeout_s=.25,arm_timeout_s=.25;
@@ -104,6 +105,7 @@ class R3Supervisor {
  bool AllowsPacket(const unitree_go::msg::LowCmd& cmd,SafetyTime now) const;
  R3State state() const;
  bool output_enabled() const {return output_enabled_;}
+ bool output_stopped() const {return output_stopped_;}
  bool fault_latched() const {return fault_;}
  bool navigation_active() const {return navigation_active_;}
  bool NeedsPolicy() const {return state()==R3State::RL_ZERO||state()==R3State::RL_ACTIVE;}
