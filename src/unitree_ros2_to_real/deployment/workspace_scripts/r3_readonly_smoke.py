@@ -48,6 +48,10 @@ with (root/'r3_readonly_smoke_node.log').open('w') as log:
             assert status['controlled_stop_lie_down_trial'] is trial and not status['lie_down_dynamics_validated']
             assert status['custom_leg_output']=='OFF' and not status['lowcmd_lease_present']
             assert status['output_stop_confirmed'] and not status['motor_power_off_confirmed']
+        if 'passive_command_sent' in status:
+            assert not status['passive_command_sent'] and status['passive_packets_sent']==0
+            assert not status['passive_sequence_complete'] and status['last_commanded_leg_mode']==-1
+            assert status['passive_packet_limit']==10 and status['passive_timeout_s']==.1
         assert status['remote_test_mode'] is (remote_test and not autonomy), status
         assert status['control_mode']==('autonomy' if autonomy else 'remote_test'),status
         from geometry_msgs.msg import TwistStamped

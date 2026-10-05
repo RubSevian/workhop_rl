@@ -95,6 +95,8 @@ LowCmdBytes SerializeLowCmd(const unitree_go::msg::LowCmd& cmd);
 uint32_t Go2Crc(std::span<const uint8_t> bytes);
 unitree_go::msg::LowCmd MakeLowCmd(const std::array<float,12>& motor_q,
  const std::array<float,12>& motor_kp, const std::array<float,12>& motor_kd);
+// Canonical passive packet: same layout/CRC and existing stop sentinels.
+unitree_go::msg::LowCmd MakePassiveLowCmd();
 class ActuatorTransport {
  public:
  virtual ~ActuatorTransport()=default;

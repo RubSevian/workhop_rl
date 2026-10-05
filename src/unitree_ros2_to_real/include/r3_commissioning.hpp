@@ -106,6 +106,12 @@ class R3Supervisor {
  R3State state() const;
  bool output_enabled() const {return output_enabled_;}
  bool output_stopped() const {return output_stopped_;}
+ void NotifyPacketPublished(const unitree_go::msg::LowCmd& packet,SafetyTime now);
+ static constexpr size_t passive_packet_limit=10;
+ static constexpr double passive_timeout_s=.10;
+ size_t passive_packets_sent() const {return passive_packets_sent_;}
+ bool passive_sequence_complete() const {return passive_sequence_complete_;}
+ int last_commanded_leg_mode() const {return last_commanded_leg_mode_;}
  bool fault_latched() const {return fault_;}
  bool navigation_active() const {return navigation_active_;}
  bool NeedsPolicy() const {return state()==R3State::RL_ZERO||state()==R3State::RL_ACTIVE;}
@@ -143,6 +149,10 @@ class R3Supervisor {
  bool arm_home_accepted_=false;
  SafetyTime stop_started_{},home_settle_started_{},lie_reached_stamp_{};
  bool home_settling_=false,lie_reached_=false;
+ SafetyTime passive_started_{};
+ size_t passive_packets_sent_=0;
+ bool passive_packet_pending_=false,passive_sequence_complete_=false;
+ int last_commanded_leg_mode_=-1;
  std::string stop_blocker_,arm_emergency_detail_;
  bool remote_sequence_=false,release_requested_=false,sequence_hold_started_=false;
  SafetyTime sequence_hold_stamp_{};

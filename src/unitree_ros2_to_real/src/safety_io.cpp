@@ -193,6 +193,13 @@ unitree_go::msg::LowCmd MakeLowCmd(const std::array<float,12>& q,const std::arra
  }
  const auto bytes=SerializeLowCmd(cmd);cmd.crc=Go2Crc(std::span(bytes).first(808));return cmd;
 }
+unitree_go::msg::LowCmd MakePassiveLowCmd() {
+ auto cmd=MakeLowCmd({}, {}, {});
+ // Unused motor entries already carry the proven PosStopF/VelStopF convention.
+ const auto sentinel=cmd.motor_cmd[12];
+ for(size_t i=0;i<12;++i){auto& m=cmd.motor_cmd[i];m.mode=0x00;m.q=sentinel.q;m.dq=sentinel.dq;m.kp=0;m.kd=0;m.tau=0;}
+ const auto bytes=SerializeLowCmd(cmd);cmd.crc=Go2Crc(std::span(bytes).first(808));return cmd;
+}
 bool ActuatorTransport::Send(const unitree_go::msg::LowCmd& cmd,const SafetyFsm& fsm,const SafetyReadiness& r,SafetyTime now) {
  if(!Ready()||!fsm.AllowsOutput(r,now))return false;
  // Accept only a complete freshly constructed position+gains packet.

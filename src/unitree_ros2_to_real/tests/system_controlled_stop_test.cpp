@@ -18,17 +18,19 @@ int main(){auto p=system_fixture();R3Supervisor f(p);enter_active(f);
    for(int j=0;j<12;++j)assert(packet->motor_cmd[j].q==i.measured_q[j]&&packet->motor_cmd[j].kp==40&&packet->motor_cmd[j].kd==1);
    assert(!f.NeedsPolicy());break;}}
  assert(captured>0);
- for(int n=1;n<=60;++n){double s=captured+n*.002;auto i=system_facts(s);float u=std::clamp(float((s-captured)/p.lie_down_s),0.F,1.F);
+ double stopped_at=0;
+ for(int n=1;n<=80;++n){double s=captured+n*.002;auto i=system_facts(s);float u=std::clamp(float((s-captured)/p.lie_down_s),0.F,1.F);
   for(int j=0;j<12;++j)i.measured_q[j]=handoff[j]*(1-u)+(*p.lie_down)[j]*u;
   auto packet=run_tick(f,s,i);
-  if(!packet){assert(f.phase()==SystemPhase::LIE_DOWN_OUTPUT_STOPPING&&!f.output_enabled());break;}
-  assert(f.AllowsPacket(*packet,time_at(s)));
+  if(!packet){assert(f.phase()==SystemPhase::LIE_DOWN_OUTPUT_STOPPING&&!f.output_enabled());stopped_at=s;break;}
+  assert(f.AllowsPacket(*packet,time_at(s))||f.phase()==SystemPhase::LIE_DOWN_PASSIVE);
+  if(f.phase()==SystemPhase::LIE_DOWN_PASSIVE){assert(packet->motor_cmd[0].mode==0);continue;}
   for(int j=0;j<12;++j){assert(std::abs(packet->motor_cmd[j].q-i.measured_q[j])<1e-5);assert(packet->motor_cmd[j].kp==40&&packet->motor_cmd[j].kd==1);}}
  assert(f.system_state()==SystemState::CONTROLLED_STOP&&!f.output_enabled()&&!f.NeedsPolicy()&&!f.output_stopped());
- f.EnableOutput(false,time_at(captured+.120));f.ConfirmOutputStopped();
+ f.EnableOutput(false,time_at(stopped_at));f.ConfirmOutputStopped();
  assert(f.system_state()==SystemState::SYSTEM_HOLD&&f.output_stopped());
- assert(f.ControlledAbort(time_at(captured+.120)).success&&f.system_state()==SystemState::SYSTEM_HOLD);
- auto i=system_facts(captured+.122);i.measured_q=*p.lie_down;assert(!run_tick(f,captured+.122,i));for(int j=0;j<12;++j)assert(f.fixed_target()[j]==(*p.lie_down)[j]);
+ assert(f.ControlledAbort(time_at(stopped_at)).success&&f.system_state()==SystemState::SYSTEM_HOLD);
+ auto i=system_facts(stopped_at+.002);i.measured_q=*p.lie_down;assert(!run_tick(f,stopped_at+.002,i));for(int j=0;j<12;++j)assert(f.fixed_target()[j]==(*p.lie_down)[j]);
  // Critical inputs/policy faults while HOME is moving remain fail-closed.
  for(int bad=0;bad<3;++bad){R3Supervisor x(p);enter_active(x);x.ControlledAbort(time_at(6));auto i=system_facts(6.002,false);
   if(bad==0)i.arm_control_ready=false;if(bad==1)i.arm_stamp=time_at(5);if(bad==2)i.target_stamp=time_at(5);

@@ -16,7 +16,10 @@ int main(){auto p=system_fixture();p.lie_down_validated=false;p.controlled_stop_
  auto publisher=std::make_unique<int>(1); // No DDS publisher or physical transport in this test.
  int packets=0;bool reached=false;
  for(int n=1;n<160;++n){double s=6+n*.002;auto i=system_facts(s);i.measured_q=*p.lie_down;
-  auto packet=run_tick(f,s,i);
+  f.Observe(i,time_at(s));
+  if(f.NeedsPolicy()){auto work=f.BeginPolicy(time_at(s));if(work)assert(f.PolicyResult(*work,p.stand,2,time_at(s)));}
+  auto packet=f.Tick(time_at(s));
+  if(packet){assert(f.AllowsPacket(*packet,time_at(s)));f.NotifyPacketPublished(*packet,time_at(s));}
   if(packet){++packets;assert(f.output_enabled());}
   if(f.phase()==SystemPhase::LIE_DOWN_VERIFY){reached=true;assert(f.output_enabled()&&lease&&publisher);}
   if(f.phase()==SystemPhase::LIE_DOWN_OUTPUT_STOPPING)break;
@@ -39,7 +42,7 @@ int main(){auto p=system_fixture();p.lie_down_validated=false;p.controlled_stop_
  f.Observe(now,time_at(7));assert(f.StartRemoteSequence(time_at(7)).success);
  f.Observe(now,time_at(7));assert(f.RemoteSequenceNext(time_at(7))==R3SequenceAction::ENABLE_OUTPUT);
  assert(f.EnableOutput(true,time_at(7)).success);publisher=std::make_unique<int>(1);
- auto first=f.Tick(time_at(7));assert(first);for(int j=0;j<12;++j)assert(first->motor_cmd[j].q==-.17F&&first->motor_cmd[j].kp==40&&first->motor_cmd[j].kd==1);
+ auto first=f.Tick(time_at(7));assert(first);for(int j=0;j<12;++j)assert(first->motor_cmd[j].mode==1&&first->motor_cmd[j].q==-.17F&&first->motor_cmd[j].kp==40&&first->motor_cmd[j].kd==1);
  f.EnableOutput(false,time_at(7));publisher.reset();lease.reset();f.ConfirmOutputStopped();std::filesystem::remove(path);
  // Trial never authorizes another target.
  auto wrong=p;(*wrong.lie_down)[0]=.2F;R3Supervisor bad(wrong);enter_active(bad);bad.ControlledAbort(time_at(6));bad.ArmHomeRequestAccepted(true,time_at(6));

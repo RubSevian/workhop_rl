@@ -105,6 +105,7 @@ R3State R3Supervisor::state() const {
  case SystemPhase::LIE_DOWN:case SystemPhase::LIE_DOWN_VERIFY:case SystemPhase::LIE_DOWN_BLOCKED:return R3State::LIE_DOWN_TRANSITION;
  case SystemPhase::LIE_DOWN_HOLD:return R3State::HOLDING;
  case SystemPhase::LIE_DOWN_OUTPUT_STOPPING:return R3State::OUTPUT_STOPPING;
+ case SystemPhase::LIE_DOWN_PASSIVE:return R3State::HOLDING;
  default:return static_cast<R3State>(phase_);
  }
 }
@@ -133,7 +134,7 @@ R3Reply R3Supervisor::Dispatch(SystemEvent e,SafetyTime now,SystemPhase p) {
    case SystemPhase::FAULT_LATCHED:case SystemPhase::EMERGENCY_DAMP:system_state_=SystemState::EMERGENCY_FAULT;break;
    case SystemPhase::CONTROLLED_ABORT:case SystemPhase::LIE_DOWN_TRANSITION:
    case SystemPhase::ARM_RETURN_HOME:case SystemPhase::ARM_HOME_BLOCKED:case SystemPhase::ARM_HOME_SETTLE:
-   case SystemPhase::PD_CAPTURE:case SystemPhase::LIE_DOWN:case SystemPhase::LIE_DOWN_VERIFY:case SystemPhase::LIE_DOWN_BLOCKED:case SystemPhase::LIE_DOWN_OUTPUT_STOPPING:system_state_=SystemState::CONTROLLED_STOP;break;
+   case SystemPhase::PD_CAPTURE:case SystemPhase::LIE_DOWN:case SystemPhase::LIE_DOWN_VERIFY:case SystemPhase::LIE_DOWN_BLOCKED:case SystemPhase::LIE_DOWN_OUTPUT_STOPPING:case SystemPhase::LIE_DOWN_PASSIVE:system_state_=SystemState::CONTROLLED_STOP;break;
    case SystemPhase::LIE_DOWN_HOLD:system_state_=SystemState::SYSTEM_HOLD;break;
    case SystemPhase::HOLD_CURRENT:system_state_=capabilities_.takeover_limit==TakeoverLimit::HOLD_CURRENT&&output_enabled_?SystemState::SYSTEM_HOLD:SystemState::TAKEOVER;break;
    default:system_state_=SystemState::TAKEOVER;break;
@@ -288,6 +289,7 @@ R3Reply R3Supervisor::EnableOutput(bool enable,SafetyTime now) {
  if(state()!=R3State::SPORT_RELEASE_VERIFIED||!output_stopped_)return Fail("requires explicit takeover + verified release + previous output stop");
  auto r=Require(now);if(!r.success)return r;
  Capture(now);output_enabled_=true;output_stopped_=false;SetPhase(R3State::LOW_LEVEL_ARMED);Zero();
+ passive_packets_sent_=0;passive_packet_pending_=passive_sequence_complete_=false;
  return {true,"first packet HOLD_CURRENT measured q; no stand/RL"};
 }
 R3Reply R3Supervisor::RequestHold(SafetyTime now) {
@@ -299,6 +301,7 @@ R3Reply R3Supervisor::RequestHold(SafetyTime now) {
 }
 R3Reply R3Supervisor::RequestStand(SafetyTime now) {
  if(system_state_==SystemState::CONTROLLED_STOP)return Fail("controlled_stop_in_progress");
+ if(!IsActive())return Fail("active custom output required; use A to reacquire from SYSTEM_HOLD");
  if(capabilities_.takeover_limit!=TakeoverLimit::RL)return Fail("profile_limits_takeover_to_hold");
  if(state()!=R3State::HOLD_CURRENT&&state()!=R3State::HOLDING)return Fail("stand requires HOLD_CURRENT/HOLDING");
  auto r=Require(now);if(!r.success)return r;
@@ -306,6 +309,7 @@ R3Reply R3Supervisor::RequestStand(SafetyTime now) {
 }
 R3Reply R3Supervisor::RequestRl(SafetyTime now) {
  if(system_state_==SystemState::CONTROLLED_STOP)return Fail("controlled_stop_in_progress");
+ if(!IsActive())return Fail("active custom output required; use A to reacquire from SYSTEM_HOLD");
  if(!capabilities_.allow_rl)return Fail("profile_disallows_rl");
  if(state()!=R3State::HOLDING)return Fail("RL entry only from HOLDING");
  if(!profile_.policy_timing_reviewed)return Fail("timing review required before RL");
@@ -314,6 +318,7 @@ R3Reply R3Supervisor::RequestRl(SafetyTime now) {
 }
 R3Reply R3Supervisor::RequestLieDown(SafetyTime now) {
  if(system_state_==SystemState::CONTROLLED_STOP)return Fail("controlled_stop_in_progress");
+ if(!IsActive())return Fail("active custom output required; use A to reacquire from SYSTEM_HOLD");
  if(capabilities_.takeover_limit!=TakeoverLimit::RL)return Fail("profile_limits_takeover_to_hold");
  if(state()!=R3State::HOLDING)return Fail("lie-down requires HOLDING");
  auto r=Require(now);if(!r.success)return r;
@@ -464,6 +469,17 @@ std::optional<unitree_go::msg::LowCmd> R3Supervisor::Tick(SafetyTime now) {
   return MakeLowCmd(target_,std::array<float,12>{},*profile_.emergency_kd);
  }
  if(!Require(now).success){Fault("watchdog_or_precondition",now);return Tick(now);}
+ if(phase_==SystemPhase::LIE_DOWN_PASSIVE) {
+  if(passive_packets_sent_>=passive_packet_limit) {
+   passive_sequence_complete_=true;passive_packet_pending_=false;output_enabled_=false;
+   Dispatch(SystemEvent::ADVANCE_PHASE,now,SystemPhase::LIE_DOWN_OUTPUT_STOPPING);
+   return std::nullopt;
+  }
+  if(!Fresh(now,passive_started_,passive_timeout_s)) {
+   passive_packet_pending_=false;Fault("passive_transition_timeout",now);return Tick(now);
+  }
+  passive_packet_pending_=true;return MakePassiveLowCmd();
+ }
  if(system_state_==SystemState::ACTIVE&&state()==R3State::RL_ACTIVE&&(!have_command_||!Fresh(now,command_stamp_,profile_.command_timeout_s)||now>=command_end_)) {
   Zero();Capture(now);abort_sequence_=false;SetPhase(R3State::CONTROLLED_ABORT);
  }
@@ -501,9 +517,9 @@ std::optional<unitree_go::msg::LowCmd> R3Supervisor::Tick(SafetyTime now) {
      if(std::chrono::duration<double>(now-lie_reached_stamp_).count()>=profile_.lie_down_settle_s) {
       InvalidatePolicyWork();CancelRemoteSequence();Zero();
       ++orchestration_generation_;ports_={};arm_home_accepted_=false;
-      output_enabled_=false;
-      Dispatch(SystemEvent::ADVANCE_PHASE,now,SystemPhase::LIE_DOWN_OUTPUT_STOPPING);
-      return std::nullopt; // Never substitute a zero-gain packet for transport shutdown.
+      passive_started_=now;passive_packets_sent_=0;passive_packet_pending_=passive_sequence_complete_=false;
+      Dispatch(SystemEvent::ADVANCE_PHASE,now,SystemPhase::LIE_DOWN_PASSIVE);
+      return Tick(now); // Only the confirmed lying/settled path may send PASSIVE.
      }
     }else lie_reached_=false;
    }
@@ -557,6 +573,10 @@ std::optional<unitree_go::msg::LowCmd> R3Supervisor::Tick(SafetyTime now) {
 bool R3Supervisor::AllowsPacket(const unitree_go::msg::LowCmd& cmd,SafetyTime now) const {
  if(!output_enabled_||!Released(now))return false;
  if(state()!=R3State::EMERGENCY_DAMP&&!Require(now).success)return false;
+ if(phase_==SystemPhase::LIE_DOWN_PASSIVE) {
+  if(!passive_packet_pending_||passive_packets_sent_>=passive_packet_limit||!Fresh(now,passive_started_,passive_timeout_s))return false;
+  return SerializeLowCmd(cmd)==SerializeLowCmd(MakePassiveLowCmd());
+ }
  std::array<float,12> q{},kp{},kd{};
  for(int i=0;i<12;++i){const auto& m=cmd.motor_cmd[i];q[i]=m.q;kp[i]=m.kp;kd[i]=m.kd;}
  try {if(SerializeLowCmd(cmd)!=SerializeLowCmd(MakeLowCmd(q,kp,kd)))return false;}catch(...){return false;}
@@ -567,6 +587,14 @@ bool R3Supervisor::AllowsPacket(const unitree_go::msg::LowCmd& cmd,SafetyTime no
   if(state()==R3State::EMERGENCY_DAMP){if(!profile_.emergency_validated||!profile_.emergency_kd||kp[i]!=0||kd[i]!=(*profile_.emergency_kd)[i])return false;}
   else if(kp[i]!=expect_kp[i]||kd[i]!=expect_kd[i])return false;
  }return true;
+}
+void R3Supervisor::NotifyPacketPublished(const unitree_go::msg::LowCmd& packet,SafetyTime now) {
+ if(phase_==SystemPhase::LIE_DOWN_PASSIVE) {
+  if(!passive_packet_pending_||SerializeLowCmd(packet)!=SerializeLowCmd(MakePassiveLowCmd()))return;
+  // Record what was actually published, even if DDS returned after the deadline.
+  ++passive_packets_sent_;passive_packet_pending_=false;last_commanded_leg_mode_=0;
+  if(!Fresh(now,passive_started_,passive_timeout_s))Fault("passive_transition_timeout",now);
+ }else if(output_enabled_&&packet.motor_cmd[0].mode==1)last_commanded_leg_mode_=1;
 }
 void R3Supervisor::ConfirmOutputStopped() {
  if(output_enabled_)return;output_stopped_=true;

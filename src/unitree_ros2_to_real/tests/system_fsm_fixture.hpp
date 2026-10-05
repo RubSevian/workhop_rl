@@ -19,5 +19,7 @@ inline void enter_active(R3Supervisor& f){auto i=system_facts(0);f.Observe(i,tim
 }
 inline std::optional<unitree_go::msg::LowCmd> run_tick(R3Supervisor& f,double s,R3Inputs i){f.Observe(i,time_at(s));
  if(f.NeedsPolicy()){auto w=f.BeginPolicy(time_at(s));if(w){std::array<float,12> q;q.fill(.25F);assert(f.PolicyResult(*w,q,2,time_at(s)));}}
- return f.Tick(time_at(s));
+ auto packet=f.Tick(time_at(s));
+ if(packet){assert(f.AllowsPacket(*packet,time_at(s)));f.NotifyPacketPublished(*packet,time_at(s));}
+ return packet;
 }

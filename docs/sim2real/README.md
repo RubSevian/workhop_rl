@@ -1,6 +1,6 @@
-# Go2 + RARS01 — System FSM Phase B.1
+# Go2 + RARS01 — System FSM Phase B.2
 
-Jetson Orin Nano · ROS 2 Jazzy. Результаты и ограничения: [отчёт B.1](CODEX_SYSTEM_FSM_PHASE_B1_REPORT.md); [история Phase B](CODEX_SYSTEM_FSM_PHASE_B_REPORT.md). История решений: [CODEX_SIM2REAL_DECISIONS.md](CODEX_SIM2REAL_DECISIONS.md).
+Jetson Orin Nano · ROS 2 Jazzy. Результаты и ограничения: [отчёт B.2](CODEX_SYSTEM_FSM_PHASE_B2_REPORT.md); [история B.1](CODEX_SYSTEM_FSM_PHASE_B1_REPORT.md); [история Phase B](CODEX_SYSTEM_FSM_PHASE_B_REPORT.md). История решений: [CODEX_SIM2REAL_DECISIONS.md](CODEX_SIM2REAL_DECISIONS.md).
 
 ## Сборка и окружение
 
@@ -43,7 +43,7 @@ ros2 launch unitree_legged_real go2_rars01_r3_commissioning.launch.py \
 В другом терминале:
 
 ```bash
-ros2 run unitree_legged_real r3_status --once
+ros2 run unitree_legged_real r3_status.py --once
 ```
 
 `state` — один из INIT/STANDBY/TAKEOVER/ACTIVE/CONTROLLED_STOP/SYSTEM_HOLD/EMERGENCY_FAULT. `phase` показывает этап; `legacy_state` оставлен для прежних диагностических инструментов. Проверяйте `operation_profile`, `arm_control_ready`, `arm_home_ready`, `stop_blocker` и состояния async ports.
@@ -69,7 +69,7 @@ Launch сам не создаёт LowCmd. До A нужны свежие LowStat
 | Кнопки | Действие |
 |---|---|
 | **L1+L2+A** | Takeover и прежний цикл до RL; из лежащего SYSTEM_HOLD — заново lease/publisher, fresh measured capture, без повторного release при fresh RELEASED |
-| **L1+L2+X** | Из ACTIVE: закрыть скорости → zero RL → HOME через owner → fresh measured PD handoff → lie-down → reached/settle → output OFF, publisher/lease освобождены → SYSTEM_HOLD |
+| **L1+L2+X** | Из ACTIVE: закрыть скорости → zero RL → HOME через owner → fresh measured PD handoff → lie-down → reached/settle → 10 PASSIVE packets → output OFF, publisher/lease освобождены → SYSTEM_HOLD |
 | **L1+L2+B** | Защёлкнуть emergency; ноги 0/3 при прежней eligibility; отменить миссии; запросить отдельно валидированный arm disable; без HOME wait и auto recovery |
 
 **Новая динамика lie-down пока не commissioned.** `lie_down.operator_validated=false`: после HOME X сохраняет zero RL и показывает `lie_down_dynamics_not_commissioned`; он не выключает RL и не начинает траекторию. Для явно разрешённого commissioning trial добавьте при запуске `controlled_stop_lie_down_trial:=true`; production YAML и validation flags остаются false. Параметр неизменяемый, статус показывает trial и `lie_down_dynamics_validated=false`. Approved target FR/FL/RR/RL:
@@ -78,7 +78,7 @@ Launch сам не создаёт LowCmd. До A нужны свежие LowStat
 [0.01,1.30,-2.70, -0.01,1.30,-2.70, -0.30,1.30,-2.70, 0.30,1.30,-2.70]
 ```
 
-Duration 8 с, fixed gains 40/1, tolerance 0,15 рад, timeout 12 с и settle 0,2 с — commissioning candidates. Для проверки используйте явный trial-флаг; `operator_validated` меняется только после подтверждения динамики. Успешный X отключает custom output после непрерывного reached/settle; электрическое отключение моторов этим не подтверждается. Повторный X в SYSTEM_HOLD ничего не включает. HOME timeout сохраняет zero RL. Lie timeout сохраняет последний planned fixed target и LowCmd. Critical invalid/stale/policy fault переводит в EMERGENCY_FAULT.
+Duration 8 с, fixed gains 40/1, tolerance 0,15 рад, timeout 12 с и settle 0,2 с — commissioning candidates. Для проверки используйте явный trial-флаг; `operator_validated` меняется только после подтверждения динамики. Успешный X после непрерывного reached/settle отправляет 10 PASSIVE packets (mode0, q/dq stop sentinels, kp/kd/tau0) через прежний IO500Гц, затем отключает custom output; электрическое отключение моторов этим не подтверждается. Повторный X в SYSTEM_HOLD ничего не включает. HOME timeout сохраняет zero RL. Lie timeout сохраняет последний planned fixed target и LowCmd. Critical invalid/stale/policy fault переводит в EMERGENCY_FAULT.
 
 **B не задаёт lie-down trajectory.** Arm emergency gate по умолчанию false; принятый service reply не подтверждает физическое отключение. Ctrl+C завершает процесс и не заменяет B.
 
@@ -130,7 +130,7 @@ ros2 launch unitree_legged_real go2_rars01_r3_commissioning.launch.py \
   network_interface:=enP8p1s0
 ```
 
-HOME owner запускается отдельно командой выше. A → прежний подъём/RL; X → zero RL до HOME → measured PD → lie-down/settle → SYSTEM_HOLD. Ожидаемые поля: `custom_leg_output: OFF`, `output_enabled: false`, `lowcmd_publisher_present: false`, `lowcmd_lease_present: false`, `output_stop_confirmed: true`; sent_packets больше не растёт. Sport автоматически не включается. Новый A проверяет отсутствие чужих publishers/lease и снова захватывает свежие измеренные углы. Нейтраль стиков даёт zero velocity; REMOTE не слушает NAV.
+HOME owner запускается отдельно командой выше. A → прежний подъём/RL; X → zero RL до HOME → measured PD → lie-down/settle → PASSIVE → output OFF → SYSTEM_HOLD. Ожидаемые поля: `custom_leg_output: OFF`, `output_enabled: false`, `lowcmd_publisher_present: false`, `lowcmd_lease_present: false`, `output_stop_confirmed: true`, `passive_command_sent: true`, `passive_packets_sent: 10`, `passive_sequence_complete: true`, `last_commanded_leg_mode: 0`; sent_packets больше не растёт. Sport автоматически не включается. Новый A проверяет отсутствие чужих publishers/lease и снова захватывает свежие измеренные углы; первый active packet имеет mode1 для всех12 ног. Статус `passive_command_sent` означает успешный локальный publish, а не hardware acknowledgement. Незавершённая серия ограничена100 мс; timeout/critical fault ведёт в прежнюю emergency0/3, без успешного shutdown. Нейтраль стиков даёт zero velocity; REMOTE не слушает NAV.
 
 ## Отдельная IMU calibration для NAV
 

@@ -184,7 +184,7 @@ class R3Node final:public rclcpp::Node {
    auto packet=supervisor_->Tick(now);
    if(output_&&packet&&!supervisor_->AllowsPacket(*packet,now))supervisor_->Fault("crc_or_packet_validation",now);
    else if(output_&&packet) {
-    try{output_->publish(*packet);++sent_;}catch(...){supervisor_->Fault("transport_exception",now);StopPublisher();}
+    try{output_->publish(*packet);++sent_;supervisor_->NotifyPacketPublished(*packet,SafetyClock::now());}catch(...){supervisor_->Fault("transport_exception",now);StopPublisher();}
    }
    if(output_&&!supervisor_->output_enabled())StopPublisher();
    TraceState(now);
@@ -413,6 +413,12 @@ class R3Node final:public rclcpp::Node {
    <<YAML::Key<<"custom_leg_output"<<YAML::Value<<YAML::DoubleQuoted<<(output_&&supervisor_->output_enabled()?"ON":"OFF")<<YAML::Auto
    <<YAML::Key<<"lowcmd_lease_present"<<YAML::Value<<bool(lease_)
    <<YAML::Key<<"output_stop_confirmed"<<YAML::Value<<supervisor_->output_stopped()
+   <<YAML::Key<<"passive_command_sent"<<YAML::Value<<(supervisor_->passive_packets_sent()>0)
+   <<YAML::Key<<"passive_packets_sent"<<YAML::Value<<supervisor_->passive_packets_sent()
+   <<YAML::Key<<"passive_packet_limit"<<YAML::Value<<R3Supervisor::passive_packet_limit
+   <<YAML::Key<<"passive_timeout_s"<<YAML::Value<<R3Supervisor::passive_timeout_s
+   <<YAML::Key<<"passive_sequence_complete"<<YAML::Value<<supervisor_->passive_sequence_complete()
+   <<YAML::Key<<"last_commanded_leg_mode"<<YAML::Value<<supervisor_->last_commanded_leg_mode()
    <<YAML::Key<<"motor_power_off_confirmed"<<YAML::Value<<false
    <<YAML::Key<<"lowcmd_publisher_present"<<YAML::Value<<bool(output_)<<YAML::Key<<"sent_packets"<<YAML::Value<<sent_
    <<YAML::Key<<"sport_state"<<YAML::Value<<SportModeName(inputs_.sport)<<YAML::Key<<"sport_age_s"<<YAML::Value<<Age(now,inputs_.sport_stamp)

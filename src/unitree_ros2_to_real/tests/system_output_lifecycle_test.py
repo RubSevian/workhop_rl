@@ -21,3 +21,7 @@ for name in ('config/go2_rars01_real.yaml', 'deployment/workspace_runtime/r3_fir
     assert r['lie_down']['operator_validated'] is False
     assert r['lie_down']['motor_q']==[.01,1.3,-2.7,-.01,1.3,-2.7,-.3,1.3,-2.7,.3,1.3,-2.7]
 print('PASS production and operator config fail-closed trial defaults and exact approved target')
+
+assert s.index('output_->publish(*packet);++sent_;') < s.index('supervisor_->NotifyPacketPublished(*packet,SafetyClock::now());')
+assert 'passive_command_sent' in s and 'last_commanded_leg_mode' in s
+print('PASS passive publication acknowledgement follows actual publish return')

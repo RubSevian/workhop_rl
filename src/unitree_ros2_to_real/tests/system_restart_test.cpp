@@ -13,7 +13,7 @@ int main(){auto p=system_fixture();R3Supervisor g(p);enter_active(g);g.Controlle
  g.Observe(i,time_at(7));assert(g.RemoteSequenceNext(time_at(7))==R3SequenceAction::ENABLE_OUTPUT);
  // The node's existing lease/foreign-publisher gates run before this enable.
  assert(g.EnableOutput(true,time_at(7)).success);
- auto packet=g.Tick(time_at(7));for(int j=0;j<12;++j)assert(packet->motor_cmd[j].q==i.measured_q[j]);
+ auto packet=g.Tick(time_at(7));for(int j=0;j<12;++j)assert(packet->motor_cmd[j].mode==1&&packet->motor_cmd[j].q==i.measured_q[j]);
  int releases=0,enables=1,resets=0;double stand_at=0,hold_at=0,rl_at=0;
  for(int n=0;n<5150;++n){double s=7+n*.002;auto input=system_facts(s);for(int j=0;j<12;++j)input.measured_q[j]=(*p.lie_down)[j]+.04F;
   g.Observe(input,time_at(s));packet=g.Tick(time_at(s));assert(packet&&!g.fault_latched());
