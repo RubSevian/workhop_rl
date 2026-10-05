@@ -146,3 +146,8 @@ Runtime watchdog, свежесть feedback/targets, проверка motor ID/v
 Ранее отказ был усилен ошибкой, затиравшей причину runtime_watchdog при повторном запуске. Исходный journal с согласия оператора архивирован в runtime/arm_journal_diagnostics/recovery_20261005_100731/. Теперь архивирование/очистка больше не нужны для запуска. Причина watchdog04.10 в19:20:38 не установлена. STM32 подключён на host; прежнее сообщение об отсутствии USB было неверным из-за sandbox.
 
 Проверки PASS: сборка/установка (`runtime/build_arm_no_journal_guard.log`),3/3 targeted tests (`runtime/test_arm_no_journal_guard.log`: AUTO HOME, isolation, R3 supervisor), verify_r1/r2/r3 (`runtime/verify_arm_no_journal_guard.log`). Mock tests подтверждают новый старт при старом FAULT, same-boot ENABLE_ATTEMPT и invalid bytes, а также остановку stream без re-enable при текущем watchdog. Физический owner не запускался, enable/targets не отправлялись. Команда запуска руки из README остаётся той же; новый executable используется при новом запуске owner.
+
+
+## System FSM: PHASE A 05.10.2026
+
+Оператор сообщил об успешной работе текущего RL_ZERO после предыдущего исправления (OPERATOR_REPORTED; новые логи не приложены). По заданию CODEX_SYSTEM_FSM_REFACTOR (1).md выполнены только audit/design и [план PHASE A](CODEX_SYSTEM_FSM_REFACTOR_PLAN.md). Runtime baseline39b78c9 не изменён. PHASE B, новые профили и целевые X с lie-down/B с emergency руки не реализуются до явного approval этого плана. Bench/физические подтверждения новой траектории и emergency руки отсутствуют.
