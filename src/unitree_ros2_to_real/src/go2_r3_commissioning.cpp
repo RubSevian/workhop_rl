@@ -200,6 +200,11 @@ class R3Node final:public rclcpp::Node {
   const auto event=remote_->Poll(now);Refresh(now);
   switch(event) {
    case R3RemoteEvent::TAKEOVER: {
+    if(supervisor_->system_state()==SystemState::SYSTEM_HOLD) {
+     // Verify ownership at the restart edge, never poll the graph at 500Hz.
+     inputs_.own_output_healthy=output_&&lease_&&lease_->acquired()&&count_publishers("/lowcmd")==1;
+     supervisor_->Observe(inputs_,now);
+    }
     const auto reply=(supervisor_->operation_profile()==OperationProfile::ARM_TEST||(!read_only_&&automatic_sequence_))?supervisor_->Dispatch(SystemEvent::REQUEST_A,now):supervisor_->Takeover(now);
     sequence_message_=reply.message;break;
    }
@@ -347,9 +352,9 @@ class R3Node final:public rclcpp::Node {
  void Refresh(SafetyTime now) {
   inputs_.ready.lowstate_fresh=lowstate_.Fresh(now);inputs_.ready.remote_fresh=remote_->status().remote_valid;
   const bool mission_fresh=!mission_session_.empty()&&Age(now,mission_readiness_stamp_)>=0&&Age(now,mission_readiness_stamp_)<=.5;
-  inputs_.navigation_ready=mission_fresh&&mission_navigation_ready_&&nav_cancel_client_->service_is_ready();
-  inputs_.perception_ready=mission_fresh&&mission_perception_ready_&&manipulation_cancel_client_->service_is_ready();
-  inputs_.own_output_healthy=output_&&lease_&&lease_->acquired()&&count_publishers("/lowcmd")==1;
+  inputs_.navigation_ready=mission_fresh&&mission_navigation_ready_&&nav_cancel_available_;
+  inputs_.perception_ready=mission_fresh&&mission_perception_ready_&&manipulation_cancel_available_;
+  inputs_.own_output_healthy=output_&&lease_&&lease_->acquired()&&cached_publisher_count_==1&&Age(now,graph_stamp_)>=0&&Age(now,graph_stamp_)<=.5;
   supervisor_->Observe(inputs_,now);supervisor_->ConfirmStockObserved(now);
  }
  void StopPublisher(){supervisor_->Dispatch(SystemEvent::DISABLE_OUTPUT,SafetyClock::now());output_.reset();if(!sdk_release_pending_)lease_.reset();supervisor_->Dispatch(SystemEvent::OUTPUT_STOPPED,SafetyClock::now());}
@@ -359,6 +364,11 @@ class R3Node final:public rclcpp::Node {
   {
    std::lock_guard lock(mutex_);auto now=SafetyClock::now();
    SdkTick(now);
+   // Baseline graph diagnostics already ran at policy/status rate (50Hz).
+   cached_publisher_count_=count_publishers("/lowcmd");graph_stamp_=now;
+   const bool mission_fresh=!mission_session_.empty()&&Age(now,mission_readiness_stamp_)>=0&&Age(now,mission_readiness_stamp_)<=.5;
+   nav_cancel_available_=mission_fresh&&nav_cancel_client_->service_is_ready();
+   manipulation_cancel_available_=mission_fresh&&manipulation_cancel_client_->service_is_ready();
    Refresh(now);SequenceTick(now);
    remote_test_requested_=RemoteStickCommand(remote_->status(),supervisor_->profile());
    if(!read_only_&&supervisor_->system_state()==SystemState::ACTIVE&&supervisor_->NeedsPolicy()) {
@@ -449,7 +459,7 @@ class R3Node final:public rclcpp::Node {
    <<YAML::Key<<"sdk_release_pending"<<YAML::Value<<sdk_release_pending_
    <<YAML::Key<<"lowcmd_discovery_waiting"<<YAML::Value<<lowcmd_wait_->active()
    <<YAML::Key<<"lowcmd_discovery_wait_age_s"<<YAML::Value<<lowcmd_wait_->AgeSeconds(now)
-   <<YAML::Key<<"lowcmd_publisher_count"<<YAML::Value<<count_publishers("/lowcmd")
+   <<YAML::Key<<"lowcmd_publisher_count"<<YAML::Value<<cached_publisher_count_
    <<YAML::Key<<"model_loaded"<<YAML::Value<<core_.loaded()<<YAML::Key<<"policy_ms"<<YAML::Value<<last_policy_ms_
    <<YAML::Key<<"policy_result_age_s"<<YAML::Value<<supervisor_->PolicyAgeSeconds(now)
    <<YAML::Key<<"policy_inference_age_s"<<YAML::Value<<supervisor_->PolicyInferenceAgeSeconds(now)
@@ -475,6 +485,8 @@ class R3Node final:public rclcpp::Node {
  rclcpp::Publisher<std_msgs::msg::String>::SharedPtr status_;
  rclcpp::Subscription<unitree_go::msg::LowState>::SharedPtr low_sub_;
  rclcpp::Subscription<std_msgs::msg::String>::SharedPtr sport_sub_,arm_sub_,mission_readiness_sub_;
+ size_t cached_publisher_count_=0;SafetyTime graph_stamp_{};
+ bool nav_cancel_available_=false,manipulation_cancel_available_=false;
  bool mission_navigation_ready_=false,mission_perception_ready_=false;SafetyTime mission_readiness_stamp_{};std::string mission_session_;
  rclcpp::Subscription<geometry_msgs::msg::TwistStamped>::SharedPtr nav_sub_;
  rclcpp::Service<std_srvs::srv::SetBool>::SharedPtr enable_;

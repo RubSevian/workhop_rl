@@ -6,6 +6,7 @@ int main(){auto p=system_fixture();for(auto op:{OperationProfile::RL_ZERO_TEST,O
  f.Tick(time_at(0));assert(f.RequestStand(time_at(0)).success);i=system_facts(6);i.navigation_ready=i.perception_ready=i.arm_emergency_validated=true;f.Observe(i,time_at(6));f.Tick(time_at(6));
  assert(f.RequestRl(time_at(6)).success&&f.ConsumePolicyReset());
  i=system_facts(6.002,false);f.Observe(i,time_at(6.002));assert(!f.fault_latched()&&f.Blockers(time_at(6.002)).empty());
+ assert(!f.RequestHold(time_at(6.002)).success&&!f.fault_latched());
  auto w=f.BeginPolicy(time_at(6.002));assert(w&&f.PolicyResult(*w,p.stand,2,time_at(6.002)));assert(f.Tick(time_at(6.002))->motor_cmd[0].kp==25);
  i=system_facts(6.004,false);i.arm_control_ready=false;f.Observe(i,time_at(6.004));assert(f.system_state()==SystemState::EMERGENCY_FAULT&&!f.NeedsPolicy());
  }

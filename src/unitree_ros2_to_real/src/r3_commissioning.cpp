@@ -272,6 +272,7 @@ R3Reply R3Supervisor::EnableOutput(bool enable,SafetyTime now) {
  return {true,"first packet HOLD_CURRENT measured q; no stand/RL"};
 }
 R3Reply R3Supervisor::RequestHold(SafetyTime now) {
+ if(capabilities_.require_arm_home_for_takeover&&!inputs_.arm_home_ready)return Fail("fixed hold requires HOME; use controlled stop from ACTIVE");
  if(system_state_==SystemState::CONTROLLED_STOP)return Fail("controlled_stop_in_progress");
  if(!IsActive()||fault_)return Fail("hold requires active nonfault output");
  auto r=Require(now);if(!r.success)return r;
@@ -304,6 +305,7 @@ R3Reply R3Supervisor::ControlledAbort(SafetyTime now) {
  CancelRemoteSequence();
  if(!IsActive()||fault_)return Fail("abort requires active custom mode; use emergency for fault");
  if(capabilities_.takeover_limit==TakeoverLimit::HOLD_CURRENT)return RequestHold(now);
+ if(system_state_==SystemState::SYSTEM_HOLD)return {true,"already in persistent system hold"};
  if(system_state_==SystemState::CONTROLLED_STOP)return {true,"controlled stop already requested"};
  if(system_state_==SystemState::ACTIVE) {
   ++orchestration_generation_;InvalidatePolicyWork();Zero();stop_started_=now;arm_home_accepted_=false;home_settling_=lie_reached_=false;

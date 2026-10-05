@@ -155,3 +155,8 @@ Runtime watchdog, свежесть feedback/targets, проверка motor ID/v
 ## System FSM: PHASE B approval 05.10.2026
 
 PHASE A утверждена файлом CODEX_SYSTEM_FSM_PHASE_B_APPROVAL.md; внедрение выполнено в отдельном build_fsm/install_fsm, текущий physical install_r1 и процессы не заменяются. Новые профили и X/A/B описаны в [README](README.md), детали/commits/tests — в [отчёте Phase B](CODEX_SYSTEM_FSM_PHASE_B_REPORT.md). NAV clamp сохранён. Lie target approved, trajectory dynamics и arm emergency disable остаются не commissioned; соответствующие flags false. NAV/FULL требуют реальных adapters, которых пока нет. Предыдущие разделы сохраняют историю baseline, не описывают новый X.
+
+
+### PHASE B — offline CPU timing после остановки launch
+
+05.10.2026 оператор подтвердил завершение теста и остановку launch ног. Host process check не обнаружил controller ног; агент процессы и руку не останавливал. В candidate install_fsm выполнен policy_cpu_test: PASS, CPU actor315→12, threads1, по50 warmup и500 samples. JIT mean1,06489/p99 5,5221/max15,27 мс; полный agent mean1,34663/p99 1,72123/max2,43603 мс при20 мс. Вместе с26 пройденными regression tests это27/27. Лог runtime/fsm_cpu_timing.log, итоговый отчёт CODEX_SYSTEM_FSM_PHASE_B_REPORT.md. Это короткое synthetic измерение, не подтверждение длительной нагрузки LiDAR/mission/physical IO. Runtime/watchdog thresholds, dynamics и arm emergency validation gates не менялись; физических команд не отправлялось.

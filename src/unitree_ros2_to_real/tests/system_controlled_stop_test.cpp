@@ -23,6 +23,7 @@ int main(){auto p=system_fixture();R3Supervisor f(p);enter_active(f);
   auto packet=run_tick(f,s,i);assert(packet&&f.AllowsPacket(*packet,time_at(s)));
   for(int j=0;j<12;++j){assert(std::abs(packet->motor_cmd[j].q-i.measured_q[j])<1e-5);assert(packet->motor_cmd[j].kp==40&&packet->motor_cmd[j].kd==1);}}
  assert(f.system_state()==SystemState::SYSTEM_HOLD&&f.output_enabled()&&!f.NeedsPolicy());
+ assert(f.ControlledAbort(time_at(captured+.120)).success&&f.system_state()==SystemState::SYSTEM_HOLD);
  auto i=system_facts(captured+.122);i.measured_q=*p.lie_down;auto held=run_tick(f,captured+.122,i);for(int j=0;j<12;++j)assert(held->motor_cmd[j].q==(*p.lie_down)[j]);
  // Critical inputs/policy faults while HOME is moving remain fail-closed.
  for(int bad=0;bad<3;++bad){R3Supervisor x(p);enter_active(x);x.ControlledAbort(time_at(6));auto i=system_facts(6.002,false);

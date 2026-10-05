@@ -1,0 +1,13 @@
+   const std::array<double,3> requested{m->twist.linear.x,m->twist.linear.y,m->twist.angular.z};
+   navigation_valid_=false;navigation_command_={};
+   if(!std::all_of(requested.begin(),requested.end(),[](double v){return std::isfinite(v);})||
+      m->header.stamp.sec<0||m->header.stamp.nanosec>=1000000000u||
+      (m->header.stamp.sec==0&&m->header.stamp.nanosec==0))return;
+   try {
+    const double message_age=(this->now()-rclcpp::Time(m->header.stamp)).seconds();
+    if(message_age<0||message_age>supervisor_->profile().command_timeout_s)return;
+   }catch(const std::exception&){return;}
+   navigation_valid_=true;
+   const auto& p=supervisor_->profile();
+   navigation_command_={std::clamp(requested[0],-p.vx_bound,p.vx_bound),std::clamp(requested[1],-p.vy_bound,p.vy_bound),std::clamp(requested[2],-p.wz_bound,p.wz_bound)};
+   navigation_stamp_=SafetyClock::now();
