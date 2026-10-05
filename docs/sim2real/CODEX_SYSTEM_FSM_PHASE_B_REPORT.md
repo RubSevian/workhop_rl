@@ -41,3 +41,7 @@ Startup parser вызывается до загрузки policy и любых �
 ## Шаг 6 — X
 
 ACTIVE + X закрывает velocity gate и оставляет zero RL до принятого HOME-запроса и свежего подтверждения HOME/settle. Handoff: fresh measured q, первый fixed packet без скачка; lie-down завершается постоянным SYSTEM_HOLD. HOME timeout оставляет RL; invalid/stale/policy fault — central emergency. Lie timeout удерживает последний planned target (после полной интерполяции — approved lie_down_q), output/lease остаются. Dynamics gate false сохраняет zero RL и explicit blocker. Build/8 targeted tests PASS; A differential не изменился. ROS arm IPC подключается в шаге 8, candidate не готов к физическому запуску до завершения wiring.
+
+## Шаг 7 — A из SYSTEM_HOLD
+
+Restart требует свой healthy lease/publisher и fresh RELEASED, захватывает новые measured q и переиспользует output. Ни release RPC, ни новый enable не запрашиваются. Тест полного restart проверяет capture, прежние 6/4 с, один reset и RL entry; build/9 targeted tests PASS, initial A baseline byte-identical.

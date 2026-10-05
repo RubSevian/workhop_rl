@@ -216,8 +216,14 @@ void R3Supervisor::CancelRemoteSequence(){remote_sequence_=false;release_request
 R3Reply R3Supervisor::StartRemoteSequence(SafetyTime now) {
  const auto b=RemoteSequenceBlockers(now);
  if(!b.empty()){std::ostringstream out;for(const auto& x:b)out<<x<<',';return Fail(out.str());}
- // A after X explicitly starts a new measured->stand->hold->RL cycle.
- // Ownership is already released; do not repeat the SDK release/publisher.
+ if(system_state_==SystemState::SYSTEM_HOLD) {
+  if(!inputs_.own_output_healthy||!output_enabled_||!Released(now))return Fail("restart requires own healthy lease/publisher and fresh released Sport");
+  const auto hold=RequestHold(now);if(!hold.success)return hold;
+  stop_blocker_.clear();arm_home_accepted_=false;
+  remote_sequence_=true;release_requested_=true;sequence_hold_started_=false;
+  return {true,"SYSTEM_HOLD restart: reuse own output; fresh measured -> stand -> hold -> reset -> RL_ZERO"};
+ }
+ // Preserve manually staged/deadman holds; X from ACTIVE uses SYSTEM_HOLD path above.
  if(output_enabled_&&!fault_&&(state()==R3State::HOLDING||state()==R3State::CONTROLLED_ABORT)) {
   const auto hold=RequestHold(now);if(!hold.success)return hold;
   remote_sequence_=true;release_requested_=true;sequence_hold_started_=false;
