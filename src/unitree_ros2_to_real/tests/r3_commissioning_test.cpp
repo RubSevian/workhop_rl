@@ -15,7 +15,7 @@ R3Profile profile(){R3Profile p;p.kp.fill(40);p.kd.fill(1);p.rl_kp.fill(25);p.rl
  p.gate0_verified=p.mapping_verified=p.emergency_validated=p.remote_chords_verified=p.robot_supported=p.lie_down_validated=p.policy_timing_reviewed=true;
  p.emergency_evidence="OFFLINE_MOCK_ONLY";return p;}
 R3Inputs input(double at,SportMode sport=SportMode::RELEASED){R3Inputs in;
- in.ready={true,true,true,true,true,true,true,true,false,true};in.measured_q.fill(.4F);in.arm_static_hold=true;in.arm_home_ready=true;
+ in.ready={true,true,true,true,true,true,true,true,false,true};in.measured_q.fill(.4F);in.arm_static_hold=true;in.arm_home_ready=true;in.arm_control_ready=true;in.own_output_healthy=true;
  in.sport=sport;in.sport_stamp=in.lowstate_stamp=in.remote_stamp=in.arm_stamp=in.target_stamp=t(at);return in;}
 void arm(R3Supervisor& s,double at=0){s.Observe(input(at,SportMode::ACTIVE),t(at));assert(s.state()==R3State::STOCK);assert(s.Takeover(t(at)).success);
  assert(!s.output_enabled());s.Observe(input(at),t(at));assert(s.state()==R3State::SPORT_RELEASE_VERIFIED);assert(s.EnableOutput(true,t(at)).success);}
@@ -334,7 +334,7 @@ void remote_test_motion_tests(){
  assert(!s.RemoteTestCommand({.1,0,0},t(8)).success); // First inference must use zero command.
  std::array<float,12> q;q.fill(.21F);assert(policy(s,q,2,t(8)));s.Tick(t(8));
  assert(!s.ManualCommand({.1,.05,0},1,t(8)).success); // Existing single-axis mode unchanged.
- assert(s.NavigationCommand({.1,.05,-.1},t(8)).success&&s.navigation_active());
+ assert(!s.NavigationCommand({.1,.05,-.1},t(8)).success); // immutable REMOTE source
  assert(s.RemoteTestCommand({.1,.05,-.1},t(8)).success&&s.state()==R3State::RL_ACTIVE);
  assert(!s.RemoteTestCommand({.201,0,0},t(8)).success);
  assert(!s.RemoteTestCommand({0,.101,0},t(8)).success);

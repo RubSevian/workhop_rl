@@ -27,13 +27,25 @@ class R3Node final:public rclcpp::Node {
   at::set_num_threads(1);at::set_num_interop_threads(1);
   const auto config=declare_parameter<std::string>("config_path","");
   const auto model=declare_parameter<std::string>("model_path","");
-  read_only_=declare_parameter<bool>("read_only",true);
+  rcl_interfaces::msg::ParameterDescriptor immutable;immutable.read_only=true;
+  const auto profile_name=declare_parameter<std::string>("operation_profile","",immutable);
+  std::optional<OperationProfile> explicit_profile;
+  if(!profile_name.empty())explicit_profile=ParseOperationProfile(profile_name);
+  read_only_=declare_parameter<bool>("read_only",explicit_profile?!ResolveOperationCapabilities(*explicit_profile).physical_leg_output:true);
   automatic_sequence_=declare_parameter<bool>("remote_auto_sequence",true);
   const bool legacy_remote=declare_parameter<bool>("remote_test_mode",false);
   control_mode_=declare_parameter<std::string>("control_mode","");
-  if(control_mode_.empty())control_mode_="remote_test";
+  if(control_mode_.empty())control_mode_=explicit_profile&&ResolveOperationCapabilities(*explicit_profile).command_source==CommandSource::NAVIGATION?"autonomy":"remote_test";
   if(control_mode_!="remote_test"&&control_mode_!="autonomy")throw std::runtime_error("control_mode must be remote_test or autonomy");
-  motion_commands_enabled_=declare_parameter<bool>("motion_commands_enabled",legacy_remote);
+  motion_commands_enabled_=declare_parameter<bool>("motion_commands_enabled",explicit_profile?ResolveOperationCapabilities(*explicit_profile).allow_nonzero_velocity:legacy_remote);
+  const auto operation=explicit_profile.value_or(LegacyOperationProfile(read_only_,control_mode_,motion_commands_enabled_));
+  const auto capabilities=ResolveOperationCapabilities(operation);
+  if(explicit_profile) {
+   if(read_only_!=!capabilities.physical_leg_output||motion_commands_enabled_!=capabilities.allow_nonzero_velocity||
+      (capabilities.command_source==CommandSource::NAVIGATION&&control_mode_!="autonomy")||
+      (capabilities.command_source==CommandSource::REMOTE&&control_mode_!="remote_test")||
+      (legacy_remote&&capabilities.command_source!=CommandSource::REMOTE))throw std::runtime_error("Legacy flags conflict with immutable operation_profile");
+  }
   remote_test_mode_=control_mode_=="remote_test"&&motion_commands_enabled_;
   network_interface_=declare_parameter<std::string>("network_interface","");
   sdk_helper_=(std::filesystem::read_symlink("/proc/self/exe").parent_path()/"go2_mode_switch").string();
@@ -50,7 +62,7 @@ class R3Node final:public rclcpp::Node {
   }
   home_tolerance_=d["rars01"]["auto_home"]["home_tolerance_rad"].as<double>();
   if(!std::isfinite(home_tolerance_)||home_tolerance_<=0)throw std::runtime_error("Invalid HOME tolerance");
-  const auto profile=LoadR3Profile(y);supervisor_=std::make_unique<R3Supervisor>(profile);
+  const auto profile=LoadR3Profile(y);supervisor_=std::make_unique<R3Supervisor>(profile,operation);
   lowcmd_wait_=std::make_unique<LowCmdDiscoveryWait>(profile.lowcmd_discovery_timeout_s,profile.lowcmd_clear_duration_s);
   lowstate_=LowStateReader(profile.lowstate_timeout_s);
   remote_=std::make_unique<R3RemoteCommands>(r["remote"]["controlled_abort_chord"].as<std::vector<std::string>>(),r["remote"]["emergency_chord"].as<std::vector<std::string>>(),d["remote"]["takeover_hold_s"].as<double>(),profile.remote_timeout_s);
@@ -69,7 +81,7 @@ class R3Node final:public rclcpp::Node {
    catch(...){inputs_.sport=SportMode::ERROR;inputs_.sport_stamp=SafetyTime{};}
   });
   arm_sub_=create_subscription<std_msgs::msg::String>("/rars01/commissioning/state",10,[this](std_msgs::msg::String::ConstSharedPtr m){
-   std::lock_guard lock(mutex_);inputs_.ready.arm_feedback_ready=false;inputs_.ready.arm_target_ready=false;inputs_.arm_static_hold=false;inputs_.arm_home_ready=false;
+   std::lock_guard lock(mutex_);inputs_.ready.arm_feedback_ready=false;inputs_.ready.arm_target_ready=false;inputs_.arm_static_hold=false;inputs_.arm_home_ready=false;inputs_.arm_control_ready=false;
    try {
     const auto y=YAML::Load(m->data);const auto now=SafetyClock::now();arm_error_.clear();
     auto q=Six(y["measured_q"]),dq=Six(y["measured_dq"]);
@@ -100,13 +112,20 @@ class R3Node final:public rclcpp::Node {
      inputs_.arm_home_ready=y["connected"].as<bool>()&&y["enabled_local"].as<bool>()&&
       !y["watchdog_tripped"].as<bool>()&&!y["stm32_watchdog_tripped"].as<bool>();
     }
+    const bool owner_healthy=y["connected"].as<bool>()&&y["enabled_local"].as<bool>()&&
+     !y["watchdog_tripped"].as<bool>()&&!y["stm32_watchdog_tripped"].as<bool>()&&
+     y["owner_state"].as<std::string>()!="FAULT_LATCHED";
+    const auto motor_states=y["motor_status"].as<std::vector<int>>();
+    if(motor_states.size()!=7)throw std::runtime_error("seven motor control health values required");
+    const bool motors_healthy=std::all_of(motor_states.begin(),motor_states.end(),[](int v){return v==1;});
     if(y["target_valid"].as<bool>()) {
      arm_target_=Six(y["accepted_target"]);
      if(inputs_.arm_home_ready)for(float v:arm_target_)if(v!=0)throw std::runtime_error("HOME accepted target must be zero");
      inputs_.target_stamp=TimeNs(y["accepted_ns"].as<int64_t>());
      inputs_.ready.arm_target_ready=Age(now,inputs_.target_stamp)>=0;
+     inputs_.arm_control_ready=owner_healthy&&motors_healthy&&inputs_.ready.arm_feedback_ready&&inputs_.ready.arm_target_ready;
     }
-   }catch(const std::exception& e){inputs_.ready.arm_feedback_ready=false;inputs_.ready.arm_target_ready=false;inputs_.arm_static_hold=false;inputs_.arm_home_ready=false;arm_error_=e.what();}
+   }catch(const std::exception& e){inputs_.ready.arm_feedback_ready=false;inputs_.ready.arm_target_ready=false;inputs_.arm_static_hold=false;inputs_.arm_home_ready=false;inputs_.arm_control_ready=false;arm_error_=e.what();}
   });
   enable_=create_service<std_srvs::srv::SetBool>("/go2/commissioning/enable_output",[this](const std_srvs::srv::SetBool::Request::SharedPtr req,std_srvs::srv::SetBool::Response::SharedPtr res){
    std::lock_guard lock(mutex_);const auto now=SafetyClock::now();Refresh(now);
@@ -167,11 +186,11 @@ class R3Node final:public rclcpp::Node {
   const auto event=remote_->Poll(now);Refresh(now);
   switch(event) {
    case R3RemoteEvent::TAKEOVER: {
-    const auto reply=(!read_only_&&automatic_sequence_)?supervisor_->StartRemoteSequence(now):supervisor_->Takeover(now);
+    const auto reply=(!read_only_&&automatic_sequence_)?supervisor_->Dispatch(SystemEvent::REQUEST_A,now):supervisor_->Takeover(now);
     sequence_message_=reply.message;break;
    }
-   case R3RemoteEvent::CONTROLLED_ABORT:supervisor_->ControlledAbort(now);break;
-   case R3RemoteEvent::EMERGENCY:supervisor_->Emergency(now);break;
+   case R3RemoteEvent::CONTROLLED_ABORT:supervisor_->Dispatch(SystemEvent::REQUEST_X,now);break;
+   case R3RemoteEvent::EMERGENCY:supervisor_->Dispatch(SystemEvent::REQUEST_B,now);break;
    default:break;
   }
   if(event!=R3RemoteEvent::NONE)last_event_=event;
@@ -270,6 +289,7 @@ class R3Node final:public rclcpp::Node {
  }
  void Refresh(SafetyTime now) {
   inputs_.ready.lowstate_fresh=lowstate_.Fresh(now);inputs_.ready.remote_fresh=remote_->status().remote_valid;
+  inputs_.own_output_healthy=output_&&lease_&&lease_->acquired()&&count_publishers("/lowcmd")==1;
   supervisor_->Observe(inputs_,now);supervisor_->ConfirmStockObserved(now);
  }
  void StopPublisher(){supervisor_->EnableOutput(false,SafetyClock::now());output_.reset();if(!sdk_release_pending_)lease_.reset();supervisor_->ConfirmOutputStopped();}

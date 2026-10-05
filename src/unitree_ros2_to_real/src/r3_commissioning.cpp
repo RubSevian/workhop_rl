@@ -99,7 +99,7 @@ R3Reply R3Supervisor::Dispatch(SystemEvent e,SafetyTime now,SystemPhase p) {
  if(e==SystemEvent::REQUEST_B)return Emergency(now);
  if(fault_&&e!=SystemEvent::ADVANCE_PHASE&&e!=SystemEvent::INITIALIZE)return Fail("central emergency latched");
  switch(e){
- case SystemEvent::INITIALIZE:system_state_=SystemState::STANDBY;phase_=SystemPhase::DISARMED;return {true,"initialized"};
+ case SystemEvent::INITIALIZE:if(system_state_!=SystemState::INIT)return Fail("already initialized");system_state_=SystemState::STANDBY;phase_=SystemPhase::DISARMED;return {true,"initialized"};
  case SystemEvent::REQUEST_A:return StartRemoteSequence(now);
  case SystemEvent::REQUEST_X:return ControlledAbort(now);
  case SystemEvent::CRITICAL_FAULT:Fault("critical_control_fault",now);return {true,"fault latched"};
@@ -113,6 +113,7 @@ R3Reply R3Supervisor::Dispatch(SystemEvent e,SafetyTime now,SystemPhase p) {
    case SystemPhase::ARM_RETURN_HOME:case SystemPhase::ARM_HOME_BLOCKED:case SystemPhase::ARM_HOME_SETTLE:
    case SystemPhase::PD_CAPTURE:case SystemPhase::LIE_DOWN:case SystemPhase::LIE_DOWN_VERIFY:case SystemPhase::LIE_DOWN_BLOCKED:system_state_=SystemState::CONTROLLED_STOP;break;
    case SystemPhase::LIE_DOWN_HOLD:system_state_=SystemState::SYSTEM_HOLD;break;
+   case SystemPhase::HOLD_CURRENT:system_state_=capabilities_.takeover_limit==TakeoverLimit::HOLD_CURRENT&&output_enabled_?SystemState::SYSTEM_HOLD:SystemState::TAKEOVER;break;
    default:system_state_=SystemState::TAKEOVER;break;
   }
   // A latched fault can never be downgraded by a late observation/event.
@@ -137,6 +138,12 @@ R3Reply R3Supervisor::Fail(const std::string& message) const {return {false,mess
 std::vector<std::string> R3Supervisor::Blockers(SafetyTime now,bool physical) const {
  auto b=inputs_.ready.Blockers();std::erase(b,std::string("explicit_output_enable"));
  if(!seen_)b.emplace_back("inputs_unavailable");
+ if(!inputs_.arm_control_ready)b.emplace_back("arm_control_not_ready");
+ if(system_state_==SystemState::STANDBY||system_state_==SystemState::TAKEOVER) {
+  if(capabilities_.require_navigation_ready&&!inputs_.navigation_ready)b.emplace_back("navigation_not_ready");
+  if(capabilities_.require_perception_ready&&!inputs_.perception_ready)b.emplace_back("perception_not_ready");
+  if(capabilities_.require_emergency_arm_validation&&!inputs_.arm_emergency_validated)b.emplace_back("arm_emergency_not_validated");
+ }
  if(!Released(now))b.emplace_back("sport_release_not_fresh_verified");
  if(!Fresh(now,inputs_.lowstate_stamp,profile_.lowstate_timeout_s))b.emplace_back("lowstate_age");
  if(!Fresh(now,inputs_.remote_stamp,profile_.remote_timeout_s))b.emplace_back("remote_age");
@@ -182,6 +189,10 @@ R3Reply R3Supervisor::Takeover(SafetyTime now) {
 }
 std::vector<std::string> R3Supervisor::RemoteSequenceBlockers(SafetyTime now) const {
  auto b=Blockers(now);std::erase(b,std::string("sport_release_not_fresh_verified"));
+ if(!capabilities_.physical_leg_output||!capabilities_.allow_sport_release)b.emplace_back("profile_disallows_leg_takeover");
+ SystemReadiness r;r.arm_control_ready=inputs_.arm_control_ready;r.arm_home_ready=inputs_.arm_home_ready;
+ r.navigation_ready=inputs_.navigation_ready;r.perception_ready=inputs_.perception_ready;r.arm_emergency_validated=inputs_.arm_emergency_validated;
+ for(const auto& blocker:r.TakeoverBlockers(capabilities_))if(std::find(b.begin(),b.end(),blocker)==b.end())b.push_back(blocker);
  if(!seen_||(inputs_.sport!=SportMode::ACTIVE&&inputs_.sport!=SportMode::RELEASED)||
     !Fresh(now,inputs_.sport_stamp,profile_.sport_timeout_s))b.emplace_back("sport_state_not_fresh_known");
  if(!profile_.policy_timing_reviewed)b.emplace_back("policy_timing_not_reviewed");
@@ -211,6 +222,7 @@ R3SequenceAction R3Supervisor::RemoteSequenceNext(SafetyTime now) {
  if(!blockers.empty()){Fault("remote_sequence_precondition",now);return R3SequenceAction::NONE;}
  if(state()==R3State::SPORT_RELEASE_REQUIRED&&!release_requested_){release_requested_=true;return R3SequenceAction::RELEASE_SPORT;}
  if(state()==R3State::SPORT_RELEASE_VERIFIED&&!output_enabled_)return R3SequenceAction::ENABLE_OUTPUT;
+ if(capabilities_.takeover_limit==TakeoverLimit::HOLD_CURRENT&&output_enabled_){CancelRemoteSequence();return R3SequenceAction::NONE;}
  if(state()==R3State::HOLD_CURRENT||state()==R3State::HOLDING) {
   if(!sequence_hold_started_){sequence_hold_stamp_=now;sequence_hold_started_=true;}
   if(std::chrono::duration<double>(now-sequence_hold_stamp_).count()>=(state()==R3State::HOLD_CURRENT?profile_.capture_hold_s:profile_.hold_s)) {
@@ -222,6 +234,7 @@ R3SequenceAction R3Supervisor::RemoteSequenceNext(SafetyTime now) {
  return R3SequenceAction::NONE;
 }
 R3Reply R3Supervisor::EnableOutput(bool enable,SafetyTime now) {
+ if(enable&&!capabilities_.physical_leg_output)return Fail("profile_disallows_leg_output");
  if(!enable){InvalidatePolicyWork();CancelRemoteSequence();output_enabled_=false;Zero();SetPhase(fault_?R3State::FAULT_LATCHED:R3State::OUTPUT_STOPPING);return {true,"stop publisher then confirm output stopped"};}
  if(state()!=R3State::SPORT_RELEASE_VERIFIED||!output_stopped_)return Fail("requires explicit takeover + verified release + previous output stop");
  auto r=Require(now);if(!r.success)return r;
@@ -234,17 +247,20 @@ R3Reply R3Supervisor::RequestHold(SafetyTime now) {
  Zero();Capture(now);SetPhase(R3State::HOLD_CURRENT);return {true,"capture measured current pose"};
 }
 R3Reply R3Supervisor::RequestStand(SafetyTime now) {
+ if(capabilities_.takeover_limit!=TakeoverLimit::RL)return Fail("profile_limits_takeover_to_hold");
  if(state()!=R3State::HOLD_CURRENT&&state()!=R3State::HOLDING)return Fail("stand requires HOLD_CURRENT/HOLDING");
  auto r=Require(now);if(!r.success)return r;
  Capture(now);Zero();SetPhase(R3State::STAND_TRANSITION);return {true,"linear measured->stand"};
 }
 R3Reply R3Supervisor::RequestRl(SafetyTime now) {
+ if(!capabilities_.allow_rl)return Fail("profile_disallows_rl");
  if(state()!=R3State::HOLDING)return Fail("RL entry only from HOLDING");
  if(!profile_.policy_timing_reviewed)return Fail("timing review required before RL");
  auto r=Require(now);if(!r.success)return r;
  InvalidatePolicyWork();Zero();reset_policy_=true;have_policy_=false;policy_stamp_=now;SetPhase(R3State::RL_ZERO);return {true,"zero + ResetPolicyState before any inference"};
 }
 R3Reply R3Supervisor::RequestLieDown(SafetyTime now) {
+ if(capabilities_.takeover_limit!=TakeoverLimit::RL)return Fail("profile_limits_takeover_to_hold");
  if(state()!=R3State::HOLDING)return Fail("lie-down requires HOLDING");
  auto r=Require(now);if(!r.success)return r;
  if(!profile_.lie_down||!profile_.lie_down_validated)return Fail("no operator-verified lie-down pose");
@@ -277,6 +293,7 @@ void R3Supervisor::Fault(const std::string& why,SafetyTime now) {
  if(output_enabled_)Emergency(now);else {Zero();SetPhase(R3State::FAULT_LATCHED);}
 }
 R3Reply R3Supervisor::ManualCommand(const std::array<double,3>& cmd,double duration,SafetyTime now) {
+ if(cmd!=std::array<double,3>{}&&(!capabilities_.allow_nonzero_velocity||capabilities_.command_source!=CommandSource::REMOTE))return Fail("profile_disallows_manual_velocity");
  if(state()!=R3State::RL_ZERO&&state()!=R3State::RL_ACTIVE)return Fail("manual only from RL_ZERO/RL_ACTIVE");
  auto r=Require(now);if(!r.success)return r;
  int axes=0;for(double v:cmd){if(!std::isfinite(v))return Fail("nonfinite command");axes+=v!=0;}
@@ -301,6 +318,8 @@ std::array<double,3> RemoteStickCommand(const RemoteStatus& r,const R3Profile& p
 R3Reply R3Supervisor::RemoteTestCommand(const std::array<double,3>& cmd,SafetyTime now) {return VelocityCommand(cmd,now,false);}
 R3Reply R3Supervisor::NavigationCommand(const std::array<double,3>& cmd,SafetyTime now) {return VelocityCommand(cmd,now,true);}
 R3Reply R3Supervisor::VelocityCommand(const std::array<double,3>& cmd,SafetyTime now,bool navigation) {
+ if(cmd!=std::array<double,3>{}&&(!capabilities_.allow_nonzero_velocity||
+    capabilities_.command_source!=(navigation?CommandSource::NAVIGATION:CommandSource::REMOTE)))return Fail("profile_disallows_command_source");
  if(!NeedsPolicy())return Fail("remote test requires RL_ZERO/RL_ACTIVE");
  const auto ready=Require(now);if(!ready.success)return ready;
  for(double v:cmd)if(!std::isfinite(v))return Fail("nonfinite remote test command");

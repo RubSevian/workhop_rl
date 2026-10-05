@@ -33,3 +33,7 @@ NAV clamp/finite/freshness сохранится. Lie-down target APPROVED; traje
 ## Шаг 4 — центральный владелец
 
 R3Supervisor хранит один SystemState (7 значений) и внутреннюю phase. Старый R3State вычисляется для совместимости, отдельного mutable state_ больше нет. Dispatch — единственное место записи global state; B/X/A имеют порядок приоритета. Build и 6/6 тестов PASS, включая прежнюю regression и byte differential.
+
+## Шаг 5 — A / capabilities
+
+Startup parser вызывается до загрузки policy и любых физических адаптеров. Legacy launch отображается в immutable profile; конфликт явного profile/flags отклоняется. Services проверяют capabilities/readiness; LEG_SAFETY заканчивает captured hold без stand/RL. Новый A dispatch использует прежний Sport/lease/graph/capture/stand/hold/reset. Build PASS; 7/7 targeted tests PASS, byte-identical A baseline подтверждён. NAV readiness не выводится из cmd_vel.
