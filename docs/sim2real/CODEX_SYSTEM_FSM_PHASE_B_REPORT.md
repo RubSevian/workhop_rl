@@ -45,3 +45,9 @@ ACTIVE + X закрывает velocity gate и оставляет zero RL до �
 ## Шаг 7 — A из SYSTEM_HOLD
 
 Restart требует свой healthy lease/publisher и fresh RELEASED, захватывает новые measured q и переиспользует output. Ни release RPC, ни новый enable не запрашиваются. Тест полного restart проверяет capture, прежние 6/4 с, один reset и RL entry; build/9 targeted tests PASS, initial A baseline byte-identical.
+
+## Шаг 8 — B и async ports
+
+B защёлкивает EMERGENCY_FAULT даже до output; при eligibility выдаёт прежние leg 0/3, инвалидирует policy и HOME, не ждёт arm RPC. Async callbacks проверяют orchestration generation. HOME/emergency проходят через прежнего единственного RARS owner. HOME idempotent, без enable; arm disable запрещён по умолчанию и выполняется один раз только при emergency_disable_validated, с прекращением HOME stream до SDK disable. Accepted RPC не равен physical disable. Реальные NAV/manip cancellation adapters пока отсутствуют: status unavailable, profiles не получают fake readiness.
+
+Первый compile выявил требования Jazzy к явным callback types; исправлено, повтор build PASS. 11/11 targeted tests PASS: B во всех stop phases, до publisher, приоритет, stale callbacks/policy, no recovery, single-owner HOME/emergency mocks; initial A differential PASS.

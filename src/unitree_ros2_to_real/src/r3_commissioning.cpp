@@ -295,7 +295,7 @@ R3Reply R3Supervisor::ControlledAbort(SafetyTime now) {
  if(!IsActive()||fault_)return Fail("abort requires active custom mode; use emergency for fault");
  if(system_state_==SystemState::CONTROLLED_STOP)return {true,"controlled stop already requested"};
  if(system_state_==SystemState::ACTIVE) {
-  InvalidatePolicyWork();Zero();stop_started_=now;arm_home_accepted_=false;home_settling_=lie_reached_=false;
+  ++orchestration_generation_;InvalidatePolicyWork();Zero();stop_started_=now;arm_home_accepted_=false;home_settling_=lie_reached_=false;
   stop_blocker_.clear();ports_.cancel_navigation=ports_.cancel_manipulation=ports_.arm_return_home=true;
   Dispatch(SystemEvent::ADVANCE_PHASE,now,SystemPhase::ARM_RETURN_HOME);
   return {true,"zero RL -> cancel missions -> ARM HOME -> measured PD handoff -> lie-down -> SYSTEM_HOLD"};
@@ -305,13 +305,20 @@ R3Reply R3Supervisor::ControlledAbort(SafetyTime now) {
  return {true,"takeover interrupted; fixed measured hold"};
 }
 R3Reply R3Supervisor::Emergency(SafetyTime now) {
- CancelRemoteSequence();
- if(!IsActive())return Fail("no active custom output");
- InvalidatePolicyWork();Zero();arm_hold_request_=true;fault_=true;have_policy_=false;
- if(!Released(now)||!profile_.emergency_validated||!profile_.emergency_kd||profile_.emergency_evidence.empty()) {
-  output_enabled_=false;SetPhase(R3State::FAULT_LATCHED);return Fail("no eligible validated damping: stop output; independent operator emergency required");
+ if(system_state_==SystemState::EMERGENCY_FAULT)return {true,"central emergency already latched"};
+ CancelRemoteSequence();++orchestration_generation_;
+ if(!fault_){fault_policy_age_s_=PolicyAgeSeconds(now);fault_inference_age_s_=PolicyInferenceAgeSeconds(now);fault_observation_age_s_=PolicyObservationAgeSeconds(now);}
+ InvalidatePolicyWork();Zero();arm_hold_request_=true;fault_=true;have_policy_=false;reset_policy_=false;
+ if(last_fault_.empty())last_fault_="operator_emergency";
+ ports_.arm_return_home=false;
+ ports_.cancel_navigation=capabilities_.physical_leg_output;
+ ports_.cancel_manipulation=capabilities_.physical_leg_output||capabilities_.allow_arm_motion;
+ ports_.arm_emergency=capabilities_.allow_arm_emergency;
+ if(!output_enabled_||!Released(now)||!profile_.emergency_validated||!profile_.emergency_kd||profile_.emergency_evidence.empty()) {
+  output_enabled_=false;SetPhase(R3State::FAULT_LATCHED);
+  return {true,"emergency latched; leg damping ineligible, output stopped; asynchronous arm port is separately gated"};
  }
- SetPhase(R3State::EMERGENCY_DAMP);return {true,"latched damping; no autonomous recovery"};
+ SetPhase(R3State::EMERGENCY_DAMP);return {true,"latched leg damping; cancel missions; asynchronous validated arm emergency; no recovery"};
 }
 void R3Supervisor::Fault(const std::string& why,SafetyTime now) {
  if(!fault_) {
@@ -320,7 +327,7 @@ void R3Supervisor::Fault(const std::string& why,SafetyTime now) {
   fault_observation_age_s_=PolicyObservationAgeSeconds(now);
  }
  InvalidatePolicyWork();CancelRemoteSequence();last_fault_=why;fault_=true;
- if(output_enabled_)Emergency(now);else {Zero();SetPhase(R3State::FAULT_LATCHED);}
+ Emergency(now);
 }
 R3Reply R3Supervisor::ManualCommand(const std::array<double,3>& cmd,double duration,SafetyTime now) {
  if(system_state_==SystemState::CONTROLLED_STOP)return Fail("controlled_stop_velocity_gate_closed");

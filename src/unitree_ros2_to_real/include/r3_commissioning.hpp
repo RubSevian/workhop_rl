@@ -66,6 +66,7 @@ class R3Supervisor {
  OperationProfile operation_profile() const {return operation_;}
  const OperationCapabilities& capabilities() const {return capabilities_;}
  const std::string& stop_blocker() const {return stop_blocker_;}
+ uint64_t orchestration_generation() const {return orchestration_generation_;}
  SystemPortRequests ConsumePortRequests();
  void ArmHomeRequestAccepted(bool accepted,SafetyTime now);
  void ArmEmergencyResult(bool accepted,const std::string& detail);
@@ -131,6 +132,7 @@ class R3Supervisor {
  SystemPhase phase_=SystemPhase::DISARMED;
  void SetPhase(R3State state);
  SystemPortRequests ports_;
+ uint64_t orchestration_generation_=0;
  bool arm_home_accepted_=false;
  SafetyTime stop_started_{},home_settle_started_{},lie_reached_stamp_{};
  bool home_settling_=false,lie_reached_=false;

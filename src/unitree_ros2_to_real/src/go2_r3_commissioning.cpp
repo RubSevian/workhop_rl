@@ -80,8 +80,14 @@ class R3Node final:public rclcpp::Node {
    std::lock_guard lock(mutex_);try{auto y=YAML::Load(m->data);inputs_.sport=ParseSportMode(y["state"].as<std::string>());inputs_.sport_stamp=TimeNs(y["observed_ns"].as<int64_t>());}
    catch(...){inputs_.sport=SportMode::ERROR;inputs_.sport_stamp=SafetyTime{};}
   });
+  arm_home_client_=create_client<std_srvs::srv::Trigger>("/rars01/control/return_home");
+  arm_emergency_client_=create_client<std_srvs::srv::Trigger>("/rars01/control/emergency_disable");
+  nav_cancel_client_=create_client<std_srvs::srv::Trigger>("/go2/mission/cancel_navigation");
+  manipulation_cancel_client_=create_client<std_srvs::srv::Trigger>("/rars01/mission/cancel_manipulation");
+  port_group_=create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
+  port_timer_=create_wall_timer(std::chrono::milliseconds(10),[this]{PortTick();},port_group_);
   arm_sub_=create_subscription<std_msgs::msg::String>("/rars01/commissioning/state",10,[this](std_msgs::msg::String::ConstSharedPtr m){
-   std::lock_guard lock(mutex_);inputs_.ready.arm_feedback_ready=false;inputs_.ready.arm_target_ready=false;inputs_.arm_static_hold=false;inputs_.arm_home_ready=false;inputs_.arm_control_ready=false;
+   std::lock_guard lock(mutex_);inputs_.ready.arm_feedback_ready=false;inputs_.ready.arm_target_ready=false;inputs_.arm_static_hold=false;inputs_.arm_home_ready=false;inputs_.arm_control_ready=false;inputs_.arm_emergency_validated=false;
    try {
     const auto y=YAML::Load(m->data);const auto now=SafetyClock::now();arm_error_.clear();
     auto q=Six(y["measured_q"]),dq=Six(y["measured_dq"]);
@@ -96,6 +102,7 @@ class R3Node final:public rclcpp::Node {
     inputs_.arm_stamp=observed-std::chrono::duration_cast<SafetyClock::duration>(std::chrono::duration<double>(age));
     inputs_.ready.arm_feedback_ready=y["feedback_ready"].as<bool>();
     arm_q_=q;arm_dq_=dq;
+    inputs_.arm_emergency_validated=y["arm_emergency_validated"]&&y["arm_emergency_validated"].as<bool>();
     inputs_.arm_static_hold=y["static_hold"].as<bool>();
     // New owner publishes all seven motors. Legacy six-only status cannot pass
     // the deployment HOME gate; gripper remains excluded from actor tensors.
@@ -125,7 +132,7 @@ class R3Node final:public rclcpp::Node {
      inputs_.ready.arm_target_ready=Age(now,inputs_.target_stamp)>=0;
      inputs_.arm_control_ready=owner_healthy&&motors_healthy&&inputs_.ready.arm_feedback_ready&&inputs_.ready.arm_target_ready;
     }
-   }catch(const std::exception& e){inputs_.ready.arm_feedback_ready=false;inputs_.ready.arm_target_ready=false;inputs_.arm_static_hold=false;inputs_.arm_home_ready=false;inputs_.arm_control_ready=false;arm_error_=e.what();}
+   }catch(const std::exception& e){inputs_.ready.arm_feedback_ready=false;inputs_.ready.arm_target_ready=false;inputs_.arm_static_hold=false;inputs_.arm_home_ready=false;inputs_.arm_control_ready=false;inputs_.arm_emergency_validated=false;arm_error_=e.what();}
   });
   enable_=create_service<std_srvs::srv::SetBool>("/go2/commissioning/enable_output",[this](const std_srvs::srv::SetBool::Request::SharedPtr req,std_srvs::srv::SetBool::Response::SharedPtr res){
    std::lock_guard lock(mutex_);const auto now=SafetyClock::now();Refresh(now);
@@ -287,6 +294,47 @@ class R3Node final:public rclcpp::Node {
    std::lock_guard lock(mutex_);auto now=SafetyClock::now();Refresh(now);auto r=request(now);res->success=r.success;res->message=r.message;
   }));
  }
+ void PortTick() {
+  std::lock_guard lock(mutex_);const auto requests=supervisor_->ConsumePortRequests();
+  const auto generation=supervisor_->orchestration_generation();
+  if(requests.cancel_navigation){navigation_valid_=false;navigation_command_={};nav_cancel_pending_=true;nav_cancel_status_="pending";}
+  if(requests.cancel_manipulation){manipulation_cancel_pending_=true;manipulation_cancel_status_="pending";}
+  if(requests.arm_return_home){home_pending_=true;home_port_status_="pending";}
+  if(requests.arm_emergency){home_pending_=false;emergency_pending_=true;emergency_port_status_="pending";}
+  if(supervisor_->system_state()!=SystemState::CONTROLLED_STOP)home_pending_=false;
+  if(home_pending_){
+   if(!arm_home_client_->service_is_ready())home_port_status_="unavailable";
+   else {home_pending_=false;home_port_status_="request_sent";
+    arm_home_client_->async_send_request(std::make_shared<std_srvs::srv::Trigger::Request>(),[this,generation](rclcpp::Client<std_srvs::srv::Trigger>::SharedFuture future){
+     std::lock_guard lock(mutex_);if(generation!=supervisor_->orchestration_generation())return;
+     try{const auto result=future.get();home_port_status_=result->success?"accepted_waiting_measured_home":"rejected: "+result->message;supervisor_->ArmHomeRequestAccepted(result->success,SafetyClock::now());}
+     catch(const std::exception& e){home_port_status_=e.what();supervisor_->ArmHomeRequestAccepted(false,SafetyClock::now());}
+    });
+   }
+  }
+  if(emergency_pending_){
+   if(!arm_emergency_client_->service_is_ready())emergency_port_status_="unavailable";
+   else {emergency_pending_=false;emergency_port_status_="request_sent";
+    arm_emergency_client_->async_send_request(std::make_shared<std_srvs::srv::Trigger::Request>(),[this,generation](rclcpp::Client<std_srvs::srv::Trigger>::SharedFuture future){
+     std::lock_guard lock(mutex_);if(generation!=supervisor_->orchestration_generation())return;
+     try{const auto result=future.get();emergency_port_status_=(result->success?"accepted_not_physically_confirmed: ":"rejected: ")+result->message;supervisor_->ArmEmergencyResult(result->success,emergency_port_status_);}
+     catch(const std::exception& e){emergency_port_status_=e.what();supervisor_->ArmEmergencyResult(false,emergency_port_status_);}
+    });
+   }
+  }
+  CancelPort(nav_cancel_pending_,nav_cancel_status_,nav_cancel_client_,generation,true);
+  CancelPort(manipulation_cancel_pending_,manipulation_cancel_status_,manipulation_cancel_client_,generation,false);
+ }
+ void CancelPort(bool& pending,std::string& status,rclcpp::Client<std_srvs::srv::Trigger>::SharedPtr client,uint64_t generation,bool navigation) {
+  if(!pending)return;
+  if(!client->service_is_ready()){status="unavailable; velocity/mission gate closed";return;}
+  pending=false;status="request_sent";
+  client->async_send_request(std::make_shared<std_srvs::srv::Trigger::Request>(),[this,generation,navigation](rclcpp::Client<std_srvs::srv::Trigger>::SharedFuture future){
+   std::lock_guard lock(mutex_);if(generation!=supervisor_->orchestration_generation())return;
+   auto& status=navigation?nav_cancel_status_:manipulation_cancel_status_;
+   try{const auto result=future.get();status=(result->success?"accepted: ":"rejected: ")+result->message;}catch(const std::exception& e){status=e.what();}
+  });
+ }
  void Refresh(SafetyTime now) {
   inputs_.ready.lowstate_fresh=lowstate_.Fresh(now);inputs_.ready.remote_fresh=remote_->status().remote_valid;
   inputs_.own_output_healthy=output_&&lease_&&lease_->acquired()&&count_publishers("/lowcmd")==1;
@@ -312,8 +360,7 @@ class R3Node final:public rclcpp::Node {
    }
    reset=supervisor_->ConsumePolicyReset();ticket=supervisor_->BeginPolicy(now);infer=ticket.has_value();low=lowstate_.snapshot();
    armq=arm_q_;armdq=arm_dq_;target=arm_target_;cmd=supervisor_->command();
-   // Arm lifecycle is independent. Abort/emergency never replaces its HOME
-   // target or issues SDK commands; only consume the historical intent flag.
+   // Serial/SDK remain exclusively in the RARS owner; leg node uses async ports.
    supervisor_->ConsumeArmHoldRequest();
   }
   if(infer) {
@@ -395,6 +442,10 @@ class R3Node final:public rclcpp::Node {
  rclcpp::Service<std_srvs::srv::SetBool>::SharedPtr enable_;
  rclcpp::Service<std_srvs::srv::Trigger>::SharedPtr manual_;
  std::vector<rclcpp::Service<std_srvs::srv::Trigger>::SharedPtr> services_;
+ rclcpp::Client<std_srvs::srv::Trigger>::SharedPtr arm_home_client_,arm_emergency_client_,nav_cancel_client_,manipulation_cancel_client_;
+ bool home_pending_=false,emergency_pending_=false,nav_cancel_pending_=false,manipulation_cancel_pending_=false;
+ std::string home_port_status_="idle",emergency_port_status_="idle",nav_cancel_status_="idle",manipulation_cancel_status_="idle";
+ rclcpp::TimerBase::SharedPtr port_timer_;rclcpp::CallbackGroup::SharedPtr port_group_;
  rclcpp::TimerBase::SharedPtr io_timer_,policy_timer_;rclcpp::CallbackGroup::SharedPtr io_group_,policy_group_;
 };
 int main(int argc,char** argv){rclcpp::init(argc,argv);try{auto node=std::make_shared<R3Node>();rclcpp::executors::MultiThreadedExecutor executor(rclcpp::ExecutorOptions(),2);executor.add_node(node);executor.spin();}

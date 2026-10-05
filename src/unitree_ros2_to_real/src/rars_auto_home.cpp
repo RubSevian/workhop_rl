@@ -48,6 +48,22 @@ void AutoHomeController::Fault(const std::string& reason) {
  status_.state=AutoHomeState::FAULT_LATCHED;status_.last_error=reason;status_.arm_home_ready=false;status_.target_fresh=false;
  if(!journal_.RecordFault(reason))status_.last_error+="; journal_write_failed";
 }
+bool AutoHomeController::ReturnHome(ArmTime now) {
+ // Same owner/100Hz stream. Acceptance does not manufacture measured HOME.
+ Observe(now);
+ return config_.enabled&&status_.state==AutoHomeState::HOLD_HOME&&status_.communication.enabled&&
+  UsableFeedback()&&status_.motors_enabled&&status_.target_fresh;
+}
+bool AutoHomeController::EmergencyDisable() {
+ if(!config_.enabled||!config_.emergency_disable_validated)return false;
+ if(emergency_disable_attempted_)return emergency_disable_accepted_;
+ emergency_disable_attempted_=true;
+ // Stop the stream before SDK disable. No automatic re-enable/recovery.
+ Fault("operator_emergency_disable_requested");
+ emergency_disable_accepted_=transport_.Disable();
+ if(!emergency_disable_accepted_)status_.last_error+="; sdk_disable_failed: "+transport_.Error();
+ return emergency_disable_accepted_;
+}
 bool AutoHomeController::UsableFeedback() const {
  if(!status_.feedback_ready)return false;
  for(auto motor_status:status_.joints.error)if(motor_status!=0&&motor_status!=1)return false;

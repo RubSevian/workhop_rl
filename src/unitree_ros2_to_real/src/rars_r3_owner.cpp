@@ -2,6 +2,7 @@
 #include "rars_bridge.hpp"
 #include <rclcpp/rclcpp.hpp>
 #include <std_msgs/msg/string.hpp>
+#include <std_srvs/srv/trigger.hpp>
 #include <yaml-cpp/yaml.h>
 #include <filesystem>
 #include <fstream>
@@ -17,6 +18,7 @@ class SdkHomeTransport final:public AutoHomeTransport {
  explicit SdkHomeTransport(rars_arm::RarsArm& sdk):sdk_(sdk){}
  bool Connect() override{return sdk_.connect();}
  bool Enable() override{return sdk_.enable();}
+ bool Disable() override{return sdk_.disable();}
  bool Send(const rars_arm::RarsArm::MotorValues& q) override{return sdk_.sendPositionTargets(q);}
  bool Read(rars_arm::JointState& q) override{return sdk_.tryReadJointState(q);}
  rars_arm::CommunicationStatus Status() const override{return sdk_.communicationStatus();}
@@ -53,6 +55,7 @@ class ArmOwner final:public rclcpp::Node {
   connect_=declare_parameter<bool>("connect_serial",false);
   const bool read_only=declare_parameter<bool>("read_only",true);
   AutoHomeConfig home;home.enabled=auto_cfg["enabled"].as<bool>()&&!read_only;
+  home.emergency_disable_validated=deployment["emergency_disable_validated"]&&deployment["emergency_disable_validated"].as<bool>();
   home.startup_delay_s=auto_cfg["startup_delay_s"].as<double>();home.command_rate_hz=config.command_rate_hz;
   home.home_tolerance_rad=auto_cfg["home_tolerance_rad"].as<double>();
   home.feedback_timeout_s=deployment["feedback_timeout_s"].as<double>();home.target_timeout_s=deployment["target_timeout_s"].as<double>();
@@ -75,8 +78,12 @@ class ArmOwner final:public rclcpp::Node {
   sdk_=std::make_unique<rars_arm::RarsArm>(config);transport_=std::make_unique<SdkHomeTransport>(*sdk_);
   home_=std::make_unique<AutoHomeController>(home,*transport_,*journal_);
   state_=create_publisher<std_msgs::msg::String>("/rars01/commissioning/state",10);
-  // No leg-triggered enable or HOLD_CURRENT subscription: this owner keeps HOME
-  // independently. Future manipulation IPC must use this same serial backend.
+  return_home_=create_service<std_srvs::srv::Trigger>("/rars01/control/return_home",[this](std_srvs::srv::Trigger::Request::SharedPtr,std_srvs::srv::Trigger::Response::SharedPtr response){
+   response->success=home_->ReturnHome(ArmClock::now());response->message=response->success?"HOME stream accepted; completion requires measured HOME":"healthy enabled owner/feedback/target required; no enable issued";
+  });
+  emergency_=create_service<std_srvs::srv::Trigger>("/rars01/control/emergency_disable",[this](std_srvs::srv::Trigger::Request::SharedPtr,std_srvs::srv::Trigger::Response::SharedPtr response){
+   response->success=home_->EmergencyDisable();response->message=response->success?"disable sent; physical disable requires measured confirmation":"emergency disable rejected: bench validation missing, read-only, or SDK failure";
+  });
   timer_=create_wall_timer(std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::duration<double>(1/config.command_rate_hz)),[this]{Poll();});
   RCLCPP_INFO(get_logger(),"RARS owner: device=%s read_only=%d delay=%.3fs rate=%.3fHz HOME=[0,0,0,0,0,0,0]",config.port_name.c_str(),read_only,home.startup_delay_s,home.command_rate_hz);
   for(size_t i=0;i<7;++i)RCLCPP_INFO(get_logger(),"saved calibration motor%zu direction=%g offset=%g",i+1,config.motors[i].direction,config.motors[i].zero_offset);
@@ -115,6 +122,7 @@ class ArmOwner final:public rclcpp::Node {
    <<YAML::Key<<"feedback_ready"<<YAML::Value<<s.feedback_ready
    <<YAML::Key<<"motors_enabled"<<YAML::Value<<s.motors_enabled
    <<YAML::Key<<"static_hold"<<YAML::Value<<s.arm_home_ready
+   <<YAML::Key<<"arm_emergency_validated"<<YAML::Value<<home_->config().emergency_disable_validated
    <<YAML::Key<<"arm_home_ready"<<YAML::Value<<s.arm_home_ready
    <<YAML::Key<<"watchdog_armed"<<YAML::Value<<s.communication.watchdog_armed
    <<YAML::Key<<"watchdog_tripped"<<YAML::Value<<s.communication.watchdog_tripped
@@ -133,6 +141,7 @@ class ArmOwner final:public rclcpp::Node {
  std::unique_ptr<FileAutoHomeJournal> journal_;
  std::unique_ptr<rars_arm::RarsArm> sdk_;std::unique_ptr<SdkHomeTransport> transport_;
  std::unique_ptr<AutoHomeController> home_;
+ rclcpp::Service<std_srvs::srv::Trigger>::SharedPtr return_home_,emergency_;
  rclcpp::Publisher<std_msgs::msg::String>::SharedPtr state_;rclcpp::TimerBase::SharedPtr timer_;
 };
 int main(int argc,char** argv){rclcpp::init(argc,argv);try{rclcpp::spin(std::make_shared<ArmOwner>());}catch(const std::exception& e){RCLCPP_ERROR(rclcpp::get_logger("rars_r3"),"Failed closed: %s",e.what());rclcpp::shutdown();return 1;}rclcpp::shutdown();}
