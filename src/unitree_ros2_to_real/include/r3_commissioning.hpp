@@ -1,5 +1,7 @@
 #pragma once
 #include "safety_io.hpp"
+#include "system_state.hpp"
+#include "system_readiness.hpp"
 #include <yaml-cpp/yaml.h>
 namespace sim2real {
 enum class R3State { STOCK,DISARMED,TAKEOVER_REQUESTED,PRECHECK,SPORT_RELEASE_REQUIRED,
@@ -21,6 +23,7 @@ struct R3Profile {
  double lowcmd_discovery_timeout_s=20,lowcmd_clear_duration_s=.5;
  double vx_bound=.20,vy_bound=.10,wz_bound=.10,max_command_duration_s=1;
  double q_capture_tolerance=.01;
+ double arm_home_timeout_s=10,arm_home_settle_s=.2,lie_down_timeout_s=12,lie_down_tolerance=.15,lie_down_settle_s=.2;
  int deadline_burst_limit=3;
 };
 R3Profile LoadR3Profile(const YAML::Node& yaml);
@@ -31,6 +34,8 @@ struct R3Inputs {
  SportMode sport=SportMode::UNKNOWN;
  SafetyTime sport_stamp{},lowstate_stamp{},remote_stamp{},arm_stamp{},target_stamp{};
  bool arm_static_hold=false,arm_home_ready=false;
+ bool arm_control_ready=false,navigation_ready=false,perception_ready=false,arm_emergency_validated=false;
+ bool own_output_healthy=false;
 };
 struct R3Reply { bool success=false;std::string message; };
 enum class LowCmdWaitResult { WAITING, CLEAR, TIMEOUT };
@@ -53,7 +58,17 @@ struct PolicyTicket {
 };
 class R3Supervisor {
  public:
- explicit R3Supervisor(R3Profile profile);
+ explicit R3Supervisor(R3Profile profile,OperationProfile operation=OperationProfile::REMOTE_TEST);
+ R3Reply Dispatch(SystemEvent event,SafetyTime now,SystemPhase phase=SystemPhase::DISARMED);
+ R3Reply DispatchEvents(std::span<const SystemEvent> events,SafetyTime now);
+ SystemState system_state() const {return system_state_;}
+ SystemPhase phase() const {return phase_;}
+ OperationProfile operation_profile() const {return operation_;}
+ const OperationCapabilities& capabilities() const {return capabilities_;}
+ const std::string& stop_blocker() const {return stop_blocker_;}
+ SystemPortRequests ConsumePortRequests();
+ void ArmHomeRequestAccepted(bool accepted,SafetyTime now);
+ void ArmEmergencyResult(bool accepted,const std::string& detail);
  void Observe(const R3Inputs& in,SafetyTime now);
  R3Reply Takeover(SafetyTime now);
  R3Reply StartRemoteSequence(SafetyTime now);
@@ -86,11 +101,11 @@ class R3Supervisor {
  double PolicyObservationAgeSeconds(SafetyTime now) const;
  std::optional<unitree_go::msg::LowCmd> Tick(SafetyTime now);
  bool AllowsPacket(const unitree_go::msg::LowCmd& cmd,SafetyTime now) const;
- R3State state() const {return state_;}
+ R3State state() const;
  bool output_enabled() const {return output_enabled_;}
  bool fault_latched() const {return fault_;}
  bool navigation_active() const {return navigation_active_;}
- bool NeedsPolicy() const {return state_==R3State::RL_ZERO||state_==R3State::RL_ACTIVE;}
+ bool NeedsPolicy() const {return state()==R3State::RL_ZERO||state()==R3State::RL_ACTIVE;}
  bool ConsumePolicyReset();
  bool ConsumeArmHoldRequest();
  const std::array<double,3>& command() const {return command_;}
@@ -110,7 +125,16 @@ class R3Supervisor {
  bool CurrentPolicy(const PolicyTicket& ticket) const;
  bool IsActive() const;
  R3Profile profile_;R3Inputs inputs_;
- R3State state_=R3State::DISARMED;
+ const OperationProfile operation_;
+ const OperationCapabilities capabilities_;
+ SystemState system_state_=SystemState::INIT;
+ SystemPhase phase_=SystemPhase::DISARMED;
+ void SetPhase(R3State state);
+ SystemPortRequests ports_;
+ bool arm_home_accepted_=false;
+ SafetyTime stop_started_{},home_settle_started_{},lie_reached_stamp_{};
+ bool home_settling_=false,lie_reached_=false;
+ std::string stop_blocker_,arm_emergency_detail_;
  bool remote_sequence_=false,release_requested_=false,sequence_hold_started_=false;
  SafetyTime sequence_hold_stamp_{};
  bool seen_=false,output_enabled_=false,output_stopped_=true,fault_=false,abort_sequence_=false;

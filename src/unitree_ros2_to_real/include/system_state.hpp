@@ -1,0 +1,14 @@
+#pragma once
+namespace sim2real {
+enum class SystemState { INIT, STANDBY, TAKEOVER, ACTIVE, CONTROLLED_STOP, SYSTEM_HOLD, EMERGENCY_FAULT };
+// First phases retain legacy diagnostic projection only, not a second FSM owner.
+enum class SystemPhase { STOCK,DISARMED,TAKEOVER_REQUESTED,PRECHECK,SPORT_RELEASE_REQUIRED,
+ SPORT_RELEASE_VERIFIED,LOW_LEVEL_ARMED,HOLD_CURRENT,STAND_TRANSITION,HOLDING,
+ RL_ZERO,RL_ACTIVE,CONTROLLED_ABORT,LIE_DOWN_TRANSITION,OUTPUT_STOPPING,RETURN_TO_STOCK,
+ FAULT_LATCHED,EMERGENCY_DAMP,
+ ARM_RETURN_HOME,ARM_HOME_BLOCKED,ARM_HOME_SETTLE,PD_CAPTURE,LIE_DOWN,LIE_DOWN_VERIFY,LIE_DOWN_BLOCKED,LIE_DOWN_HOLD };
+enum class SystemEvent { INITIALIZE, REQUEST_A, REQUEST_X, REQUEST_B, CRITICAL_FAULT, ADVANCE_PHASE };
+const char* SystemStateName(SystemState state);
+const char* SystemPhaseName(SystemPhase phase);
+struct SystemPortRequests {bool cancel_navigation=false,cancel_manipulation=false,arm_return_home=false,arm_emergency=false;};
+} // namespace sim2real

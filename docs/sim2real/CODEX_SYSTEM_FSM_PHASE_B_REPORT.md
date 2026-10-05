@@ -29,3 +29,7 @@ NAV clamp/finite/freshness сохранится. Lie-down target APPROVED; traje
 ## Шаг 3 — readiness
 
 Разделены HOME для takeover и arm_control_ready для runtime. Navigation/perception/emergency validation — отдельные факты, по умолчанию false. Тест здоровой руки вне HOME и blockers: PASS; build и 4/4 targeted tests PASS.
+
+## Шаг 4 — центральный владелец
+
+R3Supervisor хранит один SystemState (7 значений) и внутреннюю phase. Старый R3State вычисляется для совместимости, отдельного mutable state_ больше нет. Dispatch — единственное место записи global state; B/X/A имеют порядок приоритета. Build и 6/6 тестов PASS, включая прежнюю regression и byte differential.
