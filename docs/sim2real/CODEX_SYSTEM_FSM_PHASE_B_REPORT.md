@@ -21,3 +21,7 @@ NAV clamp/finite/freshness сохранится. Lie-down target APPROVED; traje
 ## Шаг1 — PASS
 
 Отдельная clean Release сборка завершилась (runtime/fsm_step01_build.log). Frozen baseline regression и byte-identical differential oracle2/2 PASS (runtime/fsm_step01_test.log). Полные runtime sources прежние; изменены только test targets и docs.
+
+## Шаг 2 — профили
+
+Семь строгих launch-профилей и таблица capabilities; неизвестное имя отклоняется. Legacy flags имеют явное отображение. Build PASS; parser/capabilities и frozen differential: 3/3 PASS. Runtime подключается в последующих шагах.
