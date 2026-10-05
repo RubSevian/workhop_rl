@@ -37,6 +37,7 @@ R3Profile LoadR3Profile(const YAML::Node& yaml) {
  R3Profile p;const auto actor=yaml["go2_rars01"],d=yaml["real_deployment"],r=d["r3_commissioning"];
  p.stand=Hardware(Array12(actor["default_dof_pos"]));p.kp=Hardware(Array12(actor["fixed_kp"]));p.kd=Hardware(Array12(actor["fixed_kd"]));
  p.rl_kp=Hardware(Array12(actor["rl_kp"]));p.rl_kd=Hardware(Array12(actor["rl_kd"]));
+ p.capture_hold_s=d["capture_hold_sec"]?d["capture_hold_sec"].as<double>():.02;
  p.stand_s=d["stand_duration_sec"].as<double>();p.hold_s=d["hold_transition_sec"].as<double>();
  p.command_timeout_s=d["cmd_vel_timeout_sec"].as<double>();p.sport_timeout_s=d["sport_mode"]["observation_timeout_s"].as<double>();
  p.lowstate_timeout_s=d["lowstate"]["stale_timeout_s"].as<double>();p.remote_timeout_s=d["remote"]["stale_timeout_s"].as<double>();
@@ -45,6 +46,8 @@ R3Profile LoadR3Profile(const YAML::Node& yaml) {
  p.vx_bound=r["manual"]["max_vx"].as<double>();p.vy_bound=r["manual"]["max_vy"].as<double>();p.wz_bound=r["manual"]["max_wz"].as<double>();
  p.max_command_duration_s=r["manual"]["max_duration_s"].as<double>();p.q_capture_tolerance=r["hold_current_tolerance_rad"].as<double>();
  p.deadline_burst_limit=r["deadline_burst_limit"].as<int>();
+ if(r["lowcmd_discovery_timeout_s"])p.lowcmd_discovery_timeout_s=r["lowcmd_discovery_timeout_s"].as<double>();
+ if(r["lowcmd_clear_duration_s"])p.lowcmd_clear_duration_s=r["lowcmd_clear_duration_s"].as<double>();
  p.policy_timing_reviewed=r["policy_timing_reviewed"].as<bool>();
  p.gate0_verified=r["gate0_verified"].as<bool>();p.mapping_verified=r["mapping_imu_verified"].as<bool>();
  p.remote_chords_verified=r["remote_chords_verified"].as<bool>();p.robot_supported=r["robot_supported"].as<bool>();
@@ -54,8 +57,24 @@ R3Profile LoadR3Profile(const YAML::Node& yaml) {
  if(r["lie_down"]["motor_q"]&&!r["lie_down"]["motor_q"].IsNull())p.lie_down=Array12(r["lie_down"]["motor_q"]);
  return p;
 }
+LowCmdDiscoveryWait::LowCmdDiscoveryWait(double timeout_s,double clear_s):timeout_s_(timeout_s),clear_s_(clear_s) {
+ if(!std::isfinite(timeout_s)||!std::isfinite(clear_s)||clear_s<=0||timeout_s<=clear_s)
+  throw std::invalid_argument("Discovery timeout must exceed positive finite clear duration");
+}
+void LowCmdDiscoveryWait::Reset(){active_=false;clear_started_=false;}
+double LowCmdDiscoveryWait::AgeSeconds(SafetyTime now) const {
+ return active_?std::chrono::duration<double>(now-started_).count():0;
+}
+LowCmdWaitResult LowCmdDiscoveryWait::Update(SafetyTime now,bool sport_released,size_t publishers) {
+ if(!active_){active_=true;started_=now;clear_started_=false;}
+ if(AgeSeconds(now)>=timeout_s_)return LowCmdWaitResult::TIMEOUT;
+ if(!sport_released||publishers!=0){clear_started_=false;return LowCmdWaitResult::WAITING;}
+ if(!clear_started_){clear_started_=true;clear_stamp_=now;}
+ return std::chrono::duration<double>(now-clear_stamp_).count()>=clear_s_?LowCmdWaitResult::CLEAR:LowCmdWaitResult::WAITING;
+}
 R3Supervisor::R3Supervisor(R3Profile p):profile_(std::move(p)) {
- for(double v:{profile_.stand_s,profile_.hold_s,profile_.lie_down_s,profile_.sport_timeout_s,profile_.command_timeout_s,
+ LowCmdDiscoveryWait validate_discovery(profile_.lowcmd_discovery_timeout_s,profile_.lowcmd_clear_duration_s);
+ for(double v:{profile_.capture_hold_s,profile_.stand_s,profile_.hold_s,profile_.lie_down_s,profile_.sport_timeout_s,profile_.command_timeout_s,
   profile_.lowstate_timeout_s,profile_.remote_timeout_s,profile_.arm_timeout_s,profile_.vx_bound,profile_.vy_bound,
   profile_.wz_bound,profile_.max_command_duration_s,profile_.q_capture_tolerance})
   if(!std::isfinite(v)||v<=0)throw std::invalid_argument("Positive finite commissioning settings required");
@@ -96,7 +115,8 @@ R3Reply R3Supervisor::Require(SafetyTime now) const {
  std::ostringstream s;for(const auto& v:b)s<<v<<',';return Fail(s.str());
 }
 void R3Supervisor::Zero(){command_={};navigation_active_=false;have_command_=false;}
-void R3Supervisor::Capture(SafetyTime now){start_=inputs_.measured_q;target_=start_;transition_=now;have_policy_=false;}
+void R3Supervisor::InvalidatePolicyWork(){++policy_generation_;pending_policy_.reset();}
+void R3Supervisor::Capture(SafetyTime now){InvalidatePolicyWork();start_=inputs_.measured_q;target_=start_;transition_=now;have_policy_=false;}
 bool R3Supervisor::IsActive() const {return output_enabled_;}
 void R3Supervisor::Observe(const R3Inputs& in,SafetyTime now) {
  inputs_=in;seen_=true;
@@ -120,13 +140,19 @@ std::vector<std::string> R3Supervisor::RemoteSequenceBlockers(SafetyTime now) co
  if(!seen_||(inputs_.sport!=SportMode::ACTIVE&&inputs_.sport!=SportMode::RELEASED)||
     !Fresh(now,inputs_.sport_stamp,profile_.sport_timeout_s))b.emplace_back("sport_state_not_fresh_known");
  if(!profile_.policy_timing_reviewed)b.emplace_back("policy_timing_not_reviewed");
- if(!profile_.lie_down_validated||!profile_.lie_down)b.emplace_back("lie_down_not_validated");
  return b;
 }
 void R3Supervisor::CancelRemoteSequence(){remote_sequence_=false;release_requested_=false;sequence_hold_started_=false;}
 R3Reply R3Supervisor::StartRemoteSequence(SafetyTime now) {
  const auto b=RemoteSequenceBlockers(now);
  if(!b.empty()){std::ostringstream out;for(const auto& x:b)out<<x<<',';return Fail(out.str());}
+ // A after X explicitly starts a new measured->stand->hold->RL cycle.
+ // Ownership is already released; do not repeat the SDK release/publisher.
+ if(output_enabled_&&!fault_&&(state_==R3State::HOLDING||state_==R3State::CONTROLLED_ABORT)) {
+  const auto hold=RequestHold(now);if(!hold.success)return hold;
+  remote_sequence_=true;release_requested_=true;sequence_hold_started_=false;
+  return {true,"fresh A: current hold -> stand -> PD hold -> RL_ZERO"};
+ }
  const auto reply=Takeover(now);if(!reply.success)return reply;
  remote_sequence_=true;release_requested_=false;sequence_hold_started_=false;
  return {true,"remote sequence: release verified -> current hold -> stand -> PD hold -> RL_ZERO"};
@@ -142,7 +168,7 @@ R3SequenceAction R3Supervisor::RemoteSequenceNext(SafetyTime now) {
  if(state_==R3State::SPORT_RELEASE_VERIFIED&&!output_enabled_)return R3SequenceAction::ENABLE_OUTPUT;
  if(state_==R3State::HOLD_CURRENT||state_==R3State::HOLDING) {
   if(!sequence_hold_started_){sequence_hold_stamp_=now;sequence_hold_started_=true;}
-  if(std::chrono::duration<double>(now-sequence_hold_stamp_).count()>=profile_.hold_s) {
+  if(std::chrono::duration<double>(now-sequence_hold_stamp_).count()>=(state_==R3State::HOLD_CURRENT?profile_.capture_hold_s:profile_.hold_s)) {
    sequence_hold_started_=false;
    return state_==R3State::HOLD_CURRENT?R3SequenceAction::STAND:R3SequenceAction::RL;
   }
@@ -151,7 +177,7 @@ R3SequenceAction R3Supervisor::RemoteSequenceNext(SafetyTime now) {
  return R3SequenceAction::NONE;
 }
 R3Reply R3Supervisor::EnableOutput(bool enable,SafetyTime now) {
- if(!enable){CancelRemoteSequence();output_enabled_=false;Zero();state_=fault_?R3State::FAULT_LATCHED:R3State::OUTPUT_STOPPING;return {true,"stop publisher then confirm output stopped"};}
+ if(!enable){InvalidatePolicyWork();CancelRemoteSequence();output_enabled_=false;Zero();state_=fault_?R3State::FAULT_LATCHED:R3State::OUTPUT_STOPPING;return {true,"stop publisher then confirm output stopped"};}
  if(state_!=R3State::SPORT_RELEASE_VERIFIED||!output_stopped_)return Fail("requires explicit takeover + verified release + previous output stop");
  auto r=Require(now);if(!r.success)return r;
  Capture(now);output_enabled_=true;output_stopped_=false;state_=R3State::LOW_LEVEL_ARMED;Zero();
@@ -165,14 +191,13 @@ R3Reply R3Supervisor::RequestHold(SafetyTime now) {
 R3Reply R3Supervisor::RequestStand(SafetyTime now) {
  if(state_!=R3State::HOLD_CURRENT&&state_!=R3State::HOLDING)return Fail("stand requires HOLD_CURRENT/HOLDING");
  auto r=Require(now);if(!r.success)return r;
- if(!profile_.lie_down||!profile_.lie_down_validated)return Fail("verified reverse lie-down profile missing");
- Capture(now);Zero();state_=R3State::STAND_TRANSITION;return {true,"smooth measured->stand"};
+ Capture(now);Zero();state_=R3State::STAND_TRANSITION;return {true,"linear measured->stand"};
 }
 R3Reply R3Supervisor::RequestRl(SafetyTime now) {
  if(state_!=R3State::HOLDING)return Fail("RL entry only from HOLDING");
  if(!profile_.policy_timing_reviewed)return Fail("timing review required before RL");
  auto r=Require(now);if(!r.success)return r;
- Zero();reset_policy_=true;have_policy_=false;policy_stamp_=now;state_=R3State::RL_ZERO;return {true,"zero + ResetPolicyState before any inference"};
+ InvalidatePolicyWork();Zero();reset_policy_=true;have_policy_=false;policy_stamp_=now;state_=R3State::RL_ZERO;return {true,"zero + ResetPolicyState before any inference"};
 }
 R3Reply R3Supervisor::RequestLieDown(SafetyTime now) {
  if(state_!=R3State::HOLDING)return Fail("lie-down requires HOLDING");
@@ -183,20 +208,27 @@ R3Reply R3Supervisor::RequestLieDown(SafetyTime now) {
 R3Reply R3Supervisor::ControlledAbort(SafetyTime now) {
  CancelRemoteSequence();
  if(!IsActive()||fault_)return Fail("abort requires active custom mode; use emergency for fault");
- Zero();arm_hold_request_=true;Capture(now);abort_sequence_=profile_.lie_down.has_value()&&profile_.lie_down_validated;state_=R3State::CONTROLLED_ABORT;
- return {true,abort_sequence_?"arm hold -> leg current hold -> stand -> lie-down -> stop":"arm/leg HOLD_CURRENT; lie-down exit blocked pending validated pose"};
+ // Operator-selected X exits RL into the measured pose, even when a lying
+ // trajectory has been validated. Lie-down remains a separate explicit request.
+ Zero();arm_hold_request_=true;Capture(now);abort_sequence_=false;state_=R3State::CONTROLLED_ABORT;
+ return {true,"RL stopped; hold measured current pose with fixed gains"};
 }
 R3Reply R3Supervisor::Emergency(SafetyTime now) {
  CancelRemoteSequence();
  if(!IsActive())return Fail("no active custom output");
- Zero();arm_hold_request_=true;fault_=true;have_policy_=false;
+ InvalidatePolicyWork();Zero();arm_hold_request_=true;fault_=true;have_policy_=false;
  if(!Released(now)||!profile_.emergency_validated||!profile_.emergency_kd||profile_.emergency_evidence.empty()) {
   output_enabled_=false;state_=R3State::FAULT_LATCHED;return Fail("no eligible validated damping: stop output; independent operator emergency required");
  }
  state_=R3State::EMERGENCY_DAMP;return {true,"latched damping; no autonomous recovery"};
 }
 void R3Supervisor::Fault(const std::string& why,SafetyTime now) {
- CancelRemoteSequence();last_fault_=why;fault_=true;
+ if(!fault_) {
+  fault_policy_age_s_=PolicyAgeSeconds(now);
+  fault_inference_age_s_=PolicyInferenceAgeSeconds(now);
+  fault_observation_age_s_=PolicyObservationAgeSeconds(now);
+ }
+ InvalidatePolicyWork();CancelRemoteSequence();last_fault_=why;fault_=true;
  if(output_enabled_)Emergency(now);else {Zero();state_=R3State::FAULT_LATCHED;}
 }
 R3Reply R3Supervisor::ManualCommand(const std::array<double,3>& cmd,double duration,SafetyTime now) {
@@ -207,6 +239,7 @@ R3Reply R3Supervisor::ManualCommand(const std::array<double,3>& cmd,double durat
     !std::isfinite(duration)||duration<=0||duration>profile_.max_command_duration_s)return Fail("single-axis bounds/duration violated");
  if(axes==0){Zero();Capture(now);state_=R3State::CONTROLLED_ABORT;abort_sequence_=false;return {true,"zero -> controlled hold"};}
  if(state_==R3State::RL_ZERO&&!have_policy_)return Fail("RL_ZERO has no valid policy sample yet");
+ if(command_!=cmd)InvalidatePolicyWork();
  command_=cmd;navigation_active_=false;have_command_=true;command_stamp_=now;
  command_end_=now+std::chrono::duration_cast<SafetyClock::duration>(std::chrono::duration<double>(duration));
  state_=R3State::RL_ACTIVE;return {true,"bounded one-axis deadman command"};
@@ -214,14 +247,77 @@ R3Reply R3Supervisor::ManualCommand(const std::array<double,3>& cmd,double durat
 void R3Supervisor::RenewDeadman(SafetyTime now) {
  if(state_==R3State::RL_ACTIVE && have_command_ && now>=command_stamp_)command_stamp_=now;
 }
-void R3Supervisor::PolicyResult(const std::array<float,12>& q,double ms,SafetyTime now) {
- if(!NeedsPolicy())return;
- if(!std::isfinite(ms)||ms<0){Fault("invalid_policy_timing",now);return;}
- for(float v:q)if(!std::isfinite(v)||std::abs(v)>3.5F){Fault("invalid_policy_action",now);return;}
+std::array<double,3> RemoteStickCommand(const RemoteStatus& r,const R3Profile& p) {
+ if(!r.remote_valid)return {};
+ // Existing workshop sim controller: vx=ly, vy=-rx, wz=-lx.
+ auto axis=[](double v,double limit){return std::isfinite(v)&&std::abs(v)>.01?std::clamp(v,-1.,1.)*limit:0.;};
+ return {axis(r.ly,p.vx_bound),axis(-r.rx,p.vy_bound),axis(-r.lx,p.wz_bound)};
+}
+R3Reply R3Supervisor::RemoteTestCommand(const std::array<double,3>& cmd,SafetyTime now) {return VelocityCommand(cmd,now,false);}
+R3Reply R3Supervisor::NavigationCommand(const std::array<double,3>& cmd,SafetyTime now) {return VelocityCommand(cmd,now,true);}
+R3Reply R3Supervisor::VelocityCommand(const std::array<double,3>& cmd,SafetyTime now,bool navigation) {
+ if(!NeedsPolicy())return Fail("remote test requires RL_ZERO/RL_ACTIVE");
+ const auto ready=Require(now);if(!ready.success)return ready;
+ for(double v:cmd)if(!std::isfinite(v))return Fail("nonfinite remote test command");
+ if(std::abs(cmd[0])>profile_.vx_bound||std::abs(cmd[1])>profile_.vy_bound||std::abs(cmd[2])>profile_.wz_bound)
+  return Fail("remote test bounds violated");
+ const bool moving=cmd!=std::array<double,3>{};
+ if(moving&&!have_policy_)return Fail("remote test awaits valid zero policy sample");
+ if(command_!=cmd)InvalidatePolicyWork();
+ command_=cmd;navigation_active_=navigation&&moving;have_command_=moving;command_stamp_=now;
+ command_end_=now+std::chrono::duration_cast<SafetyClock::duration>(std::chrono::duration<double>(profile_.max_command_duration_s));
+ state_=moving?R3State::RL_ACTIVE:R3State::RL_ZERO;
+ return {true,moving?(navigation?"bounded navigation command":"bounded workshop sticks"):"zero velocity: RL_ZERO"};
+}
+std::optional<PolicyTicket> R3Supervisor::BeginPolicy(SafetyTime now) {
+ if(!NeedsPolicy()||fault_||!output_enabled_||pending_policy_)return std::nullopt;
+ if(reset_policy_){Fault("policy_reset_not_consumed",now);return std::nullopt;}
+ if(!Require(now).success){Fault("policy_input_not_ready",now);return std::nullopt;}
+ // Leg observation and arm feeds have separate freshness requirements.
+ // Arm publication latency must not consume the policy response deadline.
+ const auto observation=inputs_.lowstate_stamp;
+ if(!Fresh(now,observation,.04)){Fault("policy_observation_stale",now);return std::nullopt;}
+ pending_policy_=PolicyTicket{++next_policy_id_,policy_generation_,now,observation,inputs_.arm_stamp,inputs_.target_stamp};
+ return pending_policy_;
+}
+bool R3Supervisor::CurrentPolicy(const PolicyTicket& ticket) const {
+ return pending_policy_&&ticket.id==pending_policy_->id&&ticket.generation==policy_generation_&&
+  ticket.generation==pending_policy_->generation&&ticket.started==pending_policy_->started&&
+  ticket.observation_stamp==pending_policy_->observation_stamp&&ticket.arm_stamp==pending_policy_->arm_stamp&&
+  ticket.target_stamp==pending_policy_->target_stamp&&NeedsPolicy()&&!fault_&&output_enabled_;
+}
+double R3Supervisor::PolicyAgeSeconds(SafetyTime now) const {
+ if(fault_)return fault_policy_age_s_;
+ return have_policy_?std::chrono::duration<double>(now-policy_stamp_).count():-1;
+}
+double R3Supervisor::PolicyInferenceAgeSeconds(SafetyTime now) const {
+ if(fault_)return fault_inference_age_s_;
+ return pending_policy_?std::chrono::duration<double>(now-pending_policy_->started).count():-1;
+}
+double R3Supervisor::PolicyObservationAgeSeconds(SafetyTime now) const {
+ if(fault_)return fault_observation_age_s_;
+ return have_policy_?std::chrono::duration<double>(now-policy_observation_stamp_).count():-1;
+}
+bool R3Supervisor::PolicyFailed(const PolicyTicket& ticket,const std::string& reason,SafetyTime now) {
+ if(!CurrentPolicy(ticket)){++rejected_policy_results_;return false;}
+ Fault(reason,now);return true;
+}
+bool R3Supervisor::PolicyResult(const PolicyTicket& ticket,const std::array<float,12>& q,double ms,SafetyTime now) {
+ if(!CurrentPolicy(ticket)){++rejected_policy_results_;return false;}
+ if(!std::isfinite(ms)||ms<0||now<ticket.started){Fault("invalid_policy_timing",now);return false;}
+ // Check the actual job deadline before accepting it; a late completion must
+ // never renew the response watchdog even if IO was delayed by the executor.
+ if(!Fresh(now,ticket.started,.04)){Fault("policy_inference_timeout",now);return false;}
+ for(float v:q)if(!std::isfinite(v)||std::abs(v)>3.5F){Fault("invalid_policy_action",now);return false;}
  if(ms>=20){++deadline_misses_;++deadline_burst_;}else deadline_burst_=0;
- if(deadline_burst_>=profile_.deadline_burst_limit){Fault("policy_deadline_burst",now);return;}
- if(reset_policy_){Fault("policy_reset_not_consumed",now);return;}
- policy_q_=q;policy_stamp_=now;have_policy_=true;
+ if(deadline_burst_>=profile_.deadline_burst_limit){Fault("policy_deadline_burst",now);return false;}
+ if(!Fresh(now,ticket.observation_stamp,.04)){Fault("policy_observation_stale",now);return false;}
+ if(!Fresh(now,ticket.arm_stamp,profile_.arm_timeout_s)||!Fresh(now,ticket.target_stamp,profile_.arm_timeout_s)) {
+  Fault("policy_arm_observation_stale",now);return false;
+ }
+ if(!Require(now).success){Fault("policy_input_not_ready",now);return false;}
+ pending_policy_.reset();
+ policy_q_=q;policy_stamp_=now;policy_observation_stamp_=ticket.observation_stamp;have_policy_=true;return true;
 }
 bool R3Supervisor::ConsumePolicyReset(){return std::exchange(reset_policy_,false);}
 bool R3Supervisor::ConsumeArmHoldRequest(){return std::exchange(arm_hold_request_,false);}
@@ -239,23 +335,15 @@ std::optional<unitree_go::msg::LowCmd> R3Supervisor::Tick(SafetyTime now) {
  if(elapsed<0){Fault("clock_order",now);return std::nullopt;}
  auto interpolate=[&](const std::array<float,12>& goal,double seconds){
   const float u=std::clamp(float(elapsed/seconds),0.F,1.F);
-  // Smoothstep starts/ends with zero velocity.
-  const float a=u*u*(3-2*u);for(int i=0;i<12;++i)target_[i]=start_[i]*(1-a)+goal[i]*a;return u>=1;
+  // Workshop/MuJoCo jointLinearInterpolation: q0*(1-u)+q1*u.
+  const float a=u;for(int i=0;i<12;++i)target_[i]=start_[i]*(1-a)+goal[i]*a;return u>=1;
  };
  switch(state_) {
  case R3State::LOW_LEVEL_ARMED:
-  for(int i=0;i<12;++i)if(std::abs(inputs_.measured_q[i]-target_[i])>profile_.q_capture_tolerance) {
-   Fault("first_hold_capture_changed",now);return Tick(now);
-  }
   state_=R3State::HOLD_CURRENT;break;
  case R3State::STAND_TRANSITION:
   if(interpolate(profile_.stand,profile_.stand_s)) {
-   bool reached=true;
-   for(int i=0;i<12;++i)reached=reached&&std::abs(inputs_.measured_q[i]-target_[i])<=profile_.q_capture_tolerance;
-   if(!reached) {
-    if(elapsed>=profile_.stand_s+profile_.hold_s){Fault("stand_feedback_not_reached",now);return Tick(now);}
-    break;
-   }
+   // Reference finishes stand-up by time; measured error is diagnostic only.
    state_=R3State::HOLDING;
    if(abort_sequence_){start_=target_;transition_=now;state_=R3State::LIE_DOWN_TRANSITION;}
   }break;
@@ -274,6 +362,7 @@ std::optional<unitree_go::msg::LowCmd> R3Supervisor::Tick(SafetyTime now) {
   }
   break;
  case R3State::RL_ZERO:case R3State::RL_ACTIVE:
+  if(pending_policy_&&!Fresh(now,pending_policy_->started,.04)){Fault("policy_inference_timeout",now);return Tick(now);}
   if(!have_policy_&&Fresh(now,policy_stamp_,.04))return MakeLowCmd(target_,profile_.kp,profile_.kd);
   if(!have_policy_||!Fresh(now,policy_stamp_,.04)){Fault("policy_result_stale",now);return Tick(now);}
   target_=policy_q_;return MakeLowCmd(target_,profile_.rl_kp,profile_.rl_kd);

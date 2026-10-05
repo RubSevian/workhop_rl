@@ -3,6 +3,7 @@ import os
 import subprocess
 import signal
 import time
+import struct
 from pathlib import Path
 import rclpy
 import yaml
@@ -13,9 +14,15 @@ from unitree_go.msg import LowState
 assert os.environ.get('ROS_DOMAIN_ID') == '223'
 root = Path(__file__).resolve().parents[1]
 binary = root/'install_r1/unitree_legged_real/lib/unitree_legged_real/go2_r3_commissioning'
+config = Path(os.environ.get('R3_SMOKE_CONFIG_PATH', str(root/'repos/workhop_rl/src/unitree_ros2_to_real/config/go2_rars01_real.yaml')))
+profile_config = yaml.safe_load(config.read_text())
 command = [str(binary), '--ros-args', '-p', 'read_only:=true', '-p', 'enable_actuator_output:=false',
-           '-p', 'config_path:='+str(root/'repos/workhop_rl/src/unitree_ros2_to_real/config/go2_rars01_real.yaml'),
+           '-p', 'config_path:='+str(config),
            '-p', 'model_path:='+str(root/'weights/policy_2.pt')]
+autonomy = os.environ.get("R3_AUTONOMY_SMOKE") == "1"
+remote_test = os.environ.get('R3_REMOTE_TEST_SMOKE') == '1'
+command += ['-p', 'remote_test_mode:='+str(remote_test).lower()]
+if autonomy: command += ['-p','control_mode:=autonomy','-p','motion_commands_enabled:=true']
 rclpy.init()
 node = rclpy.create_node('r3_loopback_synthetic_probe')
 status = {}
@@ -32,6 +39,44 @@ with (root/'r3_readonly_smoke_node.log').open('w') as log:
             rclpy.spin_once(node, timeout_sec=.05)
         assert status.get('read_only') is True and status.get('output_enabled') is False, status
         assert status['model_loaded'] and not status['lowcmd_publisher_present'], status
+        assert status['remote_test_mode'] is (remote_test and not autonomy), status
+        assert status['control_mode']==('autonomy' if autonomy else 'remote_test'),status
+        from geometry_msgs.msg import TwistStamped
+        nav_pub=node.create_publisher(TwistStamped,'/cmd_vel',1)
+        nav=TwistStamped();nav.twist.linear.x=.8;nav.twist.linear.y=-.5;nav.twist.angular.z=.7
+        until=time.monotonic()+.5
+        while time.monotonic()<until:
+            nav.header.stamp=node.get_clock().now().to_msg();nav_pub.publish(nav);rclpy.spin_once(node,timeout_sec=.02)
+        if autonomy:
+            assert status['navigation_command_fresh'],status
+            assert status['navigation_requested_command']==[.2,-.1,.1],status
+            until=time.monotonic()+.35
+            while time.monotonic()<until:rclpy.spin_once(node,timeout_sec=.02)
+            assert not status['navigation_command_fresh'],status
+            nav.header.stamp.sec-=2
+            until=time.monotonic()+.15
+            while time.monotonic()<until:
+                nav_pub.publish(nav);rclpy.spin_once(node,timeout_sec=.02)
+            assert not status['navigation_command_fresh'] and status['navigation_requested_command']==[0,0,0],status
+            # Invalid timestamp/value must be rejected without killing the node.
+            for invalid in ('negative','nanosecond_overflow','zero','future','nonfinite'):
+                nav.header.stamp=node.get_clock().now().to_msg()
+                nav.twist.linear.x=.1
+                if invalid=='negative':nav.header.stamp.sec=-1
+                if invalid=='nanosecond_overflow':nav.header.stamp.nanosec=1000000000
+                if invalid=='zero':nav.header.stamp.sec=0;nav.header.stamp.nanosec=0
+                if invalid=='future':nav.header.stamp.sec+=2
+                if invalid=='nonfinite':nav.twist.linear.x=float('nan')
+                until=time.monotonic()+.15
+                while time.monotonic()<until:
+                    nav_pub.publish(nav);rclpy.spin_once(node,timeout_sec=.02)
+                assert child.poll() is None,invalid
+                assert not status['navigation_command_fresh'] and status['navigation_requested_command']==[0,0,0],(invalid,status)
+            print('PASS malformed nav timestamp/NaN rejected; controller alive')
+            print('PASS autonomy source: TwistStamped clamp, freshness expiry, stale header rejection, read-only zero output')
+        else:
+            assert not status['navigation_command_fresh'] and status['navigation_requested_command']==[0,0,0],status
+            print('PASS remote source ignores navigation commands')
         client = node.create_client(SetBool, '/go2/commissioning/enable_output')
         assert client.wait_for_service(timeout_sec=3)
         req = SetBool.Request();req.data=True
@@ -48,13 +93,53 @@ with (root/'r3_readonly_smoke_node.log').open('w') as log:
         msg=LowState();msg.imu_state.quaternion=[1.,0.,0.,0.]
         for motor in msg.motor_state:
             motor.q=.2;motor.dq=0.
-        raw=[0]*40;raw[2]=0x22;raw[3]=1;msg.wireless_remote=raw
+        raw=bytearray(40);raw[2]=0x22;raw[3]=1
+        if remote_test:
+            struct.pack_into('<f',raw,4,.5)
+            struct.pack_into('<f',raw,8,-1.)
+            struct.pack_into('<f',raw,20,1.)
+        msg.wireless_remote=list(raw)
         until=time.monotonic()+1.1
         while time.monotonic()<until:
             pub.publish(msg);rclpy.spin_once(node,timeout_sec=.02)
         assert status['remote_mask']==0x122 and status['remote_event']==1, status
+        mapping=[3,4,5,0,1,2,9,10,11,6,7,8]
+        actor_stand=profile_config['go2_rars01']['default_dof_pos']
+        expected_stand=[actor_stand[i] for i in mapping]
+        assert len(status['measured_motor_q'])==12 and len(status['stand_error_rad'])==12,status
+        assert all(abs(q-.2)<1e-6 for q in status['measured_motor_q']),status
+        assert all(abs(a-b)<1e-6 for a,b in zip(status['stand_target_motor_q'],expected_stand)),status
+        errors=[abs(.2-q) for q in expected_stand]
+        assert all(abs(a-b)<1e-6 for a,b in zip(status['stand_error_rad'],errors)),status
+        assert abs(status['stand_error_max_rad']-max(errors))<1e-6,status
+        assert status['stand_error_motor_index']==errors.index(max(errors)),status
         assert not status['output_enabled'] and node.count_publishers('/lowcmd')==0, status
-        assert 'gate0_not_passed' in status['blockers']
+        if not profile_config['real_deployment']['r3_commissioning']['gate0_verified']:
+            assert 'gate0_not_passed' in status['blockers']
+        assert 'transport_ready' in status['blockers']
+        if remote_test:
+            assert all(abs(a-b)<1e-6 for a,b in zip(status['remote_test_requested_command'],[.2,.1,-.05])), status
+            assert status['motion_command']==[0,0,0] and status['sent_packets']==0, status
+            print('PASS remote test preview: workshop ly/-rx/-lx stick mapping, bounded combined commands, read-only motion stays zero')
+        # Exercise the deployed L1+L2+X exit and the separate emergency chord.
+        for mask,event in ((0x422,2),(0x222,3)):
+            neutral=bytearray(40);msg.wireless_remote=list(neutral)
+            until=time.monotonic()+.2
+            while time.monotonic()<until:
+                pub.publish(msg);rclpy.spin_once(node,timeout_sec=.02)
+            neutral[2]=mask&255;neutral[3]=mask>>8;msg.wireless_remote=list(neutral)
+            until=time.monotonic()+1.1
+            while time.monotonic()<until:
+                pub.publish(msg);rclpy.spin_once(node,timeout_sec=.02)
+            assert status['remote_mask']==mask and status['remote_event']==event,status
+            assert status['sent_packets']==0 and not status['output_enabled'],status
+            assert status['motion_command']==[0,0,0] and node.count_publishers('/lowcmd')==0,status
+        log.flush()
+        trace=(root/'r3_readonly_smoke_node.log').read_text()
+        assert 'R3 transition' in trace and 'fixed_kp=' in trace
+        assert 'hold_capture_tolerance_rad=' not in trace
+        print('PASS mapped stand-error diagnostics and persisted transition/gain logging')
+        print('PASS L1+L2+X event=2; L1+L2+B event=3; no leg output')
         print('PASS isolated ROS domain223/loopback: status, read-only enable/stand/RL refusal, synthetic SDK remote event, zero LowCmd publishers')
     finally:
         child.send_signal(signal.SIGINT)

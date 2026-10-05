@@ -27,12 +27,14 @@ bool RemoteSafety::Receive(std::span<const uint8_t> raw,SafetyTime now) {
  if(seen_ && (!valid_ || !FreshAge(now,stamp_,stale_s_))) holding_=false;
  seen_=true; stamp_=now; valid_=false;
  status_.button_mask=0; status_.decoded_buttons.clear();
+ status_.lx=status_.rx=status_.ly=0;
  if(raw.size()==40) {
   unitree::common::REMOTE_DATA_RX rx{};
   std::memcpy(&rx.RF_RX,raw.data(),40);
   const auto& r=rx.RF_RX;
   valid_=std::isfinite(r.lx)&&std::isfinite(r.rx)&&std::isfinite(r.ry)&&std::isfinite(r.L2)&&std::isfinite(r.ly);
   if(valid_) {
+   status_.lx=r.lx;status_.rx=r.rx;status_.ly=r.ly;
    status_.button_mask=r.btn.value;
    for(unsigned i=0;i<16;++i) if(r.btn.value&(uint16_t(1)<<i)) {
     if(!status_.decoded_buttons.empty()) status_.decoded_buttons+='+';

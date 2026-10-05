@@ -16,13 +16,15 @@ struct R3Profile {
  bool gate0_verified=false, mapping_verified=false, emergency_validated=false;
  bool remote_chords_verified=false, robot_supported=false, lie_down_validated=false;
  std::string emergency_evidence;
- double stand_s=8,hold_s=1,lie_down_s=8,sport_timeout_s=.5,command_timeout_s=.25;
+ double capture_hold_s=.02,stand_s=8,hold_s=1,lie_down_s=8,sport_timeout_s=.5,command_timeout_s=.25;
  double lowstate_timeout_s=.5,remote_timeout_s=.25,arm_timeout_s=.25;
+ double lowcmd_discovery_timeout_s=20,lowcmd_clear_duration_s=.5;
  double vx_bound=.20,vy_bound=.10,wz_bound=.10,max_command_duration_s=1;
  double q_capture_tolerance=.01;
  int deadline_burst_limit=3;
 };
 R3Profile LoadR3Profile(const YAML::Node& yaml);
+std::array<double,3> RemoteStickCommand(const RemoteStatus& remote,const R3Profile& profile);
 struct R3Inputs {
  SafetyReadiness ready;
  std::array<float,12> measured_q{};
@@ -31,7 +33,24 @@ struct R3Inputs {
  bool arm_static_hold=false,arm_home_ready=false;
 };
 struct R3Reply { bool success=false;std::string message; };
+enum class LowCmdWaitResult { WAITING, CLEAR, TIMEOUT };
+// Bounded graph settling after verified Sport release; never creates output.
+class LowCmdDiscoveryWait {
+ public:
+ LowCmdDiscoveryWait(double timeout_s,double clear_s);
+ LowCmdWaitResult Update(SafetyTime now,bool sport_released,size_t publisher_count);
+ void Reset();
+ bool active() const {return active_;}
+ double AgeSeconds(SafetyTime now) const;
+ private:
+ double timeout_s_,clear_s_;bool active_=false,clear_started_=false;
+ SafetyTime started_{},clear_stamp_{};
+};
 enum class R3SequenceAction { NONE, RELEASE_SPORT, ENABLE_OUTPUT, STAND, RL };
+struct PolicyTicket {
+ uint64_t id=0,generation=0;
+ SafetyTime started{},observation_stamp{},arm_stamp{},target_stamp{};
+};
 class R3Supervisor {
  public:
  explicit R3Supervisor(R3Profile profile);
@@ -50,12 +69,21 @@ class R3Supervisor {
  R3Reply ControlledAbort(SafetyTime now);
  R3Reply Emergency(SafetyTime now);
  R3Reply ManualCommand(const std::array<double,3>& command,double duration_s,SafetyTime now);
+ R3Reply RemoteTestCommand(const std::array<double,3>& command,SafetyTime now);
+ R3Reply NavigationCommand(const std::array<double,3>& command,SafetyTime now);
  R3Reply RequestReturnToStock(SafetyTime now);
  void ConfirmStockObserved(SafetyTime now);
  void ConfirmOutputStopped();
  void Fault(const std::string& reason,SafetyTime now);
  void RenewDeadman(SafetyTime now);
- void PolicyResult(const std::array<float,12>& motor_q,double elapsed_ms,SafetyTime now);
+ std::optional<PolicyTicket> BeginPolicy(SafetyTime now);
+ bool PolicyResult(const PolicyTicket& ticket,const std::array<float,12>& motor_q,double elapsed_ms,SafetyTime now);
+ bool PolicyFailed(const PolicyTicket& ticket,const std::string& reason,SafetyTime now);
+ bool policy_inflight() const {return pending_policy_.has_value();}
+ size_t rejected_policy_results() const {return rejected_policy_results_;}
+ double PolicyAgeSeconds(SafetyTime now) const;
+ double PolicyInferenceAgeSeconds(SafetyTime now) const;
+ double PolicyObservationAgeSeconds(SafetyTime now) const;
  std::optional<unitree_go::msg::LowCmd> Tick(SafetyTime now);
  bool AllowsPacket(const unitree_go::msg::LowCmd& cmd,SafetyTime now) const;
  R3State state() const {return state_;}
@@ -71,12 +99,15 @@ class R3Supervisor {
  const std::string& last_fault() const {return last_fault_;}
  size_t deadline_misses() const {return deadline_misses_;}
  private:
+ R3Reply VelocityCommand(const std::array<double,3>& command,SafetyTime now,bool navigation);
  bool Released(SafetyTime now) const;
  bool Fresh(SafetyTime now,SafetyTime stamp,double timeout) const;
  R3Reply Require(SafetyTime now) const;
  R3Reply Fail(const std::string& message) const;
  void Capture(SafetyTime now);
  void Zero();
+ void InvalidatePolicyWork();
+ bool CurrentPolicy(const PolicyTicket& ticket) const;
  bool IsActive() const;
  R3Profile profile_;R3Inputs inputs_;
  R3State state_=R3State::DISARMED;
@@ -86,9 +117,13 @@ class R3Supervisor {
  bool navigation_active_=false,reset_policy_=false,arm_hold_request_=false,have_policy_=false;
  std::array<float,12> start_{},target_{},policy_q_{};
  std::array<double,3> command_{};
- SafetyTime transition_{},command_stamp_{},command_end_{},policy_stamp_{};
+ SafetyTime transition_{},command_stamp_{},command_end_{},policy_stamp_{},policy_observation_stamp_{};
  bool have_command_=false;
  size_t deadline_misses_=0;int deadline_burst_=0;
+ uint64_t policy_generation_=0,next_policy_id_=0;
+ size_t rejected_policy_results_=0;
+ double fault_policy_age_s_=-1,fault_inference_age_s_=-1,fault_observation_age_s_=-1;
+ std::optional<PolicyTicket> pending_policy_;
  std::string last_fault_;
 };
 enum class R3RemoteEvent { NONE,TAKEOVER,CONTROLLED_ABORT,EMERGENCY };

@@ -8,8 +8,7 @@
 using namespace sim2real;
 ArmTime t(double value){return ArmTime{}+std::chrono::duration_cast<ArmClock::duration>(std::chrono::duration<double>(value));}
 struct Journal:AutoHomeJournal {
- int attempts=0,faults=0;bool writable=true;std::string blocked;
- std::string BlockReason() const override{return blocked;}
+ int attempts=0,faults=0;bool writable=true;
  bool RecordEnableAttempt() override{++attempts;return writable;}
  bool RecordFault(const std::string&) override{++faults;return writable;}
 };
@@ -67,7 +66,7 @@ void readiness(){
  assert(!failed.status().target_fresh&&!failed.status().arm_home_ready&&failed.status().accepted_stamp==last);
  Transport enablefail;enablefail.enable_ok=false;Journal je;AutoHomeController ef(config(),enablefail,je);
  ef.Tick(t(0));ef.Tick(t(10));ef.Tick(t(20));assert(enablefail.enables==1&&ef.status().state==AutoHomeState::FAULT_LATCHED);
- Transport unwritable;Journal jw;jw.writable=false;AutoHomeController uw(config(),unwritable,jw);uw.Tick(t(0));uw.Tick(t(10));assert(unwritable.enables==0);
+ Transport unwritable;Journal jw;jw.writable=false;AutoHomeController uw(config(),unwritable,jw);uw.Tick(t(0));uw.Tick(t(10));assert(unwritable.enables==1&&uw.status().state==AutoHomeState::HOLD_HOME);
  Transport postenable;postenable.reset_on_enable=true;Journal jp;AutoHomeController pe(config(),postenable,jp);
  pe.Tick(t(0));pe.Tick(t(10));pe.Tick(t(10.2));assert(pe.status().state==AutoHomeState::HOLD_HOME&&!pe.status().arm_home_ready&&postenable.sends==1);
  postenable.read_ok=true;postenable.comm.feedback_received=true;pe.Tick(t(10.3));assert(pe.status().arm_home_ready&&postenable.enables==1);
@@ -124,10 +123,21 @@ void external_timer_jitter(){
 void journal(){
  auto directory=std::filesystem::temp_directory_path()/("rars-journal-"+std::to_string(getpid()));std::filesystem::create_directory(directory);
  const auto path=(directory/"state").string();
- {FileAutoHomeJournal a(path,"boot1");assert(a.BlockReason().empty());assert(a.RecordEnableAttempt());}
- {FileAutoHomeJournal b(path,"boot1");assert(!b.BlockReason().empty());}
- {FileAutoHomeJournal fresh(path,"boot2");assert(fresh.BlockReason().empty());assert(fresh.RecordFault("hardware_fault"));}
- {FileAutoHomeJournal fault(path,"boot3");assert(!fault.BlockReason().empty());}
+ auto bytes=[&]{std::ifstream f(path);return std::string(std::istreambuf_iterator<char>(f),{});};
+ // Prior fault, same-boot attempt, and malformed historical record do not
+ // prevent an explicit new session. Enable still occurs once per session.
+ for(const std::string record:{"FAULT\nboot1\nruntime_watchdog\n","ENABLE_ATTEMPT\nboot1\n","invalid journal bytes"}) {
+  {std::ofstream f(path);f<<record;}
+  FileAutoHomeJournal logger(path,"boot1");Transport tr;AutoHomeController c(config(),tr,logger);
+  assert(bytes()==record);c.Tick(t(0));assert(tr.enables==0);
+  c.Tick(t(10));assert(tr.enables==1);c.Tick(t(10.01));assert(c.status().arm_home_ready);
+  assert(bytes()=="ENABLE_ATTEMPT\nboot1\n");
+  tr.comm.watchdog_tripped=true;c.Tick(t(10.02));
+  assert(c.status().state==AutoHomeState::FAULT_LATCHED&&c.status().last_error=="runtime_watchdog");
+  const int sends=tr.sends;c.Tick(t(100));assert(tr.enables==1&&tr.sends==sends);
+  assert(bytes()=="FAULT\nboot1\nruntime_watchdog\n");
+ }
  std::filesystem::remove_all(directory);
 }
-int main(){startup();readiness();incomplete_startup_frame();external_timer_jitter();journal();std::cout<<"PASS AUTO HOME mock: delay/reconnect, enable once, seven zeros, continuous stream, measured readiness, stale/send/disabled/ID/NaN/watchdogs, persistent fault; no hardware\n";}
+
+int main(){startup();readiness();incomplete_startup_frame();external_timer_jitter();journal();std::cout<<"PASS AUTO HOME mock: delay/reconnect, enable once, seven zeros, continuous stream, measured readiness, stale/send/disabled/ID/NaN/watchdogs, per-session fault latch and restart without journal guard; no hardware\n";}

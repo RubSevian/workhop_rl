@@ -1,29 +1,26 @@
-# RARS01 AUTO HOME deployment
+# Deployment RARS01 AUTO HOME
 
-Owner alone opens serial and uses the existing saved SDK configuration. SDK source is unchanged. Physical profile holds **all seven motors at zero**, including closing the calibrated gripper to zero. Actor receives only joints 1..6.
+[Запуск в workspace](../../../../../README.md). [Версионная инструкция в репозитории](../../../docs/sim2real/README.md).
 
-The service is prepared, not installed/enabled by the implementation task. It starts at normal Jetson boot after deployment by the operator. It never launches Go2 LowCmd or switches Sport. The standalone owner defaults to `read_only=true`, `connect_serial=false`; the service explicitly selects the physical profile.
+## Файлы
 
-## Installation after separate arm commissioning
+| Файл | Назначение |
+|---|---|
+| `rars01-owner.service` | Подготовленная systemd-служба одного serial owner |
+| `rars01-owner.env.example` | Пути workspace, сохранённой SDK calibration, serial device, leases и journal |
+| `run_rars01_owner.sh` | Запуск owner из установленного Jazzy workspace |
+| `workspace_scripts/` | Versioned snapshot помощников `sim2real/scripts/` |
+| `workspace_setup.bash` | Копия `sim2real/setup.bash`; перед использованием копируется в корень workspace |
+| `workspace_runtime/r3_first_rl_zero.yaml` | Копия текущего экспериментального профиля, используемого оператором |
 
-1. Build the Jazzy workspace with `scripts/build_r3.sh` and run `scripts/test_r3.sh`.
-2. Copy `rars01-owner.env.example` to `/etc/rars01-owner.env`; set the actual existing SDK/calibration config. Optionally set the verified `/dev/serial/by-id/...` device; otherwise the existing config port is used. No guessed by-id path is shipped.
-3. Copy `rars01-owner.service` to `/etc/systemd/system/`; adapt User/Group and absolute workspace path if deploying under a different account. Run daemon-reload and enable the unit for boot only after physical arm verification. Starting the unit performs real enable after usable communication plus 10 s.
-4. Keep every manual SDK owner on the same `RARS_OWNER_LOCK_DIRECTORY`. Stop the SDK GUI and direct GraspNet hardware backend before this service takes serial ownership. Advisory leases cannot constrain unrelated programs that ignore them. No second owner is started by the Go2 launch.
-5. Observe `/rars01/commissioning/state` and `/go2/locomotion_status`. HOME readiness is required before the existing gated A sequence may release Sport.
+## Поведение службы
 
-## Fault and restart
+После соединения с STM32: задержка 10 с, один enable, HOME семи моторов на 100 Гц. Служба не запускает LowCmd и не переключает Sport. `Restart=no`; journal — диагностический лог enable attempt/fault, его содержимое не блокирует следующий запуск. В текущем процессе после fault нет повторного enable. Новая сессия начинается только новым запуском owner, снова с задержкой10 с.
 
-`Restart=no`. A hardware/runtime failure latches FAULT in the still-running diagnostic process and stops sending targets. A durable `/var/lib/rars01-owner/enable-journal` records the enable attempt before calling SDK. Same-boot restart after an attempt is blocked; a recorded FAULT remains blocked even across boot. There is no automatic recovery service and no automatic clearing of the journal.
+Служба подготовлена для отдельной установки; обычный README запускает owner вручную. Не запускайте service и manual owner одновременно. GUI/direct serial клиенты должны соблюдать то же владение устройством.
 
-Operator recovery must stop the unit, inspect/correct the fault and safely support/position the arm. Only then may the journal be explicitly cleared as a separate recovery action. Clearing it permits a new physical enable; do not automate that operation. A normally recorded enable attempt from a previous boot permits the next normal boot; interruption/restart within a boot conservatively becomes a persistent fault.
+SDK destructor при намеренном завершении owner делает best-effort disable. Завершение controller ног не завершает arm owner.
 
-SDK destruction on intentional owner shutdown calls its existing best-effort disable. Stopping/restarting the leg controller does not stop this arm service. After runtime faults, actual mechanical behavior depends on the verified STM watchdog and motor firmware.
+Snapshot `workspace_scripts/` копируется в `sim2real/scripts/`: его относительные пути рассчитаны на workspace, не на выполнение из этой папки.
 
-This STM supplies feedback after enable. Countdown starts on a successful SDK serial/receiver connection, without a motor-feedback prerequisite. After 10 s, enable runs once; HOME streaming starts on the next timer callback even while feedback is absent. The existing configured initial feedback grace bounds that startup wait. Readiness remains false until real valid enabled feedback from all seven motors arrives. A missing first frame past grace, a known invalid frame, watchdog trip or stream failure latches fault and stops sends, without re-enable.
-
-## Versioned workspace helpers
-
-`workspace_scripts/` preserves the currently used root `sim2real/scripts` helpers, including the AUTO HOME verifier update. To reproduce that workspace layout, copy these files to `sim2real/scripts/`. Their relative paths assume the existing sibling `repos/`, `weights/`, `build_r1/` and `install_r1/` layout; do not run them directly from this snapshot directory.
-
-No trajectories, IK, grasp execution, navigation changes or automatic return to Sport are included.
+`workspace_runtime/r3_first_rl_zero.yaml` сохраняет ранее принятые оператором экспериментальные флаги. Это не production default и не подтверждение физических проверок. Для восстановления прежнего ручного запуска файл копируется в `sim2real/runtime/r3_first_rl_zero.yaml`; копирование само по себе ничего не запускает.

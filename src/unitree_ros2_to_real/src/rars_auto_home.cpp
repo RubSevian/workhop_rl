@@ -14,11 +14,7 @@ ArmClock::duration Duration(double s){return std::chrono::duration_cast<ArmClock
 FileAutoHomeJournal::FileAutoHomeJournal(std::string path,std::string boot_id):path_(std::move(path)),boot_id_(std::move(boot_id)) {
  if(path_.empty()||boot_id_.empty())throw std::invalid_argument("Persistent journal path and boot ID required");
  if(std::filesystem::is_symlink(path_))throw std::runtime_error("Journal cannot be a symlink");
- if(std::filesystem::exists(path_)) {
-  std::ifstream file(path_);std::string kind,boot;std::getline(file,kind);std::getline(file,boot);
-  if(!file||kind!="ENABLE_ATTEMPT")blocked_="persistent_fault_or_invalid_journal";
-  else if(boot==boot_id_)blocked_="enable_already_attempted_this_boot";
- }
+
 }
 bool FileAutoHomeJournal::Save(const std::string& value) {
  // Atomic replace + file and directory fsync. Journal is outside /run.
@@ -46,7 +42,7 @@ AutoHomeController::AutoHomeController(AutoHomeConfig config,AutoHomeTransport& 
   throw std::invalid_argument("Invalid startup delay/rate/target timeout");
  for(float target:config_.home_target)if(target!=0)throw std::invalid_argument("This deployment requires seven zero HOME targets");
  status_.state=config_.enabled?AutoHomeState::WAIT_DEVICE:AutoHomeState::READ_ONLY;
- if(config_.enabled&&!journal_.BlockReason().empty())Fault(journal_.BlockReason());
+
 }
 void AutoHomeController::Fault(const std::string& reason) {
  status_.state=AutoHomeState::FAULT_LATCHED;status_.last_error=reason;status_.arm_home_ready=false;status_.target_fresh=false;
@@ -95,7 +91,7 @@ void AutoHomeController::Tick(ArmTime now,bool connect_allowed,bool command_time
   if(!countdown_)countdown_=now;
   status_.state=AutoHomeState::STARTUP_DELAY;status_.last_error.clear();
   if(Seconds(now,*countdown_)<config_.startup_delay_s)return;
-  if(!journal_.RecordEnableAttempt()){Fault("cannot_persist_enable_attempt");return;}
+  if(!journal_.RecordEnableAttempt())status_.last_error="journal_write_failed";
   status_.enable_attempted=true;
   if(!transport_.Enable()){Fault("enable_failed: "+transport_.Error());return;}
   enabled_at_=now;status_.state=AutoHomeState::HOLD_HOME;next_send_=now;

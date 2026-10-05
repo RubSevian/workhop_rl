@@ -19,6 +19,7 @@ inline constexpr std::array<const char*,12> policy_joint_names{
  "FL_hip","FL_thigh","FL_calf","FR_hip","FR_thigh","FR_calf",
  "RL_hip","RL_thigh","RL_calf","RR_hip","RR_thigh","RR_calf"};
 struct RemoteStatus {
+ float lx=0,rx=0,ly=0;
  bool remote_valid=false, takeover_hold_active=false, takeover_request_latched=false;
  double remote_age_ms=-1;
  uint16_t button_mask=0;

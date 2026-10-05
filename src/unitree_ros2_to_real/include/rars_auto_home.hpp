@@ -25,23 +25,21 @@ class AutoHomeTransport {
  virtual rars_arm::CommunicationStatus Status() const=0;
  virtual std::string Error() const=0;
 };
-// Must durably record the enable attempt BEFORE invoking SDK enable.
+// Diagnostic records only; previous entries do not gate a new owner session.
 class AutoHomeJournal {
  public:
  virtual ~AutoHomeJournal()=default;
- virtual std::string BlockReason() const=0;
  virtual bool RecordEnableAttempt()=0;
  virtual bool RecordFault(const std::string& reason)=0;
 };
 class FileAutoHomeJournal final:public AutoHomeJournal {
  public:
  FileAutoHomeJournal(std::string path,std::string boot_id);
- std::string BlockReason() const override {return blocked_;}
  bool RecordEnableAttempt() override;
  bool RecordFault(const std::string& reason) override;
  private:
  bool Save(const std::string& value);
- std::string path_,boot_id_,blocked_;
+ std::string path_,boot_id_;
 };
 enum class AutoHomeState { READ_ONLY, WAIT_DEVICE, WAIT_COMMUNICATION, STARTUP_DELAY, HOLD_HOME, FAULT_LATCHED };
 const char* AutoHomeStateName(AutoHomeState state);

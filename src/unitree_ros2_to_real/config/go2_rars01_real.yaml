@@ -49,8 +49,9 @@ real_deployment:
   max_linear_x: 0.3
   max_linear_y: 0.2
   max_yaw_rate: 0.5
-  stand_duration_sec: 8.0
-  hold_transition_sec: 1.0
+  capture_hold_sec: 0.02 # One policy tick after the first measured-pose packet.
+  stand_duration_sec: 6.0 # MuJoCo: 300 linear interpolation ticks at 50Hz.
+  hold_transition_sec: 4.0 # MuJoCo: 500 total - 300 stand ticks at 50Hz.
   remote:
     takeover_hold_s: 0.75
     stale_timeout_s: 0.25
@@ -66,7 +67,6 @@ real_deployment:
       home_target: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
       home_tolerance_rad: 0.15
       command_rate_hz: 100.0 # Assigned to ArmConfiguration; caller honors it.
-      enable_once_on_boot: true
     feedback_timeout_s: 0.25
     target_timeout_s: 0.25
     zero_calibration_source: sdk_gui_operator_saved
@@ -86,18 +86,25 @@ real_deployment:
     robot_supported: false
     policy_timing_reviewed: false
     lowcmd_period_ms: 2 # SDK go2_low_level example; verify physical cadence separately.
+    lowcmd_discovery_timeout_s: 20.0 # Sport endpoint lingered about 10 s in discovery.
+    lowcmd_clear_duration_s: 0.5 # Require a continuous clear graph before output.
     hold_current_tolerance_rad: 0.01
     deadline_burst_limit: 3
     remote:
-      controlled_abort_chord: [L1, L2, X]
+      controlled_abort_chord: [L1, L2, X] # Operator mode exit: hold captured pose, no automatic lie-down.
       emergency_chord: [L1, L2, B]
     emergency:
       operator_validated: false
-      evidence: ""
-      motor_kd: null # Never choose damping gains automatically.
+      evidence: "Source candidate (not physically validated): https://github.com/unitreerobotics/unitree_rl_lab/blob/main/deploy/robots/go2/config/config.yaml and deploy/include/FSM/State_Passive.h; checked 2026-10-04"
+      motor_kd: [3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3] # Official Go2 Passive candidate; physical gate stays false.
     lie_down:
       operator_validated: false
-      motor_q: null # Hardware order; operator-verified pose required.
+      # Measured lying pose; calves clipped to the reference model's lower limit.
+      # Hardware FR,FL,RR,RL. Trajectory validation remains false above.
+      motor_q: [0.0190371275, 1.2886259556, -2.7227,
+                -0.0854357481, 1.3102743626, -2.7227,
+                -0.3393630981, 1.2947366238, -2.7227,
+                0.3113260865, 1.2863497734, -2.7227]
       duration_s: 8.0
     manual:
       max_vx: 0.20

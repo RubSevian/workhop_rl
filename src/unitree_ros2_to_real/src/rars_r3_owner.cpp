@@ -59,7 +59,6 @@ class ArmOwner final:public rclcpp::Node {
   home.enable_feedback_grace_s=config.initial_feedback_grace.count()/1000.;
   if(cfg["port_retry_interval_s"])home.connect_retry_s=cfg["port_retry_interval_s"].as<double>();
   const auto target=auto_cfg["home_target"].as<std::vector<float>>();if(target.size()!=7)throw std::runtime_error("Seven HOME targets required");std::copy(target.begin(),target.end(),home.home_target.begin());
-  if(!auto_cfg["enable_once_on_boot"].as<bool>())throw std::runtime_error("Repeated automatic enable is unsupported");
   if(home.enabled&&!connect_)throw std::runtime_error("AUTO HOME requires explicit connect_serial=true");
   const auto lockdir=declare_parameter<std::string>("lock_directory","");
   if(lockdir.empty())throw std::runtime_error("Shared serial lease directory required");

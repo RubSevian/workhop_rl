@@ -17,7 +17,6 @@ cfg=yaml.safe_load((p/'config/go2_rars01_real.yaml').read_text())['real_deployme
 assert cfg['require_home_ready_for_leg_takeover'] is True
 assert cfg['auto_home']['home_target']==[0]*7
 assert cfg['auto_home']['startup_delay_s']==10
-assert cfg['auto_home']['enable_once_on_boot'] is True
 unit=(p/'deployment/rars01-owner.service').read_text()
 assert 'Restart=no' in unit and 'StateDirectory=rars01-owner' in unit
 print('PASS AUTO HOME source/config/service isolation')

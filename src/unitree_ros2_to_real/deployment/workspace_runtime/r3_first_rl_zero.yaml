@@ -1,0 +1,246 @@
+go2_rars01:
+  observation_layout: go2_rars01_unified_v1
+  model_name: ''
+  observations: []
+  observations_history:
+  - 4
+  - 3
+  - 2
+  - 1
+  - 0
+  observations_history_priority: time
+  clip_obs: 100.0
+  clip_actions: 100.0
+  action_scale: 0.25
+  ang_vel_scale: 0.25
+  dof_pos_scale: 1.0
+  dof_vel_scale: 0.05
+  commands_scale:
+  - 2.0
+  - 2.0
+  - 0.25
+  decimation: 4
+  frequency: 50.0
+  cycle_time: 0.0
+  lin_vel_scale: 0.0
+  rl_kp:
+  - 25
+  - 25
+  - 25
+  - 25
+  - 25
+  - 25
+  - 25
+  - 25
+  - 25
+  - 25
+  - 25
+  - 25
+  rl_kd:
+  - 1
+  - 1
+  - 1
+  - 1
+  - 1
+  - 1
+  - 1
+  - 1
+  - 1
+  - 1
+  - 1
+  - 1
+  fixed_kp:
+  - 40
+  - 40
+  - 40
+  - 40
+  - 40
+  - 40
+  - 40
+  - 40
+  - 40
+  - 40
+  - 40
+  - 40
+  fixed_kd:
+  - 1
+  - 1
+  - 1
+  - 1
+  - 1
+  - 1
+  - 1
+  - 1
+  - 1
+  - 1
+  - 1
+  - 1
+  torque_limits:
+  - 23.7
+  - 23.7
+  - 35.55
+  - 23.7
+  - 23.7
+  - 35.55
+  - 23.7
+  - 23.7
+  - 35.55
+  - 23.7
+  - 23.7
+  - 35.55
+  default_dof_pos:
+  - 0.1
+  - 0.8
+  - -1.5
+  - -0.1
+  - 0.8
+  - -1.5
+  - 0.1
+  - 0.8
+  - -1.5
+  - -0.1
+  - 0.8
+  - -1.5
+  joint_names:
+  - FL_hip_joint
+  - FL_thigh_joint
+  - FL_calf_joint
+  - FR_hip_joint
+  - FR_thigh_joint
+  - FR_calf_joint
+  - RL_hip_joint
+  - RL_thigh_joint
+  - RL_calf_joint
+  - RR_hip_joint
+  - RR_thigh_joint
+  - RR_calf_joint
+  arm_joint_names:
+  - joint1
+  - joint2
+  - joint3
+  - joint4
+  - joint5
+  - joint6
+real_deployment:
+  enable_actuator_output: false
+  control_period_ms: 20
+  cmd_vel_timeout_sec: 0.25
+  low_state_timeout_sec: 0.5
+  arm_state_timeout_sec: 0.25
+  max_linear_x: 0.3
+  max_linear_y: 0.2
+  max_yaw_rate: 0.5
+  stand_duration_sec: 6.0
+  hold_transition_sec: 4.0
+  remote:
+    takeover_hold_s: 0.75
+    stale_timeout_s: 0.25
+    takeover_chord:
+    - L1
+    - L2
+    - A
+    emergency_chord: []
+  lowstate:
+    stale_timeout_s: 0.5
+  rars01:
+    require_home_ready_for_leg_takeover: true
+    auto_home:
+      enabled: true
+      startup_delay_s: 10.0
+      home_target:
+      - 0.0
+      - 0.0
+      - 0.0
+      - 0.0
+      - 0.0
+      - 0.0
+      - 0.0
+      home_tolerance_rad: 0.15
+      command_rate_hz: 100.0
+    feedback_timeout_s: 0.25
+    target_timeout_s: 0.25
+    zero_calibration_source: sdk_gui_operator_saved
+    zero_calibration_operator_verified: true
+    per_joint_freshness_proven: false
+  sport_mode:
+    require_release_verified: true
+    observation_timeout_s: 0.5
+  safety:
+    startup_disarmed: true
+    actuator_output_default: false
+  r3_commissioning:
+    gate0_verified: true
+    mapping_imu_verified: true
+    remote_chords_verified: true
+    robot_supported: true
+    policy_timing_reviewed: true
+    lowcmd_period_ms: 2
+    lowcmd_discovery_timeout_s: 20.0
+    lowcmd_clear_duration_s: 0.5
+    hold_current_tolerance_rad: 0.01
+    deadline_burst_limit: 3
+    remote:
+      controlled_abort_chord:
+      - L1
+      - L2
+      - X
+      emergency_chord:
+      - L1
+      - L2
+      - B
+    emergency:
+      operator_validated: true
+      evidence: 'OPERATOR-ACCEPTED FIRST TRIAL, 2026-10-04: Go2 Passive kd=3 from
+        unitreerobotics/unitree_rl_lab; selected by operator. Physical damping not
+        yet tested. Timing max=26.0426ms is accepted for this trial with existing
+        40ms freshness/burst watchdogs; not a timing PASS.'
+      motor_kd:
+      - 3
+      - 3
+      - 3
+      - 3
+      - 3
+      - 3
+      - 3
+      - 3
+      - 3
+      - 3
+      - 3
+      - 3
+    lie_down:
+      operator_validated: false
+      motor_q:
+      - 0.0190371275
+      - 1.2886259556
+      - -2.7227
+      - -0.0854357481
+      - 1.3102743626
+      - -2.7227
+      - -0.3393630981
+      - 1.2947366238
+      - -2.7227
+      - 0.3113260865
+      - 1.2863497734
+      - -2.7227
+      duration_s: 8.0
+    manual:
+      max_vx: 0.2
+      max_vy: 0.1
+      max_wz: 0.1
+      max_duration_s: 1.0
+    output_lock: /home/ruben/go2_diploma/sim2real/runtime/go2_lowcmd.lock
+  capture_hold_sec: 0.02
+operator_trial_record:
+  scope: operator cycle L1+L2+A; remote_test or autonomy command source; reference
+    linear stand 6s + hold 4s; exit L1+L2+X; passive L1+L2+B
+  gate_provenance:
+    gate0: read-only LowState/Sport/zero-publisher checks and ABI/CRC tests
+    mapping_imu: reference/go2_nav parity; operator confirmed physical setup
+    robot_supported: operator confirmed point 2
+    remote_chords: operator reported X=2, B=3 and other controls working
+    policy_timing_reviewed: reviewed max 26.0426ms; operator accepts trial, timing
+      has not passed
+    emergency: operator selected/accepted kp=0,kd=3; physical verification still pending
+  physical_damping_test_passed: false
+  full_timing_test_passed: false
+  production_profile_changed: false

@@ -44,7 +44,8 @@ int main(int argc,char** argv) {
     a.params.torque_limits=torch::arange(12,torch::kFloat32)+20;
     Check(c.RequestMode(Mode::STAND,ready),"explicit offline stand");
     auto start=c.Tick(0).value(); Check(start.q==measured,"stand must start at measured motor pose");
-    auto mid=c.Tick(4).value(); auto end=c.Tick(8).value();
+    const float stand_seconds=YAML::LoadFile(argv[1])["real_deployment"]["stand_duration_sec"].as<float>();
+    auto mid=c.Tick(stand_seconds/2).value(); auto end=c.Tick(stand_seconds).value();
     Check(c.mode()==Mode::HOLD,"stand must enter hold continuously");
     Check(end.q[0]==-0.1F && end.q[3]==0.1F && end.q[6]==-0.1F && end.q[9]==0.1F,"asymmetric hip signs in stand");
     for(int i=0;i<12;++i) {
@@ -68,7 +69,7 @@ int main(int argc,char** argv) {
       auto action=c.Tick(0); Check(action.has_value(),"offline RL target computed");
       Check(c.RequestMode(Mode::HOLD_TRANSITION,ready),"offline hold transition");
       Check(c.Tick(0)->q==measured,"transition starts at measured pose");
-      Check(c.Tick(1)->q==end.q && c.mode()==Mode::HOLD,"transition ends in mapped hold");
+      Check(c.Tick(YAML::LoadFile(argv[1])["real_deployment"]["hold_transition_sec"].as<float>())->q==end.q && c.mode()==Mode::HOLD,"transition ends in mapped hold");
     }
     c.RequestMode(Mode::DISARMED,{}); Check(!c.Tick(0),"disarm suppresses targets");
     c.RequestMode(Mode::FAULT,{}); Check(!c.Tick(0) && !c.RequestMode(Mode::HOLD,ready),"core fault latch");
