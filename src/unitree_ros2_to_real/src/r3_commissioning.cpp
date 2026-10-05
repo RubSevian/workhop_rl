@@ -162,9 +162,9 @@ std::vector<std::string> R3Supervisor::Blockers(SafetyTime now,bool physical) co
  if(!Fresh(now,inputs_.remote_stamp,profile_.remote_timeout_s))b.emplace_back("remote_age");
  if(!Fresh(now,inputs_.arm_stamp,profile_.arm_timeout_s))b.emplace_back("arm_feedback_age");
  if(!Fresh(now,inputs_.target_stamp,profile_.arm_timeout_s))b.emplace_back("arm_target_age");
- const bool stop=system_state_==SystemState::CONTROLLED_STOP&&NeedsPolicy();
- if(!stop&&!inputs_.arm_static_hold)b.emplace_back("arm_static_hold");
- if(!stop&&profile_.require_arm_home_ready&&!inputs_.arm_home_ready)b.emplace_back("arm_home_not_ready");
+ const bool runtime=system_state_==SystemState::ACTIVE||(system_state_==SystemState::CONTROLLED_STOP&&NeedsPolicy());
+ if(!runtime&&!inputs_.arm_static_hold)b.emplace_back("arm_static_hold");
+ if(!runtime&&profile_.require_arm_home_ready&&!inputs_.arm_home_ready)b.emplace_back("arm_home_not_ready");
  if(fault_)b.emplace_back("fault_latched");
  if(physical) {
   if(!profile_.gate0_verified)b.emplace_back("gate0_not_passed");

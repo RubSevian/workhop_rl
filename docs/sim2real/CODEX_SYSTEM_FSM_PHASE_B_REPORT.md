@@ -51,3 +51,7 @@ Restart требует свой healthy lease/publisher и fresh RELEASED, за�
 B защёлкивает EMERGENCY_FAULT даже до output; при eligibility выдаёт прежние leg 0/3, инвалидирует policy и HOME, не ждёт arm RPC. Async callbacks проверяют orchestration generation. HOME/emergency проходят через прежнего единственного RARS owner. HOME idempotent, без enable; arm disable запрещён по умолчанию и выполняется один раз только при emergency_disable_validated, с прекращением HOME stream до SDK disable. Accepted RPC не равен physical disable. Реальные NAV/manip cancellation adapters пока отсутствуют: status unavailable, profiles не получают fake readiness.
 
 Первый compile выявил требования Jazzy к явным callback types; исправлено, повтор build PASS. 11/11 targeted tests PASS: B во всех stop phases, до publisher, приоритет, stale callbacks/policy, no recovery, single-owner HOME/emergency mocks; initial A differential PASS.
+
+## Шаг 9 — runtime HOME blocker
+
+ACTIVE использует arm_control_ready + прежние реальные freshness/target checks; HOME/static_hold остаются обязательны для takeover и PD/SYSTEM_HOLD. Away-HOME при healthy control не fault, в том числе FULL_MISSION fake fixture. Контрольная потеря health всё ещё central emergency. Build и 12/12 targeted tests PASS, A oracle PASS.
