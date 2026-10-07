@@ -1,6 +1,6 @@
 # Go2 + RARS01: запуск Sim2Real
 
-Jetson Orin Nano · ROS 2 Jazzy · ветка `ros2_go2_rars01_real`. Это единственная актуальная инструкция запуска нашей Sim2Real реализации. Отчёты и решения находятся в `docs/sim2real/`; upstream README отдельных SDK/симулятора сохраняются как документация зависимостей.
+Jetson Orin Nano · ROS 2 Jazzy · ветка `ros2_go2_rars01_real`. Это единственная актуальная инструкция запуска нашей Sim2Real реализации. Архитектура находится в `docs/PROJECT_STRUCTURE.md`; upstream README отдельных SDK/симулятора сохраняются как документация зависимостей.
 
 ## 1. Окружение в каждом терминале
 
@@ -43,7 +43,7 @@ ros2 launch unitree_legged_real go2_rars01_r3_commissioning.launch.py \
   network_interface:=enP8p1s0
 ```
 
-Launch ждёт A. До takeover нужны fresh LowState/remote/Sport, arm HOME и остальные gates. Trial-флаг разрешает текущую операторскую проверку lie-down, не меняет production validation. Текущий физический тест выявил скачки policy targets и автоматический fault; их причины ещё не исправлены: [анализ CSV](docs/sim2real/CODEX_CSV_AUTO_SHUTDOWN_ANALYSIS.md).
+Launch ждёт A. До takeover нужны fresh LowState/remote/Sport, arm HOME и остальные gates. Trial-флаг разрешает текущую операторскую проверку lie-down, не меняет production validation. Текущий физический тест выявил скачки policy targets и автоматический fault; их причины ещё не исправлены. Краткие результаты приведены в конце README и в архитектуре.
 
 Для RL с постоянной zero velocity заменить профиль на `operation_profile:=rl_zero_test`. Zero velocity — нулевая команда движения, а не нулевые actions суставов.
 
@@ -99,7 +99,7 @@ motion_diagnostics_enabled:=true \
 ros2 service call /go2/diagnostics/stop_motion_log std_srvs/srv/Trigger '{}'
 ```
 
-[Описание полей и нагрузки](docs/sim2real/CODEX_TEMP_MOTION_LOGGING_AND_GAINS.md). Последний120-секундный CSV закончился за10,5с до fault;240с предложены для записи конца следующей сессии.
+Поля CSV и контракт RL описаны в [архитектуре](docs/PROJECT_STRUCTURE.md). Последний120-секундный CSV закончился за10,5с до fault;240с предложены для записи конца следующей сессии.
 
 ## 6. Где менять параметры
 
@@ -126,11 +126,8 @@ ros2 launch unitree_legged_real go2_rars01_r3_commissioning.launch.py \
 
 IMU calibration `autonomy_nav_go2:ros2_Jazzy` — отдельный Sport-mode тест с командами движения: custom controller остановлен/LowCmd OFF, штатный Sport вручную подтверждён. SYSTEM_HOLD после X оставляет Sport RELEASED и этому условию не соответствует. Команда в собранном NAV workspace: `ros2 run calibrate_imu calibrate_imu`; результат `~/Desktop/imu_calib_data.yaml`.
 
-## Документация и состояние проверки
+## Архитектура и состояние проверки
 
-- [Архитектура папок](docs/sim2real/PROJECT_STRUCTURE.md).
-- [Общий журнал решений](docs/sim2real/CODEX_SIM2REAL_DECISIONS.md).
-- [Observation/action contract и движение](docs/sim2real/CODEX_RL_DATA_AND_MOTION_AUDIT.md).
-- [Последний fault и реальные скачки targets](docs/sim2real/CODEX_CSV_AUTO_SHUTDOWN_ANALYSIS.md).
+[Архитектура папок, контракт RL и диагностика](docs/PROJECT_STRUCTURE.md). Других отчётов и заданий в docs/ нет.
 
-Functional regression33/33 PASS, build/read-only diagnostics smoke PASS. Прежний offline CPU timing FAIL остаётся незакрытым; физический последний fault — policy_result_stale при41,858мс, затем outputOFF из-за Sport-status age>0,5с. Успешные A/X циклы предыдущего теста не означают устранение резкости actor.
+Functional regression33/33 PASS, build/read-only diagnostics smoke PASS. Прежний offline CPU timing FAIL остаётся незакрытым. Последний physical fault — policy_result_stale: accepted result age41,858мс при40мс лимите; текущий job завершился за22,488мс уже после fault. Через154,6мс Sport-status age превысил0,5с и custom LowCmd прекратился. CSV подтвердил скачки targets до1,547рад, включая скачки при неизменной command. Причины timing и резкости пока не исправлены. Для следующей записи предложены240с, поскольку120-секундная запись закончилась за10,5с доfault.

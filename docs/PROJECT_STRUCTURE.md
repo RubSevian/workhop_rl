@@ -23,7 +23,7 @@ SHA256 до/после: `73c9d8f09e68818478bd43cdcb5739f79bfc794cc77d268b98cb63e
 config_path:=/home/ruben/go2_diploma/sim2real/repos/workhop_rl/src/unitree_ros2_to_real/config/profiles/go2_rars01_commissioning.yaml
 ```
 
-Полные актуальные команды: [README запуска](../../README.md). Старые пути из архивных инструкций не используются. Уже запущенный процесс продолжает работу с ранее загруженными значениями; перенос файла не меняет его состояние. При следующем leg launch нужно использовать новый config_path.
+Полные актуальные команды: [README запуска](../README.md). Старые пути из архивных инструкций не используются. Уже запущенный процесс продолжает работу с ранее загруженными значениями; перенос файла не меняет его состояние. При следующем leg launch нужно использовать новый config_path.
 
 ## Реальная структура workspace сейчас
 
@@ -70,12 +70,7 @@ repos/workhop_rl/
 ├── README.md                               единственная инструкция запуска
 ├── jazzy_setup.sh                          проверка/подключение Jazzy underlay
 ├── docs/
-│   ├── sim2real/                           decisions и технические отчёты
-│   │   ├── PROJECT_STRUCTURE.md            этот документ
-│   │   ├── CODEX_SIM2REAL_DECISIONS.md      единый журнал решений
-│   │   └── CODEX_TEMP_MOTION_LOGGING_AND_GAINS.md
-│   ├── sim2real_r1/                        документы ранних этапов
-│   └── sim2real_r3/                        задания/документы R3
+│   └── PROJECT_STRUCTURE.md                 архитектура и контракты
 └── src/
     ├── unitree_ros2_to_real/                ROS package unitree_legged_real
     │   ├── config/
@@ -119,7 +114,7 @@ repos/workhop_rl/
 | Временные логи движения | launch motion_diagnostics_*; CSV выходит в runtime/ |
 | Policy/scales/history | source Agent/observation contract; веса в weights/ |
 | Порядок переходов/защита | source R3Supervisor/ROS node |
-| Инструкции и текущие решения | `docs/sim2real/` проекта |
+| Запуск и текущие параметры | `README.md` проекта |
 
 Текущие gains сохранены: RL25/1, fixed40/1. Fixed gains общие для подъёма/hold/lie-down. Все массивы по12 значений. Правка source YAML действует после нового запуска controller и не требует компиляции C++; installed YAML обновляется сборкой и вручную не редактируется.
 
@@ -137,4 +132,22 @@ repos/workhop_rl/
 
 ## Объединение README
 
-Дополнительные README нашей Sim2Real реализации удалены; запуск, gains, CSV и deployment описаны в repos/workhop_rl/README.md. Аудит данных сохранён как CODEX_RL_DATA_AND_MOTION_AUDIT.md. Upstream README зависимостей сохранены.
+Дополнительные README нашей Sim2Real реализации удалены; запуск, gains, CSV и deployment описаны в repos/workhop_rl/README.md. Отдельные отчёты и задания удалены; актуальная информация сведена в README.md и этот файл. Upstream README зависимостей сохранены.
+
+## Контракт RL и обмен данными
+
+Actor получает 5 кадров по63 значения, oldest→newest, tensor1×315. Кадр: gyro×0,25 [0:3]; projected gravity [3:6]; vx/vy/wz×[2,2,0,25] [6:9]; (leg q−default) [9:21]; leg dq×0,05 [21:33]; previous clipped action [33:45]; arm q6 [45:51]; arm dq6×0,05 [51:57]; accepted arm target6 [57:63]. Frame clip100. IMU quaternion нормализуется; projected gravity вычисляется inverse rotation.
+
+Policy order FL/FR/RL/RR, hardware order FR/FL/RR/RL; перестановка12 индексов [3,4,5,0,1,2,9,10,11,6,7,8]. Action12 clipped100, target=default+0,25×action, конечный clamp±3,5рад. Default actor [0,1;0,8;−1,5] для FL/RL и [−0,1;0,8;−1,5] для FR/RR. Reset previous action/history выполняется при входе в RL, а не при RL_ZERO↔RL_ACTIVE. Нулевая команда скорости не означает нулевой action.
+
+Worker50Гц запускает Torch CPU inference под thread-local InferenceMode; IO публикует500Гц. Worker использует captured snapshot; result принимается только при актуальном ticket/generation и выполнении deadline/freshness gates. Изменение command инвалидирует pending generation. Accepted result и pending job имеют отдельные40мс watchdogs; X handoff отдельно ограничен40мс и удерживает last target до accepted zero-result. Arm feedback/target проверяются отдельно.
+
+CSV: kind0 — опубликованный IO target/kp/kd, q/dq, IMU, sticks/requested/command и ages; kind1 — completed policy, accepted, clipped action, candidate target, compute/job/captured ages. Массивы CSV в hardware order; quat xyzw. Sampling IO~50Гц, min/max интервалов собираются на каждом publish. Фиксированная очередь256/try_lock и отдельный writer; enabled/duration/path immutable startup flags, автоматический stop от первого sample и Trigger stop. Disabled logger не создаёт writer. Rejected candidate не означает публикацию. PASSIVE targets содержат stop sentinels и не являются углами.
+
+## Текущее состояние физических проверок
+
+Operator profile RL20/1,1, fixed40/1. Два A/X цикла прошли штатно. Последний прогон с CSV завершился policy_result_stale: accepted result age41,858мс, pending age22,377мс; текущий job compute22,488мс вернулся после fault и отвергнут. Затем Sport-status age500,850мс → Released=false → custom outputOFF. Это не доказательство повторного включения Sport.
+
+CSV120с завершился примерно за10,5с доfault. Записано5495 policy results, все accepted, compute max18,757мс в записанном участке. Published target скачет до1,547рад между~20мс IO samples;119 скачков>.5рад внутри RL_ACTIVE,66 при равной command на границах samples. Policy rows также подтверждают большие изменения выхода при неизменной скорости. Это изменение q_des, не фактический мгновенный поворот сустава. Причина actor spikes не установлена; изменение gains не устранило скачки. Raw log/CSV остаются в runtime и ~/.ros, отдельно в Git не добавляются.
+
+Functional regression33/33 PASS; build/read-only smoke PASS. Известный CPU timing FAIL остаётся незакрытым. Удаление документации не меняет gates, policy, режимы или физические процессы.
