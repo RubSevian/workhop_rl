@@ -74,7 +74,7 @@ Baseline actor315-D/mapping/history, 500Гц IO/50Гц policy, tickets/watchdogs
 
 ## Запуск оператором
 
-Candidate: `install_fsm`; `install_r1` не заменён. Подробные команды запуска HOME owner и всех профилей: [README](README.md).
+Candidate: `install_fsm`; `install_r1` не заменён. Подробные команды запуска HOME owner и всех профилей: [README](../../README.md).
 
 ```bash
 unset AMENT_PREFIX_PATH CMAKE_PREFIX_PATH COLCON_PREFIX_PATH
@@ -84,7 +84,7 @@ source /home/ruben/go2_diploma/sim2real/install_fsm/local_setup.bash
 ros2 launch unitree_legged_real go2_rars01_r3_commissioning.launch.py \
   operation_profile:=remote_test \
   controlled_stop_lie_down_trial:=true \
-  config_path:=/home/ruben/go2_diploma/sim2real/runtime/r3_first_rl_zero.yaml \
+  config_path:=/home/ruben/go2_diploma/sim2real/repos/workhop_rl/src/unitree_ros2_to_real/config/profiles/go2_rars01_commissioning.yaml \
   model_path:=/home/ruben/go2_diploma/sim2real/weights/policy_2.pt \
   network_interface:=enP8p1s0
 ```

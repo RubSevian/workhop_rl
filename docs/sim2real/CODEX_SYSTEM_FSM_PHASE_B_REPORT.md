@@ -6,7 +6,7 @@
 
 **Offline CPU timing PASS:** после подтверждения остановки physical leg launch выполнен `policy_cpu_test`: JIT max15,27 мс, полный шаг agent max2,43603 мс при бюджете20 мс. Это synthetic compute benchmark, не длительное измерение системы с LiDAR/навигацией/физическим IO. `install_r1` и текущие процессы не заменены.
 
-Новая lie-down динамика и physical arm emergency disable не commissioned; flags остаются false. NAV/FULL не активируются без настоящих adapters. Команды запуска и новые кнопки: [README](README.md).
+Новая lie-down динамика и physical arm emergency disable не commissioned; flags остаются false. NAV/FULL не активируются без настоящих adapters. Команды запуска и новые кнопки: [README](../../README.md).
 
 ## Принятые ограничения
 
@@ -130,7 +130,7 @@ ctest --test-dir /home/ruben/go2_diploma/sim2real/build_fsm/unitree_legged_real 
 | `src/go2_r3_commissioning.cpp` | Events, async clients/generation, readiness/status/immutable params |
 | `include/rars_auto_home.hpp`, `src/rars_auto_home.cpp`, `src/rars_r3_owner.cpp` | Idempotent HOME/gated disable у одного owner |
 | `launch/go2_rars01_r3_commissioning.launch.py` | Профили без конфликтующих legacy defaults |
-| `config/go2_rars01_real.yaml`, `deployment/workspace_runtime/r3_first_rl_zero.yaml` | Approved target и не commissioned критерии/gates |
+| `config/go2_rars01_real.yaml`, `config/profiles/go2_rars01_commissioning.yaml` | Approved target и не commissioned критерии/gates |
 | `scripts/r3_manual_lib.py`, workspace smoke/verify helpers, `CMakeLists.txt` | Compatibility и проверки |
 
 Добавлены test-only frozen fixtures, differential/scheduler/profile/readiness/X/A/B tests. README и общий журнал решений обновлены; корневые workspace copies синхронизированы.

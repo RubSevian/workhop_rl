@@ -88,4 +88,4 @@ git -C /home/ruben/go2_diploma/sim2real/repos/workhop_rl log -1 --oneline
 git -C /home/ruben/go2_diploma/sim2real/repos/workhop_rl show --stat HEAD
 ```
 
-После сборки нужен новый leg launch из candidate install_fsm: уже работающий процесс автоматически не получает изменение. Руку заново запускать ради этого не требуется. Результаты offline не заменяют проверку реальной динамики X/подъёма/ходьбы. Команды запуска и данные315-D остаются в README и [аудите контракта](README_RL_DATA_AND_MOTION_AUDIT.md).
+После сборки нужен новый leg launch из candidate install_fsm: уже работающий процесс автоматически не получает изменение. Руку заново запускать ради этого не требуется. Результаты offline не заменяют проверку реальной динамики X/подъёма/ходьбы. Команды запуска и данные315-D остаются в README и [аудите контракта](CODEX_RL_DATA_AND_MOTION_AUDIT.md).

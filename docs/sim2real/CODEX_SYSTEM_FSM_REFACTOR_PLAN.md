@@ -302,7 +302,7 @@ B: сразу latch EMERGENCY_FAULT, reject velocity/mission/start, invalidate/s
 | `deployment/workspace_scripts/{verify_r3.py,r3_readonly_smoke.py,r3_readonly_smoke.sh}` | profiles/status checks; read-only loopback изоляция сохранить |
 | `deployment/{rars01-owner.service,run_rars01_owner.sh,rars01-owner.env.example,README.md}` | owner boot/profile wiring и инструкция; systemd installation не выполнять как кодовую миграцию |
 | `docs/sim2real/{README.md,CODEX_SIM2REAL_DECISIONS.md}` | актуальный launch и одна версия решений; root workspace copies синхронизировать |
-| `deployment/workspace_runtime/r3_first_rl_zero.yaml` | обновление trial только после принятия нового stop/emergency profile; workspace runtime copy синхронизировать отдельно |
+| `config/profiles/go2_rars01_commissioning.yaml` | обновление trial только после принятия нового stop/emergency profile; workspace runtime copy синхронизировать отдельно |
 
 Пути include/src/config/tests в таблице находятся под `src/unitree_ros2_to_real/`; documentation paths — от repo root. Actor package, policy_2.pt, safety_io packet/CRC, SDK2 mode helpers, output/serial lease primitives, RARS SDK calibration и Sim2Sim reference не менять. `safety_io.hpp/.cpp` расширять только при продемонстрированной необходимости, не ради стиля. NAV/grasp repos в этот refactor не редактировать: adapters/placeholders не mission algorithms.
 

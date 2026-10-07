@@ -15,14 +15,14 @@ assert 'motor_power_off_confirmed' in s and 'lowcmd_lease_present' in s
 print('PASS node stop/publisher/lease/ack and foreign-owner/acquire/create order, immutable trial/status/generation guards')
 
 import yaml
-for name in ('config/go2_rars01_real.yaml', 'deployment/workspace_runtime/r3_first_rl_zero.yaml'):
+for name in ('config/go2_rars01_real.yaml', 'config/profiles/go2_rars01_commissioning.yaml'):
     r=yaml.safe_load((root/name).read_text())['real_deployment']['r3_commissioning']
     assert r['controlled_stop']['lie_down_trial'] is False
     assert r['lie_down']['operator_validated'] is False
     assert r['lie_down']['motor_q']==[.01,1.3,-2.7,-.01,1.3,-2.7,-.3,1.3,-2.7,.3,1.3,-2.7]
 print('PASS production and operator config fail-closed trial defaults and exact approved target')
 
-assert s.index('output_->publish(*packet);++sent_;') < s.index('supervisor_->NotifyPacketPublished(*packet,SafetyClock::now());')
+assert s.index('output_->publish(*packet);++sent_;') < s.index('const auto published=SafetyClock::now();') < s.index('supervisor_->NotifyPacketPublished(*packet,published);') < s.index('TraceMotionIo(*packet,published);')
 assert 'passive_command_sent' in s and 'last_commanded_leg_mode' in s
 print('PASS passive publication acknowledgement follows actual publish return')
 

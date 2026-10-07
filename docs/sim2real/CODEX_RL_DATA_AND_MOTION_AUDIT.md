@@ -231,7 +231,7 @@ Manifest содержит training commit=null, checkpoint=null, status=unverifi
 - `src/unitree_ros2_to_real/tests/system_controlled_stop_test.cpp`: добавить реалистичную асинхронную cadence, X посреди inference.
 - `src/unitree_ros2_to_real/src/real_controller_core.cpp` и `src/unitree_ros2_to_real/src/safety_io.cpp`: проверенная перестановка input/output и packet construction.
 - `src/unitree_rl_controller-ros2/src/unified_observation_contract.cpp` и `src/unitree_rl_controller-ros2/src/rl_agent.cpp`: точная цепочка63→315→12, совпадающая с reference; не менять ради маскировки FSM fault.
-- `src/unitree_ros2_to_real/config/go2_rars01_real.yaml` и `deployment/workspace_runtime/r3_first_rl_zero.yaml`: gains/limits/pose; в этом аудите не изменены.
+- `src/unitree_ros2_to_real/config/go2_rars01_real.yaml` и `config/profiles/go2_rars01_commissioning.yaml`: gains/limits/pose; в этом аудите не изменены.
 - Reference `repos/workhop_rl/src/unitree_ros2_to_real/src/mujoco_sim.cpp` и `src/unitree_mujoco/simulate/src/unitree_sdk2_bridge/unitree_sdk2_bridge.cc`: read-only подтверждение hip-sign discrepancy, mapping и PD.
 
 Обновлены данный отчёт, ссылки/краткие findings в основном README и общий журнал решений. Ничего не закоммичено, сборка и физический запуск не выполнялись.

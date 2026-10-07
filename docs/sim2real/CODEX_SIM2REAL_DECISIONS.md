@@ -1,6 +1,6 @@
 # Sim2Real Go2 + RARS01: актуальные решения
 
-Обновлено: 05.10.2026. Порядок запуска: [README.md](README.md).
+Обновлено: 05.10.2026. Порядок запуска: [README.md](../../README.md).
 
 Это краткое состояние проекта. Новые решения вносятся в соответствующие разделы; устаревшая хронология не накапливается.
 
@@ -86,7 +86,7 @@ HOME tolerance=0,15 рад, freshness=0,25 с. SDK calibration/directions/gains 
 - B — passive damping; отдельная геометрическая lie-down trajectory и её physical gate не подтверждены.
 - IMU-калибровка навигации, LiDAR и полноценная работа руки/навигации — следующие этапы.
 
-Production config сохраняет неподтверждённые допуски закрытыми. `runtime/r3_first_rl_zero.yaml` — отдельно принятый оператором экспериментальный профиль; его флаги не являются измеренным PASS.
+Production config сохраняет неподтверждённые допуски закрытыми. `config/profiles/go2_rars01_commissioning.yaml` — отдельно принятый оператором экспериментальный профиль; его флаги не являются измеренным PASS.
 
 Сырые логи, capture и `runtime/first_physical_audit/` сохранены. Старые дублирующие отчёты удалены. Исходные задания фаз в `repos/workhop_rl/docs/` сохранены как требования, не как инструкция запуска.
 
@@ -128,7 +128,7 @@ Production config сохраняет неподтверждённые допус
 
 Повторно прочитаны reference mujoco_sim.cpp и go2_rars01_unified.yaml; reference не менялся. Real подъём: q(t)=q_measured*(1-u)+q_stand*u, u=clamp(t/6,0,1), затем 4 с фиксированного удержания; dq=0, tau=0, Kp=40/Kd=1 для всех 12 ног. После первого принятого RL action — Kp=25/Kd=1. До первого ответа сохраняется фиксированное удержание 40/1. В симуляторе rate=motiontime/300 и standup_done при motiontime≥500, policy_dt=0,02: та же длительность 6+4 с и те же gains. Real интерполяция обновляется на IO 500 Гц, reference на policy 50 Гц; математическая траектория совпадает, частота дискретизации различается.
 
-Stand pose в hardware-порядке FR/FL/RR/RL: [-0.1,0.8,-1.5, 0.1,0.8,-1.5, -0.1,0.8,-1.5, 0.1,0.8,-1.5]. Production и runtime/r3_first_rl_zero.yaml совпадают с reference по gains, target, joint_names, frequency и action_scale: runtime/policy_response_stand_parity.json. Проверка совпадения программных параметров не подтверждает физическое достижение позы; ошибка позы в прежнем логе оставалась примерно 0,23 рад.
+Stand pose в hardware-порядке FR/FL/RR/RL: [-0.1,0.8,-1.5, 0.1,0.8,-1.5, -0.1,0.8,-1.5, 0.1,0.8,-1.5]. Production и config/profiles/go2_rars01_commissioning.yaml совпадают с reference по gains, target, joint_names, frequency и action_scale: runtime/policy_response_stand_parity.json. Проверка совпадения программных параметров не подтверждает физическое достижение позы; ошибка позы в прежнем логе оставалась примерно 0,23 рад.
 
 Дополнительно прослежен путь до публикации: LoadR3Profile читает fixed/rl kp/kd и переводит в hardware order; Tick в STAND_TRANSITION/HOLDING вызывает MakeLowCmd(target_,profile_.kp,profile_.kd), после принятого RL action — MakeLowCmd(target_,profile_.rl_kp,profile_.rl_kd). MakeLowCmd для индексов0..11 явно записывает m.kp=kp[i], m.kd=kd[i], dq=0 и tau=0, затем вычисляет CRC. Первоначальные нули gains остаются только у неиспользуемых индексов12..19. IO callback проверяет AllowsPacket (включая точное совпадение gains с режимом), затем публикует именно этот packet через output_->publish(*packet). Другой подмены/масштабирования gains на этом пути нет. В read_only публикация отключена. Эти проверки подтверждают содержимое сформированных пакетов и путь к publisher; текущий приём физическими моторами не измерялся.
 
@@ -154,7 +154,7 @@ Runtime watchdog, свежесть feedback/targets, проверка motor ID/v
 
 ## System FSM: PHASE B approval 05.10.2026
 
-PHASE A утверждена файлом CODEX_SYSTEM_FSM_PHASE_B_APPROVAL.md; внедрение выполнено в отдельном build_fsm/install_fsm, текущий physical install_r1 и процессы не заменяются. Новые профили и X/A/B описаны в [README](README.md), детали/commits/tests — в [отчёте Phase B](CODEX_SYSTEM_FSM_PHASE_B_REPORT.md). NAV clamp сохранён. Lie target approved, trajectory dynamics и arm emergency disable остаются не commissioned; соответствующие flags false. NAV/FULL требуют реальных adapters, которых пока нет. Предыдущие разделы сохраняют историю baseline, не описывают новый X.
+PHASE A утверждена файлом CODEX_SYSTEM_FSM_PHASE_B_APPROVAL.md; внедрение выполнено в отдельном build_fsm/install_fsm, текущий physical install_r1 и процессы не заменяются. Новые профили и X/A/B описаны в [README](../../README.md), детали/commits/tests — в [отчёте Phase B](CODEX_SYSTEM_FSM_PHASE_B_REPORT.md). NAV clamp сохранён. Lie target approved, trajectory dynamics и arm emergency disable остаются не commissioned; соответствующие flags false. NAV/FULL требуют реальных adapters, которых пока нет. Предыдущие разделы сохраняют историю baseline, не описывают новый X.
 
 
 ### PHASE B — offline CPU timing после остановки launch
@@ -201,9 +201,34 @@ Numeric parity30 frames PASS;5x200 worker restart frames no graphs, max firstAct
 
 ## 07.10.2026 — аудит складывания после X, подъёма и RL данных
 
-Последний physical log28119: X отменяет быстрый inflight result4.95ms, следующий job8.89ms ещё выполняется, IO видит last accepted age40.615ms и вызывает policy_result_stale→emergency0/3; lie-down вообще не начался. Race воспроизведена отдельным offline C++ probe с50Гц scheduling, без publisher/SDK/serial. Runtime исправление в этом аудите не вносилось. Требуется ограниченный X→zero-policy handoff и regression при X посреди job без подделки timestamp и без снятия stalled worker watchdog. Найдено отдельное расхождение: reference manual stand пишет default[i] в hardware order, real корректно remaps default по именам; hip знаки противоположны, thigh/calf одинаковы. Agent/observation cpp побайтово идентичны reference, actor YAML равен, mapping совпадает; причин jerky walking и rear body contact без target/feedback/IMU записи доказать нельзя. Полный контракт и выводы: README_RL_DATA_AND_MOTION_AUDIT.md; runtime/x_walk_pose_audit_reproduction.log. Изменена только документация.
+Последний physical log28119: X отменяет быстрый inflight result4.95ms, следующий job8.89ms ещё выполняется, IO видит last accepted age40.615ms и вызывает policy_result_stale→emergency0/3; lie-down вообще не начался. Race воспроизведена отдельным offline C++ probe с50Гц scheduling, без publisher/SDK/serial. Runtime исправление в этом аудите не вносилось. Требуется ограниченный X→zero-policy handoff и regression при X посреди job без подделки timestamp и без снятия stalled worker watchdog. Найдено отдельное расхождение: reference manual stand пишет default[i] в hardware order, real корректно remaps default по именам; hip знаки противоположны, thigh/calf одинаковы. Agent/observation cpp побайтово идентичны reference, actor YAML равен, mapping совпадает; причин jerky walking и rear body contact без target/feedback/IMU записи доказать нельзя. Полный контракт и выводы: CODEX_RL_DATA_AND_MOTION_AUDIT.md; runtime/x_walk_pose_audit_reproduction.log. Изменена только документация.
 
 
 ## 07.10.2026 — исправление гонки X и commit накопленных изменений
 
 В ACTIVE X теперь проверяет исходный job/result deadline, отменяет pre-X ticket, ограниченно40мс удерживает последний использованный target при прежних gains до первого принятого zero-command result. Отдельный handoff timestamp не подменяет policy freshness; repeated X его не продлевает. Timeout/late completion→policy_zero_handoff_timeout; B/invalid inputs/expired worker сохраняются. Добавлен system_x_policy_handoff_test с20мс worker/2мс IO и status policy_zero_handoff_pending. Полный suite32/33: все функциональные тесты PASS, policy_cpu_test FAIL (final JITmax13.2325мс, Agentmax24.9181мс). Release build/verify/read-only ROS smoke PASS, физические команды не отправлялись. Подробности и гипотезы jerky walking — CODEX_X_HANDOFF_FIX_AND_RL_JERK_REPORT.md. В reference активен ROS bridge500Гц с PD recompute и torque clamp; SDK2 bridge disabled, объяснение через stale simulated torque неприменимо. Pose/gains/actions не фильтруются и не меняются по догадке. Коммитятся также ранее незакоммиченные REMOTE±0.5, InferenceMode и отчёты; push выполняет оператор.
+
+
+## 07.10.2026 — временная диагностика движения, gains без изменения
+
+Добавлен выключенный по умолчанию CSV motion logger: startup flags enabled/duration120/pathprefix, fixed queue256/try_lock, writer thread, auto-stop от первого sample и отдельный Trigger stop_motion_log. IO sample~50Гц с min/max каждого фактического publish500Гц; policy sample на каждом Act с command/sticks/clipped action/target/accepted/compute/job/captured ages. Статус active/dropped. Stop не меняет режимы/команды; после stop нет новых диагностических сборов, очередь ограниченно дописывается. Включённая диагностика имеет ненулевую нагрузку; физическая запись агентом не выполнялась. Functional33/33 (CPU benchmark excluded), build/verify/read-only logger service smoke PASS; прежний timing FAIL не закрыт. Gains не менялись, current runtime YAML rl_kp/rl_kd=25/1, fixed_kp/fixed_kd=40/1 (stand/hold/lie совместно). Подробности: CODEX_TEMP_MOTION_LOGGING_AND_GAINS.md. Новые изменения не закоммичены.
+
+
+## 07.10.2026 — нормализация структуры конфигураций и документов
+
+Операторский YAML перенесён без изменения содержимого в src/unitree_ros2_to_real/config/profiles/go2_rars01_commissioning.yaml; SHA73c9d8f09e68818478bd43cdcb5739f79bfc794cc77d268b98cb63e2ada70ee5. Удалены прежние runtime/deployment-workspace_runtime копии и generated stale install_fsm копия. Source/installed profile байт-в-байт равны. Активные README/отчёты проекта обновлены на новый config_path. Корневой workspace README стал индексом; старые корневые задания и report snapshots перенесены в docs/archive, исторические probes — docs/archive/probes; ничего из них не запускалось. Smoke node output направлен в runtime в working/versioned helper. Реальная архитектура и новый путь: PROJECT_STRUCTURE.md. Build/install,2 launch/lifecycle tests,verify_r1/r2/r3 PASS. Gains/gates/pose/policy/процессы неизменны. Перенос не закрывает ранее известный CPU timing вопрос. Новые изменения не закоммичены.
+
+
+## 07.10.2026 — последний physical test: два успешных A/X цикла, RL20/1,1
+
+Разобран go2_r3_commissioning_46959_1791378074700.log (201 transition, завершён SIGINT). Startup подтверждает source config/profiles/go2_rars01_commissioning.yaml, RL20/1,1 и fixed40/1. Настройка оператора сохранена. Два подъёма6с/hold4с/RL и два X→HOME→PD→lie8с→verify→PASSIVE→outputOFF прошли без WARN/ERROR/faults, включая restart. B в файле отсутствует. Transition samples: policy_ms median4,00/max8,36мс, accepted result age max19,21мс; это не полный timing benchmark. FL calf index5 при входе в RL отклоняется от fixed stand target на0,230/0,289рад. В walking stand_error не является ошибкой tracking policy target. Подробной motion CSV нет; причина оставшейся резкости не установлена. По коду command без ramp и deadband0,01, при любом changed command инвалидируется pending generation; влияние на rejected inference проверить CSV, не объявлять доказанной причиной. Следующий operator test — текущие20/1,1 плюс logger120с. Код/gains/gates/процессы не менялись. Отчёт CODEX_LATEST_PHYSICAL_LOG_ANALYSIS.md; README и таблица gains актуализированы.
+
+
+## 07.10.2026 — CSV прогон и автоматический fault
+
+Log71584 + go2_motion_trace-12968479839671.csv: RL20/1,1, fixed40/1. В1791379924.236 fault policy_result_stale: last accepted age41.858мс, pending22.377мс; затем job compute22.488/job22.922мс отвергнут после fault. В1791379924.391 Sport-age500.850мс→Released=false→outputOFF/FAULT_LATCHED, ещё64 публикации между transitions; подтверждения повторного Sport enable нет. CSV120с завершился~10.5с доfault:11175rows/5495policy allaccepted, compute max18.757мс. IO targets скачут до1.547рад/20.31мс; в RL_ACTIVE119sample jumps>.5рад,66при unchanged command; policy rows подтверждают большие изменения и при неизменном vx. Это не фактический мгновенный поворот сустава. Причина actor spikes не установлена; code/gains/timeouts не менялись. Отчёт CODEX_CSV_AUTO_SHUTDOWN_ANALYSIS.md, statistics runtime/latest_auto_shutdown_analysis/csv_statistics.json. Для записи конца следующего operator run предложено240с; запуск агентом не выполнялся.
+
+
+## 07.10.2026 — единый README и сохранение изменений
+
+Запуск руки/ног, пульт, CSV240с, gains20/1,1 и текущие ограничения собраны в корневом README репозитория workhop_rl. Удалены workspace индекс и дополнительные README docs/sim2real, config и deployment; RL data audit переименован в CODEX_RL_DATA_AND_MOTION_AUDIT.md, содержимое сохранено. Markdown ссылки и архитектура обновлены; upstream SDK/симулятор и reference не изменялись. Сохраняются накопленные CSV logger, source profile и отчёты, без исправления подтверждённых policy target spikes/40мс fault. Push выполняет оператор.

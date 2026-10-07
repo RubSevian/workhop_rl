@@ -2,6 +2,7 @@
 #include "real_controller_core.hpp"
 #include "output_lease.hpp"
 #include "sdk_mode_process.hpp"
+#include "motion_trace.hpp"
 #include <future>
 #include <ATen/Parallel.h>
 #include <rclcpp/rclcpp.hpp>
@@ -14,6 +15,7 @@
 #include <filesystem>
 #include <cmath>
 #include <algorithm>
+#include <limits>
 using namespace sim2real;
 namespace {
 SafetyTime TimeNs(int64_t ns){return SafetyTime(std::chrono::nanoseconds(ns));}
@@ -28,6 +30,17 @@ class R3Node final:public rclcpp::Node {
   rcl_interfaces::msg::ParameterDescriptor immutable;immutable.read_only=true;
   const auto config=declare_parameter<std::string>("config_path","",immutable);
   const auto model=declare_parameter<std::string>("model_path","",immutable);
+  const bool trace_enabled=declare_parameter<bool>("motion_diagnostics_enabled",false,immutable);
+  const double trace_seconds=declare_parameter<double>("motion_diagnostics_duration_s",120.,immutable);
+  const auto trace_prefix=declare_parameter<std::string>("motion_diagnostics_path","/home/ruben/go2_diploma/sim2real/runtime/go2_motion_trace",immutable);
+  if(trace_enabled) {
+   const auto path=trace_prefix+"-"+std::to_string(SafetyClock::now().time_since_epoch().count())+".csv";
+   motion_trace_=std::make_unique<MotionTrace>(path,trace_seconds);
+   RCLCPP_INFO(get_logger(),"Temporary motion diagnostics: %s; auto-stop after %.1fs from first sample",path.c_str(),trace_seconds);
+  }
+  services_.push_back(create_service<std_srvs::srv::Trigger>("/go2/diagnostics/stop_motion_log",[this](std_srvs::srv::Trigger::Request::SharedPtr,std_srvs::srv::Trigger::Response::SharedPtr response){
+   if(motion_trace_)motion_trace_->Stop();response->success=true;response->message="motion logging stopped; queued rows drain asynchronously";
+  }));
   const auto profile_name=declare_parameter<std::string>("operation_profile","",immutable);
   std::optional<OperationProfile> explicit_profile;
   if(!profile_name.empty())explicit_profile=ParseOperationProfile(profile_name);
@@ -185,7 +198,11 @@ class R3Node final:public rclcpp::Node {
    auto packet=supervisor_->Tick(now);
    if(output_&&packet&&!supervisor_->AllowsPacket(*packet,now))supervisor_->Fault("crc_or_packet_validation",now);
    else if(output_&&packet) {
-    try{output_->publish(*packet);++sent_;supervisor_->NotifyPacketPublished(*packet,SafetyClock::now());}catch(...){supervisor_->Fault("transport_exception",now);StopPublisher();}
+    try{output_->publish(*packet);++sent_;const auto published=SafetyClock::now();supervisor_->NotifyPacketPublished(*packet,published);
+     if(motion_trace_&&motion_trace_->enabled()) {
+      try{TraceMotionIo(*packet,published);}catch(...){motion_trace_->Stop();}
+     }
+    }catch(...){supervisor_->Fault("transport_exception",now);StopPublisher();}
    }
    if(output_&&!supervisor_->output_enabled())StopPublisher();
    TraceState(now);
@@ -362,9 +379,28 @@ class R3Node final:public rclcpp::Node {
   supervisor_->Observe(inputs_,now);supervisor_->ConfirmStockObserved(now);
  }
  void StopPublisher(){supervisor_->Dispatch(SystemEvent::DISABLE_OUTPUT,SafetyClock::now());output_.reset();if(!sdk_release_pending_)lease_.reset();if(!output_&&!lease_)supervisor_->Dispatch(SystemEvent::OUTPUT_STOPPED,SafetyClock::now());}
+ void TraceMotionIo(const unitree_go::msg::LowCmd& packet,SafetyTime now) {
+  const double interval=last_trace_io_==SafetyTime{}?0:Age(now,last_trace_io_);last_trace_io_=now;
+  if(interval>0){trace_io_min_=std::min(trace_io_min_,interval);trace_io_max_=std::max(trace_io_max_,interval);}
+  if(last_trace_row_!=SafetyTime{}&&Age(now,last_trace_row_)<.02)return;
+  MotionTraceSample sample;sample.stamp_ns=std::chrono::duration_cast<std::chrono::nanoseconds>(now.time_since_epoch()).count();
+  sample.phase=int(supervisor_->phase());sample.packets=sent_;sample.interval_s=interval;
+  sample.io_min_s=std::isfinite(trace_io_min_)?trace_io_min_:0;sample.io_max_s=trace_io_max_;
+  sample.low_age_s=Age(now,inputs_.lowstate_stamp);sample.remote_age_s=Age(now,inputs_.remote_stamp);
+  sample.arm_age_s=Age(now,inputs_.arm_stamp);sample.target_age_s=Age(now,inputs_.target_stamp);
+  sample.result_age_s=supervisor_->PolicyAgeSeconds(now);
+  const auto& remote=remote_->status();sample.sticks={remote.ly,-remote.rx,-remote.lx};
+  sample.requested=remote_test_requested_;sample.command=supervisor_->command();
+  const auto& low=lowstate_.snapshot();sample.q=low.motor_q;sample.dq=low.motor_dq;sample.quat=low.quaternion_xyzw;
+  for(int i=0;i<3;++i)sample.gyro[i]=low.gyro[i];
+  for(int i=0;i<12;++i){sample.target[i]=packet.motor_cmd[i].q;sample.kp[i]=packet.motor_cmd[i].kp;sample.kd[i]=packet.motor_cmd[i].kd;}
+  motion_trace_->Submit(sample);last_trace_row_=now;trace_io_min_=std::numeric_limits<double>::infinity();trace_io_max_=0;
+ }
  void PolicyTick() {
   std::array<float,6> armq,armdq,target;LowStateSnapshot low;std::array<double,3> cmd{};bool infer=false,reset=false;
   std::optional<PolicyTicket> ticket;
+  std::optional<MotionTraceSample> trace;
+  SafetyTime trace_remote_stamp{};
   {
    std::lock_guard lock(mutex_);auto now=SafetyClock::now();
    SdkTick(now);
@@ -386,6 +422,14 @@ class R3Node final:public rclcpp::Node {
    }
    reset=supervisor_->ConsumePolicyReset();ticket=supervisor_->BeginPolicy(now);infer=ticket.has_value();low=lowstate_.snapshot();
    armq=arm_q_;armdq=arm_dq_;target=arm_target_;cmd=supervisor_->command();
+   if(infer&&motion_trace_&&motion_trace_->enabled()) {
+    trace.emplace();trace->kind=1;trace->phase=int(supervisor_->phase());
+    trace_remote_stamp=inputs_.remote_stamp;
+    trace->interval_s=last_trace_policy_==SafetyTime{}?0:Age(now,last_trace_policy_);last_trace_policy_=now;
+    const auto& remote=remote_->status();trace->sticks={remote.ly,-remote.rx,-remote.lx};
+    trace->requested=remote_test_requested_;trace->command=cmd;trace->q=low.motor_q;trace->dq=low.motor_dq;trace->quat=low.quaternion_xyzw;
+    for(int i=0;i<3;++i)trace->gyro[i]=low.gyro[i];
+   }
    // Serial/SDK remain exclusively in the RARS owner; leg node uses async ports.
    supervisor_->ConsumeArmHoldRequest();
   }
@@ -402,8 +446,20 @@ class R3Node final:public rclcpp::Node {
     if(reset){a.obs.command=torch::zeros({3});a.ResetPolicyState();}
     const auto began=SafetyClock::now();auto action=a.Act();std::array<float,12> q;for(int i=0;i<12;++i)q[i]=action[io_motor_to_policy[i]].item<float>();
     const auto ended=SafetyClock::now();const double elapsed=std::chrono::duration<double,std::milli>(ended-began).count();
+    if(trace) {
+     try{for(int i=0;i<12;++i)trace->action[i]=a.obs.action[io_motor_to_policy[i]].item<float>();}
+     catch(...){trace.reset();motion_trace_->Stop();}
+    }
     std::lock_guard lock(mutex_);const auto completed=SafetyClock::now();
     const bool accepted=supervisor_->PolicyResult(*ticket,q,elapsed,completed);last_policy_ms_=elapsed;
+    if(trace&&motion_trace_->enabled()) {
+     trace->stamp_ns=std::chrono::duration_cast<std::chrono::nanoseconds>(completed.time_since_epoch()).count();
+     trace->accepted=accepted;trace->target=q;trace->compute_ms=elapsed;trace->packets=sent_;
+     trace->job_age_s=Age(completed,ticket->started);trace->low_age_s=Age(completed,ticket->observation_stamp);
+     trace->remote_age_s=Age(completed,trace_remote_stamp);trace->arm_age_s=Age(completed,ticket->arm_stamp);trace->target_age_s=Age(completed,ticket->target_stamp);
+     trace->result_age_s=supervisor_->PolicyAgeSeconds(completed);
+     try{motion_trace_->Submit(*trace);}catch(...){motion_trace_->Stop();}
+    }
     if(!accepted)RCLCPP_WARN(get_logger(),"Policy result rejected: compute_ms=%g job_age_s=%g observation_age_s=%g captured_arm_age_s=%g captured_target_age_s=%g state=%s fault=%s",elapsed,Age(completed,ticket->started),Age(completed,ticket->observation_stamp),Age(completed,ticket->arm_stamp),Age(completed,ticket->target_stamp),R3StateName(supervisor_->state()),supervisor_->last_fault().c_str());
    }catch(const std::exception& e){std::lock_guard lock(mutex_);supervisor_->PolicyFailed(*ticket,std::string("policy_exception: ")+e.what(),SafetyClock::now());}
   }
@@ -482,6 +538,8 @@ class R3Node final:public rclcpp::Node {
    <<YAML::Key<<"lowcmd_discovery_waiting"<<YAML::Value<<lowcmd_wait_->active()
    <<YAML::Key<<"lowcmd_discovery_wait_age_s"<<YAML::Value<<lowcmd_wait_->AgeSeconds(now)
    <<YAML::Key<<"lowcmd_publisher_count"<<YAML::Value<<cached_publisher_count_
+   <<YAML::Key<<"motion_diagnostics_active"<<YAML::Value<<(motion_trace_&&motion_trace_->enabled())
+   <<YAML::Key<<"motion_diagnostics_dropped"<<YAML::Value<<(motion_trace_?motion_trace_->dropped():0)
    <<YAML::Key<<"model_loaded"<<YAML::Value<<core_.loaded()<<YAML::Key<<"policy_ms"<<YAML::Value<<last_policy_ms_
    <<YAML::Key<<"policy_result_age_s"<<YAML::Value<<supervisor_->PolicyAgeSeconds(now)
    <<YAML::Key<<"policy_zero_handoff_pending"<<YAML::Value<<supervisor_->zero_policy_handoff_pending()
@@ -501,6 +559,9 @@ class R3Node final:public rclcpp::Node {
  std::unique_ptr<LowCmdDiscoveryWait> lowcmd_wait_;
  bool read_only_=true,remote_test_mode_=false,motion_commands_enabled_=false,navigation_valid_=false;std::string control_mode_;std::string output_lock_,arm_error_;
  std::array<double,3> remote_test_requested_{};
+ std::unique_ptr<MotionTrace> motion_trace_;
+ SafetyTime last_trace_io_{},last_trace_row_{},last_trace_policy_{};
+ double trace_io_min_=std::numeric_limits<double>::infinity(),trace_io_max_=0;
  std::unique_ptr<OutputLease> lease_;std::array<float,6> arm_q_{},arm_dq_{},arm_target_{};
  std::array<double,3> navigation_command_{};double last_policy_ms_=0,home_tolerance_=.15;size_t sent_=0;
  SafetyTime navigation_stamp_{},last_deadman_{};R3RemoteEvent last_event_=R3RemoteEvent::NONE;

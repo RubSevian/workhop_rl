@@ -20,7 +20,10 @@ def _controller(context):
     parameters = {name: get(name) for name in
                   ('config_path', 'model_path', 'network_interface')}
     parameters.update(operation_profile=profile, enable_actuator_output=False,
-                      remote_auto_sequence=_boolean(get('remote_auto_sequence')))
+                      remote_auto_sequence=_boolean(get('remote_auto_sequence')),
+                      motion_diagnostics_enabled=_boolean(get('motion_diagnostics_enabled')),
+                      motion_diagnostics_duration_s=float(get('motion_diagnostics_duration_s')),
+                      motion_diagnostics_path=get('motion_diagnostics_path'))
     # Empty compatibility args are omitted: the immutable profile supplies defaults.
     for name in ('read_only', 'remote_test_mode', 'motion_commands_enabled',
                  'controlled_stop_lie_down_trial'):
@@ -41,6 +44,9 @@ def generate_launch_description():
             'GO2_NETWORK_INTERFACE', default_value='')),
         DeclareLaunchArgument('operation_profile', default_value=''),
         DeclareLaunchArgument('remote_auto_sequence', default_value='true'),
+        DeclareLaunchArgument('motion_diagnostics_enabled', default_value='false'),
+        DeclareLaunchArgument('motion_diagnostics_duration_s', default_value='120.0'),
+        DeclareLaunchArgument('motion_diagnostics_path', default_value='/home/ruben/go2_diploma/sim2real/runtime/go2_motion_trace'),
         DeclareLaunchArgument('remote_test_mode', default_value=''),
         DeclareLaunchArgument('control_mode', default_value=''),
         DeclareLaunchArgument('motion_commands_enabled', default_value=''),

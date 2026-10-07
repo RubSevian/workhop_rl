@@ -33,7 +33,7 @@ def observe(msg):
     status = yaml.safe_load(msg.data)
 node.create_subscription(String, '/go2/locomotion_status', observe, 10)
 pub = node.create_publisher(LowState, '/lowstate', 10)
-with (root/'r3_readonly_smoke_node.log').open('w') as log:
+with (root/'runtime/r3_readonly_smoke_node.log').open('w') as log:
     child = subprocess.Popen(command, stdout=log, stderr=subprocess.STDOUT)
     try:
         until = time.monotonic()+10
@@ -162,7 +162,7 @@ with (root/'r3_readonly_smoke_node.log').open('w') as log:
             assert status['sent_packets']==0 and not status['output_enabled'],status
             assert status['motion_command']==[0,0,0] and node.count_publishers('/lowcmd')==0,status
         log.flush()
-        trace=(root/'r3_readonly_smoke_node.log').read_text()
+        trace=(root/'runtime/r3_readonly_smoke_node.log').read_text()
         assert 'R3 transition' in trace and 'fixed_kp=' in trace
         assert 'hold_capture_tolerance_rad=' not in trace
         print('PASS mapped stand-error diagnostics and persisted transition/gain logging')
