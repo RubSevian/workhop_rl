@@ -23,6 +23,8 @@ struct R3Profile {
  double lowstate_timeout_s=.5,remote_timeout_s=.25,arm_timeout_s=.25;
  double lowcmd_discovery_timeout_s=20,lowcmd_clear_duration_s=.5;
  double vx_bound=.20,vy_bound=.10,wz_bound=.10,max_command_duration_s=1;
+ std::optional<std::array<double,3>> remote_stick_bounds;
+ std::array<double,3> RemoteBounds() const {return remote_stick_bounds.value_or(std::array<double,3>{vx_bound,vy_bound,wz_bound});}
  double q_capture_tolerance=.01;
  double arm_home_timeout_s=10,arm_home_settle_s=.2,lie_down_timeout_s=12,lie_down_tolerance=.15,lie_down_settle_s=.2;
  int deadline_burst_limit=3;
@@ -97,6 +99,8 @@ class R3Supervisor {
  bool PolicyResult(const PolicyTicket& ticket,const std::array<float,12>& motor_q,double elapsed_ms,SafetyTime now);
  bool PolicyFailed(const PolicyTicket& ticket,const std::string& reason,SafetyTime now);
  bool policy_inflight() const {return pending_policy_.has_value();}
+ bool zero_policy_handoff_pending() const {return zero_policy_handoff_started_.has_value();}
+ static constexpr double zero_policy_handoff_timeout_s=.04;
  size_t rejected_policy_results() const {return rejected_policy_results_;}
  double PolicyAgeSeconds(SafetyTime now) const;
  double PolicyInferenceAgeSeconds(SafetyTime now) const;
@@ -167,6 +171,8 @@ class R3Supervisor {
  size_t rejected_policy_results_=0;
  double fault_policy_age_s_=-1,fault_inference_age_s_=-1,fault_observation_age_s_=-1;
  std::optional<PolicyTicket> pending_policy_;
+ // Separate transition deadline; never refresh the timestamp of an old action.
+ std::optional<SafetyTime> zero_policy_handoff_started_;
  std::string last_fault_;
 };
 enum class R3RemoteEvent { NONE,TAKEOVER,CONTROLLED_ABORT,EMERGENCY };

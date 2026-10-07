@@ -44,6 +44,9 @@ R3Profile LoadR3Profile(const YAML::Node& yaml) {
  p.arm_timeout_s=d["rars01"]["feedback_timeout_s"].as<double>();
  if(d["rars01"]["require_home_ready_for_leg_takeover"])p.require_arm_home_ready=d["rars01"]["require_home_ready_for_leg_takeover"].as<bool>();
  p.vx_bound=r["manual"]["max_vx"].as<double>();p.vy_bound=r["manual"]["max_vy"].as<double>();p.wz_bound=r["manual"]["max_wz"].as<double>();
+ if(r["remote"]["command_limits"]){const auto limits=r["remote"]["command_limits"];
+  p.remote_stick_bounds=std::array<double,3>{limits["max_vx"].as<double>(),limits["max_vy"].as<double>(),limits["max_wz"].as<double>()};
+ }
  p.max_command_duration_s=r["manual"]["max_duration_s"].as<double>();p.q_capture_tolerance=r["hold_current_tolerance_rad"].as<double>();
  p.deadline_burst_limit=r["deadline_burst_limit"].as<int>();
  if(r["lowcmd_discovery_timeout_s"])p.lowcmd_discovery_timeout_s=r["lowcmd_discovery_timeout_s"].as<double>();
@@ -92,6 +95,7 @@ R3Supervisor::R3Supervisor(R3Profile p,OperationProfile operation):profile_(std:
  for(double v:{profile_.arm_home_settle_s,profile_.lie_down_settle_s})
   if(!std::isfinite(v)||v<0)throw std::invalid_argument("Finite nonnegative optional settle required");
  if((profile_.lie_down_validated||profile_.controlled_stop_lie_down_trial)&&profile_.lie_down_timeout_s<profile_.lie_down_s)throw std::invalid_argument("Lie timeout before trajectory completes");
+ for(double v:profile_.RemoteBounds())if(!std::isfinite(v)||v<=0||v>.5)throw std::invalid_argument("Remote stick bounds must be finite in (0,0.5]");
  if(profile_.vx_bound>.20||profile_.deadline_burst_limit<1)throw std::invalid_argument("R3 vx bound/valid deadline limit");
  for(float q:profile_.stand)if(!std::isfinite(q)||std::abs(q)>3.5F)throw std::invalid_argument("Stand q outside software contract");
  if(profile_.lie_down)for(float q:*profile_.lie_down)if(!std::isfinite(q)||std::abs(q)>3.5F)throw std::invalid_argument("Invalid lie-down pose");
@@ -194,7 +198,7 @@ R3Reply R3Supervisor::Require(SafetyTime now) const {
  std::ostringstream s;for(const auto& v:b)s<<v<<',';return Fail(s.str());
 }
 void R3Supervisor::Zero(){command_={};navigation_active_=false;have_command_=false;}
-void R3Supervisor::InvalidatePolicyWork(){++policy_generation_;pending_policy_.reset();}
+void R3Supervisor::InvalidatePolicyWork(){++policy_generation_;pending_policy_.reset();zero_policy_handoff_started_.reset();}
 void R3Supervisor::Capture(SafetyTime now){InvalidatePolicyWork();start_=inputs_.measured_q;target_=start_;transition_=now;have_policy_=false;}
 bool R3Supervisor::IsActive() const {return output_enabled_;}
 void R3Supervisor::Observe(const R3Inputs& in,SafetyTime now) {
@@ -333,7 +337,18 @@ R3Reply R3Supervisor::ControlledAbort(SafetyTime now) {
  if(system_state_==SystemState::SYSTEM_HOLD)return {true,"already in persistent system hold"};
  if(system_state_==SystemState::CONTROLLED_STOP)return {true,"controlled stop already requested"};
  if(system_state_==SystemState::ACTIVE) {
+  // X cannot conceal a job/result that was already expired before the request.
+  if(pending_policy_&&!Fresh(now,pending_policy_->started,.04)) {
+   Fault("policy_inference_timeout",now);return Fail("policy job expired before X");
+  }
+  if(!Fresh(now,policy_stamp_,.04)) {
+   Fault("policy_result_stale",now);return Fail("policy result expired before X");
+  }
   ++orchestration_generation_;InvalidatePolicyWork();Zero();stop_started_=now;arm_home_accepted_=false;home_settling_=lie_reached_=false;
+  // IO keeps the last commanded target while the next 50Hz callback computes
+  // the first zero-command action. Its deadline starts at X, not at the old
+  // accepted action; the true result/observation ages remain unchanged.
+  zero_policy_handoff_started_=now;
   stop_blocker_.clear();ports_.cancel_navigation=ports_.cancel_manipulation=ports_.arm_return_home=true;
   Dispatch(SystemEvent::ADVANCE_PHASE,now,SystemPhase::ARM_RETURN_HOME);
   return {true,"zero RL -> cancel missions -> ARM HOME -> measured PD handoff -> lie-down -> SYSTEM_HOLD"};
@@ -389,7 +404,8 @@ std::array<double,3> RemoteStickCommand(const RemoteStatus& r,const R3Profile& p
  if(!r.remote_valid)return {};
  // Existing workshop sim controller: vx=ly, vy=-rx, wz=-lx.
  auto axis=[](double v,double limit){return std::isfinite(v)&&std::abs(v)>.01?std::clamp(v,-1.,1.)*limit:0.;};
- return {axis(r.ly,p.vx_bound),axis(-r.rx,p.vy_bound),axis(-r.lx,p.wz_bound)};
+ const auto bounds=p.RemoteBounds();
+ return {axis(r.ly,bounds[0]),axis(-r.rx,bounds[1]),axis(-r.lx,bounds[2])};
 }
 R3Reply R3Supervisor::RemoteTestCommand(const std::array<double,3>& cmd,SafetyTime now) {return VelocityCommand(cmd,now,false);}
 R3Reply R3Supervisor::NavigationCommand(const std::array<double,3>& cmd,SafetyTime now) {return VelocityCommand(cmd,now,true);}
@@ -400,7 +416,8 @@ R3Reply R3Supervisor::VelocityCommand(const std::array<double,3>& cmd,SafetyTime
  if(!NeedsPolicy())return Fail("remote test requires RL_ZERO/RL_ACTIVE");
  const auto ready=Require(now);if(!ready.success)return ready;
  for(double v:cmd)if(!std::isfinite(v))return Fail("nonfinite remote test command");
- if(std::abs(cmd[0])>profile_.vx_bound||std::abs(cmd[1])>profile_.vy_bound||std::abs(cmd[2])>profile_.wz_bound)
+ const auto bounds=navigation?std::array<double,3>{profile_.vx_bound,profile_.vy_bound,profile_.wz_bound}:profile_.RemoteBounds();
+ if(std::abs(cmd[0])>bounds[0]||std::abs(cmd[1])>bounds[1]||std::abs(cmd[2])>bounds[2])
   return Fail("remote test bounds violated");
  const bool moving=cmd!=std::array<double,3>{};
  if(moving&&!have_policy_)return Fail("remote test awaits valid zero policy sample");
@@ -449,6 +466,9 @@ bool R3Supervisor::PolicyResult(const PolicyTicket& ticket,const std::array<floa
  // Check the actual job deadline before accepting it; a late completion must
  // never renew the response watchdog even if IO was delayed by the executor.
  if(!Fresh(now,ticket.started,.04)){Fault("policy_inference_timeout",now);return false;}
+ if(zero_policy_handoff_started_&&!Fresh(now,*zero_policy_handoff_started_,zero_policy_handoff_timeout_s)) {
+  Fault("policy_zero_handoff_timeout",now);return false;
+ }
  for(float v:q)if(!std::isfinite(v)||std::abs(v)>3.5F){Fault("invalid_policy_action",now);return false;}
  if(ms>=20){++deadline_misses_;++deadline_burst_;}else deadline_burst_=0;
  if(deadline_burst_>=profile_.deadline_burst_limit){Fault("policy_deadline_burst",now);return false;}
@@ -458,6 +478,7 @@ bool R3Supervisor::PolicyResult(const PolicyTicket& ticket,const std::array<floa
  }
  if(!Require(now).success){Fault("policy_input_not_ready",now);return false;}
  pending_policy_.reset();
+ zero_policy_handoff_started_.reset();
  policy_q_=q;policy_stamp_=now;policy_observation_stamp_=ticket.observation_stamp;have_policy_=true;return true;
 }
 bool R3Supervisor::ConsumePolicyReset(){return std::exchange(reset_policy_,false);}
@@ -563,6 +584,13 @@ std::optional<unitree_go::msg::LowCmd> R3Supervisor::Tick(SafetyTime now) {
   break;
  case R3State::RL_ZERO:case R3State::RL_ACTIVE:
   if(pending_policy_&&!Fresh(now,pending_policy_->started,.04)){Fault("policy_inference_timeout",now);return Tick(now);}
+  if(zero_policy_handoff_started_) {
+   if(!Fresh(now,*zero_policy_handoff_started_,zero_policy_handoff_timeout_s)) {
+    Fault("policy_zero_handoff_timeout",now);return Tick(now);
+   }
+   return MakeLowCmd(target_,have_policy_?profile_.rl_kp:profile_.kp,
+                     have_policy_?profile_.rl_kd:profile_.kd);
+  }
   if(!have_policy_&&Fresh(now,policy_stamp_,.04))return MakeLowCmd(target_,profile_.kp,profile_.kd);
   if(!have_policy_||!Fresh(now,policy_stamp_,.04)){Fault("policy_result_stale",now);return Tick(now);}
   target_=policy_q_;return MakeLowCmd(target_,profile_.rl_kp,profile_.rl_kd);

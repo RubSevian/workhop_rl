@@ -92,6 +92,7 @@ real_deployment:
     hold_current_tolerance_rad: 0.01
     deadline_burst_limit: 3
     remote:
+      command_limits: {max_vx: 0.5, max_vy: 0.5, max_wz: 0.5}
       controlled_abort_chord: [L1, L2, X] # Zero RL -> HOME -> measured PD -> lie-down -> SYSTEM_HOLD.
       emergency_chord: [L1, L2, B]
     emergency:

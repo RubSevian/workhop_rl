@@ -35,7 +35,7 @@ int main(){auto p=system_fixture();R3Supervisor f(p);enter_active(f);
  for(int bad=0;bad<3;++bad){R3Supervisor x(p);enter_active(x);x.ControlledAbort(time_at(6));auto i=system_facts(6.002,false);
   if(bad==0)i.arm_control_ready=false;if(bad==1)i.arm_stamp=time_at(5);if(bad==2)i.target_stamp=time_at(5);
   x.Observe(i,time_at(6.002));assert(x.fault_latched()&&x.system_state()==SystemState::EMERGENCY_FAULT&&!x.NeedsPolicy());}
- R3Supervisor stale(p);enter_active(stale);stale.ControlledAbort(time_at(6));stale.Observe(system_facts(6.042,false),time_at(6.042));stale.Tick(time_at(6.042));assert(stale.last_fault()=="policy_result_stale");
+ R3Supervisor stale(p);enter_active(stale);stale.ControlledAbort(time_at(6));stale.Observe(system_facts(6.042,false),time_at(6.042));stale.Tick(time_at(6.042));assert(stale.last_fault()=="policy_zero_handoff_timeout");
  R3Supervisor rejected(p);enter_active(rejected);rejected.ControlledAbort(time_at(6));rejected.ArmHomeRequestAccepted(false,time_at(6));assert(rejected.NeedsPolicy()&&!rejected.fault_latched());
  // A trajectory that does not reach target retains exact last planned target/output.
  R3Supervisor blocked(p);enter_active(blocked);blocked.ControlledAbort(time_at(6));blocked.ArmHomeRequestAccepted(true,time_at(6));

@@ -54,6 +54,7 @@ class R3Node final:public rclcpp::Node {
   // Warm TorchScript before any subscriptions, output publisher or takeover.
   // Discard all warm-up targets; the real RL entry resets history from feedback.
   {
+   torch::InferenceMode inference;
    auto& a=core_.agent();a.obs.dof_pos=a.params.default_dof_pos.clone();a.ResetPolicyState();
    for(int i=0;i<20;++i){const auto q=a.Act();
     if(q.numel()!=12||!torch::isfinite(q).all().item<bool>())throw std::runtime_error("Policy warm-up returned invalid targets");
@@ -239,6 +240,7 @@ class R3Node final:public rclcpp::Node {
    <<YAML::Key<<"stand_error_motor_index"<<YAML::Value<<std::distance(errors.begin(),worst)
    <<YAML::Key<<"policy_ms"<<YAML::Value<<last_policy_ms_
    <<YAML::Key<<"policy_result_age_s"<<YAML::Value<<supervisor_->PolicyAgeSeconds(now)
+   <<YAML::Key<<"policy_zero_handoff_pending"<<YAML::Value<<supervisor_->zero_policy_handoff_pending()
    <<YAML::Key<<"policy_inference_age_s"<<YAML::Value<<supervisor_->PolicyInferenceAgeSeconds(now)
    <<YAML::Key<<"policy_observation_age_s"<<YAML::Value<<supervisor_->PolicyObservationAgeSeconds(now)
    <<YAML::Key<<"lowstate_age_s"<<YAML::Value<<Age(now,inputs_.lowstate_stamp)
@@ -389,6 +391,9 @@ class R3Node final:public rclcpp::Node {
   }
   if(infer) {
    try{
+    // Thread-local: constructor guard does not carry into executor worker callbacks.
+    // Cover reset/history/previous-action as well as module.forward to prevent graph retention.
+    torch::InferenceMode inference;
     auto& a=core_.agent();core_.SetMeasuredLegs(low.motor_q,low.motor_dq);
     a.obs.base_quat=torch::tensor(std::vector<float>(low.quaternion_xyzw.begin(),low.quaternion_xyzw.end()));
     a.obs.ang_vel=torch::tensor(std::vector<float>(low.gyro.begin(),low.gyro.end()));
@@ -405,6 +410,7 @@ class R3Node final:public rclcpp::Node {
   std::lock_guard lock(mutex_);const auto now=SafetyClock::now();
   TraceState(now);
   const auto stand_errors=StandErrors();const auto worst_stand=std::max_element(stand_errors.begin(),stand_errors.end());
+  const auto remote_bounds=supervisor_->profile().RemoteBounds();
   const auto blockers=supervisor_->Blockers(now);YAML::Emitter e;
   e<<YAML::Flow<<YAML::BeginMap<<YAML::Key<<"state"<<YAML::Value<<SystemStateName(supervisor_->system_state())
    <<YAML::Key<<"phase"<<YAML::Value<<SystemPhaseName(supervisor_->phase())
@@ -431,6 +437,8 @@ class R3Node final:public rclcpp::Node {
    <<YAML::Key<<"navigation_requested_command"<<YAML::Value<<std::vector<double>(navigation_command_.begin(),navigation_command_.end())
    <<YAML::Key<<"stand_completion"<<YAML::Value<<"time"
    <<YAML::Key<<"remote_test_mode"<<YAML::Value<<remote_test_mode_
+   <<YAML::Key<<"remote_command_limits"<<YAML::Value<<std::vector<double>(remote_bounds.begin(),remote_bounds.end())
+   <<YAML::Key<<"navigation_command_limits"<<YAML::Value<<std::vector<double>{supervisor_->profile().vx_bound,supervisor_->profile().vy_bound,supervisor_->profile().wz_bound}
    <<YAML::Key<<"remote_test_requested_command"<<YAML::Value<<std::vector<double>(remote_test_requested_.begin(),remote_test_requested_.end())
    <<YAML::Key<<"motion_command"<<YAML::Value<<std::vector<double>(supervisor_->command().begin(),supervisor_->command().end())
    <<YAML::Key<<"arm_target_age_s"<<YAML::Value<<Age(now,inputs_.target_stamp)<<YAML::Key<<"arm_ready"<<YAML::Value<<(inputs_.arm_home_ready&&inputs_.ready.arm_feedback_ready&&inputs_.ready.arm_target_ready&&Age(now,inputs_.arm_stamp)<=supervisor_->profile().arm_timeout_s&&Age(now,inputs_.target_stamp)<=supervisor_->profile().arm_timeout_s)
@@ -476,6 +484,7 @@ class R3Node final:public rclcpp::Node {
    <<YAML::Key<<"lowcmd_publisher_count"<<YAML::Value<<cached_publisher_count_
    <<YAML::Key<<"model_loaded"<<YAML::Value<<core_.loaded()<<YAML::Key<<"policy_ms"<<YAML::Value<<last_policy_ms_
    <<YAML::Key<<"policy_result_age_s"<<YAML::Value<<supervisor_->PolicyAgeSeconds(now)
+   <<YAML::Key<<"policy_zero_handoff_pending"<<YAML::Value<<supervisor_->zero_policy_handoff_pending()
    <<YAML::Key<<"policy_inference_age_s"<<YAML::Value<<supervisor_->PolicyInferenceAgeSeconds(now)
    <<YAML::Key<<"policy_observation_age_s"<<YAML::Value<<supervisor_->PolicyObservationAgeSeconds(now)
    <<YAML::Key<<"policy_inflight"<<YAML::Value<<supervisor_->policy_inflight()

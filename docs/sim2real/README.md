@@ -102,7 +102,7 @@ ros2 run unitree_legged_real rars_r3_owner --ros-args \
 
 ## Стики и NAV
 
-Для стиков выберите `operation_profile:=remote_test`: `ly` ±0,20 м/с вперёд, `-rx` ±0,10 м/с вбок, `-lx` ±0,10 рад/с поворот; deadband 0,01. Нейтраль оставляет RL с zero velocity.
+Для стиков выберите `operation_profile:=remote_test`: `ly` ±0,50 м/с вперёд, `-rx` ±0,50 м/с вбок, `-lx` ±0,50 рад/с поворот; deadband 0,01. Нейтраль оставляет RL с zero velocity.
 
 Для NAV выберите `nav_test`. Сохраняются TwistStamped `/cmd_vel`, QoS1, finite/header/receive freshness ≤0,25 с и clamp ±0,20/0,10/0,10. `pathFollower.sendSportCommand=false`. Stale NAV даёт zero velocity, без переключения профиля.
 
@@ -111,7 +111,7 @@ ros2 run unitree_legged_real rars_r3_owner --ros-args \
 ## Диагностика
 
 ```bash
-ros2 topic echo /go2/locomotion_status
+ros2 topic echo /go2/locomotion_status --full-length
 ros2 run unitree_legged_real go2_mode_switch --interface enP8p1s0 --status
 ```
 
@@ -144,3 +144,13 @@ ros2 run calibrate_imu calibrate_imu
 ```
 
 ~2 с zero motion, static bias до15 с, затем положительное вращение Z 1,396 рад/с до35 с, StopMove и запись `~/Desktop/imu_calib_data.yaml`. `transform_everything.py` ожидает именно этот путь. После завершения проверьте файл и перезапустите NAV. Этот utility в рамках B.1 не запускался и не переносился на RL.
+
+## Исправление inference после restart — 07.10.2026
+
+Runtime warmup и каждый executor callback reset/history/Act выполняются под thread-local `torch::InferenceMode`. Это предотвращает хранение autograd графов через previous action; observation/action/history math, веса, gains и watchdog40 мс сохраняются. Проверки: [отчёт](CODEX_REMOTE_WALK_RESTART_REPORT.md). После новой сборки нужен перезапуск только leg launch из install_fsm; уже работающий HOME owner не получает новый leg code и не требует второго owner.
+
+Remote limits задаются при загрузке YAML `r3_commissioning.remote.command_limits`: max_vx/max_vy/max_wz=0.5. NAV/manual limits остаются0.2/0.1/0.1. Статус показывает оба набора. Для полного YAML echo используется `--full-length`, либо `r3_status.py --timeout 3600`.
+
+## Аудит поведения после физического теста — 07.10.2026
+
+[Передача данных в RL, X, подъём и дёрганая ходьба](README_RL_DATA_AND_MOTION_AUDIT.md): точная раскладка63×5, суставы, scales, gains и формулы. В последнем тесте X попал в policy_result_stale и аварийный0/3 до lie-down; гонка воспроизведена offline и исправлена ограниченным40мс переходом к zero-policy. [Исправление и результаты](CODEX_X_HANDOFF_FIX_AND_RL_JERK_REPORT.md): функциональные проверки прошли, CPU timing-test остаётся FAIL (Agent max24,9мс). Найдено отличие hip-знаков manual stand в reference от именованной actor pose в real. Причина дёрганой ходьбы/наклона пока не установлена без временных рядов targets/feedback/IMU. Прежние32/32 не покрывали X посреди реального50Гц job.
