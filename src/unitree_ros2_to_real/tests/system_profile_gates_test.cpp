@@ -25,7 +25,26 @@ int main(){for(auto op:{OperationProfile::READ_ONLY,OperationProfile::ARM_TEST,O
   auto work=active.BeginPolicy(done);assert(work&&active.PolicyResult(*work,p.stand,2,done));
   assert(active.RemoteTestCommand({.1,0,0},done).success==(op==OperationProfile::REMOTE_TEST));
   assert(active.NavigationCommand({.1,0,0},done).success==(op==OperationProfile::NAV_TEST||op==OperationProfile::FULL_MISSION));
+  if(op==OperationProfile::NAV_TEST||op==OperationProfile::FULL_MISSION){
+   i.navigation_ready=false;active.Observe(i,done);
+   assert(active.NavigationCommand({.1,0,0},done).success);
+   assert((active.command()==std::array<double,3>{}));
+   assert(active.system_state()==SystemState::ACTIVE&&!active.fault_latched()&&active.NeedsPolicy());
+  }
   if(op==OperationProfile::RL_ZERO_TEST){assert(!active.ManualCommand({.1,0,0},.1,done).success);assert((active.command()==std::array<double,3>{}));}
+ }
+ // Localization loss after output capture cannot turn stand-up into emergency.
+ {
+  auto p=fixture();R3Supervisor f(p,OperationProfile::NAV_TEST);auto i=facts();i.navigation_ready=true;
+  f.Observe(i,{});assert(f.StartRemoteSequence({}).success);f.Observe(i,{});assert(f.EnableOutput(true,{}).success);f.Tick({});
+  const auto now=SafetyTime{}+std::chrono::milliseconds(30);
+  i.navigation_ready=false;i.sport_stamp=i.lowstate_stamp=i.remote_stamp=i.arm_stamp=i.target_stamp=now;
+  f.Observe(i,now);assert(!f.fault_latched()&&f.output_enabled());
+  assert(f.RemoteSequenceNext(now)==R3SequenceAction::NONE);
+  const auto later=now+std::chrono::milliseconds(30);
+  i.sport_stamp=i.lowstate_stamp=i.remote_stamp=i.arm_stamp=i.target_stamp=later;f.Observe(i,later);
+  assert(f.RemoteSequenceNext(later)==R3SequenceAction::STAND);
+  assert(f.RequestStand(later).success&&f.Tick(later)&&!f.fault_latched());
  }
  R3Supervisor nav(fixture(),OperationProfile::NAV_TEST);auto i=facts();i.navigation_ready=true;nav.Observe(i,{});assert(nav.StartRemoteSequence({}).success);
 }

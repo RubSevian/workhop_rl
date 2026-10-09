@@ -170,7 +170,7 @@ std::vector<std::string> R3Supervisor::Blockers(SafetyTime now,bool physical) co
  if(!seen_)b.emplace_back("inputs_unavailable");
  if(!inputs_.arm_control_ready)b.emplace_back("arm_control_not_ready");
  if(system_state_==SystemState::STANDBY||system_state_==SystemState::TAKEOVER) {
-  if(capabilities_.require_navigation_ready&&!inputs_.navigation_ready)b.emplace_back("navigation_not_ready");
+  if(!output_enabled_&&capabilities_.require_navigation_ready&&!inputs_.navigation_ready)b.emplace_back("navigation_not_ready");
   if(capabilities_.require_perception_ready&&!inputs_.perception_ready)b.emplace_back("perception_not_ready");
   if(capabilities_.require_emergency_arm_validation&&!inputs_.arm_emergency_validated)b.emplace_back("arm_emergency_not_validated");
  }
@@ -264,6 +264,8 @@ R3SequenceAction R3Supervisor::RemoteSequenceNext(SafetyTime now) {
  if(!remote_sequence_)return R3SequenceAction::NONE;
  if(fault_){CancelRemoteSequence();return R3SequenceAction::NONE;}
  auto blockers=RemoteSequenceBlockers(now);
+ // After leg ownership, navigation availability gates velocity, not the PD lift.
+ if(output_enabled_)std::erase(blockers,std::string("navigation_not_ready"));
  // While the SDK releases ownership, stale Sport blocks output but does not cancel the bounded RPC.
  if(release_requested_&&!output_enabled_)std::erase(blockers,std::string("sport_state_not_fresh_known"));
  if(!blockers.empty()){Fault("remote_sequence_precondition",now);return R3SequenceAction::NONE;}
@@ -408,7 +410,7 @@ std::array<double,3> RemoteStickCommand(const RemoteStatus& r,const R3Profile& p
  return {axis(r.ly,bounds[0]),axis(-r.rx,bounds[1]),axis(-r.lx,bounds[2])};
 }
 R3Reply R3Supervisor::RemoteTestCommand(const std::array<double,3>& cmd,SafetyTime now) {return VelocityCommand(cmd,now,false);}
-R3Reply R3Supervisor::NavigationCommand(const std::array<double,3>& cmd,SafetyTime now) {return VelocityCommand(cmd,now,true);}
+R3Reply R3Supervisor::NavigationCommand(const std::array<double,3>& cmd,SafetyTime now) {return VelocityCommand(capabilities_.command_source==CommandSource::NAVIGATION&&!inputs_.navigation_ready?std::array<double,3>{}:cmd,now,true);}
 R3Reply R3Supervisor::VelocityCommand(const std::array<double,3>& cmd,SafetyTime now,bool navigation) {
  if(system_state_==SystemState::CONTROLLED_STOP)return Fail("controlled_stop_velocity_gate_closed");
  if(cmd!=std::array<double,3>{}&&(!capabilities_.allow_nonzero_velocity||

@@ -3,6 +3,7 @@
 #include "output_lease.hpp"
 #include "sdk_mode_process.hpp"
 #include "motion_trace.hpp"
+#include "navigation_request_gate.hpp"
 #include <future>
 #include <ATen/Parallel.h>
 #include <rclcpp/rclcpp.hpp>
@@ -79,6 +80,7 @@ class R3Node final:public rclcpp::Node {
   auto profile=LoadR3Profile(y);
   profile.controlled_stop_lie_down_trial=declare_parameter<bool>("controlled_stop_lie_down_trial",profile.controlled_stop_lie_down_trial,immutable);
   supervisor_=std::make_unique<R3Supervisor>(profile,operation);
+  navigation_gate_=std::make_unique<NavigationRequestGate>(std::array<double,3>{profile.vx_bound,profile.vy_bound,profile.wz_bound},profile.command_timeout_s);
   lowcmd_wait_=std::make_unique<LowCmdDiscoveryWait>(profile.lowcmd_discovery_timeout_s,profile.lowcmd_clear_duration_s);
   lowstate_=LowStateReader(profile.lowstate_timeout_s);
   remote_=std::make_unique<R3RemoteCommands>(r["remote"]["controlled_abort_chord"].as<std::vector<std::string>>(),r["remote"]["emergency_chord"].as<std::vector<std::string>>(),d["remote"]["takeover_hold_s"].as<double>(),profile.remote_timeout_s);
@@ -97,11 +99,13 @@ class R3Node final:public rclcpp::Node {
    catch(...){inputs_.sport=SportMode::ERROR;inputs_.sport_stamp=SafetyTime{};}
   });
   mission_readiness_sub_=create_subscription<std_msgs::msg::String>("/go2/mission/readiness",10,[this](std_msgs::msg::String::ConstSharedPtr message){
-   std::lock_guard lock(mutex_);mission_navigation_ready_=mission_perception_ready_=false;mission_session_.clear();
-   try{auto y=YAML::Load(message->data);mission_readiness_stamp_=TimeNs(y["observed_ns"].as<int64_t>());mission_session_=y["session_id"].as<std::string>();
-    if(mission_session_.empty())throw std::runtime_error("mission adapter session required");
-    mission_navigation_ready_=y["navigation_ready"].as<bool>();mission_perception_ready_=y["perception_ready"].as<bool>();
-   }catch(...){mission_readiness_stamp_={};}
+   std::lock_guard lock(mutex_);mission_navigation_ready_=mission_perception_ready_=false;
+   try{auto y=YAML::Load(message->data);const auto stamp=TimeNs(y["observed_ns"].as<int64_t>());
+    const auto session=y["session_id"].as<std::string>();const bool ready=y["navigation_ready"].as<bool>();
+    if(!navigation_gate_->Observe(session,ready,y["command_enabled"].as<bool>(),stamp,SafetyClock::now()))return;
+    mission_readiness_stamp_=stamp;mission_session_=session;
+    mission_navigation_ready_=ready;mission_perception_ready_=y["perception_ready"].as<bool>();
+   }catch(...){navigation_gate_->Invalidate();mission_readiness_stamp_={};}
   });
   arm_home_client_=create_client<std_srvs::srv::Trigger>("/rars01/control/return_home");
   arm_emergency_client_=create_client<std_srvs::srv::Trigger>("/rars01/control/emergency_disable");
@@ -176,23 +180,24 @@ class R3Node final:public rclcpp::Node {
    std::lock_guard lock(mutex_);
    if(control_mode_!="autonomy"||!motion_commands_enabled_||supervisor_->system_state()==SystemState::CONTROLLED_STOP||supervisor_->fault_latched())return;
    const std::array<double,3> requested{m->twist.linear.x,m->twist.linear.y,m->twist.angular.z};
-   navigation_valid_=false;navigation_command_={};
+   navigation_gate_->Accept({},-1,SafetyClock::now()); // invalid input immediately revokes the previous request
    if(!std::all_of(requested.begin(),requested.end(),[](double v){return std::isfinite(v);})||
-      m->header.stamp.sec<0||m->header.stamp.nanosec>=1000000000u||
+      m->header.frame_id!="vehicle"||m->header.stamp.sec<0||m->header.stamp.nanosec>=1000000000u||
       (m->header.stamp.sec==0&&m->header.stamp.nanosec==0))return;
    try {
     const double message_age=(this->now()-rclcpp::Time(m->header.stamp)).seconds();
-    if(message_age<0||message_age>supervisor_->profile().command_timeout_s)return;
+    navigation_gate_->Accept(requested,message_age,SafetyClock::now());
    }catch(const std::exception&){return;}
-   navigation_valid_=true;
-   const auto& p=supervisor_->profile();
-   navigation_command_={std::clamp(requested[0],-p.vx_bound,p.vx_bound),std::clamp(requested[1],-p.vy_bound,p.vy_bound),std::clamp(requested[2],-p.wz_bound,p.wz_bound)};
-   navigation_stamp_=SafetyClock::now();
   });
   io_group_=create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
   const int io_ms=r["lowcmd_period_ms"].as<int>();if(io_ms!=2)throw std::runtime_error("Current transport profile expects SDK example 2ms period");
   io_timer_=create_wall_timer(std::chrono::milliseconds(io_ms),[this]{
    std::lock_guard lock(mutex_);const auto now=SafetyClock::now();HandleRemote(now);
+   // NAV dropout/cancel changes velocity only, never switches leg mode.
+   if(!read_only_&&control_mode_=="autonomy"&&supervisor_->system_state()==SystemState::ACTIVE&&supervisor_->NeedsPolicy()) {
+    supervisor_->NavigationCommand(inputs_.navigation_ready?navigation_gate_->Get(now):std::array<double,3>{},now);
+    last_deadman_=now;
+   }
    if(supervisor_->state()==R3State::RL_ACTIVE&&Age(now,last_deadman_)>supervisor_->profile().command_timeout_s)
     supervisor_->ManualCommand({},.1,now);
    auto packet=supervisor_->Tick(now);
@@ -234,7 +239,7 @@ class R3Node final:public rclcpp::Node {
   }
   if(event!=R3RemoteEvent::NONE)last_event_=event;
  }
- bool NavigationFresh(SafetyTime now) const {return navigation_valid_&&Age(now,navigation_stamp_)>=0&&Age(now,navigation_stamp_)<=supervisor_->profile().command_timeout_s;}
+ bool NavigationFresh(SafetyTime now) const {return inputs_.navigation_ready&&navigation_gate_->FreshCommand(now);}
  std::array<float,12> StandErrors() const {
   std::array<float,12> errors{};
   for(int i=0;i<12;++i)errors[i]=std::abs(inputs_.measured_q[i]-supervisor_->profile().stand[i]);
@@ -332,7 +337,7 @@ class R3Node final:public rclcpp::Node {
  void PortTick() {
   std::lock_guard lock(mutex_);const auto requests=supervisor_->ConsumePortRequests();
   const auto generation=supervisor_->orchestration_generation();
-  if(requests.cancel_navigation){navigation_valid_=false;navigation_command_={};nav_cancel_pending_=true;nav_cancel_status_="pending";}
+  if(requests.cancel_navigation){navigation_gate_->Invalidate();nav_cancel_pending_=true;nav_cancel_status_="pending";}
   if(requests.cancel_manipulation){manipulation_cancel_pending_=true;manipulation_cancel_status_="pending";}
   if(requests.arm_return_home){home_pending_=true;home_port_status_="pending";}
   if(requests.arm_emergency){home_pending_=false;emergency_pending_=true;emergency_port_status_="pending";}
@@ -373,7 +378,7 @@ class R3Node final:public rclcpp::Node {
  void Refresh(SafetyTime now) {
   inputs_.ready.lowstate_fresh=lowstate_.Fresh(now);inputs_.ready.remote_fresh=remote_->status().remote_valid;
   const bool mission_fresh=!mission_session_.empty()&&Age(now,mission_readiness_stamp_)>=0&&Age(now,mission_readiness_stamp_)<=.5;
-  inputs_.navigation_ready=mission_fresh&&mission_navigation_ready_&&nav_cancel_available_;
+  inputs_.navigation_ready=navigation_gate_->Ready(now)&&nav_cancel_available_;
   inputs_.perception_ready=mission_fresh&&mission_perception_ready_&&manipulation_cancel_available_;
   inputs_.own_output_healthy=output_&&lease_&&lease_->acquired()&&cached_publisher_count_==1&&Age(now,graph_stamp_)>=0&&Age(now,graph_stamp_)<=.5;
   supervisor_->Observe(inputs_,now);supervisor_->ConfirmStockObserved(now);
@@ -415,7 +420,7 @@ class R3Node final:public rclcpp::Node {
     std::array<double,3> selected{};
     if(motion_commands_enabled_) {
      if(control_mode_=="remote_test")selected=remote_test_requested_;
-     else if(NavigationFresh(now))selected=navigation_command_;
+     else if(NavigationFresh(now))selected=navigation_gate_->Get(now);
     }
     const auto result=control_mode_=="autonomy"?supervisor_->NavigationCommand(selected,now):supervisor_->RemoteTestCommand(selected,now);
     if(result.success)last_deadman_=now;
@@ -489,8 +494,10 @@ class R3Node final:public rclcpp::Node {
    <<YAML::Key<<"remote_event"<<YAML::Value<<int(last_event_)<<YAML::Key<<"arm_feedback_age_s"<<YAML::Value<<Age(now,inputs_.arm_stamp)
    <<YAML::Key<<"control_mode"<<YAML::Value<<control_mode_
    <<YAML::Key<<"motion_commands_enabled"<<YAML::Value<<motion_commands_enabled_
+   <<YAML::Key<<"navigation_command_enabled"<<YAML::Value<<navigation_gate_->Enabled(now)
+   <<YAML::Key<<"navigation_session_id"<<YAML::Value<<navigation_gate_->session()
    <<YAML::Key<<"navigation_command_fresh"<<YAML::Value<<NavigationFresh(now)
-   <<YAML::Key<<"navigation_requested_command"<<YAML::Value<<std::vector<double>(navigation_command_.begin(),navigation_command_.end())
+   <<YAML::Key<<"navigation_requested_command"<<YAML::Value<<std::vector<double>{navigation_gate_->Get(now)[0],navigation_gate_->Get(now)[1],navigation_gate_->Get(now)[2]}
    <<YAML::Key<<"stand_completion"<<YAML::Value<<"time"
    <<YAML::Key<<"remote_test_mode"<<YAML::Value<<remote_test_mode_
    <<YAML::Key<<"remote_command_limits"<<YAML::Value<<std::vector<double>(remote_bounds.begin(),remote_bounds.end())
@@ -557,14 +564,14 @@ class R3Node final:public rclcpp::Node {
  std::future<ModeProcessResult> sdk_future_;SafetyTime sdk_started_{},next_sdk_query_{};
  bool sdk_release_pending_=false,automatic_sequence_=true;std::string network_interface_,sdk_helper_,sdk_detail_,sequence_message_;
  std::unique_ptr<LowCmdDiscoveryWait> lowcmd_wait_;
- bool read_only_=true,remote_test_mode_=false,motion_commands_enabled_=false,navigation_valid_=false;std::string control_mode_;std::string output_lock_,arm_error_;
+ bool read_only_=true,remote_test_mode_=false,motion_commands_enabled_=false;std::string control_mode_;std::string output_lock_,arm_error_;
  std::array<double,3> remote_test_requested_{};
  std::unique_ptr<MotionTrace> motion_trace_;
  SafetyTime last_trace_io_{},last_trace_row_{},last_trace_policy_{};
  double trace_io_min_=std::numeric_limits<double>::infinity(),trace_io_max_=0;
  std::unique_ptr<OutputLease> lease_;std::array<float,6> arm_q_{},arm_dq_{},arm_target_{};
- std::array<double,3> navigation_command_{};double last_policy_ms_=0,home_tolerance_=.15;size_t sent_=0;
- SafetyTime navigation_stamp_{},last_deadman_{};R3RemoteEvent last_event_=R3RemoteEvent::NONE;
+ std::unique_ptr<NavigationRequestGate> navigation_gate_;double last_policy_ms_=0,home_tolerance_=.15;size_t sent_=0;
+ SafetyTime last_deadman_{};R3RemoteEvent last_event_=R3RemoteEvent::NONE;
  rclcpp::Publisher<unitree_go::msg::LowCmd>::SharedPtr output_;
  rclcpp::Publisher<std_msgs::msg::String>::SharedPtr status_;
  rclcpp::Subscription<unitree_go::msg::LowState>::SharedPtr low_sub_;
