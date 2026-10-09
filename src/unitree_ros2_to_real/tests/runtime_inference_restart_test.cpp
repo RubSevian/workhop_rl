@@ -20,6 +20,16 @@ int main(int argc,char** argv){try{
   require(!actual.requires_grad()&&!after.agent().obs.action.requires_grad()&&!after.agent().UnifiedActorHistory().requires_grad(),"no inference graphs");
   require(torch::allclose(expected,actual,1e-5,1e-6),"guard changes numerical outputs/history");
  }
+ {
+  torch::InferenceMode guard;
+  auto& a=after.agent();const auto history=a.UnifiedActorHistory().clone(),action=a.obs.action.clone();
+  {PolicyStateTransaction rejected(a);feedback(after,7);a.Act();}
+  require(torch::equal(history,a.UnifiedActorHistory())&&torch::equal(action,a.obs.action),"rejected job rolls history and action back");
+  try{PolicyStateTransaction failed(a);a.Act();throw std::runtime_error("synthetic failure");}catch(const std::runtime_error&){}
+  require(torch::equal(history,a.UnifiedActorHistory())&&torch::equal(action,a.obs.action),"exception rolls policy state back");
+  {PolicyStateTransaction accepted(a);a.Act();accepted.Commit();}
+  require(!torch::equal(history,a.UnifiedActorHistory()),"accepted job commits history");
+ }
  std::exception_ptr error;double worst_first=0;
  // Constructor guard is thread-local: execute reset/Act on a separate worker as ROS does.
  std::thread worker([&]{try{require(torch::autograd::GradMode::is_enabled(),"worker default grad enabled");

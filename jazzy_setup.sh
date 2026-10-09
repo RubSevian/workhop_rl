@@ -17,7 +17,7 @@ for R1_PREFIX_LIST in "${AMENT_PREFIX_PATH:-}" "${CMAKE_PREFIX_PATH:-}" "${COLCO
   IFS=: read -r -a R1_PREFIX_ENTRIES <<< "$R1_PREFIX_LIST"
   for R1_PREFIX_ENTRY in "${R1_PREFIX_ENTRIES[@]}"; do
     case "$R1_PREFIX_ENTRY" in
-      ""|/opt/ros/jazzy|"$R1_ROOT_DIR/install_r1"|"$R1_ROOT_DIR/install_r1/"*|"$Torch_DIR") ;;
+      ""|/opt/ros/jazzy|/opt/ros/jazzy/opt/*|"$R1_ROOT_DIR/install_r1"|"$R1_ROOT_DIR/install_r1/"*|"$Torch_DIR") ;;
       *) echo "Unexpected overlay: $R1_PREFIX_ENTRY; use a clean shell." >&2; R1_PREFIX_REJECTED=1 ;;
     esac
   done

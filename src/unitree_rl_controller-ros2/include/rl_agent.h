@@ -84,6 +84,12 @@ class Agent
         void InitRL();
         // Reset only policy state; current robot and arm measurements are retained.
         void ResetPolicyState();
+        struct PolicyState {
+            go2_rars01::UnifiedObservationContract history;
+            torch::Tensor action;
+        };
+        PolicyState CapturePolicyState() const;
+        void RestorePolicyState(PolicyState state) noexcept;
         // Read-only diagnostic for lifecycle tests and runtime instrumentation.
         torch::Tensor UnifiedActorHistory() const;
         bool Load_Model(const std::string &model_path);
@@ -93,3 +99,21 @@ class Agent
 
 };
 
+// Worker-local transaction. Frames are immutable tensors, so the checkpoint
+// retains only five tensor handles and the previous action (no tensor clones).
+// Rejected/exceptional jobs cannot enter the next actor history.
+class PolicyStateTransaction {
+ public:
+    explicit PolicyStateTransaction(Agent& agent)
+        : agent_(agent), before_(agent.CapturePolicyState()) {}
+    ~PolicyStateTransaction() noexcept {
+        if (!committed_) agent_.RestorePolicyState(std::move(before_));
+    }
+    PolicyStateTransaction(const PolicyStateTransaction&) = delete;
+    PolicyStateTransaction& operator=(const PolicyStateTransaction&) = delete;
+    void Commit() noexcept { committed_ = true; }
+ private:
+    Agent& agent_;
+    Agent::PolicyState before_;
+    bool committed_ = false;
+};

@@ -423,7 +423,10 @@ R3Reply R3Supervisor::VelocityCommand(const std::array<double,3>& cmd,SafetyTime
   return Fail("remote test bounds violated");
  const bool moving=cmd!=std::array<double,3>{};
  if(moving&&!have_policy_)return Fail("remote test awaits valid zero policy sample");
- if(command_!=cmd)InvalidatePolicyWork();
+ // A velocity sample belongs to the next inference snapshot, not a new
+ // control session. IO may update it while the previous snapshot is running.
+ // X/B/ownership changes still invalidate tickets through their own paths.
+ if(command_!=cmd&&!moving)InvalidatePolicyWork(); // revoke an in-flight moving snapshot on stop
  command_=cmd;navigation_active_=navigation&&moving;have_command_=moving;command_stamp_=now;
  command_end_=now+std::chrono::duration_cast<SafetyClock::duration>(std::chrono::duration<double>(profile_.max_command_duration_s));
  SetPhase(moving?R3State::RL_ACTIVE:R3State::RL_ZERO);

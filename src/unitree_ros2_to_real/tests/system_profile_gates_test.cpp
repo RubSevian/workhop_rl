@@ -33,6 +33,24 @@ int main(){for(auto op:{OperationProfile::READ_ONLY,OperationProfile::ARM_TEST,O
   }
   if(op==OperationProfile::RL_ZERO_TEST){assert(!active.ManualCommand({.1,0,0},.1,done).success);assert((active.command()==std::array<double,3>{}));}
  }
+ // Smooth NAV updates during inference keep the bounded snapshot valid.
+ {
+  auto p=fixture();R3Supervisor f(p,OperationProfile::NAV_TEST);auto i=facts();i.navigation_ready=true;
+  f.Observe(i,{});assert(f.Takeover({}).success);f.Observe(i,{});assert(f.EnableOutput(true,{}).success);
+  f.Tick({});assert(f.RequestStand({}).success);
+  const auto now=SafetyTime{}+std::chrono::seconds(8);
+  i.sport_stamp=i.lowstate_stamp=i.remote_stamp=i.arm_stamp=i.target_stamp=now;f.Observe(i,now);f.Tick(now);
+  assert(f.RequestRl(now).success&&f.ConsumePolicyReset());auto zero=f.BeginPolicy(now);assert(zero&&f.PolicyResult(*zero,p.stand,2,now));
+  for(int step=0;step<8;++step){
+   auto t=now+std::chrono::milliseconds(step*10);
+   i.sport_stamp=i.lowstate_stamp=i.remote_stamp=i.arm_stamp=i.target_stamp=t;f.Observe(i,t);
+   assert(f.NavigationCommand({.1+step*.001,0,0},t).success);
+   auto job=f.BeginPolicy(t);assert(job);
+   assert(f.NavigationCommand({.101+step*.001,0,0},t+std::chrono::milliseconds(2)).success);
+   assert(f.PolicyResult(*job,p.stand,4,t+std::chrono::milliseconds(4)));
+   assert(f.Tick(t+std::chrono::milliseconds(4))&&!f.fault_latched());
+  }
+ }
  // Localization loss after output capture cannot turn stand-up into emergency.
  {
   auto p=fixture();R3Supervisor f(p,OperationProfile::NAV_TEST);auto i=facts();i.navigation_ready=true;

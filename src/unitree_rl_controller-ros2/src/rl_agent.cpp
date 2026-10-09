@@ -70,6 +70,19 @@ torch::Tensor Agent::UnifiedActorHistory() const
     return unified_observation_.History();
 }
 
+Agent::PolicyState Agent::CapturePolicyState() const
+{
+    if (!UsesGo2Rars01UnifiedLayout())
+        throw std::logic_error("Transactional policy state requires unified layout");
+    return {unified_observation_, obs.action};
+}
+
+void Agent::RestorePolicyState(PolicyState state) noexcept
+{
+    unified_observation_ = std::move(state.history);
+    obs.action = std::move(state.action);
+}
+
 void Agent::InitRL()
 {
     if (UsesGo2Rars01UnifiedLayout()) {
