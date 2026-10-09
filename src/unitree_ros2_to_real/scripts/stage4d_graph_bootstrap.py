@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 """Load the packaged FAR visibility graph once graph_decoder is ready."""
 import argparse, time, rclpy
+from rclpy.executors import ExternalShutdownException
+from rclpy.utilities import try_shutdown
 from rclpy.node import Node
 from std_msgs.msg import String
 class Bootstrap(Node):
@@ -12,6 +14,6 @@ class Bootstrap(Node):
 def main():
  p=argparse.ArgumentParser(); p.add_argument('--graph-path',required=True); p.add_argument('--delay',type=float,default=3.0); a,_=p.parse_known_args(); rclpy.init(); n=Bootstrap(a.graph_path,a.delay)
  try: rclpy.spin(n)
- except KeyboardInterrupt: pass
- finally: n.destroy_node(); rclpy.shutdown()
+ except (KeyboardInterrupt, ExternalShutdownException): pass
+ finally: n.destroy_node(); try_shutdown()
 if __name__=='__main__': main()

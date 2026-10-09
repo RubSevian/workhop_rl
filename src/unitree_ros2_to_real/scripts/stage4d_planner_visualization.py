@@ -3,6 +3,8 @@
 import math
 import os
 import rclpy
+from rclpy.executors import ExternalShutdownException
+from rclpy.utilities import try_shutdown
 from diagnostic_msgs.msg import DiagnosticArray
 from geometry_msgs.msg import Point, PointStamped
 from nav_msgs.msg import Path
@@ -106,6 +108,6 @@ class Visualizer(Node):
 def main():
  rclpy.init();n=Visualizer()
  try:rclpy.spin(n)
- except KeyboardInterrupt:pass
- finally:n.destroy_node();rclpy.shutdown()
+ except (KeyboardInterrupt, ExternalShutdownException):pass
+ finally:n.destroy_node();try_shutdown()
 if __name__=="__main__":main()

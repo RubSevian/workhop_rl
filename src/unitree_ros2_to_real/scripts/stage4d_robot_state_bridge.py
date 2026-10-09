@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 """Pass MuJoCo's named joints into an isolated RViz-only robot TF tree."""
 import rclpy
+from rclpy.executors import ExternalShutdownException
+from rclpy.utilities import try_shutdown
 from geometry_msgs.msg import TransformStamped
 from nav_msgs.msg import Odometry
 from rclpy.node import Node
@@ -70,7 +72,7 @@ class Bridge(Node):
 def main():
     rclpy.init(); node = Bridge()
     try: rclpy.spin(node)
-    except KeyboardInterrupt: pass
-    finally: node.destroy_node(); rclpy.shutdown()
+    except (KeyboardInterrupt, ExternalShutdownException): pass
+    finally: node.destroy_node(); try_shutdown()
 
 if __name__ == '__main__': main()

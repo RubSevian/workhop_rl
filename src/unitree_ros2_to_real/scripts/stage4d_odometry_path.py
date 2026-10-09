@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 """Diagnostics-only Point-LIO trajectory; /path stays owned by localPlanner."""
 import rclpy
+from rclpy.executors import ExternalShutdownException
+from rclpy.utilities import try_shutdown
 from rclpy.node import Node
 from nav_msgs.msg import Odometry, Path
 from geometry_msgs.msg import PoseStamped
@@ -19,6 +21,6 @@ class PathMirror(Node):
 def main():
     rclpy.init(); node = PathMirror()
     try: rclpy.spin(node)
-    except KeyboardInterrupt: pass
-    finally: node.destroy_node(); rclpy.shutdown()
+    except (KeyboardInterrupt, ExternalShutdownException): pass
+    finally: node.destroy_node(); try_shutdown()
 if __name__ == '__main__': main()

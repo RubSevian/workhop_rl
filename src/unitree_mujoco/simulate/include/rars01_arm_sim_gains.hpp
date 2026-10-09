@@ -17,6 +17,7 @@ inline constexpr double kGripperKd = 0.2;
 struct ArmGains {
   std::array<double, 7> position_kp{};
   std::array<double, 7> position_kd{};
+  bool enable_bias_compensation = false;
 };
 
 inline ArmGains LoadArmGains(const std::string& path) {
@@ -43,6 +44,8 @@ inline ArmGains LoadArmGains(const std::string& path) {
     };
     read("position_kp", gains.position_kp, true);
     read("position_kd", gains.position_kd, false);
+    if (arm["enable_bias_compensation"])
+      gains.enable_bias_compensation = arm["enable_bias_compensation"].as<bool>();
     return gains;
   } catch (const std::exception& error) {
     throw std::runtime_error("Invalid RARS01 arm simulation config '" + path +

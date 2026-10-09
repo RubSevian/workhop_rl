@@ -67,10 +67,18 @@ install(FILES ${CMAKE_CURRENT_SOURCE_DIR}/rars01_arm_sim.yaml DESTINATION share/
 
 if(BUILD_TESTING)
   enable_testing()
+  add_executable(test_arm_release_hold test/test_arm_release_hold.cpp)
+  target_include_directories(test_arm_release_hold PRIVATE include)
+  add_test(NAME arm_release_hold COMMAND test_arm_release_hold)
   add_executable(test_virtual_payload test/test_virtual_payload.cpp)
   target_include_directories(test_virtual_payload PRIVATE include)
   target_link_libraries(test_virtual_payload mujoco::mujoco)
   add_test(NAME virtual_payload COMMAND test_virtual_payload
+    ${CMAKE_CURRENT_SOURCE_DIR}/../unitree_robots/go2_rars01/scene_stage4d.xml)
+  add_executable(test_go2_torque_hud test/test_go2_torque_hud.cpp)
+  target_include_directories(test_go2_torque_hud PRIVATE include)
+  target_link_libraries(test_go2_torque_hud mujoco::mujoco)
+  add_test(NAME go2_torque_hud COMMAND test_go2_torque_hud
     ${CMAKE_CURRENT_SOURCE_DIR}/../unitree_robots/go2_rars01/scene_stage4d.xml)
 endif()
 

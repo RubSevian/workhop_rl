@@ -475,11 +475,12 @@ void InterfaceRos::ArmTargetHandler(const sensor_msgs::msg::JointState::SharedPt
     }
     arm_target_ = target;
     arm_target_active_ = true;
+    arm_hold_active_ = false;
     arm_target_stamp_ = std::chrono::steady_clock::now();
 }
 
 void InterfaceRos::OverlayArmTarget(unitree_go::msg::LowCmd& cmd) {
-    if (!arm_target_active_) return;
+    if (!arm_target_active_ && !arm_hold_active_) return;
     const auto release_arm = [&cmd]() {
         for (size_t index = 12; index < 20; ++index) {
             auto& motor = cmd.motor_cmd[index];
@@ -488,18 +489,20 @@ void InterfaceRos::OverlayArmTarget(unitree_go::msg::LowCmd& cmd) {
             motor.tau = 0.0F;
         }
     };
-    if (navigation_active_) {
-        arm_target_active_ = false;
-        release_arm();
-        return;
-    }
     const auto age = std::chrono::steady_clock::now() - arm_target_stamp_;
-    if (age > std::chrono::milliseconds(250)) {
+    if (arm_target_active_ && (navigation_active_ || age > std::chrono::milliseconds(250))) {
         arm_target_active_ = false;
-        release_arm();
-        RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 2000,
-                             "Arm target watchdog expired; releasing simulation-only arm command");
-        return;
+        // Keep the same latched target in LowCmd and in the policy observation.
+        // A silent return-to-zero here would disagree with the simulator hold.
+        arm_hold_active_ = latest_state != nullptr;
+        for (size_t i = 0; i < arm_target_.size() && arm_hold_active_; ++i) {
+            arm_target_[i] = latest_state->motor_state[12 + i].q;
+            arm_hold_active_ = std::isfinite(arm_target_[i]);
+        }
+        RCLCPP_WARN(get_logger(), "Arm target released (%s): %s",
+                    navigation_active_ ? "navigation active" : "250ms watchdog",
+                    arm_hold_active_ ? "holding measured pose" : "no finite pose available");
+        if (!arm_hold_active_) { release_arm(); return; }
     }
     for (size_t index = 0; index < arm_target_.size(); ++index) {
         auto& motor = cmd.motor_cmd[12 + index];
@@ -565,6 +568,7 @@ void InterfaceRos::HeightmapImageHandler(const sensor_msgs::msg::Image::SharedPt
 }
 
 void InterfaceRos::LowStateHandler(const unitree_go::msg::LowState::SharedPtr msg) {
+    low_state_watchdog_.Observe(msg->tick, LowStateWatchdog::Clock::now());
     latest_state = msg;
     publish_imu(msg->imu_state);
     publish_motor_state(msg->motor_state);
@@ -633,7 +637,8 @@ void InterfaceRos::timer_callback_cmd() {
     glfwPollEvents();
     // The original RARS pose controller sends targets at 100 Hz. The same
     // rate is used here, exclusively through the MuJoCo LowCmd bridge.
-    if (arm_target_active_ && latest_state) {
+    if ((arm_target_active_ || arm_hold_active_) && latest_state &&
+        low_state_watchdog_.CanRefresh(LowStateWatchdog::Clock::now())) {
         OverlayArmTarget(low_cmd);
         send_command(low_cmd);
     }
@@ -708,17 +713,18 @@ void InterfaceRos::RunPolicyTick(const unitree_go::msg::LowState& state) {
 
 
 
-    // Match the policy observation to the arm command applied on this tick.
-    // Without a fresh command, the simulator holds the zero-angle home target.
+    // Process release before constructing the observation, so the policy sees
+    // the exact same latched hold target that is sent to the arm actuators.
+    OverlayArmTarget(low_cmd);
     std::array<float, 6> policy_arm_target{};
-    if (arm_target_active_ && !navigation_active_ &&
-        std::chrono::steady_clock::now() - arm_target_stamp_ <= std::chrono::milliseconds(250)) {
+    if (arm_target_active_ || arm_hold_active_) {
         std::copy_n(arm_target_.begin(), policy_arm_target.size(), policy_arm_target.begin());
     }
     controller.set_arm_target(policy_arm_target);
     low_cmd = controller.update(state);
     OverlayArmTarget(low_cmd);
     send_command(low_cmd);
+    low_state_watchdog_.PolicyUpdated(LowStateWatchdog::Clock::now());
     ++policy_update_count_;
     if (auto_start_rl_ && controller.standup_done && controller.control_mode == RobotController::MODE_STANDUP) {
         controller.change_mode(RobotController::MODE_RL);

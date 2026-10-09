@@ -43,7 +43,9 @@
 #include <pthread.h>
 #include "yaml-cpp/yaml.h"
 #include "rars01_arm_sim_gains.hpp"
+#include "arm_release_hold.hpp"
 #include "virtual_payload_bridge.hpp"
+#include "go2_torque_hud.hpp"
 #include <rclcpp/rclcpp.hpp>
 #include <nav_msgs/msg/odometry.hpp>
 #include <geometry_msgs/msg/point_stamped.hpp>
@@ -459,6 +461,12 @@ namespace
       lowstate_pub_ = node_->create_publisher<unitree_go::msg::LowState>("lowstate", 10);
       physics_dt_pub_ = node_->create_publisher<std_msgs::msg::Float64>(
           "/mujoco/physics_dt", rclcpp::QoS(1).transient_local());
+      rl_ready_sub_ = node_->create_subscription<std_msgs::msg::Bool>(
+          "/stage4d/rl_ready", rclcpp::QoS(1).transient_local(),
+          [this](std_msgs::msg::Bool::SharedPtr msg) { rl_ready_.store(msg->data); });
+      navigation_sub_ = node_->create_subscription<std_msgs::msg::Bool>(
+          "/navigation_active", rclcpp::QoS(1).transient_local(),
+          [this](std_msgs::msg::Bool::SharedPtr msg) { navigation_active_.store(msg->data); });
       lowcmd_sub_ = node_->create_subscription<unitree_go::msg::LowCmd>(
           "lowcmd", 10,
           [this](const unitree_go::msg::LowCmd::SharedPtr msg) {
@@ -499,6 +507,7 @@ namespace
         if (!timed_out) command = latest_command_;
       }
       if (timed_out) command = SafeStandingCommand();
+      command_timed_out_ = timed_out;
       // Arm PD is evaluated inside mjcb_control; legs are updated here.
       for (int i = 0; i < 12; ++i) {
         const int actuator = leg_actuator_ids_[i];
@@ -506,6 +515,7 @@ namespace
         const double raw = motor.tau + motor.kp * (motor.q - data->sensordata[leg_pos_adr_[i]]) +
             motor.kd * (motor.dq - data->sensordata[leg_vel_adr_[i]]);
         const double limit = (i % 3 == 2) ? 35.55 : 23.7;
+        requested_torque_[i] = raw;
         data->ctrl[actuator] = std::clamp(raw, -limit, limit);
         if (raw != data->ctrl[actuator]) ++torque_saturation_count_;
       }
@@ -515,32 +525,40 @@ namespace
     // the arm; otherwise the existing home hold remains active.
     bool ApplyArm(const mjModel* model, mjData* data) {
       if (!Resolve(model)) return false;
+      if (arm_model_ != model || data->time < last_arm_time_) {
+        arm_release_hold_.Reset();
+        std::lock_guard<std::mutex> lock(command_mutex_);
+        have_command_ = false;
+      }
+      arm_model_ = model;
+      last_arm_time_ = data->time;
       unitree_go::msg::LowCmd command;
+      bool fresh_command = false;
       {
         std::lock_guard<std::mutex> lock(command_mutex_);
-        if (!have_command_ ||
-            std::chrono::steady_clock::now() - last_command_time_ >
-                std::chrono::milliseconds(100)) {
-          return false;
-        }
-        command = latest_command_;
+        fresh_command = have_command_ &&
+            std::chrono::steady_clock::now() - last_command_time_ <= std::chrono::milliseconds(100);
+        if (fresh_command) command = latest_command_;
       }
+      if (!fresh_command) return HoldReleasedArm(model, data);
       for (int i = 0; i < 8; ++i) {
         const auto& motor = command.motor_cmd[12 + i];
         const int joint = rars_joint_ids_[i];
         if (motor.kp <= 0.0F || motor.kd < 0.0F ||
             motor.q < model->jnt_range[2 * joint] ||
             motor.q > model->jnt_range[2 * joint + 1]) {
-          return false;
+          return HoldReleasedArm(model, data);
         }
       }
+      arm_release_hold_.CommandAccepted();
       for (int i = 0; i < 8; ++i) {
         const int joint = rars_joint_ids_[i];
         const int actuator = rars_actuator_ids_[i];
         const auto& motor = command.motor_cmd[12 + i];
         const double q = data->qpos[model->jnt_qposadr[joint]];
         const double dq = data->qvel[model->jnt_dofadr[joint]];
-        const double gravity_and_coriolis = data->qfrc_bias[model->jnt_dofadr[joint]];
+        const double gravity_and_coriolis = rars01_arm_gains.enable_bias_compensation
+            ? data->qfrc_bias[model->jnt_dofadr[joint]] : 0.0;
         const double torque = motor.tau + gravity_and_coriolis +
                               motor.kp * (motor.q - q) +
                               motor.kd * (motor.dq - dq);
@@ -580,9 +598,49 @@ namespace
       state.imu_state.rpy[1] = std::asin(std::clamp(2 * (w * y - z * x), -1.0, 1.0));
       state.imu_state.rpy[2] = std::atan2(2 * (w * z + x * y), 1 - 2 * (y * y + z * z));
       lowstate_pub_->publish(state);
+      // Formatting and UI transfer at 20 Hz; no per-step console/file output.
+      if (data->time < last_hud_time_ || data->time + 1e-9 >= next_hud_time_) {
+        next_hud_time_ = data->time + 0.05;
+        const std::string snapshot = stage4d::Go2TorqueHud(model, data, requested_torque_,
+            command_timed_out_ ? "SAFE_TIMEOUT" : rl_ready_.load() ? "RL" : "PRE-RL",
+            navigation_active_.load());
+        std::lock_guard<std::mutex> lock(hud_mutex_);
+        hud_text_ = snapshot;
+      }
+      last_hud_time_ = data->time;
+    }
+
+    void DrawHud(const mjrRect& rect, mjrContext& context) const {
+      std::string text;
+      { std::lock_guard<std::mutex> lock(hud_mutex_); text = hud_text_; }
+      if (!text.empty()) mjr_overlay(mjFONT_NORMAL, mjGRID_TOPRIGHT, rect,
+                                    text.c_str(), "", &context);
     }
 
   private:
+    bool HoldReleasedArm(const mjModel* model, mjData* data) {
+      std::array<double, 8> measured{};
+      for (int i = 0; i < 8; ++i)
+        measured[i] = data->qpos[model->jnt_qposadr[rars_joint_ids_[i]]];
+      const bool already_holding = arm_release_hold_.holding();
+      if (!arm_release_hold_.Capture(measured)) return false;
+      if (!already_holding)
+        RCLCPP_WARN(node_->get_logger(),
+                    "Arm command released/invalid: holding measured pose; automatic HOME disabled");
+      for (int i = 0; i < 8; ++i) {
+        const int joint = rars_joint_ids_[i], actuator = rars_actuator_ids_[i];
+        const int dof = model->jnt_dofadr[joint];
+        const double kp = i < 6 ? rars01_arm_gains.position_kp[i] : rars01_sim::kGripperKp;
+        const double kd = i < 6 ? rars01_arm_gains.position_kd[i] : rars01_sim::kGripperKd;
+        const double bias = rars01_arm_gains.enable_bias_compensation ? data->qfrc_bias[dof] : 0.0;
+        const double torque = kp * (arm_release_hold_.target()[i] - measured[i]) -
+                              kd * data->qvel[dof] + bias;
+        data->ctrl[actuator] = std::clamp(torque, model->actuator_ctrlrange[2*actuator],
+                                        model->actuator_ctrlrange[2*actuator+1]);
+      }
+      return true;
+    }
+
     static int SensorAddress(const mjModel* model, const char* name, int dimension) {
       const int sensor = mj_name2id(model, mjOBJ_SENSOR, name);
       if (sensor < 0 || model->sensor_dim[sensor] != dimension) {
@@ -653,6 +711,13 @@ namespace
     rclcpp::Publisher<unitree_go::msg::LowState>::SharedPtr lowstate_pub_;
     rclcpp::Publisher<std_msgs::msg::Float64>::SharedPtr physics_dt_pub_;
     rclcpp::Subscription<unitree_go::msg::LowCmd>::SharedPtr lowcmd_sub_;
+    rclcpp::Subscription<std_msgs::msg::Bool>::SharedPtr rl_ready_sub_, navigation_sub_;
+    std::atomic<bool> rl_ready_{false}, navigation_active_{false};
+    std::array<double, 12> requested_torque_{};
+    bool command_timed_out_ = true;
+    double next_hud_time_ = 0, last_hud_time_ = -1;
+    mutable std::mutex hud_mutex_;
+    std::string hud_text_;
     std::thread spin_thread_;
     std::mutex command_mutex_;
     unitree_go::msg::LowCmd latest_command_;
@@ -669,6 +734,9 @@ namespace
     std::array<int, 12> leg_force_adr_{};
     std::array<int, 8> rars_joint_ids_{};
     std::array<int, 8> rars_actuator_ids_{};
+    rars01_sim::ArmReleaseHold arm_release_hold_;
+    const mjModel* arm_model_ = nullptr;
+    double last_arm_time_ = -1.0;
     int imu_quat_adr_ = -1;
     int imu_gyro_adr_ = -1;
     int imu_acc_adr_ = -1;
@@ -1769,6 +1837,9 @@ int main(int argc, char **argv)
         ? override_path : (std::filesystem::path(mujoco_dir) / "rars01_arm_sim.yaml").string();
     try {
       rars01_arm_gains = rars01_sim::LoadArmGains(gains_path);
+      std::cout << "RARS01 simulator bias compensation: "
+                << (rars01_arm_gains.enable_bias_compensation ? "ON (simulation oracle)" : "OFF (PD + command feedforward)")
+                << std::endl;
     } catch (const std::exception& error) {
       std::cerr << error.what() << std::endl;
       rclcpp::shutdown();
@@ -1865,14 +1936,15 @@ int main(int argc, char **argv)
       if (nav) nav->DrawMarker(scene);
       if (manual) manual->DrawMarker(scene);
     });
-    if (manual_manip_bridge) {
-      sim->SetSceneHudCallback([manual = manual_manip_bridge.get()](const mjrRect& rect, mjrContext& context) {
-        manual->DrawHud(rect, context);
-        if (virtual_payload_bridge) virtual_payload_bridge->DrawHud(rect, context);
-      });
-    }
     std::cout << "Interactive Stage4D: Ctrl+LMB goal, LMB cancel goal, LeftAlt+LMB manual target, RightAlt cancel manual target"
               << std::endl;
+  }
+  if (config.enable_mujoco_hud) {
+    sim->SetSceneHudCallback([manual = manual_manip_bridge.get()](const mjrRect& rect, mjrContext& context) {
+      if (manual) manual->DrawHud(rect, context);
+      if (virtual_payload_bridge) virtual_payload_bridge->DrawHud(rect, context);
+      if (ros_low_level_bridge) ros_low_level_bridge->DrawHud(rect, context);
+    });
   }
 
   if (config.robot == "go2_rars01") mjcb_control = Go2Rars01HomeHold;

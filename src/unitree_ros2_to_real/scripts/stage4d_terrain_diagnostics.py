@@ -2,6 +2,8 @@
 """Terrain statistics plus truthful, visualization-only planner terrain splits."""
 import math
 import rclpy
+from rclpy.executors import ExternalShutdownException
+from rclpy.utilities import try_shutdown
 from diagnostic_msgs.msg import DiagnosticArray, DiagnosticStatus, KeyValue
 from rclpy.node import Node
 from rclpy.qos import DurabilityPolicy, QoSProfile, ReliabilityPolicy
@@ -122,7 +124,7 @@ class TerrainDiagnostics(Node):
 def main():
     rclpy.init(); node = TerrainDiagnostics()
     try: rclpy.spin(node)
-    except KeyboardInterrupt: pass
-    finally: node.destroy_node(); rclpy.shutdown()
+    except (KeyboardInterrupt, ExternalShutdownException): pass
+    finally: node.destroy_node(); try_shutdown()
 
 if __name__ == '__main__': main()

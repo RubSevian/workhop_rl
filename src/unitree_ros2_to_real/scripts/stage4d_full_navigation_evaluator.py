@@ -2,6 +2,8 @@
 """Recorder only: Stage4D never publishes a route or navigation_active."""
 import argparse, json, math, time, signal
 import rclpy
+from rclpy.executors import ExternalShutdownException
+from rclpy.utilities import try_shutdown
 from rclpy.node import Node
 from rclpy.serialization import deserialize_message
 from geometry_msgs.msg import PointStamped, TwistStamped
@@ -28,5 +30,8 @@ class Evaluator(Node):
   with open(self.report,'w') as f: json.dump(out,f,indent=2)
   res.success=True; res.message=self.report; return res
 def main():
- p=argparse.ArgumentParser(); p.add_argument('--report',default='/tmp/stage4d_full_navigation_report.json'); a,_=p.parse_known_args(); rclpy.init(); n=Evaluator(a.report); rclpy.spin(n)
+ p=argparse.ArgumentParser(); p.add_argument('--report',default='/tmp/stage4d_full_navigation_report.json'); a,_=p.parse_known_args(); rclpy.init(); n=Evaluator(a.report)
+ try: rclpy.spin(n)
+ except (KeyboardInterrupt, ExternalShutdownException): pass
+ finally: n.destroy_node(); try_shutdown()
 if __name__=='__main__': main()

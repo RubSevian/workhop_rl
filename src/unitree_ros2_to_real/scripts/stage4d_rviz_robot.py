@@ -6,6 +6,8 @@ full combined URDF from /stage4d/joint_states and sim_visual_* TF.
 """
 import math
 import rclpy
+from rclpy.executors import ExternalShutdownException
+from rclpy.utilities import try_shutdown
 from geometry_msgs.msg import PoseStamped
 from nav_msgs.msg import Odometry, Path
 from rclpy.node import Node
@@ -38,7 +40,7 @@ class GroundTruthPath(Node):
 def main():
     rclpy.init(); node = GroundTruthPath()
     try: rclpy.spin(node)
-    except KeyboardInterrupt: pass
-    finally: node.destroy_node(); rclpy.shutdown()
+    except (KeyboardInterrupt, ExternalShutdownException): pass
+    finally: node.destroy_node(); try_shutdown()
 
 if __name__ == '__main__': main()

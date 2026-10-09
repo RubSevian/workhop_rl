@@ -634,6 +634,12 @@ def main():
         executor.spin()
     except (KeyboardInterrupt, ExternalShutdownException):
         pass
+    except RuntimeError:
+        # Humble may raise RCLError while constructing a wait set after the
+        # signal handler has already invalidated the context. Never suppress
+        # a runtime error while ROS is still running.
+        if rclpy.ok():
+            raise
     finally:
         executor.shutdown()
         if node.payload_csv is not None:

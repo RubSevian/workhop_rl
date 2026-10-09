@@ -3,6 +3,8 @@
 import argparse
 import xml.etree.ElementTree as ET
 import rclpy
+from rclpy.executors import ExternalShutdownException
+from rclpy.utilities import try_shutdown
 from rclpy.node import Node
 from rclpy.qos import QoSProfile, DurabilityPolicy
 from visualization_msgs.msg import Marker, MarkerArray
@@ -37,6 +39,6 @@ def main():
     parser = argparse.ArgumentParser(); parser.add_argument('--scene', required=True); args, _ = parser.parse_known_args()
     rclpy.init(); node = SceneMarkers(args.scene)
     try: rclpy.spin(node)
-    except KeyboardInterrupt: pass
-    finally: node.destroy_node(); rclpy.shutdown()
+    except (KeyboardInterrupt, ExternalShutdownException): pass
+    finally: node.destroy_node(); try_shutdown()
 if __name__ == '__main__': main()

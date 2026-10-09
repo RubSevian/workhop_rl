@@ -3,6 +3,8 @@
 import json
 import time
 import rclpy
+from rclpy.executors import ExternalShutdownException
+from rclpy.utilities import try_shutdown
 from rclpy.node import Node
 from rclpy.qos import QoSProfile, DurabilityPolicy
 from rosgraph_msgs.msg import Clock
@@ -93,6 +95,6 @@ class Readiness(Node):
 def main():
     rclpy.init(); n = Readiness()
     try: rclpy.spin(n)
-    except KeyboardInterrupt: pass
-    finally: n.destroy_node(); rclpy.shutdown()
+    except (KeyboardInterrupt, ExternalShutdownException): pass
+    finally: n.destroy_node(); try_shutdown()
 if __name__ == '__main__': main()

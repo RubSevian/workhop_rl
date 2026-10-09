@@ -18,6 +18,7 @@
 #include "rl_agent.h"
 #include "motor_crc.h"
 #include "navigation_command_adapter.hpp"
+#include "low_state_watchdog.hpp"
 #include "rars01_arm_sim_gains.hpp"
 
 
@@ -111,6 +112,7 @@ private:
     rclcpp::Subscription<std_msgs::msg::Float64>::SharedPtr physics_dt_sub;
     unitree_go::msg::LowCmd low_cmd;
     unitree_go::msg::LowState::SharedPtr latest_state;
+    LowStateWatchdog low_state_watchdog_;
     rclcpp::Subscription<sensor_msgs::msg::Image>::SharedPtr heightmap_sub;
     rclcpp::Subscription<geometry_msgs::msg::TwistStamped>::SharedPtr cmd_vel_sub;
     rclcpp::Subscription<std_msgs::msg::Bool>::SharedPtr navigation_active_sub;
@@ -130,6 +132,7 @@ private:
     bool auto_standup_started_ = false;
     bool navigation_active_ = false;
     bool arm_target_active_ = false;
+    bool arm_hold_active_ = false;
     std::array<float, 8> arm_target_{};
     std::chrono::steady_clock::time_point arm_target_stamp_{};
 

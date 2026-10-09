@@ -5,6 +5,8 @@ import math
 import time
 
 import rclpy
+from rclpy.executors import ExternalShutdownException
+from rclpy.utilities import try_shutdown
 from diagnostic_msgs.msg import DiagnosticArray
 from geometry_msgs.msg import PointStamped, TwistStamped
 from nav_msgs.msg import Odometry
@@ -170,11 +172,11 @@ def main():
     node = NavigationExplainer()
     try:
         rclpy.spin(node)
-    except KeyboardInterrupt:
+    except (KeyboardInterrupt, ExternalShutdownException):
         pass
     finally:
         node.destroy_node()
-        rclpy.shutdown()
+        try_shutdown()
 
 
 if __name__ == '__main__':
