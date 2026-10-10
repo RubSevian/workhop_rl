@@ -1,6 +1,7 @@
 rars01_arm:
-  # Opt-in simulation oracle, NOT a real motor/SDK compensation model.
+  # Simulation approximation of accurate pos/vel tracking, NOT a real SDK model.
+  # qfrc_bias includes gravity AND Coriolis/centrifugal terms, not gravity only.
   # false: bounded PD + commanded feedforward only (also during release hold).
-  enable_bias_compensation: false
+  enable_bias_compensation: true
   position_kp: [70.0, 120.0, 120.0, 50.0, 20.0, 20.0, 20.0]
   position_kd: [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0]

@@ -8,7 +8,7 @@ from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription, SetEnvironmentVariable
 from launch.conditions import IfCondition, UnlessCondition
 from launch.launch_description_sources import AnyLaunchDescriptionSource, PythonLaunchDescriptionSource
-from launch.substitutions import Command, EnvironmentVariable, LaunchConfiguration, PathJoinSubstitution
+from launch.substitutions import Command, EnvironmentVariable, LaunchConfiguration, PathJoinSubstitution, PythonExpression
 from launch_ros.actions import Node, SetParameter
 from launch_ros.parameter_descriptions import ParameterValue
 from launch_ros.substitutions import FindPackageShare
@@ -84,6 +84,7 @@ def generate_launch_description():
         DeclareLaunchArgument('enable_far', default_value='true'),
         DeclareLaunchArgument('enable_local_planner', default_value='true'),
         DeclareLaunchArgument('far_converge_distance', default_value=EnvironmentVariable('STAGE4D_FAR_CONVERGE_DISTANCE', default_value='0.25')),
+        DeclareLaunchArgument('stop_dis_thre', default_value=EnvironmentVariable('STAGE4D_STOP_DIS_THRE', default_value='0.30')),
         DeclareLaunchArgument('goal_close_dis', default_value=EnvironmentVariable('STAGE4D_GOAL_CLOSE_DIS', default_value='0.40')),
         Node(package='unitree_mujoco', executable='unitree_mujoco', output='screen',
              arguments=['--config', LaunchConfiguration('mujoco_config')]),
@@ -95,8 +96,12 @@ def generate_launch_description():
         # transform_sensors remains the sole raw->body conversion.
         Node(package='transform_sensors', executable='transform_everything', name='transform_everything', output='screen',
              parameters=[{'calibration_path': LaunchConfiguration('sim_imu_calibration'), 'preserve_sensor_stamp': True}]),
+        # A simulation clock rewind requires fresh EKF and terrain/graph maps.
+        # Respawn is disabled automatically by ROS launch during normal shutdown.
         Node(package='point_lio_unilidar', executable='pointlio_mapping', name='laserMapping', output='screen',
+             respawn=True, respawn_delay=1.0,
              parameters=[LaunchConfiguration('pointlio_config'), {'prop_at_freq_of_imu': True, 'check_satu': True,
+                 'restart_on_time_jump': True,
                  'init_map_size': 10, 'point_filter_num': 1, 'space_down_sample': True,
                  'filter_size_surf': 0.1, 'filter_size_map': 0.1, 'cube_side_length': 1000.0}],
              remappings=[('/cloud_registered', '/registered_scan'), ('/aft_mapped_to_init', '/state_estimation'),
@@ -113,11 +118,15 @@ def generate_launch_description():
              # sensor is the IMU origin; child vehicle is the Go2 base origin.
              arguments=['0.02557', '0', '-0.04232', '0', '0', '0', 'sensor', 'vehicle']),
         Node(package='terrain_analysis', executable='terrainAnalysis', name='terrainAnalysis', output='screen',
-             parameters=[{'worldFrame': 'map'}]),
+             respawn=True, respawn_delay=1.0,
+             parameters=[{'worldFrame': 'map', 'restart_on_time_jump': True}]),
         Node(package='terrain_analysis_ext', executable='terrainAnalysisExt', name='terrainAnalysisExt', output='screen',
-             parameters=[{'worldFrame': 'map', 'checkTerrainConn': False}]),
+             respawn=True, respawn_delay=1.0,
+             parameters=[{'worldFrame': 'map', 'checkTerrainConn': False, 'restart_on_time_jump': True}]),
         Node(package='far_planner', executable='far_planner', name='far_planner', output='screen', condition=IfCondition(LaunchConfiguration('enable_far')),
-             parameters=[LaunchConfiguration('far_config'), {'g_planner/converge_distance': LaunchConfiguration('far_converge_distance')}],
+             respawn=True, respawn_delay=1.0,
+             parameters=[LaunchConfiguration('far_config'), {'g_planner/converge_distance': LaunchConfiguration('far_converge_distance'),
+                 'restart_on_time_jump': True}],
              remappings=[('/odom_world', '/state_estimation'), ('/terrain_cloud', '/terrain_map_ext'),
                          ('/scan_cloud', '/terrain_map'), ('/terrain_local_cloud', '/registered_scan')]),
         IncludeLaunchDescription(PythonLaunchDescriptionSource(PathJoinSubstitution([FindPackageShare('graph_decoder'), 'launch', 'decoder.launch']))),
@@ -134,6 +143,10 @@ def generate_launch_description():
                 'is_real_robot': 'false', 'sendSportCommand': 'false',
                 'odomTimeoutSec': '0.5', 'pathTimeoutSec': '0.5', 'allowStaticPath': 'false',
                 'stage4dGoalCloseDis': LaunchConfiguration('goal_close_dis'),
+                # Stop inside FAR's completion radius, with room for reach votes.
+                # A deliberately stricter follower threshold remains authoritative.
+                'stopDisThre': PythonExpression(['min(', LaunchConfiguration('stop_dis_thre'),
+                    ', 0.9 * ', LaunchConfiguration('far_converge_distance'), ')']),
                 # Stage4D already owns this identity transform; retain the
                 # original sensor->camera publisher because no equivalent exists.
                 'publishSensorToVehicleTf': 'false', 'publishSensorToCameraTf': 'true',

@@ -47,6 +47,12 @@ class Readiness(Node):
         self.timer = self.create_timer(0.25, self.tick)
     def clock(self, msg):
         value = msg.clock.sec + msg.clock.nanosec * 1e-9
+        if self.clock_value is not None and value < self.clock_value - 0.5:
+            # Freshness of the previous simulation epoch is not readiness now.
+            self.seen.clear(); self.nonempty.clear(); self.pointlio_ok = None
+            self.clock_advanced = False; self.nav_active = False
+            self.waypoint = False; self.path_len = 0; self.nonzero_command = False
+            self.pre.publish(Bool(data=False)); self.post.publish(Bool(data=False))
         if self.clock_value is not None and value > self.clock_value: self.clock_advanced = True
         self.clock_value = value; self.seen['/clock'] = time.monotonic()
     def lidar_diag(self, msg):
