@@ -1,4 +1,5 @@
 #include "real_controller_core.hpp"
+#include "policy_tensor_io.hpp"
 #include <algorithm>
 #include <cmath>
 #include <filesystem>
@@ -53,8 +54,8 @@ void RealControllerCore::Load(const std::string& config, const std::string& poli
 void RealControllerCore::SetMeasuredLegs(const Legs& q, const Legs& dq) {
   auto p=MotorToPolicy(q); auto v=MotorToPolicy(dq);
   for(int i=0;i<12;++i) if(!std::isfinite(p[i]) || !std::isfinite(v[i])) throw std::runtime_error("Nonfinite leg feedback");
-  agent_.obs.dof_pos=torch::tensor(std::vector<float>(p.begin(),p.end()));
-  agent_.obs.dof_vel=torch::tensor(std::vector<float>(v.begin(),v.end()));
+  CopyPolicyInput(agent_.obs.dof_pos,p);
+  CopyPolicyInput(agent_.obs.dof_vel,v);
 }
 bool RealControllerCore::RequestMode(Mode next, const Readiness& r) {
   if(next==Mode::DISARMED) { safety_.Disarm(); if(mode_!=Mode::FAULT) mode_=next; return mode_==next; }

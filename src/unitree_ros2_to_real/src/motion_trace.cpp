@@ -11,6 +11,7 @@ MotionTrace::MotionTrace(const std::string& path,double duration_s):duration_s_(
  for(const auto& field:{"sticks","requested","command","gyro"})for(int n=0;n<3;++n)file_<<','<<field<<n;
  for(int n=0;n<4;++n)file_<<",quat"<<n;
  for(const auto& field:{"q","dq","target","action","kp","kd"})for(int n=0;n<12;++n)file_<<','<<field<<n;
+ file_<<",prepare_ms,compute_cpu_ms,postprocess_ms,result_lock_wait_ms,callback_lock_wait_ms,callback_lock_hold_ms,graph_ms";
  file_<<'\n';file_.flush();writer_=std::thread([this]{Write();});
 }
 MotionTrace::~MotionTrace(){Stop();if(writer_.joinable())writer_.join();}
@@ -37,7 +38,8 @@ void MotionTrace::Write() {
   if(have) {
    file_<<s.kind<<','<<s.phase<<','<<s.accepted<<','<<s.stamp_ns<<','<<s.packets<<','<<s.interval_s<<','<<s.io_min_s<<','<<s.io_max_s<<','<<s.low_age_s<<','<<s.remote_age_s<<','<<s.arm_age_s<<','<<s.target_age_s<<','<<s.compute_ms<<','<<s.job_age_s<<','<<s.result_age_s;
    auto values=[this](const auto& a){for(auto v:a)file_<<','<<v;};
-   values(s.sticks);values(s.requested);values(s.command);values(s.gyro);values(s.quat);values(s.q);values(s.dq);values(s.target);values(s.action);values(s.kp);values(s.kd);file_<<'\n';
+   values(s.sticks);values(s.requested);values(s.command);values(s.gyro);values(s.quat);values(s.q);values(s.dq);values(s.target);values(s.action);values(s.kp);values(s.kd);
+   file_<<','<<s.prepare_ms<<','<<s.compute_cpu_ms<<','<<s.postprocess_ms<<','<<s.result_lock_wait_ms<<','<<s.callback_lock_wait_ms<<','<<s.callback_lock_hold_ms<<','<<s.graph_ms<<'\n';
    if(!file_){Stop();return;}
   }else {
    if(!enabled())break;

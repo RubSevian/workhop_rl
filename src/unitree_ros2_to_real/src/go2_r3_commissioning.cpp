@@ -1,9 +1,13 @@
 #include "r3_commissioning.hpp"
 #include "real_controller_core.hpp"
+#include "policy_tensor_io.hpp"
 #include "output_lease.hpp"
-#include "sdk_mode_process.hpp"
+#include "sdk_mode_session.hpp"
+#include "async_mode_worker.hpp"
 #include "motion_trace.hpp"
 #include "navigation_request_gate.hpp"
+#include "control_diagnostics.hpp"
+#include "control_executors.hpp"
 #include <future>
 #include <ATen/Parallel.h>
 #include <rclcpp/rclcpp.hpp>
@@ -17,8 +21,16 @@
 #include <cmath>
 #include <algorithm>
 #include <limits>
+#include <cstdlib>
+#include <ctime>
 using namespace sim2real;
 namespace {
+#ifdef R3_COMPUTE_PROBE_ONLY
+constexpr bool compute_probe=true;
+#else
+constexpr bool compute_probe=false;
+#endif
+int64_t ThreadCpuNs(){timespec t{};return clock_gettime(CLOCK_THREAD_CPUTIME_ID,&t)==0?int64_t(t.tv_sec)*1000000000+t.tv_nsec:-1;}
 SafetyTime TimeNs(int64_t ns){return SafetyTime(std::chrono::nanoseconds(ns));}
 double Age(SafetyTime now,SafetyTime stamp){return std::chrono::duration<double>(now-stamp).count();}
 std::array<float,6> Six(const YAML::Node& n){auto v=n.as<std::vector<float>>();if(v.size()!=6)throw std::runtime_error("Exactly six arm values required");std::array<float,6> a;std::copy(v.begin(),v.end(),a.begin());for(float x:a)if(!std::isfinite(x))throw std::runtime_error("Invalid arm values");return a;}
@@ -31,7 +43,7 @@ class R3Node final:public rclcpp::Node {
   rcl_interfaces::msg::ParameterDescriptor immutable;immutable.read_only=true;
   const auto config=declare_parameter<std::string>("config_path","",immutable);
   const auto model=declare_parameter<std::string>("model_path","",immutable);
-  const bool trace_enabled=declare_parameter<bool>("motion_diagnostics_enabled",false,immutable);
+  const bool trace_enabled=declare_parameter<bool>("motion_diagnostics_enabled",compute_probe,immutable);
   const double trace_seconds=declare_parameter<double>("motion_diagnostics_duration_s",120.,immutable);
   const auto trace_prefix=declare_parameter<std::string>("motion_diagnostics_path","/home/ruben/go2_diploma/sim2real/runtime/go2_motion_trace",immutable);
   if(trace_enabled) {
@@ -42,7 +54,7 @@ class R3Node final:public rclcpp::Node {
   services_.push_back(create_service<std_srvs::srv::Trigger>("/go2/diagnostics/stop_motion_log",[this](std_srvs::srv::Trigger::Request::SharedPtr,std_srvs::srv::Trigger::Response::SharedPtr response){
    if(motion_trace_)motion_trace_->Stop();response->success=true;response->message="motion logging stopped; queued rows drain asynchronously";
   }));
-  const auto profile_name=declare_parameter<std::string>("operation_profile","",immutable);
+  const auto profile_name=declare_parameter<std::string>("operation_profile",compute_probe?"read_only":"",immutable);
   std::optional<OperationProfile> explicit_profile;
   if(!profile_name.empty())explicit_profile=ParseOperationProfile(profile_name);
   read_only_=declare_parameter<bool>("read_only",explicit_profile?!ResolveOperationCapabilities(*explicit_profile).physical_leg_output:true,immutable);
@@ -62,8 +74,20 @@ class R3Node final:public rclcpp::Node {
   }
   remote_test_mode_=control_mode_=="remote_test"&&motion_commands_enabled_;
   network_interface_=declare_parameter<std::string>("network_interface","",immutable);
+  if constexpr(compute_probe) {
+   const auto domain=std::getenv("ROS_DOMAIN_ID"),dds=std::getenv("CYCLONEDDS_URI");
+   if(!domain||std::string(domain)!="228"||!dds||std::string(dds).find("name=\"lo\"")==std::string::npos||
+      operation!=OperationProfile::READ_ONLY||!read_only_||!network_interface_.empty())
+    throw std::runtime_error("Compute probe requires loopback domain228, read_only profile and empty SDK interface");
+   probe_shared_executor_=declare_parameter<bool>("probe_shared_executor",false,immutable);
+   const double seconds=declare_parameter<double>("probe_duration_s",60.,immutable);
+   if(!std::isfinite(seconds)||seconds<=0||seconds>600)throw std::runtime_error("Probe duration must be 0..600 seconds");
+   probe_stop_=create_wall_timer(std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::duration<double>(seconds)),[]{rclcpp::shutdown();});
+  }
   sdk_helper_=(std::filesystem::read_symlink("/proc/self/exe").parent_path()/"go2_mode_switch").string();
   if(declare_parameter<bool>("enable_actuator_output",false,immutable))throw std::runtime_error("startup output must be false; use explicit service gate");
+  sdk_session_=std::make_shared<ModeSessionProcess>(sdk_helper_,network_interface_);
+  sdk_worker_=std::make_unique<AsyncModeWorker>([session=sdk_session_](bool release,int timeout){return session->Request(release,timeout);});
   core_.Load(config,model);const auto y=YAML::LoadFile(config),d=y["real_deployment"],r=d["r3_commissioning"];
   // Warm TorchScript before any subscriptions, output publisher or takeover.
   // Discard all warm-up targets; the real RL entry resets history from feedback.
@@ -87,7 +111,11 @@ class R3Node final:public rclcpp::Node {
   output_lock_=r["output_lock"].as<std::string>();
   inputs_.ready.model_loaded=core_.loaded();inputs_.ready.config_valid=true;inputs_.ready.transport_ready=!read_only_;
   status_=create_publisher<std_msgs::msg::String>("/go2/locomotion_status",10);
-  low_sub_=create_subscription<unitree_go::msg::LowState>("/lowstate",rclcpp::SensorDataQoS(),[this](unitree_go::msg::LowState::ConstSharedPtr m){
+  // Parsing arm/NAV status must not exclude delivery of the next leg sample
+  // through the default mutually-exclusive callback group.
+  state_group_=create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
+  rclcpp::SubscriptionOptions state_options;state_options.callback_group=state_group_;
+  low_sub_=create_subscription<unitree_go::msg::LowState>("/lowstate",rclcpp::SensorDataQoS().keep_last(1),[this](unitree_go::msg::LowState::ConstSharedPtr m){
    std::lock_guard lock(mutex_);const auto now=SafetyClock::now();
    const bool valid=lowstate_.Receive(*m,now);remote_->Receive(m->wireless_remote,now);
    inputs_.lowstate_stamp=now;inputs_.remote_stamp=now;inputs_.ready.motor_state_valid=valid;
@@ -95,13 +123,16 @@ class R3Node final:public rclcpp::Node {
    else if(supervisor_->output_enabled())supervisor_->Fault("invalid_lowstate",now);
   });
   sport_sub_=create_subscription<std_msgs::msg::String>("/go2/commissioning/sport_observation",10,[this](std_msgs::msg::String::ConstSharedPtr m){
-   std::lock_guard lock(mutex_);try{auto y=YAML::Load(m->data);inputs_.sport=ParseSportMode(y["state"].as<std::string>());inputs_.sport_stamp=TimeNs(y["observed_ns"].as<int64_t>());}
+   std::lock_guard lock(mutex_);if(!network_interface_.empty())return;try{auto y=YAML::Load(m->data);inputs_.sport=ParseSportMode(y["state"].as<std::string>());inputs_.sport_stamp=TimeNs(y["observed_ns"].as<int64_t>());}
    catch(...){inputs_.sport=SportMode::ERROR;inputs_.sport_stamp=SafetyTime{};}
   });
   mission_readiness_sub_=create_subscription<std_msgs::msg::String>("/go2/mission/readiness",rclcpp::QoS(1),[this](std_msgs::msg::String::ConstSharedPtr message){
+   YAML::Node decoded;std::string decode_error;
+   try{if(message->data.size()>4096)throw std::runtime_error("oversize navigation envelope");decoded=YAML::Load(message->data);}
+   catch(const std::exception& e){decode_error=e.what();}
    std::lock_guard lock(mutex_);mission_perception_ready_=false;
-   try{if(message->data.size()>4096)throw std::runtime_error("oversize navigation envelope");
-    auto y=YAML::Load(message->data);const auto stamp=TimeNs(y["observed_ns"].as<int64_t>());
+   try{if(!decode_error.empty())throw std::runtime_error(decode_error);
+    const auto& y=decoded;const auto stamp=TimeNs(y["observed_ns"].as<int64_t>());
     const auto session=y["session_id"].as<std::string>();const bool ready=y["navigation_ready"].as<bool>();
     if(!navigation_gate_->Observe(session,ready,y["command_enabled"].as<bool>(),stamp,SafetyClock::now()))return;
     mission_readiness_stamp_=stamp;mission_session_=session;
@@ -113,17 +144,20 @@ class R3Node final:public rclcpp::Node {
     if(control_mode_=="autonomy"&&motion_commands_enabled_&&supervisor_->system_state()!=SystemState::CONTROLLED_STOP&&!supervisor_->fault_latched())
      navigation_gate_->Accept(session,{c[0].as<double>(),c[1].as<double>(),c[2].as<double>()},y["command_age_s"].as<double>(),stamp,SafetyClock::now());
    }catch(...){navigation_gate_->Invalidate();mission_readiness_stamp_={};}
-  });
+  },state_options);
   arm_home_client_=create_client<std_srvs::srv::Trigger>("/rars01/control/return_home");
   arm_emergency_client_=create_client<std_srvs::srv::Trigger>("/rars01/control/emergency_disable");
   nav_cancel_client_=create_client<std_srvs::srv::Trigger>("/go2/mission/cancel_navigation");
   manipulation_cancel_client_=create_client<std_srvs::srv::Trigger>("/rars01/mission/cancel_manipulation");
   port_group_=create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
   port_timer_=create_wall_timer(std::chrono::milliseconds(10),[this]{PortTick();},port_group_);
-  arm_sub_=create_subscription<std_msgs::msg::String>("/rars01/commissioning/state",10,[this](std_msgs::msg::String::ConstSharedPtr m){
+  arm_sub_=create_subscription<std_msgs::msg::String>("/rars01/commissioning/state",rclcpp::QoS(1),[this](std_msgs::msg::String::ConstSharedPtr m){
+   YAML::Node decoded;std::string decode_error;
+   try{decoded=YAML::Load(m->data);}catch(const std::exception& e){decode_error=e.what();}
    std::lock_guard lock(mutex_);inputs_.ready.arm_feedback_ready=false;inputs_.ready.arm_target_ready=false;inputs_.arm_static_hold=false;inputs_.arm_home_ready=false;inputs_.arm_control_ready=false;inputs_.arm_emergency_validated=false;
    try {
-    const auto y=YAML::Load(m->data);const auto now=SafetyClock::now();arm_error_.clear();
+    if(!decode_error.empty())throw std::runtime_error(decode_error);
+    const auto& y=decoded;const auto now=SafetyClock::now();arm_error_.clear();
     auto q=Six(y["measured_q"]),dq=Six(y["measured_dq"]);
     auto ids=y["motor_ids"].as<std::vector<int>>();auto valid=y["valid"].as<std::vector<bool>>();
     if(ids.size()!=6||valid.size()!=6)throw std::runtime_error("arm identity length");
@@ -167,7 +201,7 @@ class R3Node final:public rclcpp::Node {
      inputs_.arm_control_ready=owner_healthy&&motors_healthy&&inputs_.ready.arm_feedback_ready&&inputs_.ready.arm_target_ready;
     }
    }catch(const std::exception& e){inputs_.ready.arm_feedback_ready=false;inputs_.ready.arm_target_ready=false;inputs_.arm_static_hold=false;inputs_.arm_home_ready=false;inputs_.arm_control_ready=false;inputs_.arm_emergency_validated=false;arm_error_=e.what();}
-  });
+  },state_options);
   enable_=create_service<std_srvs::srv::SetBool>("/go2/commissioning/enable_output",[this](const std_srvs::srv::SetBool::Request::SharedPtr req,std_srvs::srv::SetBool::Response::SharedPtr res){
    std::lock_guard lock(mutex_);const auto now=SafetyClock::now();Refresh(now);
    supervisor_->CancelRemoteSequence();
@@ -183,10 +217,14 @@ class R3Node final:public rclcpp::Node {
   manual_=create_service<std_srvs::srv::Trigger>("/go2/commissioning/manual_step",[](std_srvs::srv::Trigger::Request::SharedPtr, std_srvs::srv::Trigger::Response::SharedPtr res){
    res->success=false;res->message="use selected remote_test/autonomy command source";
   });
-  io_group_=create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
+  io_group_=create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive,false);
   const int io_ms=r["lowcmd_period_ms"].as<int>();if(io_ms!=2)throw std::runtime_error("Current transport profile expects SDK example 2ms period");
   io_timer_=create_wall_timer(std::chrono::milliseconds(io_ms),[this]{
    std::lock_guard lock(mutex_);const auto now=SafetyClock::now();HandleRemote(now);
+   if(compute_probe||(motion_trace_&&motion_trace_->enabled())) {
+    if(last_io_tick_!=SafetyTime{})io_interval_max_ms_=std::max(io_interval_max_ms_,Age(now,last_io_tick_)*1000.);
+    last_io_tick_=now;
+   }
    // NAV dropout/cancel changes velocity only, never switches leg mode.
    if(!read_only_&&control_mode_=="autonomy"&&supervisor_->system_state()==SystemState::ACTIVE&&supervisor_->NeedsPolicy()) {
     supervisor_->NavigationCommand(inputs_.navigation_ready?navigation_gate_->Get(now):std::array<double,3>{},now);
@@ -206,12 +244,17 @@ class R3Node final:public rclcpp::Node {
    if(output_&&!supervisor_->output_enabled())StopPublisher();
    TraceState(now);
   },io_group_);
-  policy_group_=create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
+  policy_group_=create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive,false);
   policy_timer_=create_wall_timer(std::chrono::milliseconds(20),[this]{PolicyTick();},policy_group_);
+  status_group_=create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
+  status_timer_=create_wall_timer(std::chrono::milliseconds(100),[this]{StatusTick();},status_group_);
   RCLCPP_INFO(get_logger(),"R3 read_only=%d; startup disarmed; remote sequence requires fresh chord and all prerequisites",read_only_);
   RCLCPP_INFO(get_logger(),"config=%s fixed_kp=%s fixed_kd=%s rl_kp=%s rl_kd=%s",config.c_str(),FloatList(profile.kp).c_str(),FloatList(profile.kd).c_str(),FloatList(profile.rl_kp).c_str(),FloatList(profile.rl_kd).c_str());
  }
- ~R3Node(){if(sdk_future_.valid())sdk_future_.wait();}
+ ~R3Node()=default;
+ auto IoGroup()const{return io_group_;}
+ auto PolicyGroup()const{return policy_group_;}
+ bool SharedProbeExecutor()const{return probe_shared_executor_;}
  private:
  // The IO callback handles the remote even while Torch is computing.
  // mutex_ serializes cancellation with PolicyResult and packet publication.
@@ -262,11 +305,18 @@ class R3Node final:public rclcpp::Node {
    <<YAML::Key<<"lowstate_age_s"<<YAML::Value<<Age(now,inputs_.lowstate_stamp)
    <<YAML::Key<<"arm_feedback_age_s"<<YAML::Value<<Age(now,inputs_.arm_stamp)
    <<YAML::Key<<"arm_target_age_s"<<YAML::Value<<Age(now,inputs_.target_stamp)
-   <<YAML::Key<<"sport_age_s"<<YAML::Value<<Age(now,inputs_.sport_stamp)<<YAML::EndMap;
+   <<YAML::Key<<"sport_age_s"<<YAML::Value<<Age(now,inputs_.sport_stamp)
+   <<YAML::Key<<"sport_state"<<YAML::Value<<SportModeName(inputs_.sport)
+   <<YAML::Key<<"sport_query_ok"<<YAML::Value<<sdk_last_ok_
+   <<YAML::Key<<"sport_rpc_ms"<<YAML::Value<<sdk_rpc_ms_
+   <<YAML::Key<<"sport_query_failures"<<YAML::Value<<sdk_failures_
+   <<YAML::Key<<"sport_query_detail"<<YAML::Value<<sdk_detail_
+   <<YAML::Key<<"blockers"<<YAML::Value<<supervisor_->Blockers(now)<<YAML::EndMap;
   if(traced_latched_)RCLCPP_ERROR(get_logger(),"R3 transition %s",e.c_str());
   else RCLCPP_INFO(get_logger(),"R3 transition %s",e.c_str());
  }
  R3Reply SetOutput(bool enable,SafetyTime now) {
+  if(compute_probe&&enable)return {false,"compute probe has no actuator output"};
   if(enable&&sdk_release_pending_)return {false,"SDK release still pending"};
   if(enable&&read_only_)return {false,"read_only=true: physical output not available"};
   if(enable&&count_publishers("/lowcmd")!=0)return {false,"existing LowCmd publisher"};
@@ -278,26 +328,32 @@ class R3Node final:public rclcpp::Node {
   return result;
  }
  void SdkTick(SafetyTime now) {
-  if(sdk_future_.valid()) {
-   if(sdk_future_.wait_for(std::chrono::seconds(0))!=std::future_status::ready)return;
-   const auto result=sdk_future_.get();const bool released_request=sdk_release_pending_;sdk_release_pending_=false;
-   inputs_.sport=ParseSportMode(result.state);inputs_.sport_stamp=sdk_started_;sdk_detail_=result.detail;
+  if(auto completed=sdk_worker_->Take()) {
+   const auto result=std::move(*completed);const bool released_request=sdk_release_pending_;sdk_release_pending_=false;
+   sdk_detail_=result.detail;
+   sdk_last_ok_=result.ok;
+   sdk_rpc_ms_=result.completed_ns>0?(result.completed_ns-result.started_ns)/1.e6:-1;
+   // A timeout is not evidence that Sport became active. Keep the last genuine
+   // observation, without renewing its timestamp; existing freshness still applies.
+   if(result.ok) {
+    inputs_.sport=ParseSportMode(result.state);inputs_.sport_stamp=TimeNs(result.started_ns);
+    sdk_failures_=0;
+   } else ++sdk_failures_;
    if(released_request&&!result.ok)supervisor_->Fault("sdk_release_failed: "+result.detail,now);
    if(!supervisor_->remote_sequence_active()&&!output_)lease_.reset();
    next_sdk_query_=now+std::chrono::milliseconds(100);
   }
-  if(!sdk_future_.valid()&&!network_interface_.empty()&&now>=next_sdk_query_)StartSdk(false,now);
+  if(!sdk_worker_->busy()&&!network_interface_.empty()&&now>=next_sdk_query_)StartSdk(false,now);
  }
  void StartSdk(bool release,SafetyTime now) {
-  if(sdk_future_.valid()||network_interface_.empty()||(release&&read_only_))return;
-  sdk_release_pending_=release;sdk_started_=now;
-  sdk_future_=std::async(std::launch::async,[helper=sdk_helper_,nic=network_interface_,release]{return RunModeProcess(helper,nic,release);});
+  if(sdk_worker_->busy()||network_interface_.empty()||(release&&read_only_))return;
+  if(sdk_worker_->Submit(release,release?8000:2000)){sdk_release_pending_=release;sdk_started_=now;}
  }
  void SequenceTick(SafetyTime now) {
   if(!supervisor_->remote_sequence_active()||output_)lowcmd_wait_->Reset();
   if(read_only_||!automatic_sequence_||sdk_release_pending_)return;
   // A pending read-only query must finish before the single release request.
-  if(sdk_future_.valid()&&!output_)return;
+  if(sdk_worker_->busy()&&!output_)return;
   const auto action=supervisor_->RemoteSequenceNext(now);R3Reply result{true,""};
   switch(action) {
    case R3SequenceAction::RELEASE_SPORT:
@@ -400,12 +456,15 @@ class R3Node final:public rclcpp::Node {
   std::optional<PolicyTicket> ticket;
   std::optional<MotionTraceSample> trace;
   SafetyTime trace_remote_stamp{};
+  const auto callback_started=SafetyClock::now();
+  const auto publishers=count_publishers("/lowcmd");
+  const bool nav_unique=count_publishers("/go2/mission/readiness")==1;
+  const auto graph_observed=SafetyClock::now();
   {
    std::lock_guard lock(mutex_);auto now=SafetyClock::now();
    SdkTick(now);
-   // Baseline graph diagnostics already ran at policy/status rate (50Hz).
-   cached_publisher_count_=count_publishers("/lowcmd");graph_stamp_=now;
-   nav_input_unique_=count_publishers("/go2/mission/readiness")==1;
+   cached_publisher_count_=publishers;graph_stamp_=callback_started;
+   nav_input_unique_=nav_unique;
    const bool mission_fresh=!mission_session_.empty()&&Age(now,mission_readiness_stamp_)>=0&&Age(now,mission_readiness_stamp_)<=.5;
    nav_cancel_available_=mission_fresh&&nav_cancel_client_->service_is_ready();
    manipulation_cancel_available_=mission_fresh&&manipulation_cancel_client_->service_is_ready();
@@ -422,13 +481,25 @@ class R3Node final:public rclcpp::Node {
    }
    reset=supervisor_->ConsumePolicyReset();ticket=supervisor_->BeginPolicy(now);infer=ticket.has_value();low=lowstate_.snapshot();
    armq=arm_q_;armdq=arm_dq_;target=arm_target_;cmd=supervisor_->command();
+   if constexpr(compute_probe) {
+    const bool fresh=lowstate_.Fresh(now)&&inputs_.ready.arm_feedback_ready&&inputs_.ready.arm_target_ready&&
+     Age(now,inputs_.arm_stamp)>=0&&Age(now,inputs_.arm_stamp)<=supervisor_->profile().arm_timeout_s&&
+     Age(now,inputs_.target_stamp)>=0&&Age(now,inputs_.target_stamp)<=supervisor_->profile().arm_timeout_s;
+    if(fresh) {
+     ticket=PolicyTicket{++probe_jobs_,0,now,inputs_.lowstate_stamp,inputs_.arm_stamp,inputs_.target_stamp};
+     infer=true;reset=probe_reset_;probe_reset_=false;cmd={};
+    }else probe_reset_=true;
+   }
    if(infer&&motion_trace_&&motion_trace_->enabled()) {
-    trace.emplace();trace->kind=1;trace->phase=int(supervisor_->phase());
+    trace.emplace();trace->kind=compute_probe?3:1;trace->phase=int(supervisor_->phase());
+    trace->graph_ms=Age(graph_observed,callback_started)*1000.;
+    trace->callback_lock_wait_ms=Age(now,graph_observed)*1000.;
     trace_remote_stamp=inputs_.remote_stamp;
     trace->interval_s=last_trace_policy_==SafetyTime{}?0:Age(now,last_trace_policy_);last_trace_policy_=now;
     const auto& remote=remote_->status();trace->sticks={remote.ly,-remote.rx,-remote.lx};
     trace->requested=control_mode_=="autonomy"?navigation_gate_->Get(now):remote_test_requested_;trace->command=cmd;trace->q=low.motor_q;trace->dq=low.motor_dq;trace->quat=low.quaternion_xyzw;
     for(int i=0;i<3;++i)trace->gyro[i]=low.gyro[i];
+    trace->callback_lock_hold_ms=Age(SafetyClock::now(),now)*1000.;
    }
    // Serial/SDK remain exclusively in the RARS owner; leg node uses async ports.
    supervisor_->ConsumeArmHoldRequest();
@@ -439,126 +510,174 @@ class R3Node final:public rclcpp::Node {
     // Cover reset/history/previous-action as well as module.forward to prevent graph retention.
     torch::InferenceMode inference;
     auto& a=core_.agent();core_.SetMeasuredLegs(low.motor_q,low.motor_dq);
-    a.obs.base_quat=torch::tensor(std::vector<float>(low.quaternion_xyzw.begin(),low.quaternion_xyzw.end()));
-    a.obs.ang_vel=torch::tensor(std::vector<float>(low.gyro.begin(),low.gyro.end()));
-    a.obs.arm_pos=torch::tensor(std::vector<float>(armq.begin(),armq.end()));a.obs.arm_vel=torch::tensor(std::vector<float>(armdq.begin(),armdq.end()));a.obs.arm_target=torch::tensor(std::vector<float>(target.begin(),target.end()));
-    a.obs.command=torch::tensor({float(cmd[0]),float(cmd[1]),float(cmd[2])});
-    if(reset){a.obs.command=torch::zeros({3});a.ResetPolicyState();}
+    CopyPolicyInput(a.obs.base_quat,low.quaternion_xyzw);
+    CopyPolicyInput(a.obs.ang_vel,low.gyro);
+    CopyPolicyInput(a.obs.arm_pos,armq);CopyPolicyInput(a.obs.arm_vel,armdq);CopyPolicyInput(a.obs.arm_target,target);
+    CopyPolicyInput(a.obs.command,std::array<float,3>{float(cmd[0]),float(cmd[1]),float(cmd[2])});
+    if(reset){CopyPolicyInput(a.obs.command,std::array<float,3>{});a.ResetPolicyState();}
     PolicyStateTransaction policy_state(a);
-    const auto began=SafetyClock::now();auto action=a.Act();std::array<float,12> q;for(int i=0;i<12;++i)q[i]=action[io_motor_to_policy[i]].item<float>();
+    const auto began=SafetyClock::now();const auto cpu_began=trace?ThreadCpuNs():-1;
+    auto action=a.Act();const auto* action_data=PolicyOutputData(action);
+    std::array<float,12> q;for(int i=0;i<12;++i)q[i]=action_data[io_motor_to_policy[i]];
+    const auto cpu_ended=trace?ThreadCpuNs():-1;
     const auto ended=SafetyClock::now();const double elapsed=std::chrono::duration<double,std::milli>(ended-began).count();
     if(trace) {
-     try{for(int i=0;i<12;++i)trace->action[i]=a.obs.action[io_motor_to_policy[i]].item<float>();}
+     trace->prepare_ms=Age(began,ticket->started)*1000.;
+     trace->compute_cpu_ms=cpu_began>=0&&cpu_ended>=cpu_began?(cpu_ended-cpu_began)/1.e6:-1;
+     try{const auto* raw_action=PolicyOutputData(a.obs.action);for(int i=0;i<12;++i)trace->action[i]=raw_action[io_motor_to_policy[i]];}
      catch(...){trace.reset();motion_trace_->Stop();}
     }
+    const auto result_wait_started=SafetyClock::now();
     std::lock_guard lock(mutex_);const auto completed=SafetyClock::now();
-    const bool accepted=supervisor_->PolicyResult(*ticket,q,elapsed,completed);last_policy_ms_=elapsed;
+    bool accepted;
+    if constexpr(compute_probe) {
+     // Diagnostic only: no supervisor state changes or target delivery. The
+     // same worker/observations/locks run; only timing validity is recorded.
+     accepted=Age(completed,ticket->started)<=.04&&Age(completed,ticket->observation_stamp)<=.04&&
+      Age(completed,ticket->arm_stamp)<=supervisor_->profile().arm_timeout_s&&
+      Age(completed,ticket->target_stamp)<=supervisor_->profile().arm_timeout_s;
+     if(!accepted)++probe_misses_;
+     if(accepted)probe_result_stamp_=completed;
+    }else accepted=supervisor_->PolicyResult(*ticket,q,elapsed,completed);
+    last_policy_ms_=elapsed;
     if(accepted)policy_state.Commit();
     if(trace&&motion_trace_->enabled()) {
+     trace->postprocess_ms=Age(result_wait_started,ended)*1000.;
+     trace->result_lock_wait_ms=Age(completed,result_wait_started)*1000.;
      trace->stamp_ns=std::chrono::duration_cast<std::chrono::nanoseconds>(completed.time_since_epoch()).count();
      trace->accepted=accepted;trace->target=q;trace->compute_ms=elapsed;trace->packets=sent_;
      trace->job_age_s=Age(completed,ticket->started);trace->low_age_s=Age(completed,ticket->observation_stamp);
      trace->remote_age_s=Age(completed,trace_remote_stamp);trace->arm_age_s=Age(completed,ticket->arm_stamp);trace->target_age_s=Age(completed,ticket->target_stamp);
      trace->result_age_s=supervisor_->PolicyAgeSeconds(completed);
+     if(compute_probe)trace->result_age_s=probe_result_stamp_==SafetyTime{}?-1:Age(completed,probe_result_stamp_);
      try{motion_trace_->Submit(*trace);}catch(...){motion_trace_->Stop();}
     }
     if(!accepted)RCLCPP_WARN(get_logger(),"Policy result rejected: compute_ms=%g job_age_s=%g observation_age_s=%g captured_arm_age_s=%g captured_target_age_s=%g state=%s fault=%s",elapsed,Age(completed,ticket->started),Age(completed,ticket->observation_stamp),Age(completed,ticket->arm_stamp),Age(completed,ticket->target_stamp),R3StateName(supervisor_->state()),supervisor_->last_fault().c_str());
-   }catch(const std::exception& e){std::lock_guard lock(mutex_);supervisor_->PolicyFailed(*ticket,std::string("policy_exception: ")+e.what(),SafetyClock::now());}
+   }catch(const std::exception& e){std::lock_guard lock(mutex_);if(compute_probe){++probe_exceptions_;probe_reset_=true;probe_error_=e.what();}else supervisor_->PolicyFailed(*ticket,std::string("policy_exception: ")+e.what(),SafetyClock::now());}
   }
-  std::lock_guard lock(mutex_);const auto now=SafetyClock::now();
-  TraceState(now);
+  std::lock_guard lock(mutex_);TraceState(SafetyClock::now());
+ }
+ ControlDiagnostics CaptureStatus(SafetyTime now) {
   const auto stand_errors=StandErrors();const auto worst_stand=std::max_element(stand_errors.begin(),stand_errors.end());
   const auto remote_bounds=supervisor_->profile().RemoteBounds();
-  const auto blockers=supervisor_->Blockers(now);YAML::Emitter e;
-  e<<YAML::Flow<<YAML::BeginMap<<YAML::Key<<"state"<<YAML::Value<<SystemStateName(supervisor_->system_state())
-   <<YAML::Key<<"phase"<<YAML::Value<<SystemPhaseName(supervisor_->phase())
-   <<YAML::Key<<"legacy_state"<<YAML::Value<<R3StateName(supervisor_->state())
-   <<YAML::Key<<"read_only"<<YAML::Value<<read_only_<<YAML::Key<<"output_enabled"<<YAML::Value<<supervisor_->output_enabled()
-   <<YAML::Key<<"custom_leg_output"<<YAML::Value<<YAML::DoubleQuoted<<(output_&&supervisor_->output_enabled()?"ON":"OFF")<<YAML::Auto
-   <<YAML::Key<<"lowcmd_lease_present"<<YAML::Value<<bool(lease_)
-   <<YAML::Key<<"output_stop_confirmed"<<YAML::Value<<supervisor_->output_stopped()
-   <<YAML::Key<<"passive_command_sent"<<YAML::Value<<(supervisor_->passive_packets_sent()>0)
-   <<YAML::Key<<"passive_packets_sent"<<YAML::Value<<supervisor_->passive_packets_sent()
-   <<YAML::Key<<"passive_packet_limit"<<YAML::Value<<R3Supervisor::passive_packet_limit
-   <<YAML::Key<<"passive_timeout_s"<<YAML::Value<<R3Supervisor::passive_timeout_s
-   <<YAML::Key<<"passive_sequence_complete"<<YAML::Value<<supervisor_->passive_sequence_complete()
-   <<YAML::Key<<"last_commanded_leg_mode"<<YAML::Value<<supervisor_->last_commanded_leg_mode()
-   <<YAML::Key<<"motor_power_off_confirmed"<<YAML::Value<<false
-   <<YAML::Key<<"lowcmd_publisher_present"<<YAML::Value<<bool(output_)<<YAML::Key<<"sent_packets"<<YAML::Value<<sent_
-   <<YAML::Key<<"sport_state"<<YAML::Value<<SportModeName(inputs_.sport)<<YAML::Key<<"sport_age_s"<<YAML::Value<<Age(now,inputs_.sport_stamp)
-   <<YAML::Key<<"lowstate_age_s"<<YAML::Value<<lowstate_.AgeMs(now)/1000<<YAML::Key<<"remote_age_s"<<YAML::Value<<remote_->status().remote_age_ms/1000
-   <<YAML::Key<<"remote_mask"<<YAML::Value<<remote_->status().button_mask<<YAML::Key<<"remote_buttons"<<YAML::Value<<remote_->status().decoded_buttons
-   <<YAML::Key<<"remote_event"<<YAML::Value<<int(last_event_)<<YAML::Key<<"arm_feedback_age_s"<<YAML::Value<<Age(now,inputs_.arm_stamp)
-   <<YAML::Key<<"control_mode"<<YAML::Value<<control_mode_
-   <<YAML::Key<<"motion_commands_enabled"<<YAML::Value<<motion_commands_enabled_
-   <<YAML::Key<<"navigation_command_enabled"<<YAML::Value<<(inputs_.navigation_ready&&navigation_gate_->Enabled(now))
-   <<YAML::Key<<"navigation_session_id"<<YAML::Value<<navigation_gate_->session()
-   <<YAML::Key<<"navigation_command_fresh"<<YAML::Value<<NavigationFresh(now)
-   <<YAML::Key<<"navigation_requested_command"<<YAML::Value<<std::vector<double>{navigation_gate_->Get(now)[0],navigation_gate_->Get(now)[1],navigation_gate_->Get(now)[2]}
-   <<YAML::Key<<"stand_completion"<<YAML::Value<<"time"
-   <<YAML::Key<<"remote_test_mode"<<YAML::Value<<remote_test_mode_
-   <<YAML::Key<<"remote_command_limits"<<YAML::Value<<std::vector<double>(remote_bounds.begin(),remote_bounds.end())
-   <<YAML::Key<<"navigation_command_limits"<<YAML::Value<<std::vector<double>{supervisor_->profile().vx_bound,supervisor_->profile().vy_bound,supervisor_->profile().wz_bound}
-   <<YAML::Key<<"remote_test_requested_command"<<YAML::Value<<std::vector<double>(remote_test_requested_.begin(),remote_test_requested_.end())
-   <<YAML::Key<<"motion_command"<<YAML::Value<<std::vector<double>(supervisor_->command().begin(),supervisor_->command().end())
-   <<YAML::Key<<"arm_target_age_s"<<YAML::Value<<Age(now,inputs_.target_stamp)<<YAML::Key<<"arm_ready"<<YAML::Value<<(inputs_.arm_home_ready&&inputs_.ready.arm_feedback_ready&&inputs_.ready.arm_target_ready&&Age(now,inputs_.arm_stamp)<=supervisor_->profile().arm_timeout_s&&Age(now,inputs_.target_stamp)<=supervisor_->profile().arm_timeout_s)
-   <<YAML::Key<<"arm_home_ready"<<YAML::Value<<(inputs_.arm_home_ready&&Age(now,inputs_.arm_stamp)>=0&&Age(now,inputs_.arm_stamp)<=supervisor_->profile().arm_timeout_s&&Age(now,inputs_.target_stamp)>=0&&Age(now,inputs_.target_stamp)<=supervisor_->profile().arm_timeout_s)
-   <<YAML::Key<<"arm_control_ready"<<YAML::Value<<(inputs_.arm_control_ready&&Age(now,inputs_.arm_stamp)>=0&&Age(now,inputs_.arm_stamp)<=supervisor_->profile().arm_timeout_s&&Age(now,inputs_.target_stamp)>=0&&Age(now,inputs_.target_stamp)<=supervisor_->profile().arm_timeout_s)
-   <<YAML::Key<<"operation_profile"<<YAML::Value<<OperationProfileName(supervisor_->operation_profile())
-   <<YAML::Key<<"command_source"<<YAML::Value<<CommandSourceName(supervisor_->capabilities().command_source)
-   <<YAML::Key<<"capabilities"<<YAML::Value<<YAML::BeginMap
-     <<YAML::Key<<"leg_output"<<YAML::Value<<supervisor_->capabilities().physical_leg_output
-     <<YAML::Key<<"sport_release"<<YAML::Value<<supervisor_->capabilities().allow_sport_release
-     <<YAML::Key<<"rl"<<YAML::Value<<supervisor_->capabilities().allow_rl
-     <<YAML::Key<<"nonzero_velocity"<<YAML::Value<<supervisor_->capabilities().allow_nonzero_velocity
-     <<YAML::Key<<"arm_motion"<<YAML::Value<<supervisor_->capabilities().allow_arm_motion<<YAML::EndMap
-   <<YAML::Key<<"own_output_healthy"<<YAML::Value<<inputs_.own_output_healthy
-   <<YAML::Key<<"navigation_ready"<<YAML::Value<<inputs_.navigation_ready
-   <<YAML::Key<<"perception_ready"<<YAML::Value<<inputs_.perception_ready
-   <<YAML::Key<<"arm_emergency_validated"<<YAML::Value<<inputs_.arm_emergency_validated
-   <<YAML::Key<<"stop_blocker"<<YAML::Value<<supervisor_->stop_blocker()
-   <<YAML::Key<<"arm_home_port"<<YAML::Value<<home_port_status_
-   <<YAML::Key<<"arm_emergency_port"<<YAML::Value<<emergency_port_status_
-   <<YAML::Key<<"navigation_cancel_port"<<YAML::Value<<nav_cancel_status_
-   <<YAML::Key<<"manipulation_cancel_port"<<YAML::Value<<manipulation_cancel_status_
-   <<YAML::Key<<"orchestration_generation"<<YAML::Value<<supervisor_->orchestration_generation()
-   <<YAML::Key<<"fixed_target_motor_q"<<YAML::Value<<std::vector<float>(supervisor_->fixed_target().begin(),supervisor_->fixed_target().end())
-   <<YAML::Key<<"lie_down_target_approved"<<YAML::Value<<supervisor_->LieDownTargetApproved()
-   <<YAML::Key<<"controlled_stop_lie_down_trial"<<YAML::Value<<supervisor_->profile().controlled_stop_lie_down_trial
-   <<YAML::Key<<"lie_down_commissioning_active"<<YAML::Value<<(supervisor_->profile().controlled_stop_lie_down_trial&&!supervisor_->profile().lie_down_validated&&supervisor_->system_state()==SystemState::CONTROLLED_STOP&&!supervisor_->NeedsPolicy())
-   <<YAML::Key<<"lie_down_dynamics_validated"<<YAML::Value<<supervisor_->profile().lie_down_validated
-   <<YAML::Key<<"critical_control_fault"<<YAML::Value<<(supervisor_->fault_latched()&&supervisor_->last_fault()!="operator_emergency")
-   <<YAML::Key<<"arm_error"<<YAML::Value<<arm_error_
-   <<YAML::Key<<"measured_motor_q"<<YAML::Value<<std::vector<float>(inputs_.measured_q.begin(),inputs_.measured_q.end())
-   <<YAML::Key<<"stand_target_motor_q"<<YAML::Value<<std::vector<float>(supervisor_->profile().stand.begin(),supervisor_->profile().stand.end())
-   <<YAML::Key<<"stand_error_rad"<<YAML::Value<<std::vector<float>(stand_errors.begin(),stand_errors.end())
-   <<YAML::Key<<"stand_error_max_rad"<<YAML::Value<<*worst_stand
-   <<YAML::Key<<"stand_error_motor_index"<<YAML::Value<<std::distance(stand_errors.begin(),worst_stand)
-   <<YAML::Key<<"remote_auto_sequence"<<YAML::Value<<automatic_sequence_
-   <<YAML::Key<<"remote_sequence_active"<<YAML::Value<<supervisor_->remote_sequence_active()
-   <<YAML::Key<<"remote_sequence_message"<<YAML::Value<<sequence_message_
-   <<YAML::Key<<"remote_sequence_blockers"<<YAML::Value<<supervisor_->RemoteSequenceBlockers(now)
-   <<YAML::Key<<"sdk_release_pending"<<YAML::Value<<sdk_release_pending_
-   <<YAML::Key<<"lowcmd_discovery_waiting"<<YAML::Value<<lowcmd_wait_->active()
-   <<YAML::Key<<"lowcmd_discovery_wait_age_s"<<YAML::Value<<lowcmd_wait_->AgeSeconds(now)
-   <<YAML::Key<<"lowcmd_publisher_count"<<YAML::Value<<cached_publisher_count_
-   <<YAML::Key<<"motion_diagnostics_active"<<YAML::Value<<(motion_trace_&&motion_trace_->enabled())
-   <<YAML::Key<<"motion_diagnostics_dropped"<<YAML::Value<<(motion_trace_?motion_trace_->dropped():0)
-   <<YAML::Key<<"model_loaded"<<YAML::Value<<core_.loaded()<<YAML::Key<<"policy_ms"<<YAML::Value<<last_policy_ms_
-   <<YAML::Key<<"policy_result_age_s"<<YAML::Value<<supervisor_->PolicyAgeSeconds(now)
-   <<YAML::Key<<"policy_zero_handoff_pending"<<YAML::Value<<supervisor_->zero_policy_handoff_pending()
-   <<YAML::Key<<"policy_inference_age_s"<<YAML::Value<<supervisor_->PolicyInferenceAgeSeconds(now)
-   <<YAML::Key<<"policy_observation_age_s"<<YAML::Value<<supervisor_->PolicyObservationAgeSeconds(now)
-   <<YAML::Key<<"policy_inflight"<<YAML::Value<<supervisor_->policy_inflight()
-   <<YAML::Key<<"rejected_policy_results"<<YAML::Value<<supervisor_->rejected_policy_results()
-   <<YAML::Key<<"deadline_misses"<<YAML::Value<<supervisor_->deadline_misses()<<YAML::Key<<"fault_latched"<<YAML::Value<<supervisor_->fault_latched()
-   <<YAML::Key<<"fault"<<YAML::Value<<supervisor_->last_fault()<<YAML::Key<<"blockers"<<YAML::Value<<blockers<<YAML::EndMap;
-  std_msgs::msg::String status;status.data=e.c_str();status_->publish(status);
+  auto blockers=supervisor_->Blockers(now);ControlDiagnostics snapshot;
+  snapshot.Add("state", SystemStateName(supervisor_->system_state()));
+  snapshot.Add("phase", SystemPhaseName(supervisor_->phase()));
+  snapshot.Add("legacy_state", R3StateName(supervisor_->state()));
+  snapshot.Add("read_only", read_only_);
+  snapshot.Add("output_enabled", supervisor_->output_enabled());
+  snapshot.Add("custom_leg_output", (output_&&supervisor_->output_enabled()?"ON":"OFF"));
+  snapshot.Add("lowcmd_lease_present", bool(lease_));
+  snapshot.Add("output_stop_confirmed", supervisor_->output_stopped());
+  snapshot.Add("passive_command_sent", (supervisor_->passive_packets_sent()>0));
+  snapshot.Add("passive_packets_sent", supervisor_->passive_packets_sent());
+  snapshot.Add("passive_packet_limit", R3Supervisor::passive_packet_limit);
+  snapshot.Add("passive_timeout_s", R3Supervisor::passive_timeout_s);
+  snapshot.Add("passive_sequence_complete", supervisor_->passive_sequence_complete());
+  snapshot.Add("last_commanded_leg_mode", supervisor_->last_commanded_leg_mode());
+  snapshot.Add("motor_power_off_confirmed", false);
+  snapshot.Add("lowcmd_publisher_present", bool(output_));
+  snapshot.Add("sent_packets", sent_);
+  snapshot.Add("sport_state", SportModeName(inputs_.sport));
+  snapshot.Add("sport_age_s", Age(now,inputs_.sport_stamp));
+  snapshot.Add("sport_monitor", (network_interface_.empty()?"external":"persistent_sdk_session"));
+  snapshot.Add("sport_query_ok", sdk_last_ok_);
+  snapshot.Add("sport_rpc_ms", sdk_rpc_ms_);
+  snapshot.Add("sport_query_failures", sdk_failures_);
+  snapshot.Add("sport_query_inflight", sdk_worker_->busy());
+  snapshot.Add("sport_query_age_s", (sdk_worker_->busy()?Age(now,sdk_started_):-1));
+  snapshot.Add("sport_query_detail", sdk_detail_);
+  snapshot.Add("lowstate_age_s", lowstate_.AgeMs(now)/1000);
+  snapshot.Add("remote_age_s", remote_->status().remote_age_ms/1000);
+  snapshot.Add("remote_mask", remote_->status().button_mask);
+  snapshot.Add("remote_buttons", remote_->status().decoded_buttons);
+  snapshot.Add("remote_event", int(last_event_));
+  snapshot.Add("arm_feedback_age_s", Age(now,inputs_.arm_stamp));
+  snapshot.Add("control_mode", control_mode_);
+  snapshot.Add("motion_commands_enabled", motion_commands_enabled_);
+  snapshot.Add("navigation_command_enabled", (inputs_.navigation_ready&&navigation_gate_->Enabled(now)));
+  snapshot.Add("navigation_session_id", navigation_gate_->session());
+  snapshot.Add("navigation_command_fresh", NavigationFresh(now));
+  snapshot.Add("navigation_requested_command", std::array<double,3>{navigation_gate_->Get(now)[0],navigation_gate_->Get(now)[1],navigation_gate_->Get(now)[2]});
+  snapshot.Add("stand_completion", "time");
+  snapshot.Add("remote_test_mode", remote_test_mode_);
+  snapshot.Add("remote_command_limits", remote_bounds);
+  snapshot.Add("navigation_command_limits", std::array<double,3>{supervisor_->profile().vx_bound,supervisor_->profile().vy_bound,supervisor_->profile().wz_bound});
+  snapshot.Add("remote_test_requested_command", remote_test_requested_);
+  snapshot.Add("motion_command", supervisor_->command());
+  snapshot.Add("arm_target_age_s", Age(now,inputs_.target_stamp));
+  snapshot.Add("arm_ready", (inputs_.arm_home_ready&&inputs_.ready.arm_feedback_ready&&inputs_.ready.arm_target_ready&&Age(now,inputs_.arm_stamp)<=supervisor_->profile().arm_timeout_s&&Age(now,inputs_.target_stamp)<=supervisor_->profile().arm_timeout_s));
+  snapshot.Add("arm_home_ready", (inputs_.arm_home_ready&&Age(now,inputs_.arm_stamp)>=0&&Age(now,inputs_.arm_stamp)<=supervisor_->profile().arm_timeout_s&&Age(now,inputs_.target_stamp)>=0&&Age(now,inputs_.target_stamp)<=supervisor_->profile().arm_timeout_s));
+  snapshot.Add("arm_control_ready", (inputs_.arm_control_ready&&Age(now,inputs_.arm_stamp)>=0&&Age(now,inputs_.arm_stamp)<=supervisor_->profile().arm_timeout_s&&Age(now,inputs_.target_stamp)>=0&&Age(now,inputs_.target_stamp)<=supervisor_->profile().arm_timeout_s));
+  snapshot.Add("operation_profile", OperationProfileName(supervisor_->operation_profile()));
+  snapshot.Add("command_source", CommandSourceName(supervisor_->capabilities().command_source));
+  snapshot.Add("capabilities", supervisor_->capabilities());
+  snapshot.Add("own_output_healthy", inputs_.own_output_healthy);
+  snapshot.Add("navigation_ready", inputs_.navigation_ready);
+  snapshot.Add("perception_ready", inputs_.perception_ready);
+  snapshot.Add("arm_emergency_validated", inputs_.arm_emergency_validated);
+  snapshot.Add("stop_blocker", supervisor_->stop_blocker());
+  snapshot.Add("arm_home_port", home_port_status_);
+  snapshot.Add("arm_emergency_port", emergency_port_status_);
+  snapshot.Add("navigation_cancel_port", nav_cancel_status_);
+  snapshot.Add("manipulation_cancel_port", manipulation_cancel_status_);
+  snapshot.Add("orchestration_generation", supervisor_->orchestration_generation());
+  snapshot.Add("fixed_target_motor_q", supervisor_->fixed_target());
+  snapshot.Add("lie_down_target_approved", supervisor_->LieDownTargetApproved());
+  snapshot.Add("controlled_stop_lie_down_trial", supervisor_->profile().controlled_stop_lie_down_trial);
+  snapshot.Add("lie_down_commissioning_active", (supervisor_->profile().controlled_stop_lie_down_trial&&!supervisor_->profile().lie_down_validated&&supervisor_->system_state()==SystemState::CONTROLLED_STOP&&!supervisor_->NeedsPolicy()));
+  snapshot.Add("lie_down_dynamics_validated", supervisor_->profile().lie_down_validated);
+  snapshot.Add("critical_control_fault", (supervisor_->fault_latched()&&supervisor_->last_fault()!="operator_emergency"));
+  snapshot.Add("arm_error", arm_error_);
+  snapshot.Add("measured_motor_q", inputs_.measured_q);
+  snapshot.Add("stand_target_motor_q", supervisor_->profile().stand);
+  snapshot.Add("stand_error_rad", stand_errors);
+  snapshot.Add("stand_error_max_rad", *worst_stand);
+  snapshot.Add("stand_error_motor_index", std::distance(stand_errors.begin(),worst_stand));
+  snapshot.Add("remote_auto_sequence", automatic_sequence_);
+  snapshot.Add("remote_sequence_active", supervisor_->remote_sequence_active());
+  snapshot.Add("remote_sequence_message", sequence_message_);
+  snapshot.Add("remote_sequence_blockers", supervisor_->RemoteSequenceBlockers(now));
+  snapshot.Add("sdk_release_pending", sdk_release_pending_);
+  snapshot.Add("lowcmd_discovery_waiting", lowcmd_wait_->active());
+  snapshot.Add("lowcmd_discovery_wait_age_s", lowcmd_wait_->AgeSeconds(now));
+  snapshot.Add("lowcmd_publisher_count", cached_publisher_count_);
+  snapshot.Add("motion_diagnostics_active", (motion_trace_&&motion_trace_->enabled()));
+  snapshot.Add("motion_diagnostics_dropped", (motion_trace_?motion_trace_->dropped():0));
+  snapshot.Add("model_loaded", core_.loaded());
+  snapshot.Add("policy_ms", last_policy_ms_);
+  snapshot.Add("policy_result_age_s", supervisor_->PolicyAgeSeconds(now));
+  snapshot.Add("policy_zero_handoff_pending", supervisor_->zero_policy_handoff_pending());
+  snapshot.Add("policy_inference_age_s", supervisor_->PolicyInferenceAgeSeconds(now));
+  snapshot.Add("policy_observation_age_s", supervisor_->PolicyObservationAgeSeconds(now));
+  snapshot.Add("policy_inflight", supervisor_->policy_inflight());
+  snapshot.Add("rejected_policy_results", supervisor_->rejected_policy_results());
+  snapshot.Add("deadline_misses", supervisor_->deadline_misses());
+  snapshot.Add("fault_latched", supervisor_->fault_latched());
+  snapshot.Add("fault", supervisor_->last_fault());
+  snapshot.Add("blockers", std::move(blockers));
+  if(compute_probe||(motion_trace_&&motion_trace_->enabled()))snapshot.Add("runtime_io_interval_max_ms",io_interval_max_ms_);
+  if constexpr(compute_probe) {
+   snapshot.Add("compute_probe",true);snapshot.Add("probe_jobs",probe_jobs_);
+   snapshot.Add("probe_misses",probe_misses_);snapshot.Add("probe_exceptions",probe_exceptions_);
+   snapshot.Add("probe_error",probe_error_);
+  }
+  return snapshot;
  }
+ void StatusTick() {
+  try {
+   ControlDiagnostics snapshot;
+   {std::lock_guard lock(mutex_);snapshot=CaptureStatus(SafetyClock::now());}
+   std_msgs::msg::String status;status.data=snapshot.Serialize();status_->publish(status);
+  }catch(const std::exception& e){RCLCPP_ERROR_THROTTLE(get_logger(),*get_clock(),1000,"Status formatting failed: %s",e.what());}
+ }
+
  std::mutex mutex_;RealControllerCore core_;LowStateReader lowstate_;
  std::optional<SystemPhase> traced_state_;std::string traced_fault_;bool traced_latched_=false;
  std::unique_ptr<R3Supervisor> supervisor_;std::unique_ptr<R3RemoteCommands> remote_;R3Inputs inputs_;
- std::future<ModeProcessResult> sdk_future_;SafetyTime sdk_started_{},next_sdk_query_{};
+ std::shared_ptr<ModeSessionProcess> sdk_session_;
+ std::unique_ptr<AsyncModeWorker> sdk_worker_;
+ bool sdk_last_ok_=false;double sdk_rpc_ms_=-1;size_t sdk_failures_=0;SafetyTime sdk_started_{},next_sdk_query_{};
  bool sdk_release_pending_=false,automatic_sequence_=true;std::string network_interface_,sdk_helper_,sdk_detail_,sequence_message_;
  std::unique_ptr<LowCmdDiscoveryWait> lowcmd_wait_;
  bool read_only_=true,remote_test_mode_=false,motion_commands_enabled_=false;std::string control_mode_;std::string output_lock_,arm_error_;
@@ -566,6 +685,10 @@ class R3Node final:public rclcpp::Node {
  std::unique_ptr<MotionTrace> motion_trace_;
  SafetyTime last_trace_io_{},last_trace_row_{},last_trace_policy_{};
  double trace_io_min_=std::numeric_limits<double>::infinity(),trace_io_max_=0;
+ SafetyTime last_io_tick_{},probe_result_stamp_{};double io_interval_max_ms_=0;
+ size_t probe_jobs_=0,probe_misses_=0,probe_exceptions_=0;
+ bool probe_reset_=true,probe_shared_executor_=false;std::string probe_error_;
+ rclcpp::TimerBase::SharedPtr probe_stop_;
  std::unique_ptr<OutputLease> lease_;std::array<float,6> arm_q_{},arm_dq_{},arm_target_{};
  bool nav_input_unique_=false;
  std::unique_ptr<NavigationRequestGate> navigation_gate_;double last_policy_ms_=0,home_tolerance_=.15;size_t sent_=0;
@@ -585,7 +708,7 @@ class R3Node final:public rclcpp::Node {
  bool home_pending_=false,emergency_pending_=false,nav_cancel_pending_=false,manipulation_cancel_pending_=false;
  std::string home_port_status_="idle",emergency_port_status_="idle",nav_cancel_status_="idle",manipulation_cancel_status_="idle";
  rclcpp::TimerBase::SharedPtr port_timer_;rclcpp::CallbackGroup::SharedPtr port_group_;
- rclcpp::TimerBase::SharedPtr io_timer_,policy_timer_;rclcpp::CallbackGroup::SharedPtr io_group_,policy_group_;
+ rclcpp::TimerBase::SharedPtr io_timer_,policy_timer_,status_timer_;rclcpp::CallbackGroup::SharedPtr io_group_,policy_group_,status_group_,state_group_;
 };
-int main(int argc,char** argv){rclcpp::init(argc,argv);try{auto node=std::make_shared<R3Node>();rclcpp::executors::MultiThreadedExecutor executor(rclcpp::ExecutorOptions(),2);executor.add_node(node);executor.spin();}
+int main(int argc,char** argv){rclcpp::init(argc,argv);try{auto node=std::make_shared<R3Node>();SpinControlExecutors(node,node->IoGroup(),node->PolicyGroup(),node->SharedProbeExecutor());}
  catch(const std::exception& e){RCLCPP_ERROR(rclcpp::get_logger("r3"),"Startup failed closed: %s",e.what());rclcpp::shutdown();return 1;}rclcpp::shutdown();}

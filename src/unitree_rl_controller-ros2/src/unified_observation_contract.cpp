@@ -1,6 +1,7 @@
 #include "unified_observation_contract.hpp"
 
 #include <cmath>
+#include <algorithm>
 #include <stdexcept>
 
 namespace go2_rars01 {
@@ -11,6 +12,10 @@ torch::Tensor DefaultLegPose() {
                         -0.1F, 0.8F, -1.5F,
                          0.1F, 0.8F, -1.5F,
                         -0.1F, 0.8F, -1.5F}, torch::kFloat32);
+}
+bool CpuFloatVector(const torch::Tensor& value) {
+  return value.defined() && value.device().is_cpu() &&
+         value.scalar_type()==torch::kFloat32 && value.is_contiguous();
 }
 }  // namespace
 
@@ -34,7 +39,8 @@ void UnifiedObservationContract::Configure(const torch::Tensor& default_leg_pos,
   }
   default_leg_pos_ = default_leg_pos.to(torch::kFloat32).contiguous().clone();
   scales_ = scales;
-  frames_.clear();
+  frames_ = {};
+  initialized_ = false;
 }
 
 void UnifiedObservationContract::RequireVector(const torch::Tensor& value, int size,
@@ -45,7 +51,11 @@ void UnifiedObservationContract::RequireVector(const torch::Tensor& value, int s
                                 std::to_string(size) + " values, got " +
                                 std::to_string(actual));
   }
-  if (!torch::isfinite(value).all().item<bool>()) {
+  if (CpuFloatVector(value)) {
+    const auto* data=value.data_ptr<float>();
+    for(int i=0;i<size;++i)if(!std::isfinite(data[i]))
+      throw std::invalid_argument(std::string(name)+" must contain finite values");
+  } else if (!torch::isfinite(value).all().item<bool>()) {
     throw std::invalid_argument(std::string(name) + " must contain finite values");
   }
 }
@@ -81,6 +91,41 @@ torch::Tensor UnifiedObservationContract::BuildFrame(const UnifiedObservationSta
   RequireVector(state.arm_vel, Dimensions::ArmVel, "arm_vel");
   RequireVector(state.arm_target, Dimensions::ArmTarget, "arm_target");
 
+  // One owned immutable frame, rather than many tiny ATen temporaries.
+  // Keep the original tensor expression for autograd/non-CPU/non-float inputs.
+  if(c10::InferenceMode::is_enabled() && scales_.clip_observations>=0 &&
+     CpuFloatVector(default_leg_pos_) && CpuFloatVector(state.ang_vel) &&
+     CpuFloatVector(state.command) && CpuFloatVector(state.base_quat) &&
+     CpuFloatVector(state.leg_pos) && CpuFloatVector(state.leg_vel) &&
+     CpuFloatVector(state.previous_action) && CpuFloatVector(state.arm_pos) &&
+     CpuFloatVector(state.arm_vel) && CpuFloatVector(state.arm_target)) {
+    const auto* q=state.base_quat.data_ptr<float>();
+    const float norm=std::sqrt(q[0]*q[0]+q[1]*q[1]+q[2]*q[2]+q[3]*q[3]);
+    if(!std::isfinite(norm)||norm<1.e-8F)
+      throw std::invalid_argument("base_quat must be a non-zero quaternion [x, y, z, w]");
+    const float x=q[0]/norm,y=q[1]/norm,z=q[2]/norm,w=q[3]/norm;
+    auto frame=torch::empty({Dimensions::ActorFrame},torch::kFloat32);
+    auto* out=frame.data_ptr<float>();
+    for(int i=0;i<3;++i)out[i]=state.ang_vel.data_ptr<float>()[i]*scales_.ang_vel;
+    out[3]=2*y*w-2*x*z;
+    out[4]=-2*x*w-2*y*z;
+    out[5]=-(2*w*w-1)-2*z*z;
+    for(int i=0;i<3;++i)out[6+i]=state.command.data_ptr<float>()[i]*scales_.command[i];
+    for(int i=0;i<12;++i) {
+      out[9+i]=(state.leg_pos.data_ptr<float>()[i]-default_leg_pos_.data_ptr<float>()[i])*scales_.dof_pos;
+      out[21+i]=state.leg_vel.data_ptr<float>()[i]*scales_.dof_vel;
+      out[33+i]=state.previous_action.data_ptr<float>()[i];
+    }
+    for(int i=0;i<6;++i) {
+      out[45+i]=state.arm_pos.data_ptr<float>()[i];
+      out[51+i]=state.arm_vel.data_ptr<float>()[i]*scales_.dof_vel;
+      out[57+i]=state.arm_target.data_ptr<float>()[i];
+    }
+    RequireFrame(frame); // Also rejects overflow before clipping.
+    for(int i=0;i<Dimensions::ActorFrame;++i)
+      out[i]=std::clamp(out[i],-scales_.clip_observations,scales_.clip_observations);
+    return frame;
+  }
   const auto command_scale = torch::tensor(
       {scales_.command[0], scales_.command[1], scales_.command[2]}, torch::kFloat32);
   auto frame = torch::cat({
@@ -103,20 +148,23 @@ void UnifiedObservationContract::RequireFrame(const torch::Tensor& frame) const 
 
 void UnifiedObservationContract::Reset(const torch::Tensor& first_frame) {
   RequireFrame(first_frame);
-  frames_.assign(Dimensions::History, first_frame.to(torch::kFloat32).contiguous().clone());
+  frames_.fill(first_frame.to(torch::kFloat32).contiguous().clone());
+  initialized_ = true;
 }
 
 void UnifiedObservationContract::Insert(const torch::Tensor& frame) {
   RequireFrame(frame);
-  if (frames_.empty()) {
+  if (!initialized_) {
     Reset(frame);
     return;
   }
-  frames_.erase(frames_.begin());
-  frames_.push_back(frame.to(torch::kFloat32).contiguous().clone());
+  auto owned_frame = frame.to(torch::kFloat32).contiguous().clone();
+  for (int i = 0; i < Dimensions::History - 1; ++i)
+    frames_[i] = std::move(frames_[i + 1]);
+  frames_.back() = std::move(owned_frame);
 }
 
-bool UnifiedObservationContract::initialized() const { return frames_.size() == Dimensions::History; }
+bool UnifiedObservationContract::initialized() const { return initialized_; }
 
 torch::Tensor UnifiedObservationContract::History() const {
   if (!initialized()) throw std::logic_error("Unified observation history is not initialized");

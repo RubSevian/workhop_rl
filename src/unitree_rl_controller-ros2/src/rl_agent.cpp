@@ -128,6 +128,7 @@ bool Agent::Load_Model(const std::string &model_path)
     try {
         // Deserialize the ScriptModule from a file using torch::jit::load().
         module = torch::jit::load(model_path);
+        module.eval();
     }
     catch (const c10::Error& e) {
         return false;

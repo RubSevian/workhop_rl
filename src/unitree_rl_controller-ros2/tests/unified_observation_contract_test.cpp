@@ -5,6 +5,8 @@
 #include <iostream>
 #include <iomanip>
 #include <stdexcept>
+#include <limits>
+#include <ATen/Parallel.h>
 
 using go2_rars01::Dimensions;
 using go2_rars01::UnifiedObservationContract;
@@ -161,10 +163,44 @@ void DumpParityFixture() {
   std::cout << std::endl;
 }
 
+void TestInferenceCpuParity() {
+  torch::manual_seed(17);
+  UnifiedObservationContract contract;
+  for(int n=0;n<300;++n) {
+    auto state=MarkedState();
+    for(auto* t:{&state.ang_vel,&state.command,&state.base_quat,&state.leg_pos,
+                 &state.leg_vel,&state.previous_action,&state.arm_pos,&state.arm_vel,&state.arm_target})
+      *t=torch::randn_like(*t)*(n%2?0.4F:120.F);
+    auto reference=contract.BuildFrame(state);
+    torch::InferenceMode guard;
+    auto actual=contract.BuildFrame(state);
+    Expect(torch::allclose(reference,actual,1.e-6,1.e-6),"optimized frame differs from tensor reference");
+    auto saved=actual.clone();contract.Insert(actual);
+    state.arm_pos.fill_(10.F);
+    Expect(torch::equal(actual,saved),"frame aliases mutable worker inputs");
+    auto checkpoint=contract;
+    contract.Insert(torch::zeros({63}));
+    Expect(torch::equal(checkpoint.History().slice(1,252),saved.view({1,63})),"checkpoint frame mutated by insert");
+  }
+  torch::InferenceMode guard;
+  for(int failure=0;failure<4;++failure) {
+    auto state=MarkedState();
+    if(failure==0)state.ang_vel[0]=std::numeric_limits<float>::quiet_NaN();
+    if(failure==1)state.base_quat.zero_();
+    if(failure==2)state.arm_target=torch::zeros({5});
+    if(failure==3)state.leg_vel[0]=std::numeric_limits<float>::infinity();
+    bool rejected=false;try{contract.BuildFrame(state);}catch(const std::invalid_argument&){rejected=true;}
+    Expect(rejected,"optimized path accepted invalid observation");
+  }
+  auto state=MarkedState();state.arm_vel=state.arm_vel.to(torch::kFloat64);
+  Expect(torch::isfinite(contract.BuildFrame(state)).all().item<bool>(),"non-float fallback failed");
+}
+
 }  // namespace
 
 int main(int argc, char** argv) {
   try {
+    at::set_num_threads(1);at::set_num_interop_threads(1);
     if (argc == 2 && std::string(argv[1]) == "--dump-parity-fixture") {
       DumpParityFixture();
       return EXIT_SUCCESS;
@@ -174,6 +210,7 @@ int main(int argc, char** argv) {
     TestProjectedGravity();
     TestHistoryAndActionTiming();
     TestClippingAndDimensions();
+    TestInferenceCpuParity();
     std::cout << "unified_observation_contract_test: PASS" << std::endl;
     return EXIT_SUCCESS;
   } catch (const std::exception& error) {

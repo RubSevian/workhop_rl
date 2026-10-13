@@ -35,6 +35,13 @@ int main(int argc,char** argv) {
     if(a.Act().numel()!=12) throw std::runtime_error("Agent output dimension");
     Measure("jit_cpu_315_to_12",[&] { module.forward({input}); });
     Measure("agent_cpu_frame_history_action",[&] { a.Act(); });
+    // Same weights and immutable state path; disable InferenceMode to exercise
+    // the generic tensor frame expression, with autograd still disabled.
+    {
+      torch::InferenceMode generic(false);torch::NoGradGuard no_grad;
+      a.ResetPolicyState();
+      Measure("agent_cpu_generic_frame_reference",[&] { a.Act(); });
+    }
     std::cout<<"policy_cpu_test: PASS C++ load CPU [1,315] -> [1,12]\n";
     return 0;
   } catch(const std::exception& e) { std::cerr<<e.what()<<'\n'; return 1; }

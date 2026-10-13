@@ -4,6 +4,7 @@
 #include <sstream>
 #include <thread>
 #include <vector>
+#include <iostream>
 
 #include <unitree/robot/channel/channel_factory.hpp>
 #include <unitree/robot/go2/robot_state/robot_state_client.hpp>
@@ -125,6 +126,53 @@ Result EnableSportMode(const std::string& network_interface) {
     }
     return Result{false,false,"Sport ACTIVE not observed after enable",sim2real::SportMode::UNKNOWN};
   });
+}
+
+int RunSession(const std::string& network_interface) {
+  if(network_interface.empty()) return 2;
+  auto* factory=unitree::robot::ChannelFactory::Instance();
+  bool initialized=false;
+  try {
+    factory->Init(0,network_interface);initialized=true;
+    {
+      unitree::robot::go2::RobotStateClient client;
+      // Status is diagnostic IO, not a five-second control-loop operation.
+      client.SetTimeout(.2F);client.Init();
+      std::string line;
+      while(std::getline(std::cin,line)) {
+        if(line.size()>128) break;
+        std::istringstream input(line);uint64_t id=0;std::string command,extra;
+        if(!(input>>id>>command)||(input>>extra)||!id||
+           (command!="STATUS"&&command!="RELEASE")) break;
+        const auto started=std::chrono::steady_clock::now();
+        Result result=QuerySportModeWithClient(client);
+        if(command=="RELEASE"&&result.ok&&result.state==sim2real::SportMode::ACTIVE) {
+          int32_t status=-1;
+          const auto rc=client.ServiceSwitch(kSportModeService,0,status);
+          if(rc!=0) result={false,true,"Sport release RPC failed: "+std::to_string(rc),sim2real::SportMode::ERROR};
+          else {
+            for(int attempt=0;attempt<15;++attempt) {
+              std::this_thread::sleep_for(std::chrono::milliseconds(100));
+              result=QuerySportModeWithClient(client);
+              if(!result.ok||result.state==sim2real::SportMode::RELEASED) break;
+            }
+            if(result.state!=sim2real::SportMode::RELEASED) result.ok=false;
+          }
+        }
+        const auto ended=std::chrono::steady_clock::now();
+        // Only this tagged record is protocol output; SDK diagnostics are ignored.
+        for(char& c:result.message) if(c=='\n'||c=='\r') c=' ';
+        std::cout<<"R3_MODE_V1 "<<id<<' '<<sim2real::SportModeName(result.state)<<' '
+          <<std::chrono::duration_cast<std::chrono::nanoseconds>(started.time_since_epoch()).count()<<' '
+          <<std::chrono::duration_cast<std::chrono::nanoseconds>(ended.time_since_epoch()).count()<<' '
+          <<result.ok<<' '<<result.message.substr(0,512)<<std::endl;
+      }
+    }
+    factory->Release();return 0;
+  } catch(const std::exception& e) {
+    std::cerr<<"SDK session failed: "<<e.what()<<std::endl;
+    if(initialized)factory->Release();return 1;
+  }
 }
 
 }  // namespace go2_motion_mode

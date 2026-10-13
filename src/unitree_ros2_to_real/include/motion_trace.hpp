@@ -10,6 +10,8 @@ struct MotionTraceSample {
  int kind=0,phase=0,accepted=-1;long long stamp_ns=0;unsigned long long packets=0;
  double interval_s=0,io_min_s=0,io_max_s=0,low_age_s=0,remote_age_s=0,arm_age_s=0,target_age_s=0;
  double compute_ms=0,job_age_s=0,result_age_s=0;
+ double prepare_ms=0,compute_cpu_ms=-1,postprocess_ms=0,result_lock_wait_ms=0;
+ double callback_lock_wait_ms=0,callback_lock_hold_ms=0,graph_ms=0;
  std::array<double,3> sticks{},requested{},command{},gyro{};
  std::array<float,4> quat{};
  std::array<float,12> q{},dq{},target{},action{},kp{},kd{};

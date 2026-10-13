@@ -26,7 +26,7 @@ assert s.index('output_->publish(*packet);++sent_;') < s.index('const auto publi
 assert 'passive_command_sent' in s and 'last_commanded_leg_mode' in s
 print('PASS passive publication acknowledgement follows actual publish return')
 
-policy=s[s.index('  if(infer) {'):s.index('  std::lock_guard lock(mutex_);const auto now=SafetyClock::now();',s.index('  if(infer) {'))]
+policy=s[s.index(' void PolicyTick()'):s.index(' ControlDiagnostics CaptureStatus(')]
 assert policy.index('torch::InferenceMode inference;') < policy.index('a.ResetPolicyState()') < policy.index('a.Act()')
 warm=s[s.index('// Warm TorchScript'):s.index('  home_tolerance_=')]
 assert 'torch::InferenceMode inference;' in warm

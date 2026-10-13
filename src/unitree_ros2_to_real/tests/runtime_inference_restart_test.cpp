@@ -1,4 +1,5 @@
 #include "real_controller_core.hpp"
+#include "policy_tensor_io.hpp"
 #include <ATen/Parallel.h>
 #include <iostream>
 #include <thread>
@@ -22,6 +23,22 @@ int main(int argc,char** argv){try{
  }
  {
   torch::InferenceMode guard;
+  torch::Tensor input;std::array<float,6> values{1,2,3,4,5,6};
+  sim2real::CopyPolicyInput(input,values);const auto* storage=input.data_ptr<float>();
+  values[0]=7;sim2real::CopyPolicyInput(input,values);
+  require(input.data_ptr<float>()==storage&&input[0].item<float>()==7,"input buffer not reused/copied");
+  torch::Tensor borrowed=torch::zeros({6},torch::kFloat64);
+  sim2real::CopyPolicyInput(borrowed,values);
+  require(borrowed.scalar_type()==torch::kFloat32&&borrowed.is_inference(),"invalid buffer not replaced");
+  auto& owner=after.agent();
+  sim2real::Legs measured{};measured.fill(.3F);
+  after.SetMeasuredLegs(measured,measured);const auto* leg_storage=owner.obs.dof_pos.data_ptr<float>();
+  const auto captured_history=owner.UnifiedActorHistory().clone();
+  measured.fill(.4F);after.SetMeasuredLegs(measured,measured);
+  require(owner.obs.dof_pos.data_ptr<float>()==leg_storage,"leg input allocation on every update");
+  require(torch::equal(captured_history,owner.UnifiedActorHistory()),"input reuse mutated history");
+  const auto* output=sim2real::PolicyOutputData(owner.obs.action);
+  for(int i=0;i<12;++i)require(output[i]==owner.obs.action[i].item<float>(),"action pointer order changed");
   auto& a=after.agent();const auto history=a.UnifiedActorHistory().clone(),action=a.obs.action.clone();
   {PolicyStateTransaction rejected(a);feedback(after,7);a.Act();}
   require(torch::equal(history,a.UnifiedActorHistory())&&torch::equal(action,a.obs.action),"rejected job rolls history and action back");

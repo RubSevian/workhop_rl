@@ -91,7 +91,10 @@ class UnifiedObservationContract {
 
   torch::Tensor default_leg_pos_;
   UnifiedObservationScales scales_;
-  std::vector<torch::Tensor> frames_;
+  // Fixed five-frame contract: checkpoint/rollback copies handles, with no
+  // vector allocation for every policy transaction.
+  std::array<torch::Tensor, Dimensions::History> frames_{};
+  bool initialized_ = false;
 };
 
 }  // namespace go2_rars01

@@ -25,4 +25,8 @@ Result ReleaseSportMode(const std::string& network_interface);
 // Caller must hold the same output lease as the LowCmd owner, after stop confirmation.
 Result EnableSportMode(const std::string& network_interface);
 
+// SDK-only, persistent stdin/stdout session. Commands are STATUS or RELEASE;
+// no motor output and no enable operation are exposed by this protocol.
+int RunSession(const std::string& network_interface);
+
 }  // namespace go2_motion_mode
