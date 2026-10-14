@@ -8,6 +8,9 @@
 #include "navigation_request_gate.hpp"
 #include "control_diagnostics.hpp"
 #include "control_executors.hpp"
+#include "policy_thread.hpp"
+#include "policy_process.hpp"
+#include "isolated_replay.hpp"
 #include <future>
 #include <ATen/Parallel.h>
 #include <rclcpp/rclcpp.hpp>
@@ -23,6 +26,7 @@
 #include <limits>
 #include <cstdlib>
 #include <ctime>
+#include <fstream>
 using namespace sim2real;
 namespace {
 #ifdef R3_COMPUTE_PROBE_ONLY
@@ -74,7 +78,25 @@ class R3Node final:public rclcpp::Node {
   }
   remote_test_mode_=control_mode_=="remote_test"&&motion_commands_enabled_;
   network_interface_=declare_parameter<std::string>("network_interface","",immutable);
+  receiver_trace_path_=declare_parameter<std::string>("receiver_diagnostics_path","",immutable);
+  io_trace_path_=declare_parameter<std::string>("io_diagnostics_path","",immutable);
+  if(!receiver_trace_path_.empty()||!io_trace_path_.empty()) {
+   RequireIsolatedReplay();
+   if(!read_only_||!network_interface_.empty())throw std::runtime_error("Input/IO diagnostics require read_only and no SDK interface");
+   if(!receiver_trace_path_.empty())receiver_trace_.reserve(300001);
+   if(!io_trace_path_.empty())io_trace_.reserve(300001);
+  }
+  worker_self_test_frames_=declare_parameter<int>("policy_worker_self_test_frames",0,immutable);
+  if(worker_self_test_frames_<0||worker_self_test_frames_>1000)throw std::runtime_error("worker self test frames must be 0..1000");
+  if(worker_self_test_frames_) {
+   RequireIsolatedReplay();
+   const auto domain=std::getenv("ROS_DOMAIN_ID"),dds=std::getenv("CYCLONEDDS_URI");
+   if(operation!=OperationProfile::READ_ONLY||!read_only_||!network_interface_.empty()||
+      !domain||std::string(domain)!="228"||!dds||std::string(dds).find("name=\"lo\"")==std::string::npos)
+    throw std::runtime_error("Worker self test requires read_only, domain228, loopback and empty SDK interface");
+  }
   if constexpr(compute_probe) {
+   RequireIsolatedReplay();
    const auto domain=std::getenv("ROS_DOMAIN_ID"),dds=std::getenv("CYCLONEDDS_URI");
    if(!domain||std::string(domain)!="228"||!dds||std::string(dds).find("name=\"lo\"")==std::string::npos||
       operation!=OperationProfile::READ_ONLY||!read_only_||!network_interface_.empty())
@@ -92,6 +114,7 @@ class R3Node final:public rclcpp::Node {
   // Warm TorchScript before any subscriptions, output publisher or takeover.
   // Discard all warm-up targets; the real RL entry resets history from feedback.
   {
+   InitializePolicyThread();
    torch::InferenceMode inference;
    auto& a=core_.agent();a.obs.dof_pos=a.params.default_dof_pos.clone();a.ResetPolicyState();
    for(int i=0;i<20;++i){const auto q=a.Act();
@@ -116,9 +139,14 @@ class R3Node final:public rclcpp::Node {
   state_group_=create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
   rclcpp::SubscriptionOptions state_options;state_options.callback_group=state_group_;
   low_sub_=create_subscription<unitree_go::msg::LowState>("/lowstate",rclcpp::SensorDataQoS().keep_last(1),[this](unitree_go::msg::LowState::ConstSharedPtr m){
+   const auto callback_started=SafetyClock::now();
    std::lock_guard lock(mutex_);const auto now=SafetyClock::now();
    const bool valid=lowstate_.Receive(*m,now);remote_->Receive(m->wireless_remote,now);
    inputs_.lowstate_stamp=now;inputs_.remote_stamp=now;inputs_.ready.motor_state_valid=valid;
+   if(!receiver_trace_path_.empty()) {
+    if(receiver_trace_.size()<receiver_trace_.capacity())receiver_trace_.push_back({m->tick,callback_started.time_since_epoch().count(),now.time_since_epoch().count()});
+    else ++receiver_trace_dropped_;
+   }
    if(valid)inputs_.measured_q=lowstate_.snapshot().motor_q;
    else if(supervisor_->output_enabled())supervisor_->Fault("invalid_lowstate",now);
   });
@@ -220,6 +248,10 @@ class R3Node final:public rclcpp::Node {
   io_group_=create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive,false);
   const int io_ms=r["lowcmd_period_ms"].as<int>();if(io_ms!=2)throw std::runtime_error("Current transport profile expects SDK example 2ms period");
   io_timer_=create_wall_timer(std::chrono::milliseconds(io_ms),[this]{
+   if(!io_trace_path_.empty()) {
+    if(io_trace_.size()<io_trace_.capacity())io_trace_.push_back(SafetyClock::now().time_since_epoch().count());
+    else ++io_trace_dropped_;
+   }
    std::lock_guard lock(mutex_);const auto now=SafetyClock::now();HandleRemote(now);
    if(compute_probe||(motion_trace_&&motion_trace_->enabled())) {
     if(last_io_tick_!=SafetyTime{})io_interval_max_ms_=std::max(io_interval_max_ms_,Age(now,last_io_tick_)*1000.);
@@ -251,7 +283,19 @@ class R3Node final:public rclcpp::Node {
   RCLCPP_INFO(get_logger(),"R3 read_only=%d; startup disarmed; remote sequence requires fresh chord and all prerequisites",read_only_);
   RCLCPP_INFO(get_logger(),"config=%s fixed_kp=%s fixed_kd=%s rl_kp=%s rl_kd=%s",config.c_str(),FloatList(profile.kp).c_str(),FloatList(profile.kd).c_str(),FloatList(profile.rl_kp).c_str(),FloatList(profile.rl_kd).c_str());
  }
- ~R3Node()=default;
+ ~R3Node() override {
+  if(!receiver_trace_path_.empty()) {
+   std::ofstream f(receiver_trace_path_);f<<"sequence,callback_begin_ns,receive_ns\n";
+   for(const auto& r:receiver_trace_)f<<r.sequence<<','<<r.callback<<','<<r.receive<<'\n';
+   std::ofstream(receiver_trace_path_+".meta.json")<<"{\"dropped\":"<<receiver_trace_dropped_<<"}\n";
+   if(!f)RCLCPP_ERROR(get_logger(),"Failed to export receiver diagnostics");
+  }
+  if(!io_trace_path_.empty()) {
+   std::ofstream f(io_trace_path_);f<<"callback_begin_ns\n";for(auto t:io_trace_)f<<t<<'\n';
+   std::ofstream(io_trace_path_+".meta.json")<<"{\"dropped\":"<<io_trace_dropped_<<"}\n";
+   if(!f)RCLCPP_ERROR(get_logger(),"Failed to export IO diagnostics");
+  }
+ }
  auto IoGroup()const{return io_group_;}
  auto PolicyGroup()const{return policy_group_;}
  bool SharedProbeExecutor()const{return probe_shared_executor_;}
@@ -451,7 +495,35 @@ class R3Node final:public rclcpp::Node {
   for(int i=0;i<12;++i){sample.target[i]=packet.motor_cmd[i].q;sample.kp[i]=packet.motor_cmd[i].kp;sample.kd[i]=packet.motor_cmd[i].kd;}
   motion_trace_->Submit(sample);last_trace_row_=now;trace_io_min_=std::numeric_limits<double>::infinity();trace_io_max_=0;
  }
+ public:
+ void InitializePolicyWorker() {
+  const auto& settings=InitializePolicyThread();
+  thread_local bool logged=false;
+  if(!logged){RCLCPP_INFO(get_logger(),"Policy worker effective OpenMP max=%d interop=%d (thread initialized)",settings.openmp_max,settings.interop);logged=true;}
+ }
+ private:
  void PolicyTick() {
+  // Fallback covers the diagnostic shared executor, whose workers are owned
+  // by rclcpp. Normal execution initializes once before policy_executor.spin.
+  InitializePolicyWorker();
+  if(worker_self_test_frames_) {
+   torch::InferenceMode inference;
+   if(worker_self_test_done_==0)core_.agent().ResetPolicyState();
+   if(omp_get_max_threads()!=1)throw std::runtime_error("OpenMP changed in policy worker");
+   const auto action=core_.agent().Act();
+   if(action.numel()!=12||!torch::isfinite(action).all().item<bool>()||omp_get_max_threads()!=1)
+    throw std::runtime_error("Read-only worker self test failed");
+   ++worker_self_test_done_;
+   if(worker_self_test_done_==1||worker_self_test_done_==worker_self_test_frames_) {
+    int actual_team=0;
+    #pragma omp parallel reduction(max:actual_team)
+    {actual_team=omp_get_num_threads();}
+    if(actual_team!=1)throw std::runtime_error("Policy worker OpenMP team oversubscribed");
+    RCLCPP_INFO(get_logger(),"Read-only production worker self test frame=%d actual diagnostic team=%d; targets discarded",worker_self_test_done_,actual_team);
+   }
+   if(worker_self_test_done_>=worker_self_test_frames_)rclcpp::shutdown();
+   return;
+  }
   std::array<float,6> armq,armdq,target;LowStateSnapshot low;std::array<double,3> cmd{};bool infer=false,reset=false;
   std::optional<PolicyTicket> ticket;
   std::optional<MotionTraceSample> trace;
@@ -688,6 +760,11 @@ class R3Node final:public rclcpp::Node {
  SafetyTime last_io_tick_{},probe_result_stamp_{};double io_interval_max_ms_=0;
  size_t probe_jobs_=0,probe_misses_=0,probe_exceptions_=0;
  bool probe_reset_=true,probe_shared_executor_=false;std::string probe_error_;
+ int worker_self_test_frames_=0,worker_self_test_done_=0;
+ struct ReceiveTrace {uint32_t sequence;int64_t callback,receive;};
+ std::string receiver_trace_path_,io_trace_path_;
+ std::vector<ReceiveTrace> receiver_trace_;std::vector<int64_t> io_trace_;
+ size_t receiver_trace_dropped_=0,io_trace_dropped_=0;
  rclcpp::TimerBase::SharedPtr probe_stop_;
  std::unique_ptr<OutputLease> lease_;std::array<float,6> arm_q_{},arm_dq_{},arm_target_{};
  bool nav_input_unique_=false;
@@ -710,5 +787,5 @@ class R3Node final:public rclcpp::Node {
  rclcpp::TimerBase::SharedPtr port_timer_;rclcpp::CallbackGroup::SharedPtr port_group_;
  rclcpp::TimerBase::SharedPtr io_timer_,policy_timer_,status_timer_;rclcpp::CallbackGroup::SharedPtr io_group_,policy_group_,status_group_,state_group_;
 };
-int main(int argc,char** argv){rclcpp::init(argc,argv);try{auto node=std::make_shared<R3Node>();SpinControlExecutors(node,node->IoGroup(),node->PolicyGroup(),node->SharedProbeExecutor());}
+int main(int argc,char** argv){try{InitializePolicyProcess(argv);}catch(const std::exception& e){std::cerr<<"Startup failed closed: "<<e.what()<<'\n';return 1;}rclcpp::init(argc,argv);try{auto node=std::make_shared<R3Node>();SpinControlExecutors(node,node->IoGroup(),node->PolicyGroup(),node->SharedProbeExecutor(),[&]{node->InitializePolicyWorker();});}
  catch(const std::exception& e){RCLCPP_ERROR(rclcpp::get_logger("r3"),"Startup failed closed: %s",e.what());rclcpp::shutdown();return 1;}rclcpp::shutdown();}

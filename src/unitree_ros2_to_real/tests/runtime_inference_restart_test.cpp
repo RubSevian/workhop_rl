@@ -1,5 +1,6 @@
 #include "real_controller_core.hpp"
 #include "policy_tensor_io.hpp"
+#include "policy_thread.hpp"
 #include <ATen/Parallel.h>
 #include <iostream>
 #include <thread>
@@ -49,16 +50,20 @@ int main(int argc,char** argv){try{
  }
  std::exception_ptr error;double worst_first=0;
  // Constructor guard is thread-local: execute reset/Act on a separate worker as ROS does.
+ for(int session=0;session<5;++session){
  std::thread worker([&]{try{require(torch::autograd::GradMode::is_enabled(),"worker default grad enabled");
-  for(int session=0;session<5;++session){std::this_thread::sleep_for(std::chrono::milliseconds(20));
+  sim2real::InitializePolicyThread();require(omp_get_max_threads()==1,"new worker OpenMP setting");
+  {std::this_thread::sleep_for(std::chrono::milliseconds(20));
    for(int n=0;n<200;++n){torch::InferenceMode guard;feedback(after,n);
     if(n==0)after.agent().ResetPolicyState();auto start=std::chrono::steady_clock::now();auto output=after.agent().Act();
     if(n==0)worst_first=std::max(worst_first,std::chrono::duration<double,std::milli>(std::chrono::steady_clock::now()-start).count());
     require(output.numel()==12&&torch::isfinite(output).all().item<bool>(),"finite output");
     require(!output.requires_grad()&&!after.agent().UnifiedActorHistory().requires_grad(),"restart retained autograd graph");
+    require(omp_get_max_threads()==1,"worker OpenMP changed after Act");
    }
   }
  }catch(...){error=std::current_exception();}});worker.join();if(error)std::rethrow_exception(error);
+ }
  std::cout<<"PASS real actor: unguarded output/history retain autograd; guarded numerical parity30 frames; worker restarts5x200 frames no graphs; max_first_act_ms="<<worst_first<<" (synthetic, not physical deadline certification)\n";
  return 0;
  }catch(const std::exception& e){std::cerr<<e.what()<<'\n';return 1;}}

@@ -33,7 +33,8 @@ def _controller(context):
     if get('control_mode'):
         parameters['control_mode'] = get('control_mode')
     return [Node(package='unitree_legged_real', executable='go2_r3_commissioning',
-                 output='screen', parameters=[parameters])]
+                 output='screen', parameters=[parameters],
+                 additional_env={'OMP_NUM_THREADS': '1'})]
 
 def generate_launch_description():
     return LaunchDescription([
