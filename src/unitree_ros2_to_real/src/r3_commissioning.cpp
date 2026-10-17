@@ -40,6 +40,7 @@ R3Profile LoadR3Profile(const YAML::Node& yaml) {
  p.capture_hold_s=d["capture_hold_sec"]?d["capture_hold_sec"].as<double>():.02;
  p.stand_s=d["stand_duration_sec"].as<double>();p.hold_s=d["hold_transition_sec"].as<double>();
  p.command_timeout_s=d["cmd_vel_timeout_sec"].as<double>();p.sport_timeout_s=d["sport_mode"]["observation_timeout_s"].as<double>();
+ p.sport_startup_only=d["sport_mode"]["startup_only"].as<bool>();
  p.lowstate_timeout_s=d["lowstate"]["stale_timeout_s"].as<double>();p.remote_timeout_s=d["remote"]["stale_timeout_s"].as<double>();
  p.arm_timeout_s=d["rars01"]["feedback_timeout_s"].as<double>();
  if(d["rars01"]["require_home_ready_for_leg_takeover"])p.require_arm_home_ready=d["rars01"]["require_home_ready_for_leg_takeover"].as<bool>();
@@ -49,6 +50,26 @@ R3Profile LoadR3Profile(const YAML::Node& yaml) {
  }
  p.max_command_duration_s=r["manual"]["max_duration_s"].as<double>();p.q_capture_tolerance=r["hold_current_tolerance_rad"].as<double>();
  p.deadline_burst_limit=r["deadline_burst_limit"].as<int>();
+ p.policy_observation_timeout_s=r["policy_observation_timeout_s"].as<double>();
+ {const auto t=r["timing"];
+  p.policy_result_timeout_s=t["policy_result_timeout_s"].as<double>();
+  p.policy_inference_timeout_s=t["policy_inference_timeout_s"].as<double>();
+  p.zero_policy_handoff_timeout_s=t["zero_policy_handoff_timeout_s"].as<double>();
+  p.pd_handoff_lowstate_timeout_s=t["pd_handoff_lowstate_timeout_s"].as<double>();
+  p.mission_timeout_s=t["mission_timeout_s"].as<double>();
+  p.graph_timeout_s=t["graph_timeout_s"].as<double>();
+  p.trace_io_period_s=t["trace_io_period_s"].as<double>();
+  p.passive_timeout_s=t["passive_timeout_s"].as<double>();
+  p.policy_deadline_ms=t["policy_deadline_ms"].as<double>();
+  p.passive_packet_limit=t["passive_packet_limit"].as<size_t>();
+  p.policy_period_ms=t["policy_period_ms"].as<int>();
+  p.port_period_ms=t["port_period_ms"].as<int>();
+  p.status_period_ms=t["status_period_ms"].as<int>();
+  p.sdk_query_period_ms=t["sdk_query_period_ms"].as<int>();
+  p.sdk_query_timeout_ms=t["sdk_query_timeout_ms"].as<int>();
+  p.sdk_release_timeout_ms=t["sdk_release_timeout_ms"].as<int>();
+ }
+
  if(r["lowcmd_discovery_timeout_s"])p.lowcmd_discovery_timeout_s=r["lowcmd_discovery_timeout_s"].as<double>();
  if(r["lowcmd_clear_duration_s"])p.lowcmd_clear_duration_s=r["lowcmd_clear_duration_s"].as<double>();
  p.policy_timing_reviewed=r["policy_timing_reviewed"].as<bool>();
@@ -86,6 +107,17 @@ LowCmdWaitResult LowCmdDiscoveryWait::Update(SafetyTime now,bool sport_released,
 R3Supervisor::R3Supervisor(R3Profile p,OperationProfile operation):profile_(std::move(p)),operation_(operation),capabilities_(ResolveOperationCapabilities(operation)) {
  Dispatch(SystemEvent::INITIALIZE,SafetyTime{});
  LowCmdDiscoveryWait validate_discovery(profile_.lowcmd_discovery_timeout_s,profile_.lowcmd_clear_duration_s);
+ for(double v:{profile_.policy_result_timeout_s,profile_.policy_inference_timeout_s,profile_.zero_policy_handoff_timeout_s,profile_.pd_handoff_lowstate_timeout_s})
+  if(!std::isfinite(v)||v<=0||v>.04)throw std::invalid_argument("Policy/PD watchdog outside (0,40ms] contract");
+ for(double v:{profile_.mission_timeout_s,profile_.graph_timeout_s,profile_.trace_io_period_s,profile_.passive_timeout_s,profile_.policy_deadline_ms})
+  if(!std::isfinite(v)||v<=0)throw std::invalid_argument("Positive finite runtime timing required");
+ if(profile_.mission_timeout_s>.5||profile_.graph_timeout_s>.5||profile_.passive_timeout_s>.1||profile_.passive_packet_limit<1||profile_.passive_packet_limit>10)
+  throw std::invalid_argument("Runtime freshness/passive limits exceed existing contract");
+ if(profile_.policy_period_ms!=20||profile_.policy_deadline_ms!=20||profile_.port_period_ms<=0||profile_.status_period_ms<=0||profile_.sdk_query_period_ms<=0||profile_.sdk_query_timeout_ms<=0||profile_.sdk_release_timeout_ms<=0)
+  throw std::invalid_argument("Invalid runtime periods; trained policy requires20ms");
+
+ if(!std::isfinite(profile_.policy_observation_timeout_s)||profile_.policy_observation_timeout_s<=0||profile_.policy_observation_timeout_s>.06)
+  throw std::invalid_argument("RL observation timeout must be finite in (0, 0.06] seconds");
  for(double v:{profile_.capture_hold_s,profile_.stand_s,profile_.hold_s,profile_.lie_down_s,profile_.sport_timeout_s,profile_.command_timeout_s,
   profile_.lowstate_timeout_s,profile_.remote_timeout_s,profile_.arm_timeout_s,profile_.vx_bound,profile_.vy_bound,
   profile_.wz_bound,profile_.max_command_duration_s,profile_.q_capture_tolerance})
@@ -163,7 +195,10 @@ void R3Supervisor::ArmEmergencyResult(bool,const std::string& detail){arm_emerge
 bool R3Supervisor::Fresh(SafetyTime now,SafetyTime stamp,double limit) const {
  const double age=std::chrono::duration<double>(now-stamp).count();return age>=0&&age<=limit;
 }
-bool R3Supervisor::Released(SafetyTime now) const {return seen_&&inputs_.sport==SportMode::RELEASED&&Fresh(now,inputs_.sport_stamp,profile_.sport_timeout_s);}
+bool R3Supervisor::Released(SafetyTime now) const {
+ if(profile_.sport_startup_only)return sport_release_verified_;
+ return seen_&&inputs_.sport==SportMode::RELEASED&&Fresh(now,inputs_.sport_stamp,profile_.sport_timeout_s);
+}
 R3Reply R3Supervisor::Fail(const std::string& message) const {return {false,message};}
 std::vector<std::string> R3Supervisor::Blockers(SafetyTime now,bool physical) const {
  auto b=inputs_.ready.Blockers();std::erase(b,std::string("explicit_output_enable"));
@@ -203,6 +238,12 @@ void R3Supervisor::Capture(SafetyTime now){InvalidatePolicyWork();start_=inputs_
 bool R3Supervisor::IsActive() const {return output_enabled_;}
 void R3Supervisor::Observe(const R3Inputs& in,SafetyTime now) {
  inputs_=in;seen_=true;
+ // Only initial admission can establish the release latch. No age-based
+ // runtime Sport supervision in startup_only mode; a new supervisor resets it.
+ if(!output_enabled_&&!fault_&&Fresh(now,in.sport_stamp,profile_.sport_timeout_s)) {
+  if(in.sport==SportMode::ACTIVE||in.sport==SportMode::RELEASED)sport_startup_checked_=true;
+  if(in.sport==SportMode::RELEASED)sport_release_verified_=true;
+ }
  if(!output_enabled_&&!fault_&&(state()==R3State::DISARMED||state()==R3State::STOCK))
   SetPhase(in.sport==SportMode::ACTIVE&&Fresh(now,in.sport_stamp,profile_.sport_timeout_s)?R3State::STOCK:R3State::DISARMED);
  if(IsActive() && state()!=R3State::EMERGENCY_DAMP && !Blockers(now).empty())Fault("critical_input_or_ownership",now);
@@ -225,7 +266,7 @@ std::vector<std::string> R3Supervisor::RemoteSequenceBlockers(SafetyTime now) co
  r.navigation_ready=inputs_.navigation_ready;r.perception_ready=inputs_.perception_ready;r.arm_emergency_validated=inputs_.arm_emergency_validated;
  for(const auto& blocker:r.TakeoverBlockers(capabilities_))if(std::find(b.begin(),b.end(),blocker)==b.end())b.push_back(blocker);
  if(!seen_||(inputs_.sport!=SportMode::ACTIVE&&inputs_.sport!=SportMode::RELEASED)||
-    !Fresh(now,inputs_.sport_stamp,profile_.sport_timeout_s))b.emplace_back("sport_state_not_fresh_known");
+    !(profile_.sport_startup_only?sport_startup_checked_:Fresh(now,inputs_.sport_stamp,profile_.sport_timeout_s)))b.emplace_back("sport_state_not_fresh_known");
  if(capabilities_.allow_rl&&!profile_.policy_timing_reviewed)b.emplace_back("policy_timing_not_reviewed");
  return b;
 }
@@ -340,10 +381,10 @@ R3Reply R3Supervisor::ControlledAbort(SafetyTime now) {
  if(system_state_==SystemState::CONTROLLED_STOP)return {true,"controlled stop already requested"};
  if(system_state_==SystemState::ACTIVE) {
   // X cannot conceal a job/result that was already expired before the request.
-  if(pending_policy_&&!Fresh(now,pending_policy_->started,.04)) {
+  if(pending_policy_&&!Fresh(now,pending_policy_->started,profile_.policy_inference_timeout_s)) {
    Fault("policy_inference_timeout",now);return Fail("policy job expired before X");
   }
-  if(!Fresh(now,policy_stamp_,.04)) {
+  if(!Fresh(now,policy_stamp_,profile_.policy_result_timeout_s)) {
    Fault("policy_result_stale",now);return Fail("policy result expired before X");
   }
   ++orchestration_generation_;InvalidatePolicyWork();Zero();stop_started_=now;arm_home_accepted_=false;home_settling_=lie_reached_=false;
@@ -439,7 +480,7 @@ std::optional<PolicyTicket> R3Supervisor::BeginPolicy(SafetyTime now) {
  // Leg observation and arm feeds have separate freshness requirements.
  // Arm publication latency must not consume the policy response deadline.
  const auto observation=inputs_.lowstate_stamp;
- if(!Fresh(now,observation,.04)){Fault("policy_observation_stale",now);return std::nullopt;}
+ if(!Fresh(now,observation,profile_.policy_observation_timeout_s)){Fault("policy_observation_stale",now);return std::nullopt;}
  pending_policy_=PolicyTicket{++next_policy_id_,policy_generation_,now,observation,inputs_.arm_stamp,inputs_.target_stamp};
  return pending_policy_;
 }
@@ -470,14 +511,14 @@ bool R3Supervisor::PolicyResult(const PolicyTicket& ticket,const std::array<floa
  if(!std::isfinite(ms)||ms<0||now<ticket.started){Fault("invalid_policy_timing",now);return false;}
  // Check the actual job deadline before accepting it; a late completion must
  // never renew the response watchdog even if IO was delayed by the executor.
- if(!Fresh(now,ticket.started,.04)){Fault("policy_inference_timeout",now);return false;}
- if(zero_policy_handoff_started_&&!Fresh(now,*zero_policy_handoff_started_,zero_policy_handoff_timeout_s)) {
+ if(!Fresh(now,ticket.started,profile_.policy_inference_timeout_s)){Fault("policy_inference_timeout",now);return false;}
+ if(zero_policy_handoff_started_&&!Fresh(now,*zero_policy_handoff_started_,profile_.zero_policy_handoff_timeout_s)) {
   Fault("policy_zero_handoff_timeout",now);return false;
  }
  for(float v:q)if(!std::isfinite(v)||std::abs(v)>3.5F){Fault("invalid_policy_action",now);return false;}
- if(ms>=20){++deadline_misses_;++deadline_burst_;}else deadline_burst_=0;
+ if(ms>=profile_.policy_deadline_ms){++deadline_misses_;++deadline_burst_;}else deadline_burst_=0;
  if(deadline_burst_>=profile_.deadline_burst_limit){Fault("policy_deadline_burst",now);return false;}
- if(!Fresh(now,ticket.observation_stamp,.04)){Fault("policy_observation_stale",now);return false;}
+ if(!Fresh(now,ticket.observation_stamp,profile_.policy_observation_timeout_s)){Fault("policy_observation_stale",now);return false;}
  if(!Fresh(now,ticket.arm_stamp,profile_.arm_timeout_s)||!Fresh(now,ticket.target_stamp,profile_.arm_timeout_s)) {
   Fault("policy_arm_observation_stale",now);return false;
  }
@@ -496,12 +537,12 @@ std::optional<unitree_go::msg::LowCmd> R3Supervisor::Tick(SafetyTime now) {
  }
  if(!Require(now).success){Fault("watchdog_or_precondition",now);return Tick(now);}
  if(phase_==SystemPhase::LIE_DOWN_PASSIVE) {
-  if(passive_packets_sent_>=passive_packet_limit) {
+  if(passive_packets_sent_>=profile_.passive_packet_limit) {
    passive_sequence_complete_=true;passive_packet_pending_=false;output_enabled_=false;
    Dispatch(SystemEvent::ADVANCE_PHASE,now,SystemPhase::LIE_DOWN_OUTPUT_STOPPING);
    return std::nullopt;
   }
-  if(!Fresh(now,passive_started_,passive_timeout_s)) {
+  if(!Fresh(now,passive_started_,profile_.passive_timeout_s)) {
    passive_packet_pending_=false;Fault("passive_transition_timeout",now);return Tick(now);
   }
   passive_packet_pending_=true;return MakePassiveLowCmd();
@@ -514,7 +555,7 @@ std::optional<unitree_go::msg::LowCmd> R3Supervisor::Tick(SafetyTime now) {
   if(home&&LieDownTargetApproved()&&(profile_.lie_down_validated||profile_.controlled_stop_lie_down_trial)) {
    if(!home_settling_){stop_blocker_.clear();home_settling_=true;home_settle_started_=now;Dispatch(SystemEvent::ADVANCE_PHASE,now,SystemPhase::ARM_HOME_SETTLE);}
    if(std::chrono::duration<double>(now-home_settle_started_).count()>=profile_.arm_home_settle_s) {
-    if(!Fresh(now,inputs_.lowstate_stamp,.04)){Fault("pd_handoff_lowstate_stale",now);return Tick(now);}
+    if(!Fresh(now,inputs_.lowstate_stamp,profile_.pd_handoff_lowstate_timeout_s)){Fault("pd_handoff_lowstate_stale",now);return Tick(now);}
     Capture(now);Zero();reset_policy_=false;stop_blocker_.clear();
     Dispatch(SystemEvent::ADVANCE_PHASE,now,SystemPhase::PD_CAPTURE);
     return MakeLowCmd(target_,profile_.kp,profile_.kd);
@@ -588,16 +629,16 @@ std::optional<unitree_go::msg::LowCmd> R3Supervisor::Tick(SafetyTime now) {
   }
   break;
  case R3State::RL_ZERO:case R3State::RL_ACTIVE:
-  if(pending_policy_&&!Fresh(now,pending_policy_->started,.04)){Fault("policy_inference_timeout",now);return Tick(now);}
+  if(pending_policy_&&!Fresh(now,pending_policy_->started,profile_.policy_inference_timeout_s)){Fault("policy_inference_timeout",now);return Tick(now);}
   if(zero_policy_handoff_started_) {
-   if(!Fresh(now,*zero_policy_handoff_started_,zero_policy_handoff_timeout_s)) {
+   if(!Fresh(now,*zero_policy_handoff_started_,profile_.zero_policy_handoff_timeout_s)) {
     Fault("policy_zero_handoff_timeout",now);return Tick(now);
    }
    return MakeLowCmd(target_,have_policy_?profile_.rl_kp:profile_.kp,
                      have_policy_?profile_.rl_kd:profile_.kd);
   }
-  if(!have_policy_&&Fresh(now,policy_stamp_,.04))return MakeLowCmd(target_,profile_.kp,profile_.kd);
-  if(!have_policy_||!Fresh(now,policy_stamp_,.04)){Fault("policy_result_stale",now);return Tick(now);}
+  if(!have_policy_&&Fresh(now,policy_stamp_,profile_.policy_result_timeout_s))return MakeLowCmd(target_,profile_.kp,profile_.kd);
+  if(!have_policy_||!Fresh(now,policy_stamp_,profile_.policy_result_timeout_s)){Fault("policy_result_stale",now);return Tick(now);}
   target_=policy_q_;return MakeLowCmd(target_,profile_.rl_kp,profile_.rl_kd);
  default:break;
  }
@@ -607,7 +648,7 @@ bool R3Supervisor::AllowsPacket(const unitree_go::msg::LowCmd& cmd,SafetyTime no
  if(!output_enabled_||!Released(now))return false;
  if(state()!=R3State::EMERGENCY_DAMP&&!Require(now).success)return false;
  if(phase_==SystemPhase::LIE_DOWN_PASSIVE) {
-  if(!passive_packet_pending_||passive_packets_sent_>=passive_packet_limit||!Fresh(now,passive_started_,passive_timeout_s))return false;
+  if(!passive_packet_pending_||passive_packets_sent_>=profile_.passive_packet_limit||!Fresh(now,passive_started_,profile_.passive_timeout_s))return false;
   return SerializeLowCmd(cmd)==SerializeLowCmd(MakePassiveLowCmd());
  }
  std::array<float,12> q{},kp{},kd{};
@@ -626,7 +667,7 @@ void R3Supervisor::NotifyPacketPublished(const unitree_go::msg::LowCmd& packet,S
   if(!passive_packet_pending_||SerializeLowCmd(packet)!=SerializeLowCmd(MakePassiveLowCmd()))return;
   // Record what was actually published, even if DDS returned after the deadline.
   ++passive_packets_sent_;passive_packet_pending_=false;last_commanded_leg_mode_=0;
-  if(!Fresh(now,passive_started_,passive_timeout_s))Fault("passive_transition_timeout",now);
+  if(!Fresh(now,passive_started_,profile_.passive_timeout_s))Fault("passive_transition_timeout",now);
  }else if(output_enabled_&&packet.motor_cmd[0].mode==1)last_commanded_leg_mode_=1;
 }
 void R3Supervisor::ConfirmOutputStopped() {

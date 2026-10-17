@@ -14,6 +14,7 @@ struct R3Profile {
  std::optional<std::array<float,12>> lie_down;
  std::optional<std::array<float,12>> emergency_kd;
  bool require_arm_home_ready=true;
+ bool sport_startup_only=false;
  bool policy_timing_reviewed=false;
  bool gate0_verified=false, mapping_verified=false, emergency_validated=false;
  bool remote_chords_verified=false, robot_supported=false, lie_down_validated=false;
@@ -21,6 +22,15 @@ struct R3Profile {
  std::string emergency_evidence;
  double capture_hold_s=.02,stand_s=8,hold_s=1,lie_down_s=8,sport_timeout_s=.5,command_timeout_s=.25;
  double lowstate_timeout_s=.5,remote_timeout_s=.25,arm_timeout_s=.25;
+ // Production values come from commissioning YAML, frozen for one process.
+ double policy_observation_timeout_s=.04;
+ double policy_result_timeout_s=.04,policy_inference_timeout_s=.04;
+ double zero_policy_handoff_timeout_s=.04,pd_handoff_lowstate_timeout_s=.04;
+ double mission_timeout_s=.5,graph_timeout_s=.5,trace_io_period_s=.02;
+ double passive_timeout_s=.10,policy_deadline_ms=20;
+ size_t passive_packet_limit=10;
+ int policy_period_ms=20,port_period_ms=10,status_period_ms=100;
+ int sdk_query_period_ms=100,sdk_query_timeout_ms=2000,sdk_release_timeout_ms=8000;
  double lowcmd_discovery_timeout_s=20,lowcmd_clear_duration_s=.5;
  double vx_bound=.20,vy_bound=.10,wz_bound=.10,max_command_duration_s=1;
  std::optional<std::array<double,3>> remote_stick_bounds;
@@ -99,8 +109,10 @@ class R3Supervisor {
  bool PolicyResult(const PolicyTicket& ticket,const std::array<float,12>& motor_q,double elapsed_ms,SafetyTime now);
  bool PolicyFailed(const PolicyTicket& ticket,const std::string& reason,SafetyTime now);
  bool policy_inflight() const {return pending_policy_.has_value();}
+ bool sport_startup_checked() const {return sport_startup_checked_;}
+ bool sport_release_verified() const {return sport_release_verified_;}
+ bool SportReleased(SafetyTime now) const {return Released(now);}
  bool zero_policy_handoff_pending() const {return zero_policy_handoff_started_.has_value();}
- static constexpr double zero_policy_handoff_timeout_s=.04;
  size_t rejected_policy_results() const {return rejected_policy_results_;}
  double PolicyAgeSeconds(SafetyTime now) const;
  double PolicyInferenceAgeSeconds(SafetyTime now) const;
@@ -111,8 +123,6 @@ class R3Supervisor {
  bool output_enabled() const {return output_enabled_;}
  bool output_stopped() const {return output_stopped_;}
  void NotifyPacketPublished(const unitree_go::msg::LowCmd& packet,SafetyTime now);
- static constexpr size_t passive_packet_limit=10;
- static constexpr double passive_timeout_s=.10;
  size_t passive_packets_sent() const {return passive_packets_sent_;}
  bool passive_sequence_complete() const {return passive_sequence_complete_;}
  int last_commanded_leg_mode() const {return last_commanded_leg_mode_;}
@@ -161,6 +171,7 @@ class R3Supervisor {
  bool remote_sequence_=false,release_requested_=false,sequence_hold_started_=false;
  SafetyTime sequence_hold_stamp_{};
  bool seen_=false,output_enabled_=false,output_stopped_=true,fault_=false,abort_sequence_=false;
+ bool sport_startup_checked_=false,sport_release_verified_=false;
  bool navigation_active_=false,reset_policy_=false,arm_hold_request_=false,have_policy_=false;
  std::array<float,12> start_{},target_{},policy_q_{};
  std::array<double,3> command_{};

@@ -3,8 +3,8 @@
 #include <iomanip>
 #include <stdexcept>
 namespace sim2real {
-MotionTrace::MotionTrace(const std::string& path,double duration_s):duration_s_(duration_s) {
- if(!std::isfinite(duration_s)||duration_s<=0||duration_s>600)throw std::invalid_argument("motion trace duration must be 0..600 seconds");
+MotionTrace::MotionTrace(const std::string& path,double duration_s,size_t queue_capacity,int writer_idle_ms,double max_duration_s):queue_(queue_capacity),writer_idle_ms_(writer_idle_ms),duration_s_(duration_s) {
+ if(!std::isfinite(max_duration_s)||max_duration_s<=0||max_duration_s>600||!std::isfinite(duration_s)||duration_s<=0||duration_s>max_duration_s||queue_capacity<1||queue_capacity>4096||writer_idle_ms<1||writer_idle_ms>1000)throw std::invalid_argument("Invalid bounded motion trace configuration");
  file_.open(path,std::ios::out|std::ios::trunc);
  if(!file_)throw std::runtime_error("cannot open motion trace file: "+path);
  file_<<"kind,phase,accepted,steady_ns,packets,interval_s,io_min_s,io_max_s,low_age_s,remote_age_s,arm_age_s,target_age_s,compute_ms,job_age_s,result_age_s";
@@ -43,7 +43,7 @@ void MotionTrace::Write() {
    if(!file_){Stop();return;}
   }else {
    if(!enabled())break;
-   std::this_thread::sleep_for(std::chrono::milliseconds(20));
+   std::this_thread::sleep_for(std::chrono::milliseconds(writer_idle_ms_));
   }
  }
  file_.flush();file_.close();

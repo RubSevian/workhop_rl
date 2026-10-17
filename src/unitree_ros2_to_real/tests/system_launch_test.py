@@ -12,8 +12,9 @@ m = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(m)
 def context(profile=''):
     c = LaunchContext()
-    c.launch_configurations.update(config_path='/offline/config', model_path='/offline/policy',
+    c.launch_configurations.update(config_path=str(p.parents[1]/'config/profiles/go2_rars01_commissioning.yaml'), model_path='/offline/policy',
         network_interface='', operation_profile=profile, remote_auto_sequence='true',
+        policy_scheduler='fifo20', policy_worker_self_test_frames='0', io_diagnostics_path='',
         remote_test_mode='', control_mode='', motion_commands_enabled='', read_only='', controlled_stop_lie_down_trial='',
         motion_diagnostics_enabled='false', motion_diagnostics_duration_s='120.0', motion_diagnostics_path='/offline/trace')
     return c
@@ -53,3 +54,28 @@ c=context('remote_test');c.launch_configurations.update(motion_diagnostics_enabl
 m._controller(c)
 assert captured[-1]['parameters'][0]['motion_diagnostics_enabled'] is True
 assert captured[-1]['parameters'][0]['motion_diagnostics_duration_s']==30.0
+
+assert captured[-1]['parameters'][0]['cooperative_policy_registration'] is True
+assert captured[-1]['prefix']
+c=context('read_only');c.launch_configurations['policy_scheduler']='other'
+m._controller(c)
+assert captured[-1]['prefix'] is None
+assert captured[-1]['parameters'][0]['cooperative_policy_registration'] is False
+for profile in ('remote_test','nav_test',''):
+    c=context(profile);c.launch_configurations['policy_scheduler']='other'
+    try: m._controller(c)
+    except ValueError: pass
+    else: raise AssertionError('physical OTHER launch accepted')
+assert captured[-1]['parameters'][0]['remote_auto_sequence'] is True
+print('PASS integrated guardian default/FIFO20, read-only OTHER and original A behavior')
+
+c=context('remote_test')
+for key in ('policy_scheduler','remote_auto_sequence','motion_diagnostics_enabled','motion_diagnostics_duration_s','motion_diagnostics_path'):
+    c.launch_configurations[key]=''
+m._controller(c)
+resolved=captured[-1]
+assert resolved['parameters'][0]['motion_diagnostics_enabled'] is True
+assert resolved['parameters'][0]['motion_diagnostics_duration_s']==540.0
+assert resolved['parameters'][0]['remote_auto_sequence'] is True
+assert resolved['additional_env']['R3_RT_CONFIG_PATH']==c.launch_configurations['config_path']
+print('PASS ordinary launch takes scheduler/sequence/motion settings from YAML')

@@ -37,6 +37,34 @@ int main(int argc,char** argv) {
   }
   rclcpp::init(argc,argv);
   {
+    auto node=std::make_shared<rclcpp::Node>("direct_policy_isolation_test");
+    auto io=node->create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive,false);
+    auto policy=node->create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive,false);
+    std::atomic<int> ios{0};int jobs=0;int64_t previous_expected=0,previous_end=0;
+    std::thread::id worker;
+    auto timer=node->create_wall_timer(2ms,[&]{++ios;},io);
+    sim2real::SpinControlExecutors(node,io,policy,false,[&]{worker=std::this_thread::get_id();},
+      [&](int64_t expected,int64_t actual){
+        assert(worker==std::this_thread::get_id()&&actual>=expected);
+        if(previous_expected){assert(expected>previous_expected&&expected>previous_end);assert((expected-previous_expected)%20000000==0);}
+        if(jobs==0)std::this_thread::sleep_for(55ms); // missed releases must be skipped
+        previous_expected=expected;previous_end=sim2real::PolicyMonotonicNs();
+        if(++jobs==6)rclcpp::shutdown();
+      },20000000);
+    assert(jobs==6&&ios>=25);
+  }
+  rclcpp::init(argc,argv);
+  {
+    auto node=std::make_shared<rclcpp::Node>("direct_policy_exception_test");
+    auto io=node->create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive,false);
+    auto policy=node->create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive,false);
+    bool propagated=false;
+    try{sim2real::SpinControlExecutors(node,io,policy,false,{},[](int64_t,int64_t){throw std::runtime_error("direct failed");},1000000);}
+    catch(const std::runtime_error& e){propagated=std::string(e.what())=="direct failed";}
+    assert(propagated&&!rclcpp::ok());
+  }
+  rclcpp::init(argc,argv);
+  {
     auto node=std::make_shared<rclcpp::Node>("policy_initializer_failure_test");
     auto io=node->create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive,false);
     auto policy=node->create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive,false);

@@ -5,6 +5,7 @@
 #include <fstream>
 #include <mutex>
 #include <thread>
+#include <vector>
 namespace sim2real {
 struct MotionTraceSample {
  int kind=0,phase=0,accepted=-1;long long stamp_ns=0;unsigned long long packets=0;
@@ -19,7 +20,7 @@ struct MotionTraceSample {
 // Fixed storage; producers never wait for disk or queue ownership.
 class MotionTrace {
  public:
- MotionTrace(const std::string& path,double duration_s);
+ MotionTrace(const std::string& path,double duration_s,size_t queue_capacity=256,int writer_idle_ms=20,double max_duration_s=600);
  ~MotionTrace();
  bool enabled() const {return enabled_.load(std::memory_order_relaxed);}
  bool Submit(const MotionTraceSample& sample);
@@ -28,7 +29,7 @@ class MotionTrace {
  private:
  void Write();
  std::ofstream file_;std::thread writer_;std::mutex queue_mutex_;
- std::array<MotionTraceSample,256> queue_{};size_t head_=0,size_=0;
+ std::vector<MotionTraceSample> queue_;size_t head_=0,size_=0;int writer_idle_ms_;
  std::atomic<bool> enabled_{true};std::atomic<size_t> dropped_{0};
  std::chrono::steady_clock::time_point first_{};bool started_=false;double duration_s_;
 };

@@ -14,6 +14,7 @@ void PrintUsage(const char* executable) {
       << "\n"
       << "Queries or releases Unitree Go2 sport_mode through SDK2 RobotState.\n"
       << "It never publishes any motor command.\n"
+      << "Persistent --session requires --session-config PATH with Sport timing YAML.\n"
       << "\n"
       << "Examples:\n"
       << "  " << executable << " --interface eth0 --status\n"
@@ -30,6 +31,7 @@ int main(int argc, char** argv) {
   bool release = false,enable = false,confirmed_stop = false;
   int operations=0;
   std::string output_lock;
+  std::string session_config;
   bool machine_readable = false;
   bool session = false;
 
@@ -45,6 +47,8 @@ int main(int argc, char** argv) {
       enable=true;++operations;
     } else if (argument == "--session") {
       session=true;++operations;
+    } else if(argument=="--session-config" && index+1<argc) {
+      session_config=argv[++index];
     } else if (argument == "--machine-readable") {
       machine_readable = true;
     } else if (argument == "--status") {
@@ -62,7 +66,7 @@ int main(int argc, char** argv) {
   }
 
   if(operations>1) {std::cerr<<"Choose exactly one SDK operation\n";return 2;}
-  if(session) return go2_motion_mode::RunSession(network_interface);
+  if(session) return go2_motion_mode::RunSession(network_interface,session_config);
   std::unique_ptr<sim2real::OutputLease> lease;
   if(enable) {
     if(!confirmed_stop||output_lock.empty()){std::cerr<<"Enable requires --confirm-output-stopped --output-lock PATH after publisher stop proof\n";return 2;}

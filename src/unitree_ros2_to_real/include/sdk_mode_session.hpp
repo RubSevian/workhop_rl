@@ -24,8 +24,8 @@ struct ModeSessionResult {
 };
 class ModeSessionProcess final {
  public:
- ModeSessionProcess(std::string executable,std::string interface)
-   :executable_(std::move(executable)),interface_(std::move(interface)){}
+ ModeSessionProcess(std::string executable,std::string interface,std::string config={})
+   :executable_(std::move(executable)),interface_(std::move(interface)),config_(std::move(config)){}
  ~ModeSessionProcess(){Close();}
  ModeSessionProcess(const ModeSessionProcess&)=delete;
  ModeSessionProcess& operator=(const ModeSessionProcess&)=delete;
@@ -94,7 +94,8 @@ class ModeSessionProcess final {
   posix_spawn_file_actions_addopen(&actions,STDERR_FILENO,"/dev/null",O_WRONLY,0);
   posix_spawn_file_actions_addclose(&actions,pair[0]);posix_spawn_file_actions_addclose(&actions,pair[1]);
   char* args[]{const_cast<char*>(executable_.c_str()),const_cast<char*>("--interface"),
-   const_cast<char*>(interface_.c_str()),const_cast<char*>("--session"),nullptr};
+   const_cast<char*>(interface_.c_str()),const_cast<char*>("--session"),
+   config_.empty()?nullptr:const_cast<char*>("--session-config"),config_.empty()?nullptr:const_cast<char*>(config_.c_str()),nullptr};
   const int result=posix_spawn(&pid_,executable_.c_str(),&actions,nullptr,args,environ);
   posix_spawn_file_actions_destroy(&actions);close(pair[1]);
   if(result){close(pair[0]);pid_=-1;return false;}
@@ -121,7 +122,7 @@ class ModeSessionProcess final {
   buffer_.clear();
  }
  ModeSessionResult Failure(const std::string& message){Close();return {false,"SPORT_ERROR",message};}
- std::string executable_,interface_,buffer_;
+ std::string executable_,interface_,config_,buffer_;
  pid_t pid_=-1;int fd_=-1;uint64_t request_id_=0;int64_t request_sent_ns_=0;
 };
 } // namespace sim2real
