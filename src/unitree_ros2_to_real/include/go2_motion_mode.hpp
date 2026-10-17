@@ -27,6 +27,6 @@ Result EnableSportMode(const std::string& network_interface);
 
 // SDK-only, persistent stdin/stdout session. Commands are STATUS or RELEASE;
 // no motor output and no enable operation are exposed by this protocol.
-int RunSession(const std::string& network_interface);
+int RunSession(const std::string& network_interface,const std::string& config_path);
 
 }  // namespace go2_motion_mode

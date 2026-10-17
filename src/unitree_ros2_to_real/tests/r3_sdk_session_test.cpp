@@ -26,6 +26,9 @@ int main(){
   std::ifstream file(starts);std::string line;int count=0;while(std::getline(file,line))++count;
   assert(count==1); // All status/release RPCs use the same child.
  }
+ script("assert sys.argv[1:] == ['--interface','test','--session','--session-config','/offline/config with spaces.yaml']\n"
+        "for line in sys.stdin:\n ident,command=line.split(); start=time.monotonic_ns()\n"+response("SPORT_RELEASED"));
+ {ModeSessionProcess session(exe,"test","/offline/config with spaces.yaml");assert(session.Request(false).ok);}
  script("for line in sys.stdin:\n ident,command=line.split(); start=time.monotonic_ns()\n"+response("SPORT_ACTIVE"));
  {ModeSessionProcess session(exe,"test");assert(session.Request(false).ok);assert(!session.Request(true).ok);}
  script("for line in sys.stdin:\n ident,command=line.split(); start=time.monotonic_ns()\n"

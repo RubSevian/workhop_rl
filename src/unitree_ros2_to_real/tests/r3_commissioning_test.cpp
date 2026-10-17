@@ -1,5 +1,6 @@
 #include "r3_commissioning.hpp"
 #include "output_lease.hpp"
+#include "sport_query_schedule.hpp"
 #include <cassert>
 #include <iostream>
 #include <limits>
@@ -222,6 +223,87 @@ void discovery_wait_tests(){
   bool threw=false;try{LowCmdDiscoveryWait invalid(values.first,values.second);}catch(const std::invalid_argument&){threw=true;}assert(threw);
  }
 }
+void policy_observation_trial_tests(){
+ auto p=profile();p.policy_observation_timeout_s=.06;
+ auto enter=[](R3Supervisor& s){holding(s);assert(s.RequestRl(t(8)).success);assert(s.ConsumePolicyReset());};
+ // Aged input is permitted at begin AND acceptance, including exactly 60 ms.
+ for(double age:{.043689135,.05,.058}) {
+  R3Supervisor s(p);enter(s);auto in=input(8);in.lowstate_stamp=t(8)-t(age).time_since_epoch();s.Observe(in,t(8));
+  auto job=s.BeginPolicy(t(8));assert(job);
+  s.Observe(input(8.002),t(8.002));assert(s.PolicyResult(*job,p.stand,2,t(8.002)));
+  assert(s.Tick(t(8.002))&&!s.fault_latched());
+ }
+ R3Supervisor too_old(p);enter(too_old);auto in=input(8);in.lowstate_stamp=t(7.939999);
+ too_old.Observe(in,t(8));assert(!too_old.BeginPolicy(t(8))&&too_old.last_fault()=="policy_observation_stale");
+ // New input arriving during inference cannot rejuvenate the captured ticket.
+ R3Supervisor ages_out(p);enter(ages_out);in.lowstate_stamp=t(7.942);ages_out.Observe(in,t(8));
+ auto job=ages_out.BeginPolicy(t(8));assert(job);ages_out.Observe(input(8.003),t(8.003));
+ assert(!ages_out.PolicyResult(*job,p.stand,3,t(8.003))&&ages_out.last_fault()=="policy_observation_stale");
+ // Result and in-flight watchdogs still expire at 40 ms with the 60 ms input limit.
+ R3Supervisor stale_result(p);enter(stale_result);job=stale_result.BeginPolicy(t(8));assert(job);
+ assert(stale_result.PolicyResult(*job,p.stand,2,t(8)));stale_result.Observe(input(8.041),t(8.041));
+ assert(stale_result.Tick(t(8.041))&&stale_result.last_fault()=="policy_result_stale");
+ R3Supervisor late_job(p);enter(late_job);job=late_job.BeginPolicy(t(8));assert(job);
+ late_job.Observe(input(8.041),t(8.041));assert(!late_job.PolicyResult(*job,p.stand,41,t(8.041)));
+ assert(late_job.last_fault()=="policy_inference_timeout");
+ R3Supervisor zero_handoff(p);enter(zero_handoff);job=zero_handoff.BeginPolicy(t(8));assert(job);
+ assert(zero_handoff.PolicyResult(*job,p.stand,2,t(8))&&zero_handoff.ControlledAbort(t(8)).success);
+ in=input(8.041);in.arm_home_ready=false;zero_handoff.Observe(in,t(8.041));zero_handoff.Tick(t(8.041));
+ assert(zero_handoff.last_fault()=="policy_zero_handoff_timeout");
+ // Use an approved synthetic stop target so the separate PD handoff is reached.
+ p.lie_down=std::array<float,12>{.01F,1.30F,-2.70F,-.01F,1.30F,-2.70F,-.30F,1.30F,-2.70F,.30F,1.30F,-2.70F};
+ p.arm_home_settle_s=0;R3Supervisor pd_handoff(p);enter(pd_handoff);job=pd_handoff.BeginPolicy(t(8));assert(job);
+ assert(pd_handoff.PolicyResult(*job,p.stand,2,t(8))&&pd_handoff.ControlledAbort(t(8)).success);
+ pd_handoff.ArmHomeRequestAccepted(true,t(8));in=input(8.002);in.lowstate_stamp=t(7.952);
+ pd_handoff.Observe(in,t(8.002));pd_handoff.Tick(t(8.002));assert(pd_handoff.last_fault()=="pd_handoff_lowstate_stale");
+ for(double invalid:{0.,-.001,.060001,std::numeric_limits<double>::infinity(),std::numeric_limits<double>::quiet_NaN()}) {
+  p.policy_observation_timeout_s=invalid;bool threw=false;
+  try{R3Supervisor s(p);}catch(const std::invalid_argument&){threw=true;}assert(threw);
+ }
+ std::cout<<"PASS RL observation trial: 60ms boundary, captured ticket aging, unchanged 40ms result/inference/zero/PD deadlines, invalid limits rejected\n";
+}
+void configured_watchdog_tests(){
+ auto enter=[](R3Supervisor& s){holding(s);assert(s.RequestRl(t(8)).success);assert(s.ConsumePolicyReset());};
+ auto p=profile();p.policy_result_timeout_s=.025;R3Supervisor result(p);enter(result);
+ auto job=result.BeginPolicy(t(8));assert(job&&result.PolicyResult(*job,p.stand,2,t(8)));
+ result.Observe(input(8.026),t(8.026));result.Tick(t(8.026));assert(result.last_fault()=="policy_result_stale");
+ p=profile();p.policy_inference_timeout_s=.030;R3Supervisor inference(p);enter(inference);job=inference.BeginPolicy(t(8));assert(job);
+ inference.Observe(input(8.031),t(8.031));assert(!inference.PolicyResult(*job,p.stand,31,t(8.031))&&inference.last_fault()=="policy_inference_timeout");
+ p=profile();p.zero_policy_handoff_timeout_s=.025;R3Supervisor zero(p);enter(zero);job=zero.BeginPolicy(t(8));assert(job&&zero.PolicyResult(*job,p.stand,2,t(8)));
+ assert(zero.ControlledAbort(t(8)).success);auto in=input(8.026);in.arm_home_ready=false;zero.Observe(in,t(8.026));zero.Tick(t(8.026));assert(zero.last_fault()=="policy_zero_handoff_timeout");
+ p=profile();p.policy_result_timeout_s=.041;bool threw=false;try{R3Supervisor invalid(p);}catch(const std::invalid_argument&){threw=true;}assert(threw);
+ std::cout<<"PASS configured result/inference/zero watchdogs take effect; existing40ms upper contract preserved\n";
+}
+void startup_sport_tests(){
+ SportQuerySchedule once(true,100);assert(once.Due(t(0),false)&&!once.Due(t(0),true));
+ once.Submitted();once.Completed(t(.2));
+ for(int i=0;i<10000;++i)assert(!once.Due(t(i*.01),false)); // success/failure never retries
+ SportQuerySchedule restarted(true,100);assert(restarted.Due(t(100),false));
+ SportQuerySchedule continuous(false,100);continuous.Submitted();continuous.Completed(t(0));
+ assert(!continuous.Due(t(.099),false)&&continuous.Due(t(.101),false));
+ auto p=profile();p.sport_startup_only=true;R3Supervisor s(p);holding(s);
+ assert(s.sport_startup_checked()&&s.sport_release_verified());
+ assert(s.RequestRl(t(8)).success&&s.ConsumePolicyReset());
+ auto work=s.BeginPolicy(t(8));assert(work&&s.PolicyResult(*work,p.stand,2,t(8)));
+ for(int n=1;n<=300;++n){double at=8+n*.01;auto in=input(at);in.sport_stamp=t(0);
+  s.Observe(in,t(at));if(n%2==0){work=s.BeginPolicy(t(at));assert(work&&s.PolicyResult(*work,p.stand,2,t(at)));}
+  auto packet=s.Tick(t(at));assert(packet&&s.AllowsPacket(*packet,t(at))&&!s.fault_latched());
+ }
+ assert(s.ControlledAbort(t(11)).success&&s.zero_policy_handoff_pending());
+ auto in=input(11.002);in.sport_stamp=t(0);s.Observe(in,t(11.002));work=s.BeginPolicy(t(11.002));
+ assert(work&&s.PolicyResult(*work,p.stand,2,t(11.002))&&!s.zero_policy_handoff_pending());
+ in=input(11.043);in.sport_stamp=t(0);s.Observe(in,t(11.043));s.Tick(t(11.043));
+ assert(s.last_fault()=="policy_result_stale"&&s.state()==R3State::EMERGENCY_DAMP); // other watchdogs unchanged
+ // A fresh startup ACTIVE observation never permits LowCmd without release.
+ R3Supervisor active(p);in=input(0,SportMode::ACTIVE);active.Observe(in,t(0));assert(active.sport_startup_checked()&&!active.sport_release_verified());
+ assert(active.Takeover(t(0)).success);active.Observe(in,t(0));assert(!active.EnableOutput(true,t(0)).success);
+ // A new process/supervisor cannot reuse an old release timestamp or latch.
+ R3Supervisor fresh(p);in=input(20);in.sport_stamp=t(0);fresh.Observe(in,t(20));
+ assert(!fresh.sport_startup_checked()&&!fresh.sport_release_verified()&&!fresh.EnableOutput(true,t(20)).success);
+ for(auto mode:{SportMode::UNKNOWN,SportMode::ERROR}){R3Supervisor bad(p);bad.Observe(input(0,mode),t(0));assert(!bad.sport_startup_checked()&&!bad.EnableOutput(true,t(0)).success);}
+ R3Supervisor future(p);in=input(0);in.sport_stamp=t(1);future.Observe(in,t(0));assert(!future.sport_release_verified());
+ std::cout<<"PASS Sport startup-only: one STATUS/no retry/reset on new process, stale cached release valid during RL, ACTIVE/unknown/error/future blocked; policy watchdog preserved\n";
+}
 void policy_delay_tests(){
  auto enter=[](R3Supervisor& s){holding(s);assert(s.RequestRl(t(8)).success);assert(s.ConsumePolicyReset());};
  std::array<float,12> action;action.fill(.21F);
@@ -395,4 +477,8 @@ void real_sequence_and_interruptions(){
  packet=lift.Tick(t(1.501));for(int i=0;i<12;++i)assert(packet->motor_cmd[i].q==stopped.measured_q[i]);
  std::cout<<"PASS real 6s linear/4s hold cycle, X during first inference/stand captures all12, late result rejected, B passive0/3 and no recovery\n";
 }
-int main(){real_sequence_and_interruptions();state_tests();gates();remote_tests();lease();automatic_sequence_tests();home_readiness_gate_tests();discovery_wait_tests();policy_delay_tests();remote_test_motion_tests();std::cout<<"PASS R3 synthetic/mocks: measured first HOLD_CURRENT, continuity, RL reset, manual bounds/deadman, abort/lying/stop/stock ordering, critical faults and emergency priority/packet, exclusive output lease, bounded post-release DDS wait; no hardware\n";}
+int main(int argc,char** argv){
+ if(argc==2){auto yaml=YAML::LoadFile(argv[1]);assert(LoadR3Profile(yaml).policy_observation_timeout_s==.06&&LoadR3Profile(yaml).sport_startup_only);
+  yaml["real_deployment"]["r3_commissioning"].remove("policy_observation_timeout_s");
+  bool missing=false;try{LoadR3Profile(yaml);}catch(const YAML::Exception&){missing=true;}assert(missing);}
+ startup_sport_tests();configured_watchdog_tests();policy_observation_trial_tests();real_sequence_and_interruptions();state_tests();gates();remote_tests();lease();automatic_sequence_tests();home_readiness_gate_tests();discovery_wait_tests();policy_delay_tests();remote_test_motion_tests();std::cout<<"PASS R3 synthetic/mocks: measured first HOLD_CURRENT, continuity, RL reset, manual bounds/deadman, abort/lying/stop/stock ordering, critical faults and emergency priority/packet, exclusive output lease, bounded post-release DDS wait; no hardware\n";}

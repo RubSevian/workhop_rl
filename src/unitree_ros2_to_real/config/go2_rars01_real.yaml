@@ -42,10 +42,10 @@ go2_rars01:
 # Deployment settings do not alter actor math. R2 physical output is disabled.
 real_deployment:
   enable_actuator_output: false
-  control_period_ms: 20
+  control_period_ms: &policy_period_ms 20
   cmd_vel_timeout_sec: 0.25
-  low_state_timeout_sec: 0.5
-  arm_state_timeout_sec: 0.25
+  low_state_timeout_sec: &lowstate_timeout_s 0.5
+  arm_state_timeout_sec: &arm_timeout_s 0.25
   max_linear_x: 0.3
   max_linear_y: 0.2
   max_yaw_rate: 0.5
@@ -58,7 +58,7 @@ real_deployment:
     takeover_chord: [L1, L2, A]
     emergency_chord: []
   lowstate:
-    stale_timeout_s: 0.5
+    stale_timeout_s: *lowstate_timeout_s
   rars01:
     emergency_disable_validated: false # Separate arm bench validation; never leg gains.
     require_home_ready_for_leg_takeover: true
@@ -68,18 +68,87 @@ real_deployment:
       home_target: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
       home_tolerance_rad: 0.15
       command_rate_hz: 100.0 # Assigned to ArmConfiguration; caller honors it.
-    feedback_timeout_s: 0.25
-    target_timeout_s: 0.25
+    feedback_timeout_s: *arm_timeout_s
+    target_timeout_s: *arm_timeout_s
     zero_calibration_source: sdk_gui_operator_saved
     zero_calibration_operator_verified: true
     per_joint_freshness_proven: false
   sport_mode:
+    # One admission per process; no background Sport STATUS during RL.
+    startup_only: true
+    sdk_rpc_timeout_s: 0.2
+    release_confirm_period_ms: 100
+    release_confirm_attempts: 15
     require_release_verified: true
     observation_timeout_s: 0.5
   safety:
     startup_disarmed: true
     actuator_output_default: false
   r3_commissioning:
+    policy_observation_timeout_s: 0.040
+    # All operational watchdogs/periods are explicit; seconds unless *_ms.
+    timing:
+      policy_result_timeout_s: 0.040
+      policy_inference_timeout_s: 0.040
+      zero_policy_handoff_timeout_s: 0.040
+      pd_handoff_lowstate_timeout_s: 0.040
+      mission_timeout_s: 0.5
+      graph_timeout_s: 0.5
+      passive_timeout_s: 0.10
+      passive_packet_limit: 10
+      policy_period_ms: *policy_period_ms
+      policy_deadline_ms: *policy_period_ms
+      port_period_ms: 10
+      status_period_ms: 100
+      sdk_query_period_ms: 100 # Used only when startup_only=false; no runtime polling in current profile.
+      sdk_query_timeout_ms: 2000
+      sdk_release_timeout_ms: 8000
+      trace_io_period_s: 0.02
+    runtime:
+      policy_execution: monotonic_thread
+      policy_scheduler: fifo20
+      remote_auto_sequence: true
+      launch_sigterm_timeout_s: 86400
+      launch_sigkill_timeout_s: 86400
+    # Scheduling/lock trace: bounded queue, asynchronous disk writer.
+    control_latency:
+      enabled: true
+      duration_s: 540.0
+      path: /home/ruben/go2_diploma/sim2real/runtime/control_latency
+      queue_capacity: 8192
+      flush_ms: 250
+      writer_idle_ms: 5
+    motion_diagnostics:
+      enabled: false
+      duration_s: 540.0
+      path: /home/ruben/go2_diploma/sim2real/runtime/manual_rl_nav_motion
+      queue_capacity: 256
+      writer_idle_ms: 20
+      max_duration_s: 600.0
+    guardian:
+      log_root: /home/ruben/go2_diploma/sim2real/runtime/r3_rt
+      priority: 20
+      status_source_timeout_s: 0.25
+      safe_exit_timeout_s: 0.5
+      safe_exit_stable_samples: 2
+      discovery_s: 1.5
+      registration_timeout_s: 12.0
+      native_registration_timeout_s: 8.0
+      native_registration_poll_ms: 1
+      terminal_wait_s: 8.0
+      shutdown_poll_s: 0.02
+      policy_progress_timeout_s: 0.2
+      io_progress_timeout_s: 0.2
+      status_timeout_s: 0.5
+      initial_status_timeout_s: 2.0
+      lowstate_timeout_s: 0.5
+      cpu_window_s: 0.5
+      cpu_max_fraction: 0.8
+      save_period_s: 0.1
+      poll_period_s: 0.01
+      spin_period_s: 0.02
+      rttime_soft_us: 100000
+      rttime_hard_us: 200000
     # These confirmations stay false until the corresponding operator gate.
     gate0_verified: false
     mapping_imu_verified: false

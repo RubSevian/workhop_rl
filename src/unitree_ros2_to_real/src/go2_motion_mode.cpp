@@ -5,6 +5,8 @@
 #include <thread>
 #include <vector>
 #include <iostream>
+#include <cmath>
+#include <yaml-cpp/yaml.h>
 
 #include <unitree/robot/channel/channel_factory.hpp>
 #include <unitree/robot/go2/robot_state/robot_state_client.hpp>
@@ -128,8 +130,17 @@ Result EnableSportMode(const std::string& network_interface) {
   });
 }
 
-int RunSession(const std::string& network_interface) {
-  if(network_interface.empty()) return 2;
+int RunSession(const std::string& network_interface,const std::string& config_path) {
+  if(network_interface.empty()||config_path.empty()) return 2;
+  double rpc_timeout_s;int confirm_period_ms,confirm_attempts;
+  try {
+    const auto config=YAML::LoadFile(config_path)["real_deployment"]["sport_mode"];
+    rpc_timeout_s=config["sdk_rpc_timeout_s"].as<double>();
+    confirm_period_ms=config["release_confirm_period_ms"].as<int>();
+    confirm_attempts=config["release_confirm_attempts"].as<int>();
+    if(!std::isfinite(rpc_timeout_s)||rpc_timeout_s<=0||rpc_timeout_s>.2||confirm_period_ms<1||confirm_period_ms>100||confirm_attempts<1||confirm_attempts>15)
+      throw std::invalid_argument("SDK session timing outside existing contract");
+  }catch(const std::exception& error){std::cerr<<"Invalid SDK session config: "<<error.what()<<std::endl;return 2;}
   auto* factory=unitree::robot::ChannelFactory::Instance();
   bool initialized=false;
   try {
@@ -137,7 +148,7 @@ int RunSession(const std::string& network_interface) {
     {
       unitree::robot::go2::RobotStateClient client;
       // Status is diagnostic IO, not a five-second control-loop operation.
-      client.SetTimeout(.2F);client.Init();
+      client.SetTimeout(float(rpc_timeout_s));client.Init();
       std::string line;
       while(std::getline(std::cin,line)) {
         if(line.size()>128) break;
@@ -151,8 +162,8 @@ int RunSession(const std::string& network_interface) {
           const auto rc=client.ServiceSwitch(kSportModeService,0,status);
           if(rc!=0) result={false,true,"Sport release RPC failed: "+std::to_string(rc),sim2real::SportMode::ERROR};
           else {
-            for(int attempt=0;attempt<15;++attempt) {
-              std::this_thread::sleep_for(std::chrono::milliseconds(100));
+            for(int attempt=0;attempt<confirm_attempts;++attempt) {
+              std::this_thread::sleep_for(std::chrono::milliseconds(confirm_period_ms));
               result=QuerySportModeWithClient(client);
               if(!result.ok||result.state==sim2real::SportMode::RELEASED) break;
             }
