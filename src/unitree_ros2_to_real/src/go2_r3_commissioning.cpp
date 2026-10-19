@@ -646,6 +646,8 @@ class R3Node final:public rclcpp::Node {
   auto blockers=supervisor_->Blockers(now);ControlDiagnostics snapshot;
   snapshot.Add("policy_rt_registered",policy_rt_&&policy_rt_->ready.load());
   snapshot.Add("policy_rt_ready",policy_rt_&&policy_rt_->Ready());
+  snapshot.Add("observed_ns",std::chrono::duration_cast<std::chrono::nanoseconds>(now.time_since_epoch()).count());
+  snapshot.Add("controller_session_id",controller_session_id_);
   snapshot.Add("state", SystemStateName(supervisor_->system_state()));
   snapshot.Add("phase", SystemPhaseName(supervisor_->phase()));
   snapshot.Add("legacy_state", R3StateName(supervisor_->state()));
@@ -793,6 +795,7 @@ class R3Node final:public rclcpp::Node {
  std::unique_ptr<SportQuerySchedule> sdk_query_schedule_;size_t sdk_status_queries_=0,sdk_release_requests_=0;
  bool sdk_release_pending_=false,automatic_sequence_=true;std::string network_interface_,sdk_helper_,sdk_detail_,sequence_message_;
  std::unique_ptr<LowCmdDiscoveryWait> lowcmd_wait_;
+ std::string controller_session_id_=std::to_string(std::chrono::duration_cast<std::chrono::nanoseconds>(SafetyClock::now().time_since_epoch()).count());
  bool read_only_=true,remote_test_mode_=false,motion_commands_enabled_=false;std::string control_mode_;std::string output_lock_,arm_error_;
  std::array<double,3> remote_test_requested_{};
  std::unique_ptr<MotionTrace> motion_trace_;

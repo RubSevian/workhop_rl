@@ -1,4 +1,5 @@
 #include "rars_auto_home.hpp"
+#include "rars_mission_stream.hpp"
 #include <cassert>
 #include <iostream>
 #include <vector>
@@ -145,9 +146,33 @@ void control_ports(){
  Transport tr;Journal j;AutoHomeController home(config(),tr,j);assert(!home.ReturnHome(t(0))&&tr.enables==0);start(home);
  const auto sends=tr.sends;assert(home.ReturnHome(t(10.011))&&home.ReturnHome(t(10.012))&&tr.enables==1&&tr.sends==sends);
  assert(!home.EmergencyDisable()&&tr.disables==0&&home.status().state==AutoHomeState::HOLD_HOME);
- auto c=config();c.emergency_disable_validated=true;Transport eligible;Journal je;AutoHomeController arm(c,eligible,je);start(arm);
+ auto c=config();c.emergency_disable_enabled=true;Transport eligible;Journal je;AutoHomeController arm(c,eligible,je);start(arm);
  assert(arm.EmergencyDisable()&&arm.EmergencyDisable()&&eligible.disables==1);const auto before=eligible.sends;
  arm.Tick(t(11));assert(arm.status().state==AutoHomeState::FAULT_LATCHED&&eligible.sends==before&&eligible.enables==1&&!arm.ReturnHome(t(11)));
  c.enabled=false;Transport ro;Journal jr;AutoHomeController readonly(c,ro,jr);assert(!readonly.EmergencyDisable()&&ro.disables==0);
 }
-int main(){control_ports();startup();readiness();incomplete_startup_frame();external_timer_jitter();journal();std::cout<<"PASS AUTO HOME mock: delay/reconnect, enable once, seven zeros, continuous stream, measured readiness, stale/send/disabled/ID/NaN/watchdogs, per-session fault latch and restart without journal guard; no hardware\n";}
+void mission_startup_home(){
+ Transport tr;Journal j;AutoHomeController home(config(),tr,j);
+ MissionStreamConfig cfg;cfg.lower.fill(-3);cfg.upper.fill(3);cfg.velocity.fill(1);
+ MissionStream stream(cfg);
+ home.SetMissionProvider([&](ArmTime now,const AutoHomeStatus& status)->std::optional<AutoHomeController::Command>{
+  if(!stream.has_command())return std::nullopt;
+  return stream.Tick(now,status,true);
+ });
+ tr.joints.position[0]=.5;home.Tick(t(0));home.Tick(t(10));home.Tick(t(10.01));
+ assert(tr.targets.back()[0]==0&&!stream.has_command());
+ assert(!stream.home6(home.status(),.15));
+ tr.joints.position[0]=.05;home.Tick(t(10.02));
+ assert(tr.targets.back()[0]==0&&stream.home6(home.status(),.15));
+ // A rejected plan must not seize startup HOME.
+ std::vector<std::array<float,7>> bad(2,tr.joints.position);bad[0][0]=2;
+ assert(!stream.Start(1,"move",bad,t(10.02),home.status())&&!stream.has_command());
+ home.Tick(t(10.03));assert(tr.targets.back()[0]==0);
+ // First admitted plan transfers ownership; cancellation keeps its measured hold.
+ std::vector<std::array<float,7>> path(2,tr.joints.position);
+ assert(stream.Start(1,"move",path,t(10.03),home.status())&&stream.has_command());
+ home.Tick(t(10.04));assert(tr.targets.back()[0]==.05f);
+ tr.joints.position[0]=.06;stream.Cancel(home.status(),"test cancel");
+ home.Tick(t(10.05));assert(tr.targets.back()[0]==.05f&&!stream.home6(home.status(),.15));
+}
+int main(){mission_startup_home();control_ports();startup();readiness();incomplete_startup_frame();external_timer_jitter();journal();std::cout<<"PASS AUTO HOME mock: delay/reconnect, enable once, seven zeros, continuous stream, measured readiness, stale/send/disabled/ID/NaN/watchdogs, per-session fault latch and restart without journal guard; no hardware\n";}

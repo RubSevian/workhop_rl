@@ -13,6 +13,11 @@
   <exec_depend>launch_ros</exec_depend>
   <exec_depend>ament_index_python</exec_depend>
   <exec_depend>python3-yaml</exec_depend>
+  <exec_depend>python3-numpy</exec_depend>
+  <exec_depend>python3-scipy</exec_depend>
+  <exec_depend>nav_msgs</exec_depend>
+  <exec_depend>robot_state_publisher</exec_depend>
+  <exec_depend>go2_navigation_bridge</exec_depend>
   <depend>geometry_msgs</depend>
   <depend>sensor_msgs</depend>
   <depend>unitree_go</depend>

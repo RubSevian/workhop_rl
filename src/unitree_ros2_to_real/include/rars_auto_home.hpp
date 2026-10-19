@@ -4,11 +4,13 @@
 #include <optional>
 #include <string>
 #include <limits>
+#include <functional>
+#include <vector>
 namespace sim2real {
 using ArmClock = std::chrono::steady_clock;
 using ArmTime = ArmClock::time_point;
 struct AutoHomeConfig {
- bool enabled=false,emergency_disable_validated=false;
+ bool enabled=false,emergency_disable_validated=false,emergency_disable_enabled=false;
  double startup_delay_s=10, command_rate_hz=100;
  double feedback_timeout_s=.25, target_timeout_s=.25, home_tolerance_rad=.15;
  double connect_retry_s=1, enable_feedback_grace_s=1;
@@ -22,6 +24,9 @@ class AutoHomeTransport {
  virtual bool Enable()=0;
  virtual bool Disable(){return false;}
  virtual bool Send(const rars_arm::RarsArm::MotorValues& target)=0;
+ virtual bool SendConfigured(const rars_arm::RarsArm::MotorValues& q,
+  const rars_arm::RarsArm::MotorValues&,const rars_arm::RarsArm::MotorValues&,
+  const rars_arm::RarsArm::MotorValues&){return Send(q);}
  virtual bool Read(rars_arm::JointState& state)=0;
  virtual rars_arm::CommunicationStatus Status() const=0;
  virtual std::string Error() const=0;
@@ -68,6 +73,13 @@ class AutoHomeController {
  void Fault(const std::string& reason);
  bool ReturnHome(ArmTime now);
  bool EmergencyDisable();
+ // The existing owner remains the only sender. A mission provider may change
+ // targets only after full, fresh feedback; it never enables/re-enables motors.
+ struct Command {rars_arm::RarsArm::MotorValues q{},kp{},kd{},torque{};};
+ // nullopt leaves the original startup HOME sender and SDK gains in control.
+ using Provider=std::function<std::optional<Command>(ArmTime,const AutoHomeStatus&)>;
+ void SetMissionProvider(Provider provider){provider_=std::move(provider);}
+ const rars_arm::RarsArm::MotorValues& accepted_target()const{return accepted_target_;}
  private:
  void Observe(ArmTime now);
  bool UsableFeedback() const;
@@ -77,5 +89,7 @@ class AutoHomeController {
  ArmTime next_connect_{};
  bool have_usable_feedback_=false,emergency_disable_attempted_=false,emergency_disable_accepted_=false;
  double age_at_read_s_=0;
+ Provider provider_;
+ rars_arm::RarsArm::MotorValues accepted_target_{};
 };
 } // namespace sim2real

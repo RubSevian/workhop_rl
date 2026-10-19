@@ -11,8 +11,9 @@ int main(){
  r.arm_control_ready=false;assert(!r.RuntimeBlockers().empty());
  r.arm_control_ready=r.arm_home_ready=true;
  auto full=ResolveOperationCapabilities(OperationProfile::FULL_MISSION);
- assert(r.TakeoverBlockers(full).size()==3);
- r.navigation_ready=r.perception_ready=r.arm_emergency_validated=true;
+ assert(r.TakeoverBlockers(full)==(std::vector<std::string>{"navigation_not_ready","perception_not_ready"}));
+ r.navigation_ready=r.perception_ready=true;
+ assert(!r.arm_emergency_validated); // historical qualification is not admission
  assert(r.TakeoverBlockers(full).empty());
  auto nav=ResolveOperationCapabilities(OperationProfile::NAV_TEST);r.navigation_ready=false;
  assert(r.TakeoverBlockers(nav)==std::vector<std::string>{"navigation_not_ready"});

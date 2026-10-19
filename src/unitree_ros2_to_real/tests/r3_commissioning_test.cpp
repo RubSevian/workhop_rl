@@ -140,6 +140,7 @@ void home_readiness_gate_tests(){
  // Readiness disappears after a chord, before RPC: do not release.
  R3Supervisor vanished(profile());vanished.Observe(in,t(0));assert(vanished.StartRemoteSequence(t(0)).success);
  in.arm_home_ready=false;vanished.Observe(in,t(0));assert(vanished.RemoteSequenceNext(t(0))==R3SequenceAction::NONE);
+ assert(vanished.last_fault().find("remote_sequence_precondition:arm_home_not_ready")!=std::string::npos);
 }
 void automatic_sequence_tests(){
  // X now holds the measured pose; stand/RL do not depend on automatic lie-down.

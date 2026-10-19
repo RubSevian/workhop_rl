@@ -45,7 +45,15 @@ inline ParsedArmStatus ParseArmStatus(const std::string& text,double home_tolera
      const auto target7=y["home_target"].as<std::vector<float>>();
      if(ids7.size()!=7||states.size()!=7||valid7.size()!=7||q7.size()!=7||dq7.size()!=7||target7.size()!=7)
       throw std::runtime_error("HOME requires seven motor diagnostics");
-     for(size_t i=0;i<7;++i)if(ids7[i]!=int(i+1)||!valid7[i]||states[i]!=1||!std::isfinite(q7[i])||std::abs(q7[i])>home_tolerance||!std::isfinite(dq7[i])||target7[i]!=0)
+     const int home_joint_count=y["home_joint_count"]?y["home_joint_count"].as<int>():7;
+     if(home_joint_count!=6&&home_joint_count!=7)throw std::runtime_error("invalid HOME joint scope");
+     if(home_joint_count==6&&(!y["mission_capable"]||!y["mission_capable"].as<bool>()||
+          !y["grasp_verification"]||y["grasp_verification"].as<std::string>()!="stub"))
+      throw std::runtime_error("HOME6 requires explicit mission contract");
+     const bool gripper_hold=y["gripper_hold_confirmed"]&&y["gripper_hold_confirmed"].as<bool>();
+     const double grip_target=gripper_hold?y["gripper_hold_target"].as<double>():0.;
+     if(!std::isfinite(grip_target))throw std::runtime_error("invalid gripper hold target");
+     for(size_t i=0;i<7;++i)if(ids7[i]!=int(i+1)||!valid7[i]||states[i]!=1||!std::isfinite(q7[i])||(i<size_t(home_joint_count)&&std::abs(q7[i]-(i==6?grip_target:0.))>home_tolerance)||!std::isfinite(dq7[i])||target7[i]!=0)
       throw std::runtime_error("HOME motor diagnostics invalid");
      result.inputs.arm_home_ready=y["connected"].as<bool>()&&y["enabled_local"].as<bool>()&&
       !y["watchdog_tripped"].as<bool>()&&!y["stm32_watchdog_tripped"].as<bool>();

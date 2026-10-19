@@ -55,7 +55,7 @@ bool AutoHomeController::ReturnHome(ArmTime now) {
   UsableFeedback()&&status_.motors_enabled&&status_.target_fresh;
 }
 bool AutoHomeController::EmergencyDisable() {
- if(!config_.enabled||!config_.emergency_disable_validated)return false;
+ if(!config_.enabled||!config_.emergency_disable_enabled)return false;
  if(emergency_disable_attempted_)return emergency_disable_accepted_;
  emergency_disable_attempted_=true;
  // Stop the stream before SDK disable. No automatic re-enable/recovery.
@@ -139,7 +139,16 @@ void AutoHomeController::Tick(ArmTime now,bool connect_allowed,bool command_time
  if(status_.accepted_stamp&&!status_.target_fresh){Fault("home_target_stream_stale");return;}
  if(!status_.accepted_stamp&&Seconds(now,*enabled_at_)>config_.enable_feedback_grace_s){Fault("first_home_target_timeout");return;}
  if(command_timer_tick||now>=*next_send_){
-  if(!transport_.Send(config_.home_target)){Fault("home_target_send_failed: "+transport_.Error());return;}
+  auto target=config_.home_target;
+  bool sent=false;
+  const auto supplied=provider_&&have_usable_feedback_?provider_(now,status_):std::nullopt;
+  if(supplied){
+   const auto& command=*supplied;target=command.q;
+   for(size_t i=0;i<7;++i)if(!std::isfinite(target[i])||!std::isfinite(command.kp[i])||!std::isfinite(command.kd[i])||!std::isfinite(command.torque[i])){Fault("mission_command_nonfinite");return;}
+   sent=transport_.SendConfigured(target,command.kp,command.kd,command.torque);
+  }else sent=transport_.Send(config_.home_target);
+  if(!sent){Fault("home_target_send_failed: "+transport_.Error());return;}
+  accepted_target_=target;
   if(status_.accepted_stamp){
    status_.last_send_gap_ms=Seconds(now,*status_.accepted_stamp)*1000;
    status_.max_send_gap_ms=std::max(status_.max_send_gap_ms,status_.last_send_gap_ms);

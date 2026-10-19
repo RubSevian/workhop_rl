@@ -309,7 +309,11 @@ R3SequenceAction R3Supervisor::RemoteSequenceNext(SafetyTime now) {
  if(output_enabled_)std::erase(blockers,std::string("navigation_not_ready"));
  // While the SDK releases ownership, stale Sport blocks output but does not cancel the bounded RPC.
  if(release_requested_&&!output_enabled_)std::erase(blockers,std::string("sport_state_not_fresh_known"));
- if(!blockers.empty()){Fault("remote_sequence_precondition",now);return R3SequenceAction::NONE;}
+ if(!blockers.empty()){
+  std::ostringstream reason;reason<<"remote_sequence_precondition:";
+  for(size_t i=0;i<blockers.size();++i){if(i)reason<<',';reason<<blockers[i];}
+  Fault(reason.str(),now);return R3SequenceAction::NONE;
+ }
  if(state()==R3State::SPORT_RELEASE_REQUIRED&&!release_requested_){release_requested_=true;return R3SequenceAction::RELEASE_SPORT;}
  if(state()==R3State::SPORT_RELEASE_VERIFIED&&!output_enabled_)return R3SequenceAction::ENABLE_OUTPUT;
  if(capabilities_.takeover_limit==TakeoverLimit::HOLD_CURRENT&&output_enabled_){CancelRemoteSequence();return R3SequenceAction::NONE;}

@@ -162,7 +162,8 @@ real_deployment:
     zero_calibration_source: sdk_gui_operator_saved
     zero_calibration_operator_verified: true
     per_joint_freshness_proven: false
-    emergency_disable_validated: false
+    emergency_disable_validated: false # historical evidence only
+    emergency_disable_enabled: true # operator-authorized disable action; no automatic re-enable
   sport_mode:
     # One admission per process; no background Sport STATUS during RL.
     startup_only: true

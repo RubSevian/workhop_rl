@@ -17,7 +17,7 @@ OperationCapabilities ResolveOperationCapabilities(OperationProfile p){Operation
  c.allow_nonzero_velocity=true;
  if(p==OperationProfile::REMOTE_TEST){c.command_source=CommandSource::REMOTE;return c;}
  c.command_source=CommandSource::NAVIGATION;c.allow_navigation_commands=c.require_navigation_ready=true;
- if(p==OperationProfile::FULL_MISSION)c.allow_arm_motion=c.require_emergency_arm_validation=c.require_perception_ready=true;
+ if(p==OperationProfile::FULL_MISSION)c.allow_arm_motion=c.require_perception_ready=true;
  return c;
 }
 OperationProfile LegacyOperationProfile(bool ro,std::string_view mode,bool motion){if(mode!="remote_test"&&mode!="autonomy")throw std::invalid_argument("control_mode must be remote_test or autonomy");if(ro)return OperationProfile::READ_ONLY;if(!motion)return OperationProfile::RL_ZERO_TEST;return mode=="autonomy"?OperationProfile::NAV_TEST:OperationProfile::REMOTE_TEST;}
