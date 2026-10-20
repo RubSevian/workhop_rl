@@ -193,6 +193,65 @@ class Integration(unittest.TestCase):
         self.assertFalse(f.m.result(result,f.now));self.assertEqual(f.m.state,'BLOCKED')
         self.assertTrue(f.m.reason.startswith('OBSERVATION_RECOVERY_TIMEOUT:'))
 
+    def test_stale_input_identifies_source_and_freezes_original_evidence(self):
+        f=Fixture();f.tick();f.feed()
+        f.m.received['owner']=f.now-.31
+        f.m.step(f.now,int(f.now*1e9))
+        self.assertEqual(f.m.reason,'STALE_INPUT')
+        d=copy.deepcopy(f.m.stale_input_diagnostic)
+        self.assertEqual(d['stale_sources'],['owner'])
+        self.assertEqual(d['state_before'],'WAIT_GOAL')
+        self.assertAlmostEqual(d['inputs']['owner']['accepted_age_s'],.31)
+        f.tick(False)
+        self.assertEqual(f.m.stale_input_diagnostic,d)
+
+    def test_input_diagnostics_distinguishes_silence_decode_and_producer_age(self):
+        from mission.input_diagnostics import InputDiagnostics
+        d=InputDiagnostics();d.tick(1.);d.tick(1.4)
+        d.callback('nav',1.,1.01,'accepted',{'observed_ns':990000000},1)
+        d.callback('nav',1.3,1.32,'stamp_rejected',{'observed_ns':990000000},1)
+        d.callback('owner',1.3,1.31,'publisher_count_invalid',None,2)
+        a=d.snapshot(1.5);r=a['streams']['nav']
+        self.assertEqual((r['accepted'],r['rejected']),(1,1))
+        self.assertAlmostEqual(r['producer_age_at_decode_s'],.33)
+        self.assertAlmostEqual(r['callback_silence_s'],.2)
+        self.assertAlmostEqual(a['tick_gap_s'],.4)
+        self.assertEqual(a['streams']['owner']['publishers'],2)
+        d.callback('nav',1.6,1.61,'accepted',{'observed_ns':1600000000},1)
+        self.assertEqual(r['callbacks'],2) # frozen report is not a live view
+
+    def test_wait_goal_nav_stale_recovers_requires_new_goal(self):
+        f=Fixture();f.tick();f.feed();f.m.received['nav']=f.now-.301
+        effects=f.m.step(f.now,int(f.now*1e9))
+        self.assertEqual(f.m.state,'WAIT_GOAL');self.assertEqual([k for k,d in effects],['cancel_navigation'])
+        self.assertEqual(f.m.stale_input_diagnostic['stale_sources'],['nav'])
+        f.nav['goal']=dict(revision=1,stamp_ns=int(f.now*1e9),state='ACTIVE')
+        f.tick(False);self.assertEqual(f.m.reason,'RECOVERED_NEW_GOAL_REQUIRED')
+        f.tick(False);self.assertEqual(f.m.state,'WAIT_GOAL')
+        f.nav['goal']=dict(revision=2,stamp_ns=int((f.now+.01)*1e9),state='REQUESTED')
+        f.tick(False);self.assertEqual(f.m.state,'NAVIGATING')
+
+    def test_wait_goal_timeout_does_not_reset_and_owner_loss_still_blocks(self):
+        f=Fixture();f.tick();f.feed();f.m.received['nav']=f.now-.3
+        f.m.step(f.now,int(f.now*1e9));since=f.m.wait_goal_stale_since
+        f.now+=31;f.feed();f.m.step(f.now,int(f.now*1e9))
+        self.assertEqual(f.m.reason,'WAIT_GOAL_INPUT_TIMEOUT')
+        self.assertEqual(f.m.wait_goal_stale_since,since)
+        f=Fixture();f.tick();f.feed();f.m.received['owner']=f.now-.3
+        f.m.step(f.now,int(f.now*1e9));self.assertEqual(f.m.state,'BLOCKED')
+
+    def test_closed_gripper_measurement_tolerance_is_not_command_expansion(self):
+        from mission.collision import measured_gripper_width
+        class Geometry:
+            def opening_width(self,a):
+                if not 0<=a<=1:raise ValueError('outside limits')
+                return a
+        g=Geometry();tol=np.deg2rad(5)
+        for a in (-.00705718994,-tol,0.):self.assertEqual(measured_gripper_width(g,a,tol),0.)
+        self.assertEqual(measured_gripper_width(g,tol,tol),tol)
+        for a in (-tol-1e-6,1.01,float('nan')):
+            with self.assertRaises(ValueError):measured_gripper_width(g,a,tol)
+
     def test_gripper_diagnostics_do_not_gate_mission(self):
         # Neither uncertain nor malformed optional telemetry is a grasp/HOME gate.
         for torque in (0.,2.3,float('nan')):

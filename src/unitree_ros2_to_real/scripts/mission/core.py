@@ -41,6 +41,8 @@ class Mission:
         self.grasp_plan = None
         self.last_now = 0.
         self.last_compute_metrics = {}
+        self.stale_input_diagnostic=None
+        self.wait_goal_stale_since=None
         self.recovery_since=None;self.recovery_reason='';self.retry_operation=None
         self.retry_at=0.;self.observation_retries=0
 
@@ -286,6 +288,29 @@ class Mission:
             self.transition('WAIT_GOAL', now, 'new operator goal required')
             return self.drain()
         if not all(self.fresh(n, now) for n in ('r3','nav','owner','perception')):
+            names=('r3','nav','owner','perception')
+            diagnostic=dict(observed_ns=int(now*1e9),state_before=self.state,
+                stale_sources=[n for n in names if not self.fresh(n,now)],
+                heartbeat_ttl_s=self.cfg['execution']['heartbeat_ttl_s'],
+                inputs={n:dict(accepted_stamp_ns=self.inputs.get(n,{}).get('observed_ns'),
+                    lease_present=n in self.received,
+                    accepted_age_s=now-self.received[n] if n in self.received else None)
+                    for n in names})
+            if self.stale_input_diagnostic is None:self.stale_input_diagnostic=diagnostic
+            stale=diagnostic['stale_sources']
+            may_wait=(self.state=='WAIT_GOAL' and set(stale)<= {'nav','perception'}
+                and active and r3.get('phase')=='RL_ZERO' and not self.pending
+                and owner.get('feedback_ready') and owner.get('target_valid')
+                and nav.get('session_id')==self.nav_session
+                and r3.get('controller_session_id')==self.r3_session
+                and owner.get('owner_session_id')==self.owner_session)
+            if may_wait:
+                if self.wait_goal_stale_since is None:
+                    self.wait_goal_stale_since=now
+                    self.effects.append(('cancel_navigation',{'reason':'WAIT_GOAL_STALE_INPUT'}))
+                if now-self.wait_goal_stale_since<self.cfg['execution'].get('observation_recovery_timeout_s',30.):
+                    self.reason='WAITING_FOR_FRESH_INPUT:'+','.join(stale)
+                    return self.drain()
             self.cancel(now, 'STALE_INPUT', True)
         elif not active:
             self.cancel(now, 'R3_AUTHORITY_REVOKED')
@@ -299,6 +324,13 @@ class Mission:
             self.cancel(now, 'MISSION_TIMEOUT', True)
         elif self.state!='WAIT_GOAL' and (nav['goal']['revision'] != self.revision or nav['goal'].get('stamp_ns')!=self.goal_stamp):
             self.cancel(now, 'GOAL_REPLACED')
+        elif self.wait_goal_stale_since is not None:
+            if now-self.wait_goal_stale_since>=self.cfg['execution'].get('observation_recovery_timeout_s',30.):
+                self.cancel(now,'WAIT_GOAL_INPUT_TIMEOUT',True)
+            else:
+                self.wait_goal_stale_since=None
+                self.last_revision=nav['goal']['revision'];self.armed_ros_ns=ros_now_ns
+                self.reason='RECOVERED_NEW_GOAL_REQUIRED'
         elif self.wait_for_observation(now):
             pass
         elif self.state == 'WAIT_GOAL':
@@ -406,7 +438,7 @@ class Mission:
         return [(kind,data) for kind,data in effects if self.state not in TERMINAL or kind=='cancel']
 
     def status(self, now):
-        return dict(observation_recovery=dict(reason=self.recovery_reason,since=self.recovery_since,retry_operation=self.retry_operation,retries=self.observation_retries),test_mode='ready_observe' if self.ready_observe else 'full',last_observation=self.last_observation,last_compute_metrics=self.last_compute_metrics,grasp_verification='stub',object_grasped=None,observed_ns=int(now*1e9), session_id=self.session, state=self.state,
+        return dict(wait_goal_stale_since=self.wait_goal_stale_since,stale_input_diagnostic=self.stale_input_diagnostic,observation_recovery=dict(reason=self.recovery_reason,since=self.recovery_since,retry_operation=self.retry_operation,retries=self.observation_retries),test_mode='ready_observe' if self.ready_observe else 'full',last_observation=self.last_observation,last_compute_metrics=self.last_compute_metrics,grasp_verification='stub',object_grasped=None,observed_ns=int(now*1e9), session_id=self.session, state=self.state,
                     reason=self.reason, navigation_session_id=self.nav_session,
                     goal_revision=self.revision, goal_stamp_ns=self.goal_stamp,
                     elapsed_s=max(0.,now-self.started) if self.started else 0.,

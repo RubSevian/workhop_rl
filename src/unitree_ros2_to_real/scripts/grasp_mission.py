@@ -16,6 +16,7 @@ from unitree_go.msg import LowState
 from scipy.spatial.transform import Rotation
 from mission.scene import SceneBuffer, matrix_pose
 from mission.status_codec import decode_status
+from mission.input_diagnostics import InputDiagnostics
 from mission.subscription_batch import take_batch
 from mission.native_leg_input import NativeLegInput
 from mission.arm_fast_state import to_mapping
@@ -27,6 +28,7 @@ from mission.core import Mission, TERMINAL, ARM_PHASES
 class Coordinator(Node):
     def __init__(self):
         super().__init__('go2_grasp_mission')
+        self.input_diagnostics=InputDiagnostics();self.stale_fault_reported=False
         self.last_leg_tick=None
         self.leg_reader=LegStateReader()
         self.cfg=load(self.declare_parameter('mission_config_path','').value,self.declare_parameter('workspace','').value)
@@ -84,11 +86,14 @@ class Coordinator(Node):
         self.get_logger().info('Mission preloaded DISARMED; physical blockers: '+', '.join(self.blockers))
 
     def observe(self,name,msg,info):
+        started=time.monotonic();value=None;outcome='decode_error';publisher_count=None
         try:
             typed=name=='owner' and getattr(self,'arm_state_transport','yaml')=='typed'
             if not typed and len(msg.data)>2000000:raise ValueError('oversized input')
             publishers=self.get_publishers_info_by_topic(self.topics[name])
+            publisher_count=len(publishers)
             if len(publishers)!=1:
+                outcome='publisher_count_invalid'
                 self.engine.received.pop(name,None);return
             gid=bytes(publishers[0].endpoint_gid)
             old=self.gids.get(name)
@@ -109,8 +114,14 @@ class Coordinator(Node):
             # Jazzy MessageInfo exposes timestamps, not the sender GID. Bind to
             # the unique graph endpoint and require a post-discovery producer
             # sample, so queued data from an old owner cannot regain authority.
-            if value.get('observed_ns',0)<=self.gid_since[name]:return
-            self.engine.observe(name,value,time.monotonic())
+            if value.get('observed_ns',0)<=self.gid_since[name]:
+                outcome='predates_publisher_discovery';return
+            outcome='accepted' if self.engine.observe(name,value,time.monotonic()) else 'stamp_rejected'
+            if outcome=='stamp_rejected':
+                stamp=value.get('observed_ns');age=time.monotonic()-stamp/1e9 if type(stamp) is int else None
+                outcome=('invalid_stamp' if age is None else 'future_stamp' if age<0
+                         else 'producer_stamp_stale' if age>self.cfg['execution']['heartbeat_ttl_s']
+                         else 'duplicate_or_out_of_order')
             if name=='owner':self.observe_gripper(value)
             if name=='owner' and value.get('feedback_ready'):
                 for historical in owner_values:
@@ -118,8 +129,13 @@ class Coordinator(Node):
                             and historical.get('observed_ns',0)>self.gid_since[name]
                             and historical.get('owner_session_id')==value['owner_session_id']):
                         self.scene_buffer.arm(historical['q'],historical['frame_received_ns'],historical['owner_session_id'])
-        except (ValueError,TypeError,KeyError,yaml.YAMLError):
+        except (ValueError,TypeError,KeyError,yaml.YAMLError) as error:
+            outcome='invalid_input:'+type(error).__name__
             self.engine.received.pop(name,None)
+        finally:
+            diagnostics=getattr(self,'input_diagnostics',None)
+            if diagnostics is not None:
+                diagnostics.callback(name,started,time.monotonic(),outcome,value,publisher_count)
 
     def observe_gripper(self, owner):
         try:
@@ -196,10 +212,18 @@ class Coordinator(Node):
         except (ValueError,TypeError,KeyError):self.engine.cancel(time.monotonic(),'INVALID_COMPUTE_RESULT',True)
 
     def tick(self):
+        tick_started=time.monotonic();self.input_diagnostics.tick(tick_started)
         self.refresh_scene()
         now=time.monotonic();e=self.engine
         effects=e.step(now,self.get_clock().now().nanoseconds) if self.physical and not self.blockers else e.drain()
-        ready=(self.physical and not self.blockers and e.fresh('perception',now)
+        if e.stale_input_diagnostic is not None and not self.stale_fault_reported:
+            detail=e.stale_input_diagnostic
+            detail['callbacks']=self.input_diagnostics.snapshot(now)
+            detail['scene_refresh_elapsed_s']=now-tick_started
+            detail['session_id']=e.session
+            self.get_logger().error('STALE_INPUT_DIAGNOSTIC '+json.dumps(detail,allow_nan=False))
+            self.stale_fault_reported=True
+        ready=(self.physical and not self.blockers and e.wait_goal_stale_since is None and e.fresh('perception',now)
                and e.perception_service_ready(now)
                and e.fresh('owner',now)
                and e.inputs['owner'].get('mission_capable') is True and e.inputs['owner'].get('feedback_ready') is True
@@ -225,7 +249,9 @@ class Coordinator(Node):
             self.stop_home=dict(id=e.request_id,session_id=e.session,navigation_session_id=e.inputs['nav']['session_id'],owner_session_id=owner['owner_session_id'],goal_revision=e.revision,operation='home',owner=owner,grasp_plan=None,scan_index=0,observed_ns=time.monotonic_ns())
             self.compute_pub.publish(String(data=json.dumps(self.stop_home)))
         for kind,data in effects:
-            if kind=='cancel':
+            if kind=='cancel_navigation':
+                if self.cancel_nav.service_is_ready():self.cancel_nav.call_async(Trigger.Request())
+            elif kind=='cancel':
                 if self.cancel.service_is_ready():
                     self.owner_cancel_ack=False;self.cancel_future=self.cancel.call_async(Trigger.Request())
                 if self.cancel_nav.service_is_ready():self.cancel_nav.call_async(Trigger.Request())

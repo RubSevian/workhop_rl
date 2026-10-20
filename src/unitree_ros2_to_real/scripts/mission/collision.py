@@ -11,6 +11,13 @@ import numpy as np
 from .transforms import rigid, xyzrpy
 from .config import ignored_self_collision_pairs, allowed_zero_contact_pairs, environment_checks_enabled, payload_checks_enabled
 
+def measured_gripper_width(geometry,angle,tolerance):
+    """Only the closed-stop undershoot is normalized, never a motor command."""
+    if not np.isfinite(angle) or not np.isfinite(tolerance) or not 0<=tolerance<=np.deg2rad(5)+1e-12:
+        raise ValueError('INVALID_GRIPPER_MEASUREMENT_TOLERANCE')
+    if -tolerance<=angle<0:angle=0.
+    return geometry.opening_width(angle)
+
 class CollisionComputeTimeout(RuntimeError):
     """Abort the whole planning request; not an infeasible grasp candidate."""
 
@@ -196,7 +203,7 @@ class Collision:
         if state.shape!=(7,) or legs.shape!=(12,) or not np.isfinite(np.r_[state,legs]).all():raise ValueError('INVALID_JOINT_STATE')
         q=self.pin.neutral(self.model)
         names=[prefix+'_'+joint+'_joint' for prefix in ('FR','FL','RR','RL') for joint in ('hip','thigh','calf')]
-        width=self.gripper.opening_width(float(state[6]))
+        width=measured_gripper_width(self.gripper,float(state[6]),self.cfg['collision'].get('gripper_closed_measurement_tolerance_rad',0.))
         entries=list(zip(names,legs))+list(zip(('joint'+str(i) for i in range(1,7)),state[:6]))+[(n,width/2) for n in ('gripper_left_joint','gripper_right_joint')]
         for name,value in entries:
             j=self.model.getJointId(name)

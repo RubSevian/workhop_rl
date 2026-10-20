@@ -113,6 +113,9 @@ def load(path, workspace):
     depth=cfg['frames'].get('arm_history_depth',1)
     if type(depth) is not int or not 1<=depth<=400:
         raise ValueError('frames.arm_history_depth must be in [1,400]')
+    grip_tolerance=cfg['collision'].get('gripper_closed_measurement_tolerance_rad',0.)
+    if type(grip_tolerance) not in (int,float) or not math.isfinite(grip_tolerance) or not 0<=grip_tolerance<=math.radians(5)+1e-12:
+        raise ValueError('invalid collision.gripper_closed_measurement_tolerance_rad')
     recovery=cfg['execution'].get('observation_recovery_timeout_s',30.)
     retry=cfg['execution'].get('observation_retry_delay_s',.25)
     if not 0<retry<recovery<=cfg['execution']['state_timeout_s']:
