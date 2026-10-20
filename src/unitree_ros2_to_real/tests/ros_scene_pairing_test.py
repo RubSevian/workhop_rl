@@ -17,10 +17,11 @@ from rclpy.duration import Duration
 from rclpy.time import Time
 from tf2_ros import Buffer, TransformException
 from geometry_msgs.msg import TransformStamped
+from tf2_msgs.msg import TFMessage
 from nav_msgs.msg import Odometry
 from mission.config import load
 from mission.scene import BodyPose, SceneBuffer, validate_scene_data
-from mission.ros_scene import ROSBodySource, BodyTransformBuffer
+from mission.ros_scene import ROSBodySource, BodyTransformBuffer, TransformListener
 from mission.collision import Collision
 CFG=load(ROOT/'repos/rars01_graspnet/config/jetson_orin_nano.yaml',ROOT)
 
@@ -58,6 +59,50 @@ class PairingTests(unittest.TestCase):
 
     def body(self,stamp):
         return BodyPose(stamp,stamp,'nav','tf',np.eye(4).tolist(),np.eye(4).tolist())
+
+    def test_pending_dds_batches_retain_exact_pairs_without_timer_backlog(self):
+        from collections import deque
+        class Inbox:
+            def __init__(self,rows):self.rows=deque(rows)
+            def __enter__(self):return self
+            def __exit__(self,*args):pass
+            def take_message(self,*args):return (self.rows.popleft(),None) if self.rows else None
+        stamps=[self.now-20_000_000+i*1_000_000 for i in range(21)]
+        odometry=[odom(stamp) for stamp in stamps]
+        sub=NS(handle=Inbox(odometry[1:]),msg_type=Odometry,raw=False)
+        self.source.push_batch(sub,odometry[0])
+        self.assertEqual(self.source.last_input_stamp,stamps[-1])
+        self.assertEqual(self.source.receive_stats,dict(callbacks=1,messages=21,max_batch=21))
+        # Actual TF listener callback with a fake DDS inbox; no ROS graph.
+        tf_messages=[TFMessage(transforms=[tf('camera_init','aft_mapped',stamp)]) for stamp in stamps]
+        subscriptions={}
+        def subscribe(kind,topic,callback,qos,**kw):
+            result=NS(handle=Inbox(tf_messages[1:] if topic=='/tf' else []),msg_type=kind,raw=False)
+            subscriptions[topic]=result
+            return result
+        node=NS(create_subscription=subscribe,destroy_subscription=lambda sub:None)
+        listener=TransformListener(self.buffer,node,32)
+        listener.callback(tf_messages[0])
+        self.assertEqual(listener.messages,21)
+        self.assertEqual(listener.callbacks,1)
+        selected=self.source.select('nav')
+        self.assertEqual(selected.ros_ns,stamps[-1])
+        self.assertEqual(selected.mono_ns,stamps[-1])
+        self.assertEqual(self.buffer.received_count(),21)
+
+    def test_index_matches_history_through_duplicate_revisions_and_eviction(self):
+        buffer=BodyTransformBuffer(8)
+        for i in range(150):
+            # Duplicate stamps, latest arrival wins; evict older revisions.
+            m=tf('camera_init','aft_mapped',self.now+(i//3)*1_000_000)
+            m.transform.translation.x=i*.0001
+            buffer.set_transform(m,'test')
+            expected={buffer.sample_key(t):t for t in buffer.samples}
+            self.assertEqual(len(expected),buffer.received_count())
+            self.assertLessEqual(buffer.received_count(),8)
+            for key,value in expected.items():self.assertIs(value,buffer.received_at(key))
+            expired=(self.now-1,'camera_init','aft_mapped')
+            self.assertIsNone(buffer.received_at(expired))
 
     def test_delayed_tf_with_continuous_new_odometry(self):
         ready=0
@@ -99,6 +144,44 @@ class PairingTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError,'TIME_RESET'):self.source.select('nav')
         self.assertEqual(self.source.provider.fault,'ODOMETRY_TIME_RESET')
 
+    def test_clock_read_preemption_does_not_invent_monotonic_reset(self):
+        self.buffer.set_transform(tf('camera_init','aft_mapped',self.now),'test')
+        self.source.read(odom(self.now),'nav')
+        stamp=self.now+4_000_000
+        self.buffer.set_transform(tf('camera_init','aft_mapped',stamp),'test')
+        reads=[self.now,self.now+40_000_000,self.now+40_000_000,self.now+40_000_100,
+               self.now+40_000_200,self.now+40_000_300,self.now+40_000_300]
+        clock=NS(now=lambda:NS(nanoseconds=next(ros)))
+        ros=iter([self.now+39_000_000,self.now+40_000_000,self.now+40_000_200])
+        with patch('mission.ros_scene.time.monotonic_ns',side_effect=reads),patch.object(self.node,'get_clock',return_value=clock):
+            body=self.source.read(odom(stamp),'nav')
+        self.assertEqual(body.mono_ns,stamp+50)
+        self.assertEqual(self.source.diagnostics['clock_sample_span_ns'],100)
+        self.assertEqual(self.source.provider.fault,'')
+
+    def test_ambiguous_clock_interval_cannot_renew_previous_pair(self):
+        self.buffer.set_transform(tf('camera_init','aft_mapped',self.now),'test')
+        previous=self.source.read(odom(self.now),'nav')
+        stamp=self.now+1
+        self.buffer.set_transform(tf('camera_init','aft_mapped',stamp),'test')
+        clock=NS(now=lambda:NS(nanoseconds=self.now+100))
+        with patch('mission.ros_scene.time.monotonic_ns',side_effect=[self.now,self.now+100]*3),patch.object(self.node,'get_clock',return_value=clock):
+            with self.assertRaisesRegex(ValueError,'BODY_CLOCK_SAMPLE_UNCERTAIN'):
+                self.source.read(odom(stamp),'nav')
+        self.assertIs(self.source.provider.last,previous)
+        self.assertEqual(self.source.provider.fault,'')
+
+    def test_confirmed_mapped_time_regression_still_latches(self):
+        self.buffer.set_transform(tf('camera_init','aft_mapped',self.now),'test')
+        self.source.read(odom(self.now),'nav')
+        stamp=self.now+40_000_000
+        self.buffer.set_transform(tf('camera_init','aft_mapped',stamp),'test')
+        clock=NS(now=lambda:NS(nanoseconds=self.now+310_000_000))
+        with patch('mission.ros_scene.time.monotonic_ns',return_value=self.now+10_000_000),patch.object(self.node,'get_clock',return_value=clock):
+            with self.assertRaisesRegex(ValueError,'ODOMETRY_TIME_RESET'):
+                self.source.read(odom(stamp),'nav')
+        self.assertEqual(self.source.provider.fault,'ODOMETRY_TIME_RESET')
+
     def test_history_and_attempts_are_bounded(self):
         for i in range(600):self.source.push(odom(self.now+i))
         self.assertEqual(len(self.source.pending),512)
@@ -125,12 +208,73 @@ class PairingTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError,'STALE:live_arm'):self.scene.snapshot(self.now)
         with self.assertRaisesRegex(ValueError,'STALE'):validate_scene_data(snapshot.data(),self.cfg,self.now,'nav','arm')
 
+    def test_live_planning_context_is_not_a_camera_exposure_at_callback_time(self):
+        import threading
+        from grasp_perception import Perception
+        stamp=self.now-200_000_000
+        self.live(stamp);self.scene.bodies.append(self.body(stamp));self.live()
+        node=NS(lock=threading.Lock(),scene_buffer=self.scene,cfg=self.cfg,
+                body_source=NS(provider=NS(fault='')),scene_error='SCENE_SNAPSHOT_SKEW')
+        sample=Perception.sample_context(node,None,None)
+        self.assertEqual(sample['capture_ns'],stamp)
+        self.assertEqual(sample['feedback_ns'],stamp)
+        self.assertEqual(sample['odom_mono_ns'],stamp)
+        validate_scene_data(sample['scene_snapshot'],self.cfg,self.now,'nav','arm')
+        node.scene_error='ODOMETRY_OWNER_NOT_UNIQUE'
+        with self.assertRaisesRegex(ValueError,'OWNER_NOT_UNIQUE'):Perception.sample_context(node,None,None)
+        node.scene_error=''
+        node.body_source.provider.fault='ODOMETRY_TIME_RESET'
+        with self.assertRaisesRegex(ValueError,'TIME_RESET'):Perception.sample_context(node,None,None)
+
     def test_history_does_not_bypass_skew_or_owner_change(self):
         stamp=self.now-350_000_000
         self.live(stamp-60_000_000);self.scene.bodies.append(self.body(stamp));self.live()
         with self.assertRaisesRegex(ValueError,'SKEW'):self.scene.snapshot(self.now)
         self.scene=SceneBuffer(self.cfg);self.live(stamp);self.scene.bodies.append(self.body(stamp));self.live(owner='new')
         with self.assertRaisesRegex(ValueError,'EPOCH'):self.scene.snapshot(self.now)
+
+    def test_live_scene_uses_newest_complete_tuple_without_refreshing_it(self):
+        older=self.now-180_000_000;newer=self.now-100_000_000
+        self.live(older);self.live()
+        self.scene.bodies.extend([self.body(older),self.body(newer)])
+        snapshot=self.scene.snapshot(self.now)
+        self.assertEqual(snapshot.body.mono_ns,older)
+        self.assertEqual(snapshot.feedback_ns,older)
+        self.assertEqual(self.scene.selection['skipped_newer_incomplete'],1)
+        validate_scene_data(snapshot.data(),self.cfg,self.now,'nav','arm')
+        # A camera at newer cannot silently inherit older's exposure/geometry.
+        with self.assertRaisesRegex(ValueError,'SKEW'):self.scene.snapshot(self.now,newer)
+        self.now+=450_000_000;self.live()
+        with self.assertRaisesRegex(ValueError,'STALE:body'):self.scene.snapshot(self.now)
+
+    def test_complete_tuple_cannot_fall_back_across_epoch(self):
+        older=self.now-180_000_000;newer=self.now-100_000_000
+        self.live(older);self.live()
+        previous=self.body(older)
+        current=BodyPose(newer,newer,'new_nav','tf',np.eye(4).tolist(),np.eye(4).tolist())
+        self.scene.bodies.extend([previous,current])
+        with self.assertRaisesRegex(ValueError,'EPOCH'):self.scene.snapshot(self.now)
+
+    def test_same_geometry_updates_only_real_stream_health_not_pose_lease(self):
+        from mission.core import Mission
+        stamp=self.now-200_000_000
+        self.live(stamp);self.scene.bodies.append(self.body(stamp));self.live()
+        data=dict(self.scene.snapshot(self.now).data(),observed_ns=stamp)
+        mission=NS(cfg=self.cfg,inputs={},received={})
+        self.assertTrue(Mission.observe(mission,'scene',data,self.now/1e9))
+        lease=mission.received['scene']
+        self.now+=100_000_000;self.live()
+        refreshed=dict(self.scene.snapshot(self.now).data(),observed_ns=stamp)
+        self.assertTrue(Mission.observe(mission,'scene',refreshed,self.now/1e9))
+        self.assertEqual(mission.received['scene'],lease)
+        self.assertEqual(mission.inputs['scene']['body']['mono_ns'],stamp)
+        self.assertEqual(mission.inputs['scene']['live_feedback_ns'],self.now)
+        changed=copy.deepcopy(refreshed);changed['q7']=(1.,)*7
+        self.assertFalse(Mission.observe(mission,'scene',changed,self.now/1e9))
+        future=copy.deepcopy(refreshed);future['live_feedback_ns']=self.now+1_000_000
+        self.assertFalse(Mission.observe(mission,'scene',future,self.now/1e9))
+        self.now+=300_000_000
+        self.assertFalse(Mission.observe(mission,'scene',refreshed,self.now/1e9))
 
     def test_modelled_body_epoch_and_tf_mismatch_still_rejected(self):
         self.buffer.set_transform(tf('camera_init','aft_mapped',self.now),'test');self.source.push(odom(self.now))
@@ -144,7 +288,7 @@ class PairingTests(unittest.TestCase):
         output=[];observations={}
         backend=NS(sensors_ready=lambda:True,startup_checks=dict(geometry=True,yolo=True,graspnet=True,camera=True),camera_mode='standby')
         perception=NS(cfg=self.cfg,body_source=self.source,scene_buffer=self.scene,
-            leg_reader=NS(status=lambda:dict(mode='test',projected=0,fallback=0)),
+            leg_reader=NS(status=lambda:dict(mode='test',projected=0,fallback=0)),leg_receive_stats={},
             navigation_session='nav',lock=contextlib.nullcontext(),scene_error='',backend=backend,
             reason='READY',busy=False,last_compute={},startup_checks=backend.startup_checks,
             health=NS(publish=lambda msg:output.append(json.loads(msg.data))),completed=queue.Queue(),
@@ -156,6 +300,7 @@ class PairingTests(unittest.TestCase):
             observe=lambda name,data,now:observations.update({name:data}))
         coordinator=NS(cfg=self.cfg,body_source=coordinator_source,scene_buffer=coordinator_scene,
             engine=engine,scene_error='',get_logger=lambda:NS(info=lambda text:None))
+        perception.odometry_subscription=None;coordinator.odometry_subscription=None
         start=self.now
         for i in range(100):
             self.now=start+i*10_000_000

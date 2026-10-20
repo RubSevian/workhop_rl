@@ -3,7 +3,7 @@
 #include <atomic>
 #include <chrono>
 #include <fstream>
-#include <mutex>
+#include <memory>
 #include <thread>
 #include <vector>
 namespace sim2real {
@@ -28,9 +28,12 @@ class MotionTrace {
  size_t dropped() const {return dropped_.load();}
  private:
  void Write();
- std::ofstream file_;std::thread writer_;std::mutex queue_mutex_;
- std::vector<MotionTraceSample> queue_;size_t head_=0,size_=0;int writer_idle_ms_;
+ std::ofstream file_;std::thread writer_;
+ struct Cell {std::atomic<size_t> sequence{0};MotionTraceSample sample{};};
+ std::unique_ptr<Cell[]> queue_;size_t capacity_=0,head_=0;
+ alignas(64) std::atomic<size_t> tail_{0};
+ std::atomic<size_t> submitting_{0};int writer_idle_ms_;
  std::atomic<bool> enabled_{true};std::atomic<size_t> dropped_{0};
- std::chrono::steady_clock::time_point first_{};bool started_=false;double duration_s_;
+ std::atomic<int64_t> first_ns_{0};double duration_s_;
 };
 }

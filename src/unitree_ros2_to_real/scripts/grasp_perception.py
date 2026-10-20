@@ -19,6 +19,10 @@ from unitree_go.msg import LowState
 from mission.config import load,blockers
 from mission.scene import SceneBuffer
 from mission.status_codec import decode_status
+from mission.subscription_batch import take_batch
+from mission.native_leg_input import NativeLegInput
+from mission.scene_wait import camera_context, transient_scene_error
+from mission.arm_fast_state import to_mapping
 from mission.leg_state_reader import LegStateReader
 from mission.ros_scene import ROSBodySource, report_scene
 from mission.startup import MARKER,verified
@@ -30,6 +34,9 @@ class Perception(Node):
         self.leg_reader=LegStateReader()
         self.cfg=load(self.declare_parameter('mission_config_path','').value,self.declare_parameter('workspace','').value)
         self.body_source=ROSBodySource(self,self.cfg);self.scene_buffer=SceneBuffer(self.cfg)
+        self.arm_state_transport=self.declare_parameter('arm_state_transport','yaml').value
+        if self.arm_state_transport not in ('yaml','typed'):raise ValueError('ARM_STATE_TRANSPORT')
+        self.owner_topic='/rars01/commissioning/fast_state' if self.arm_state_transport=='typed' else '/rars01/commissioning/state'
         self.navigation_session='';self.scene_error=''
         physical=self.declare_parameter('physical',False).value
         self.reason='READ_ONLY';self.backend=None;self.busy=False;self.started=0.;self.last_compute={}
@@ -40,10 +47,20 @@ class Perception(Node):
         self.health=self.create_publisher(String,'/rars01/mission/perception_health',1)
         self.results=self.create_publisher(String,'/rars01/mission/computed',1)
         self.joints=self.create_publisher(JointState,'/rars01/joint_states',1)
-        self.create_subscription(String,'/rars01/commissioning/state',self.owner,1)
-        self.create_subscription(Odometry,'/state_estimation',self.odom,
-            QoSProfile(depth=self.cfg['frames']['odometry_buffer_size'],reliability=ReliabilityPolicy.BEST_EFFORT))
-        self.create_subscription(LowState,'/lowstate',self.lowstate,qos_profile_sensor_data,raw=True)
+        owner_type=String
+        if self.arm_state_transport=='typed':
+            from rars01_state_interfaces.msg import ArmFastState
+            owner_type=ArmFastState
+        self.owner_subscription=self.create_subscription(owner_type,self.owner_topic,self.owner,self.cfg['frames'].get('arm_history_depth',1))
+        self.odometry_subscription=self.create_subscription(Odometry,'/state_estimation',self.odom,
+            QoSProfile(depth=self.cfg['frames'].get('scene_receive_depth',32),reliability=ReliabilityPolicy.BEST_EFFORT))
+        self.native_leg_input=None
+        if self.cfg['frames'].get('leg_state_transport','raw')=='native_batch':
+            from go2_scene_interfaces.msg import SceneLegBatch
+            self.native_leg_input=NativeLegInput(self.scene_buffer,self.cfg)
+            self.native_leg_subscription=self.create_subscription(SceneLegBatch,'/go2/scene/leg_samples',self.leg_batch,32)
+        else:
+            self.create_subscription(LowState,'/lowstate',self.lowstate,qos_profile_sensor_data,raw=True)
         self.create_subscription(String,'/go2/navigation/status',self.nav_status,1)
         self.create_subscription(String,'/rars01/mission/compute',self.request,1)
         self.create_timer(self.cfg['execution']['tick_s'],self.tick)
@@ -54,12 +71,16 @@ class Perception(Node):
         elif physical:self.reason='PHYSICAL_NOT_READY:'+','.join(blockers(self.cfg))
 
     def owner(self,msg):
-        if self.count_publishers('/rars01/commissioning/state')!=1:return
+        if self.count_publishers(getattr(self,'owner_topic','/rars01/commissioning/state'))!=1:return
         try:
-            d=decode_status(msg.data)
+            batch=take_batch(getattr(self,'owner_subscription',None),msg,self.cfg['frames'].get('arm_history_depth',1))
+            values=[to_mapping(m) if getattr(self,'arm_state_transport','yaml')=='typed' else decode_status(m.data) for m in batch]
+            d=values[-1]
             if not d['feedback_ready']:return
             with self.lock:
-                self.scene_buffer.arm(d['q'],d['frame_received_ns'],d['owner_session_id'])
+                for historical in values:
+                    if historical.get('feedback_ready') and historical.get('owner_session_id')==d['owner_session_id']:
+                        self.scene_buffer.arm(historical['q'],historical['frame_received_ns'],historical['owner_session_id'])
             if self.backend:
                 q=d['q'];joint=JointState();joint.name=['joint'+str(i) for i in range(1,7)]+['gripper_left_joint','gripper_right_joint']
                 width=self.backend.geometry.opening_width(q[6]);joint.position=q[:6]+[width/2,width/2]
@@ -69,7 +90,7 @@ class Perception(Node):
         except (KeyError,ValueError,TypeError,yaml.YAMLError):return
 
     def odom(self,msg):
-        self.body_source.push(msg)
+        self.body_source.push_batch(self.odometry_subscription,msg)
 
     def nav_status(self,msg):
         if self.count_publishers('/go2/navigation/status')!=1:return
@@ -78,6 +99,14 @@ class Perception(Node):
             if 0<=(time.monotonic_ns()-data['observed_ns'])/1e9<=self.cfg['execution']['heartbeat_ttl_s']:
                 self.navigation_session=data['session_id']
         except (ValueError,KeyError,TypeError):return
+
+    def leg_batch(self,msg):
+        if self.count_publishers('/go2/scene/leg_samples')!=1:return
+        latest=None
+        for batch in take_batch(self.native_leg_subscription,msg,32):
+            try:
+                with self.lock:self.native_leg_input.apply(batch,time.monotonic_ns())
+            except (ValueError,TypeError):continue
 
     def lowstate(self,msg):
         if self.count_publishers('/lowstate')!=1:return
@@ -89,11 +118,19 @@ class Perception(Node):
             try:self.scene_buffer.leg(q,time.monotonic_ns())
             except ValueError:self.scene_error='INVALID_LEG_SNAPSHOT'
 
-    def sample_context(self,capture_ns,ros_ns):
-        with self.lock:
-            if self.scene_error:raise ValueError(self.scene_error)
-            snapshot=self.scene_buffer.snapshot(time.monotonic_ns(),capture_ns)
+    def sample_context(self,capture_ns,ros_ns,*,wait=True):
+        def read():
+            with self.lock:
+                if self.body_source.provider.fault:raise ValueError(self.body_source.provider.fault)
+                if self.scene_error and not transient_scene_error(self.scene_error):raise ValueError(self.scene_error)
+                return self.scene_buffer.snapshot(time.monotonic_ns(),capture_ns)
+        # None explicitly requests a coherent live scene at its body measurement.
+        # Camera requests retain their exposure timestamp while delayed odometry
+        # arrives. Only the planning worker waits; the ROS executor stays free.
+        snapshot=(read() if capture_ns is None or not wait else
+                  camera_context(read,capture_ns,self.cfg['execution']['camera_max_age_s'],self.cfg['execution']['tick_s']))
         body=snapshot.body
+        if capture_ns is None:capture_ns,ros_ns=body.mono_ns,body.ros_ns
         return dict(capture_ns=capture_ns,capture_ros_ns=ros_ns,feedback_ns=snapshot.feedback_ns,
                     q=list(snapshot.q7[:6]),q7=list(snapshot.q7),legs=list(snapshot.legs),legs_ns=snapshot.legs_ns,
                     owner_session_id=snapshot.owner_session_id,odom_mono_ns=body.mono_ns,
@@ -113,6 +150,8 @@ class Perception(Node):
 
     def work(self):
         try:
+            from mission.compute_scheduling import inference_thread_nice
+            self.inference_nice=inference_thread_nice(self.cfg.get('compute',{}).get('inference_nice',0))
             from mission.planning import Planning
             def progress(stage):
                 if self.stop_event.is_set():raise RuntimeError('PERCEPTION_SHUTDOWN')
@@ -193,9 +232,10 @@ class Perception(Node):
         report_scene(self,reason)
         self.health.publish(String(data=json.dumps(dict(observed_ns=time.monotonic_ns(),ready=bool(ready),reason=reason,scene_error=self.scene_error,busy=self.busy,last_compute=self.last_compute,busy_elapsed_s=now-self.started if self.busy else 0.,
             startup_checks=dict(self.startup_checks),
+            inference_nice=getattr(self,'inference_nice',None),
             preload_ready=self.backend is not None and verified(self.backend.startup_checks),
             camera_mode=self.backend.camera_mode if self.backend else 'unverified',
-            lowstate_decode=self.leg_reader.status(),tf_pair=dict(self.body_source.diagnostics),streams=self.scene_buffer.diagnostics(time.monotonic_ns())))))
+            lowstate_decode=(self.native_leg_input.status() if getattr(self,'native_leg_input',None) else self.leg_reader.status()),tf_pair=dict(self.body_source.diagnostics),streams=self.scene_buffer.diagnostics(time.monotonic_ns())))))
         try:
             out=self.completed.get_nowait();self.busy=False
             self.results.publish(String(data=json.dumps(out,allow_nan=False)))

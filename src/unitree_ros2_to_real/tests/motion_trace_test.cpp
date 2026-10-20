@@ -24,6 +24,15 @@ int main(){
  {MotionTrace trace(base+"-burst.csv",120);std::vector<std::thread> producers;
   for(int t=0;t<4;++t)producers.emplace_back([&]{for(int n=0;n<10000;++n)trace.Submit(sample);});
   for(auto& t:producers)t.join();trace.Stop();assert(trace.dropped()>0);assert(!trace.Submit(sample));}
+ // Concurrent producers below capacity must retain every unique row, even
+ // while the writer is draining. This catches the former try_lock loss.
+ {MotionTrace trace(base+"-complete.csv",120,4096,1);std::vector<std::thread> producers;
+  for(int t=0;t<4;++t)producers.emplace_back([&,t]{for(int n=0;n<500;++n){auto x=sample;x.stamp_ns=t*500+n+1;assert(trace.Submit(x));}});
+  for(auto& t:producers)t.join();trace.Stop();assert(trace.dropped()==0);}
+ {std::ifstream f(base+"-complete.csv");std::string line;std::getline(f,line);std::vector<long long> ids;
+  while(std::getline(f,line))ids.push_back(std::stoll(split(line)[3]));
+  std::sort(ids.begin(),ids.end());assert(ids.size()==2000);for(int i=0;i<2000;++i)assert(ids[i]==i+1);}
+ std::filesystem::remove(base+"-complete.csv");
  bool invalid=false;try{MotionTrace trace(base+"-invalid.csv",0);}catch(const std::invalid_argument&){invalid=true;}assert(invalid);
  for(const auto& suffix:{".csv","-stop.csv","-burst.csv"})std::filesystem::remove(base+suffix);
  std::cout<<"PASS bounded CSV queue, concurrent overload/drop, auto-stop, explicit stop/drain,110-column schema and invalid duration\n";

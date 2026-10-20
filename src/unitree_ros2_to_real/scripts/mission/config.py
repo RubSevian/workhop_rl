@@ -58,14 +58,22 @@ def load(path, workspace):
     # Never feed malformed limits to search/timers, even in read-only mode.
     for group in ('search', 'refinement', 'settle', 'execution'):
         for key, value in cfg[group].items():
+            if group == 'execution' and key == 'arm_state_transport':
+                if value not in ('yaml','typed'):
+                    raise ValueError('invalid execution.arm_state_transport')
+                continue
             if group == 'search' and key == 'mode':
                 continue
             if type(value) not in (int, float) or not math.isfinite(value):
                 raise ValueError(f'invalid {group}.{key}')
             if key not in ('joint1_min_rad','joint1_start_rad') and value <= 0:
                 raise ValueError(f'nonpositive {group}.{key}')
+    nice=cfg['compute'].get('inference_nice',0)
+    if type(nice) is not int or not 0<=nice<=19:raise ValueError('compute.inference_nice must be in [0,19]')
     if type(cfg['compute']['cpu_threads']) is not int or cfg['compute']['cpu_threads']<1:
         raise ValueError('compute.cpu_threads must be a positive integer')
+    if type(cfg['compute'].get('grasp_full_diagnostics',True)) is not bool:
+        raise ValueError('compute.grasp_full_diagnostics must be boolean')
     startup=cfg['startup']
     if type(startup['camera_probe_frames']) is not int or startup['camera_probe_frames']<1:
         raise ValueError('startup.camera_probe_frames must be positive integer')
@@ -102,6 +110,29 @@ def load(path, workspace):
         if type(cfg['frames'][key]) is not int or cfg['frames'][key]<1:
             raise ValueError('invalid frames.'+key)
     history=cfg['frames']['odometry_history_s']
+    depth=cfg['frames'].get('arm_history_depth',1)
+    if type(depth) is not int or not 1<=depth<=400:
+        raise ValueError('frames.arm_history_depth must be in [1,400]')
+    recovery=cfg['execution'].get('observation_recovery_timeout_s',30.)
+    retry=cfg['execution'].get('observation_retry_delay_s',.25)
+    if not 0<retry<recovery<=cfg['execution']['state_timeout_s']:
+        raise ValueError('observation recovery must be bounded by state_timeout_s')
+    candidates=cfg['execution'].get('camera_admission_candidates',1)
+    if type(candidates) is not int or not 1<=candidates<=8:
+        raise ValueError('execution.camera_admission_candidates must be in [1,8]')
+    attempts=cfg['execution'].get('camera_admission_attempts',1)
+    if type(attempts) is not int or not 1<=attempts<=10:
+        raise ValueError('execution.camera_admission_attempts must be in [1,10]')
+    if cfg['frames'].get('leg_state_transport','raw') not in ('raw','native_batch'):
+        raise ValueError('frames.leg_state_transport must be raw/native_batch')
+    for key,default,upper in [('leg_collector_period_ms',20,100),('leg_collector_capacity',512,1000)]:
+        value=cfg['frames'].get(key,default)
+        if type(value) is not int or not 1<=value<=upper:raise ValueError('Invalid frames.'+key)
+    depth=cfg['frames'].get('scene_receive_depth',32)
+    if type(depth) is not int or not 1<=depth<=400:
+        raise ValueError('frames.scene_receive_depth must be in [1,400]')
+    if type(cfg['frames'].get('tf_index_enabled',False)) is not bool:
+        raise ValueError('frames.tf_index_enabled must be boolean')
     if type(history) not in (int,float) or not math.isfinite(history) or history<cfg['limits']['sensor_age_s']:
         raise ValueError('frames.odometry_history_s must cover sensor_age_s')
     margin = cfg['collision']['margin_m']

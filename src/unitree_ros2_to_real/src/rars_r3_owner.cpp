@@ -6,6 +6,7 @@
 #include "rars_bridge.hpp"
 #include <rclcpp/rclcpp.hpp>
 #include <std_msgs/msg/string.hpp>
+#include <rars01_state_interfaces/msg/arm_fast_state.hpp>
 #include <std_srvs/srv/trigger.hpp>
 #include <yaml-cpp/yaml.h>
 #include <filesystem>
@@ -96,6 +97,8 @@ class ArmOwner final:public rclcpp::Node {
    response->success=true;response->message="owner advancement cancelled; gripper hold preserved; no HOME issued";
   });
   state_=create_publisher<std_msgs::msg::String>("/rars01/commissioning/state",10);
+  if(declare_parameter<bool>("fast_state_enabled",false))
+   fast_state_=create_publisher<rars01_state_interfaces::msg::ArmFastState>("/rars01/commissioning/fast_state",10);
   return_home_=create_service<std_srvs::srv::Trigger>("/rars01/control/return_home",[this](std_srvs::srv::Trigger::Request::SharedPtr,std_srvs::srv::Trigger::Response::SharedPtr response){
    home_requested_=bool(mission_);
    response->success=mission_?(home_->status().feedback_ready&&home_->status().motors_enabled&&home_->status().target_fresh):home_->ReturnHome(ArmClock::now());response->message=response->success?"HOME stream accepted; completion requires measured HOME":"healthy enabled owner/feedback/target required; no enable issued";
@@ -224,6 +227,65 @@ class ArmOwner final:public rclcpp::Node {
   try{home_->Tick(ArmClock::now(),connect_,true);}catch(const std::exception& e){home_->Fault(std::string("owner_exception: ")+e.what());}
   const auto& s=home_->status();
   if(s.state!=last_state_){RCLCPP_INFO(get_logger(),"arm state=%s error=%s",AutoHomeStateName(s.state),s.last_error.c_str());last_state_=s.state;}
+  // Optional typed snapshot; legacy100Hz YAML remains for native R3/readers.
+  if(fast_state_){
+   rars01_state_interfaces::msg::ArmFastState fast;
+   fast.observed_ns=Ns(ArmClock::now());
+   fast.owner_session_id=owner_session_;
+   fast.mission_capable=bool(mission_);
+   fast.mission_id=(mission_?mission_->id():0);
+   fast.mission_state=(mission_?mission_->state():"DISABLED");
+   fast.mission_error=(mission_?mission_->error():mission_blocker_);
+   fast.mission_blocker=mission_blocker_;
+   fast.home_requested=home_requested_;
+   fast.grasp_verification=(mission_?"stub":"inactive");
+   fast.home_joint_count=(mission_?6:7);
+   fast.gripper_command_active=(mission_&&mission_->holding());
+   fast.gripper_hold_confirmed=(mission_&&mission_->HoldConfirmed(s));
+   fast.gripper_command_torque_nm=(mission_?mission_->command().torque[6]:0);
+   fast.gripper_hold_target=(mission_?mission_->command().q[6]:0);
+   fast.owner_state=AutoHomeStateName(s.state);
+   fast.connected=s.communication.connected;
+   fast.enabled_local=s.communication.enabled;
+   fast.enable_attempted=s.enable_attempted;
+   fast.command_rate_hz=home_->config().command_rate_hz;
+   fast.successful_sends=s.successful_sends;
+   fast.first_accepted_ns=(s.first_accepted_stamp?Ns(*s.first_accepted_stamp):0);
+   fast.last_send_gap_ms=s.last_send_gap_ms;
+   fast.max_send_gap_ms=s.max_send_gap_ms;
+   fast.frame_received_ns=(s.feedback_stamp?Ns(*s.feedback_stamp):0);
+   fast.common_feedback_age_s=s.feedback_age_s;
+   fast.feedback_age_s=s.feedback_age_s;
+   std::copy_n(s.joints.position.begin(),6,fast.measured_q.begin());
+   std::copy_n(s.joints.velocity.begin(),6,fast.measured_dq.begin());
+   std::copy_n(s.joints.motor_id.begin(),6,fast.motor_ids.begin());
+   std::copy_n(s.joints.valid.begin(),6,fast.valid.begin());
+   std::copy_n(s.joints.motor_id.begin(),7,fast.motor_id.begin());
+   std::copy_n(s.joints.error.begin(),7,fast.motor_status.begin());
+   std::copy_n(s.joints.valid.begin(),7,fast.valid7.begin());
+   std::copy_n(s.joints.position.begin(),7,fast.q.begin());
+   std::copy_n(s.joints.velocity.begin(),7,fast.dq.begin());
+   std::copy_n(s.joints.torque.begin(),7,fast.torque.begin());
+   std::copy_n(s.home_error.begin(),7,fast.home_error.begin());
+   std::copy_n(home_->config().home_target.begin(),7,fast.home_target.begin());
+   fast.feedback_ready=s.feedback_ready;
+   fast.motors_enabled=s.motors_enabled;
+   fast.static_hold=(mission_?mission_->home6(s,home_->config().home_tolerance_rad):s.arm_home_ready);
+   fast.arm_emergency_disable_enabled=home_->config().emergency_disable_enabled;
+   fast.arm_emergency_validated=home_->config().emergency_disable_validated;
+   fast.arm_home_ready=(mission_?mission_->home6(s,home_->config().home_tolerance_rad):s.arm_home_ready);
+   fast.watchdog_armed=s.communication.watchdog_armed;
+   fast.watchdog_tripped=s.communication.watchdog_tripped;
+   fast.stm32_watchdog_tripped=s.communication.stm32_watchdog_tripped;
+   fast.protocol_v2_detected=s.communication.protocol_v2_detected;
+   fast.per_joint_freshness_proven=false;
+   fast.target_age_s=s.target_age_s;
+   fast.target_valid=s.target_fresh;
+   fast.last_error=s.last_error;
+   if(s.accepted_stamp){fast.accepted_target_valid=true;fast.accepted_ns=Ns(*s.accepted_stamp);
+    std::copy_n(home_->accepted_target().begin(),6,fast.accepted_target.begin());}
+   fast_state_->publish(fast);
+  }
   YAML::Emitter e;e<<YAML::Flow<<YAML::BeginMap
    <<YAML::Key<<"observed_ns"<<YAML::Value<<Ns(ArmClock::now())
    <<YAML::Key<<"owner_session_id"<<YAML::Value<<owner_session_
@@ -298,6 +360,7 @@ class ArmOwner final:public rclcpp::Node {
  std::unique_ptr<rars_arm::RarsArm> sdk_;std::unique_ptr<SdkHomeTransport> transport_;
  std::unique_ptr<AutoHomeController> home_;
  rclcpp::Service<std_srvs::srv::Trigger>::SharedPtr return_home_,emergency_;
+ rclcpp::Publisher<rars01_state_interfaces::msg::ArmFastState>::SharedPtr fast_state_;
  rclcpp::Publisher<std_msgs::msg::String>::SharedPtr state_;rclcpp::TimerBase::SharedPtr timer_;
 };
 int main(int argc,char** argv){rclcpp::init(argc,argv);try{rclcpp::spin(std::make_shared<ArmOwner>());}catch(const std::exception& e){RCLCPP_ERROR(rclcpp::get_logger("rars_r3"),"Failed closed: %s",e.what());rclcpp::shutdown();return 1;}rclcpp::shutdown();}

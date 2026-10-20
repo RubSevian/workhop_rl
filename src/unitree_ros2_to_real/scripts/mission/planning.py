@@ -11,6 +11,7 @@ import numpy as np
 from .transforms import EyeInHand, rigid, fixed_joint
 from .collision import Collision
 from .scene import FrameChain, WorldGraspAnchor
+from .scene_wait import select_camera_frame
 from .config import environment_checks_enabled, search_angles
 
 class CandidatePathRejected(ValueError):
@@ -18,10 +19,16 @@ class CandidatePathRejected(ValueError):
 
 class CameraPump:
     """Acquisition continues while GraspNet is pending; stamps stay with pixels."""
-    def __init__(self, camera, stop_timeout_s=2.):
+    def __init__(self, camera, stop_timeout_s=2., processing_mode='continuous'):
         import threading
+        if processing_mode not in ('continuous','latest_raw'):raise ValueError('CAMERA_PROCESSING_MODE')
+        if processing_mode=='latest_raw' and not all(callable(getattr(camera,k,None)) for k in ('acquire_frames','decode_frames','frame_timing')):
+            raise ValueError('CAMERA_RAW_INTERFACE_UNAVAILABLE')
         self.source=camera;self.K=camera.K.copy();self.last_frame_timing=None
         self.condition=threading.Condition();self.latest=None;self.sequence=0;self.consumed=0
+        self.processing_mode=processing_mode;self.requested=0;self.completed=0
+        self.raw_timing=None;self.decode_valid=False
+        self.raw_frames=0;self.processed_frames=0;self.acquisition_cpu_s=0.;self.processing_cpu_s=0.
         self.running=True
         self.stop_timeout_s=stop_timeout_s
         self.error=''
@@ -29,28 +36,83 @@ class CameraPump:
         self.thread.start()
     def run(self):
         try:
+            if self.processing_mode=='latest_raw':
+                self.run_raw()
+                return
             while self.running:
+                cpu=time.thread_time()
                 color,depth=self.source.get_frame();timing=getattr(self.source,'last_frame_timing',None)
+                self.processing_cpu_s+=time.thread_time()-cpu
                 if color is not None and depth is not None and timing:
                     with self.condition:
+                        self.processed_frames+=1
                         self.latest=(color,depth,dict(timing));self.sequence+=1;self.condition.notify_all()
         except Exception as error:
             with self.condition:self.error=str(error);self.condition.notify_all()
+    def run_raw(self):
+        failures=0
+        while self.running:
+            cpu=time.thread_time()
+            try:
+                frames=self.source.acquire_frames()
+                timing=self.source.frame_timing(frames)
+            except Exception:
+                self.acquisition_cpu_s+=time.thread_time()-cpu
+                failures+=1
+                if failures>=self.source._FRAME_FAIL_LIMIT:raise
+                continue
+            self.acquisition_cpu_s+=time.thread_time()-cpu
+            if (not timing or timing['color_system_ns']<=0 or timing['depth_system_ns']<=0
+                    or abs(timing['color_system_ns']-timing['depth_system_ns'])>1e9/self.source._fps):
+                failures+=1
+                if failures>=self.source._FRAME_FAIL_LIMIT:raise RuntimeError('RGBD_RAW_ACQUISITION_FAILED')
+                continue
+            failures=0
+            with self.condition:
+                self.raw_frames+=1;self.raw_timing=dict(timing)
+                request=self.requested
+                wanted=request>self.completed
+            if not wanted:continue
+            # The SDK frameset remains strongly owned by this thread through
+            # decode. There is one latest raw sample, no queue of image arrays.
+            cpu=time.thread_time()
+            color,depth=self.source.decode_frames(frames)
+            self.processing_cpu_s+=time.thread_time()-cpu
+            timing=getattr(self.source,'last_frame_timing',None)
+            with self.condition:
+                self.decode_valid=color is not None and depth is not None and bool(timing)
+                if self.decode_valid:
+                    self.processed_frames+=1
+                    self.latest=(color,depth,dict(timing));self.sequence+=1;self.completed=request
+                    self.condition.notify_all()
+    def stats(self):
+        with self.condition:
+            return dict(processing_mode=self.processing_mode,raw_frames=self.raw_frames,
+                processed_frames=self.processed_frames,acquisition_cpu_s=self.acquisition_cpu_s,
+                processing_cpu_s=self.processing_cpu_s)
     def fresh(self,ttl):
         with self.condition:
+            if self.processing_mode=='latest_raw':
+                return (not self.error and self.decode_valid and self.raw_timing is not None
+                    and 0<=(time.time_ns()-self.raw_timing['color_system_ns'])/1e9<=ttl
+                    and 0<=(time.time_ns()-self.raw_timing['depth_system_ns'])/1e9<=ttl)
             return not self.error and self.latest is not None and 0<=(time.time_ns()-self.latest[2]['color_system_ns'])/1e9<=ttl
     def get_frame(self):
         with self.condition:
-            if not self.condition.wait_for(lambda:self.sequence>self.consumed or self.error,timeout=1.):raise ValueError('RGBD_TIMEOUT')
+            request=0
+            if self.processing_mode=='latest_raw':
+                self.requested+=1;request=self.requested
+            if not self.condition.wait_for(lambda:(self.completed>=request if request else self.sequence>self.consumed) or self.error or not self.running,timeout=1.):raise ValueError('RGBD_TIMEOUT')
             if self.error:raise ValueError('RGBD_ACQUISITION_FAILED:'+self.error)
+            if not self.running:raise ValueError('RGBD_CLOSED')
             self.consumed=self.sequence;color,depth,self.last_frame_timing=self.latest
             return color,depth
     def close(self):
-        self.running=False
+        with self.condition:self.running=False;self.condition.notify_all()
         self.thread.join(timeout=self.stop_timeout_s)
         if self.thread.is_alive():raise RuntimeError('RGBD_ACQUISITION_STOP_TIMEOUT')
         self.source.close()
-        with self.condition:self.latest=None;self.last_frame_timing=None
+        with self.condition:self.latest=None;self.last_frame_timing=None;self.raw_timing=None
 
 class Planning:
     def __init__(self, cfg, initialize_perception=True, progress=None, startup_checks=None):
@@ -115,7 +177,11 @@ class Planning:
         report('yolo_warmup')
         from utils.yolo_utils import detect_objects
         detect_objects(self.yolo,np.zeros((self.grasp['camera']['color_height'],self.grasp['camera']['color_width'],3),dtype=np.uint8),self.yolo_options)
-        if torch.cuda.is_available():torch.cuda.synchronize()
+        if torch.cuda.is_available():
+            torch.cuda.synchronize()
+            # Keep warmed models/kernels, release only unused YOLO activation
+            # cache before starting GraspNet and idle NAV on the shared RAM.
+            torch.cuda.empty_cache()
         self.startup_checks['yolo']=True
         checkpoint=Path(cfg['paths']['grasp_root'])/self.grasp['graspnet']['checkpoint']
         report('graspnet_worker_start')
@@ -136,7 +202,8 @@ class Planning:
         self.camera_mode='starting';self.camera_start_ns=time.monotonic_ns();self.camera_error=''
         source=make_camera(self.grasp)
         try:
-            source.open();self.camera=CameraPump(source,self.cfg['startup']['camera_stop_timeout_s'])
+            source.open();self.camera=CameraPump(source,self.cfg['startup']['camera_stop_timeout_s'],
+                self.grasp['camera'].get('processing_mode','continuous'))
             deadline=self.camera_start_ns/1e9+self.cfg['startup']['camera_probe_timeout_s']
             count=0;last=0
             while count<self.cfg['startup']['camera_probe_frames']:
@@ -177,6 +244,34 @@ class Planning:
         return self.camera_mode=='active' and self.camera is not None and self.camera.fresh(self.cfg['execution']['camera_max_age_s'])
 
     def frame(self, context):
+        # A delayed/discarded exposure does not invalidate the next real frame.
+        # Each attempt must independently satisfy the original camera/scene TTL;
+        # the surrounding operation deadline still bounds the whole request.
+        attempts=self.cfg['execution'].get('camera_admission_attempts',1)
+        for attempt in range(attempts):
+            self.collision.check_deadline()
+            try:
+                count=self.cfg['execution'].get('camera_admission_candidates',1)
+                if count==1:return self._frame_once(context)
+                frames=[]
+                for _ in range(count):
+                    self.collision.check_deadline()
+                    frame=self._capture_frame()
+                    frames.append((frame[2],frame))
+                self.compute_metrics['camera_candidate_frames']=self.compute_metrics.get('camera_candidate_frames',0)+len(frames)
+                return select_camera_frame(frames,
+                    lambda frame:self._admit_frame(frame,lambda cap,ros:context(cap,ros,wait=False)),
+                    self.collision.check_deadline,self.cfg['execution']['camera_max_age_s'],self.cfg['execution']['tick_s'])
+            except ValueError as error:
+                if str(error)!='RGBD_STALE_OR_REPEATED':raise
+                metrics=self.compute_metrics
+                metrics['camera_admission_discarded']=metrics.get('camera_admission_discarded',0)+1
+                if attempt+1==attempts:raise
+
+    def _frame_once(self, context):
+        return self._admit_frame(self._capture_frame(),context)
+
+    def _capture_frame(self):
         color,depth=self.camera.get_frame()
         timing=getattr(self.camera,'last_frame_timing',None)
         if color is None or depth is None or timing is None:raise ValueError('RGBD_TIMESTAMPS_MISSING')
@@ -189,11 +284,15 @@ class Planning:
         if capture_mono<=self.last_frame_mono_ns or not 0<=(mono-capture_mono)/1e9<=self.cfg['execution']['camera_max_age_s']:
             raise ValueError('RGBD_STALE_OR_REPEATED')
         self.last_frame_mono_ns=capture_mono
+        return color,depth,capture_mono,stamp,dict(timing)
+
+    def _admit_frame(self,frame,context):
+        color,depth,capture_mono,stamp,timing=frame
         sample=context(capture_mono,stamp)
         arm_camera,odom_arm=self.eye.chain(capture_mono,sample['feedback_ns'],sample['q'],
             sample['odom_mono_ns'],sample['odom_vehicle'])
         self.joints=np.asarray(sample['q'])
-        return color,depth,dict(sample,arm_camera=arm_camera,odom_arm=odom_arm,capture_mono_ns=capture_mono,capture_ros_ns=stamp,frame_age_s=(mono-capture_mono)/1e9)
+        return color,depth,dict(sample,frame_timing=timing,arm_camera=arm_camera,odom_arm=odom_arm,capture_mono_ns=capture_mono,capture_ros_ns=stamp,frame_age_s=(time.monotonic_ns()-capture_mono)/1e9)
 
     def detect(self, context, count):
         from utils.yolo_utils import detect_objects
@@ -260,12 +359,12 @@ class Planning:
 
     def validate_result(self,result,context,request=None):
         if result.get('grasp_plan'):
-            fresh=context(time.monotonic_ns(),time.time_ns())
+            fresh=context(None,None)
             anchor=WorldGraspAnchor(**result['grasp_plan']['world_grasp_anchor'])
             anchor.validate(fresh['body'],time.monotonic_ns(),self.cfg['execution']['mission_timeout_s'],anchor.goal_revision,self.cfg['limits']['sensor_age_s'])
         trajectory=result.get('trajectory')
         if trajectory is None:return
-        fresh=context(time.monotonic_ns(),time.time_ns());scene=self.collision_scene(fresh)
+        fresh=context(None,None);scene=self.collision_scene(fresh)
         old=trajectory['collision_context']
         if any(old[key]!=scene[key] for key in ('owner_session_id','scene_revision','navigation_session_id','tf_revision')):
             raise ValueError('WORLD_ANCHOR_EPOCH_CHANGED')
@@ -299,7 +398,7 @@ class Planning:
         if op in ('scan_pose','detect','observe_grasp','grasp_plan'):
             self.resume_camera()
         payload=owner.get('gripper_command_active') is True
-        sample=context(time.monotonic_ns(),time.time_ns())
+        sample=context(None,None)
         if sample['owner_session_id']!=request['owner_session_id'] or sample['body'].navigation_session_id!=request['navigation_session_id']:
             raise ValueError('PLANNING_SESSION_CHANGED')
         start=np.asarray(sample['q7'],dtype=float).copy()
@@ -337,13 +436,13 @@ class Planning:
                 raise ValueError('OBJECT_LOST_AFTER_REFINEMENT')
             color,depth,d,at,anchor=detection
             opts=self.grasp['graspnet'];robot=self.grasp['robot']['rars01']
-            result=self.worker.infer(color,depth,self.camera.K,num_point=opts['num_point'],min_depth=opts['min_depth'],max_depth=opts['max_depth'],collision_thresh=opts['collision_thresh'],voxel_size=.01,bbox_xyxy=d.bbox_xyxy,target_margin_px=opts['target_margin_px'],target_expand_ratio=opts['target_expand_ratio'],max_grasp_width_m=robot['max_grasp_width_m'],max_grasp_depth_m=robot['max_grasp_depth_m'],timeout_s=opts['worker_timeout_s'])
+            result=self.worker.infer(color,depth,self.camera.K,num_point=opts['num_point'],min_depth=opts['min_depth'],max_depth=opts['max_depth'],collision_thresh=opts['collision_thresh'],voxel_size=.01,bbox_xyxy=d.bbox_xyxy,target_margin_px=opts['target_margin_px'],target_expand_ratio=opts['target_expand_ratio'],max_grasp_width_m=robot['max_grasp_width_m'],max_grasp_depth_m=robot['max_grasp_depth_m'],timeout_s=opts['worker_timeout_s'],include_diagnostics=self.cfg['compute'].get('grasp_full_diagnostics',True))
             self.compute_metrics['graspnet_worker_elapsed_s']=result.get('elapsed_s')
             if op=='observe_grasp':
                 return dict(observation=dict(found=True,confidence=float(d.conf),graspnet_called=True,grasp_count=len(result['grasps']),capture_mono_ns=at['capture_mono_ns'],capture_ros_ns=at['capture_ros_ns'],frame_age_s=at['frame_age_s'],scene_snapshot=at['scene_snapshot']))
             # Inference may take seconds; rebase the RGB-D anchored transform at
             # fresh odom/feedback rather than asking for stale 'latest' TF.
-            current=context(time.monotonic_ns(),time.time_ns())
+            current=context(None,None)
             if current['body'].tf_revision!=at['body'].tf_revision or current['body'].navigation_session_id!=at['body'].navigation_session_id:
                 raise ValueError('WORLD_ANCHOR_EPOCH_CHANGED')
             start=np.asarray(current['q7'],dtype=float);self.joints=start[:6].copy()
@@ -363,7 +462,7 @@ class Planning:
             def check_candidate_path(points,has_payload,kind='move'):
                 # Each expensive pass starts from a fresh coherent scene. Do
                 # not reuse a timestamp captured before all candidate passes.
-                fresh=context(time.monotonic_ns(),time.time_ns())
+                fresh=context(None,None)
                 return self.checked(points,fresh,has_payload,kind)
             def validate(candidate):
                 try:
@@ -389,7 +488,7 @@ class Planning:
                 at['body'].navigation_session_id,at['body'].tf_revision,request['goal_revision'],float(d.conf))
             # Preserve world poses computed in the candidate frame; refresh only
             # the scene used for final freshness/epoch validation after selection.
-            final_scene=context(time.monotonic_ns(),time.time_ns())
+            final_scene=context(None,None)
             world.validate(final_scene['body'],time.monotonic_ns(),self.cfg['execution']['mission_timeout_s'],request['goal_revision'],self.cfg['limits']['sensor_age_s'])
             return dict(grasp_plan=dict(pregrasp=candidate.pregrasp_joints.tolist(),approach=[q.tolist() for q in candidate.approach_joint_waypoints],retreat=[q.tolist() for q in candidate.retreat_joint_waypoints],cost=candidate.cost,object_map=anchor.tolist(),camera_to_arm=cam_to_arm.tolist(),poses_map=poses_map,world_grasp_anchor=world.data(),pose_kind='End_link_TCP'))
         elif op=='home':target=np.zeros(6)

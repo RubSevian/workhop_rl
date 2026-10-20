@@ -90,6 +90,109 @@ class Fixture:
         raise AssertionError(self.m.status(self.now))
 
 class Integration(unittest.TestCase):
+    def observation_fixture(self):
+        f=Fixture();f.start()
+        for _ in range(400):
+            effects=f.tick(False)
+            for kind,data in effects:
+                if kind=='compute' and data['operation']=='detect':return f,data
+                f.effect(kind,data)
+        self.fail('No detect request')
+
+    def test_transient_observation_retries_same_pose_and_new_identity(self):
+        f,request=self.observation_fixture();index=f.m.scan_index;commands=f.commands
+        failed=f.compute(request);failed.update(ok=False,reason='RGBD_STALE_OR_REPEATED')
+        self.assertTrue(f.m.result(failed,f.now));self.assertNotIn(f.m.state,TERMINAL)
+        self.assertFalse(f.m.result(failed,f.now)) # old result cannot advance retry
+        retry=None
+        for _ in range(30):
+            for kind,data in f.tick(False):
+                self.assertNotEqual(kind,'trajectory')
+                if kind=='compute':retry=data
+            if retry:break
+        self.assertIsNotNone(retry);self.assertGreater(retry['id'],request['id'])
+        self.assertEqual(retry['operation'],'detect');self.assertEqual(f.m.scan_index,index)
+        self.assertEqual(f.commands,commands)
+        self.assertTrue(f.m.result(f.compute(retry),f.now))
+        self.assertEqual(f.m.state,'VIEW_REFINEMENT');self.assertIsNone(f.m.recovery_since)
+
+    def test_scene_lag_waits_then_recovers_without_cancel(self):
+        f,request=self.observation_fixture()
+        f.perception.update(ready=False,reason='SCENE_SNAPSHOT_STALE:body')
+        for _ in range(30):self.assertEqual(f.tick(False),[])
+        self.assertEqual(f.m.state,'ARM_SEARCH')
+        self.assertTrue(f.m.perception_service_ready(f.now))
+        self.assertFalse(f.m.inputs['perception']['ready'])
+        self.assertFalse(f.m.perception_service_ready(f.now+1.))
+        f.perception.update(ready=True,reason='READY');f.tick(False)
+        self.assertTrue(f.m.result(f.compute(request),f.now));self.assertEqual(f.m.state,'VIEW_REFINEMENT')
+
+    def test_recovery_is_bounded_and_does_not_hide_authority_loss(self):
+        for failure in ('timeout','authority','epoch','motion'):
+            with self.subTest(failure=failure):
+                f,request=self.observation_fixture()
+                f.perception.update(ready=False,reason='SCENE_SNAPSHOT_STALE:body')
+                if failure=='timeout':
+                    f.m.cfg['execution']['observation_recovery_timeout_s']=.1
+                    for _ in range(8):f.tick(False)
+                    self.assertTrue(f.m.reason.startswith('OBSERVATION_RECOVERY_TIMEOUT:'))
+                elif failure=='authority':
+                    f.r3['fault_latched']=True;f.tick(False)
+                elif failure=='epoch':
+                    f.perception['reason']='WORLD_ANCHOR_EPOCH_CHANGED';f.tick(False)
+                else:
+                    f.m.pending=dict(f.m.pending,kind='motion');f.tick(False)
+                self.assertIn(f.m.state,TERMINAL)
+                self.assertFalse(f.m.perception_service_ready(f.now))
+                self.assertFalse(f.m.result(f.compute(request),f.now))
+
+    def test_repeated_failed_frames_share_one_recovery_deadline(self):
+        f,request=self.observation_fixture();f.m.cfg['execution']['observation_recovery_timeout_s']=.8
+        failed=f.compute(request);failed.update(ok=False,reason='RGBD_STALE_OR_REPEATED')
+        f.m.result(failed,f.now);since=f.m.recovery_since
+        for _ in range(60):
+            for kind,data in f.tick(False):
+                if kind=='compute':
+                    failed=f.compute(data);failed.update(ok=False,reason='RGBD_STALE_OR_REPEATED')
+                    f.m.result(failed,f.now);self.assertEqual(f.m.recovery_since,since)
+            if f.m.state in TERMINAL:break
+        self.assertEqual(f.m.state,'BLOCKED')
+        self.assertTrue(f.m.reason.startswith('OBSERVATION_RECOVERY_TIMEOUT:'))
+
+    def test_retry_covers_observe_and_world_grasp_plan(self):
+        for op in ('observe_grasp','grasp_plan'):
+            with self.subTest(operation=op):
+                f,request=self.observation_fixture()
+                f.m.pending['operation']=op
+                if op=='grasp_plan':f.m.state='PLAN_GRASP'
+                failed=f.compute(request);failed.update(ok=False,reason='SCENE_SNAPSHOT_SKEW')
+                f.m.result(failed,f.now)
+                operations=[]
+                for _ in range(20):
+                    for kind,data in f.tick(False):
+                        self.assertNotEqual(kind,'trajectory')
+                        if kind=='compute':operations.append(data['operation'])
+                self.assertEqual(operations,[op])
+
+    def test_recovery_preserves_nav_health_lease_and_blocks_new_start(self):
+        f,request=self.observation_fixture()
+        f.perception.update(ready=False,reason='BODY_TF_STALE_OR_UNBOUND')
+        f.tick(False)
+        h=MissionHealth(.25);gid=b'recovery-test';h.graph([gid],int((f.now-.01)*1e9))
+        h.observe(json.dumps(dict(observed_ns=int(f.now*1e9),session_id=f.m.session,
+            navigation_session_id='nav',ready=f.m.perception_service_ready(f.now),
+            physical=True,base_locked=True)),gid,int(f.now*1e9),'nav')
+        self.assertTrue(h.valid(int(f.now*1e9),'nav'));self.assertTrue(h.base_locked)
+        self.assertFalse(h.valid(int((f.now+1)*1e9),'nav'))
+        fresh=Fixture();fresh.perception.update(ready=False,reason='BODY_TF_STALE_OR_UNBOUND')
+        fresh.feed();self.assertFalse(fresh.m.perception_service_ready(fresh.now))
+
+    def test_late_success_does_not_extend_recovery_deadline(self):
+        f,request=self.observation_fixture();f.m.defer_observation('BODY_TF_STALE_OR_UNBOUND',f.now)
+        f.now+=31;result=f.compute(request)
+        self.assertFalse(f.m.result(result,f.now));self.assertEqual(f.m.state,'BLOCKED')
+        self.assertTrue(f.m.reason.startswith('OBSERVATION_RECOVERY_TIMEOUT:'))
+
     def test_gripper_diagnostics_do_not_gate_mission(self):
         # Neither uncertain nor malformed optional telemetry is a grasp/HOME gate.
         for torque in (0.,2.3,float('nan')):
@@ -435,6 +538,8 @@ class Integration(unittest.TestCase):
         from types import SimpleNamespace as NS
         from unittest.mock import patch
         planner=Planning.__new__(Planning);planner.cfg=CFG
+        planner.collision=NS(check_deadline=lambda:None);planner.compute_metrics={}
+        planner.cfg=copy.deepcopy(CFG);planner.cfg['execution']['camera_admission_candidates']=1
         planner.feedback_ttl=.1;planner.last_frame_mono_ns=0
         timing=dict(color_system_ns=9_500_000_000,depth_system_ns=9_500_000_000)
         planner.camera=NS(get_frame=lambda:(np.zeros((2,2,3)),np.ones((2,2))),last_frame_timing=timing)
@@ -471,6 +576,7 @@ class Integration(unittest.TestCase):
             if (parent,child)==('aft_mapped','vehicle'):tf.transform.translation.x=offset[0]
             return tf
         source=ROSBodySource.__new__(ROSBodySource);source.cfg=CFG
+        source.diagnostics={};source.last_clock_interval=None
         source.node=NS(get_publishers_info_by_topic=writers,get_clock=lambda:NS(now=lambda:NS(nanoseconds=now)))
         source.buffer=NS(lookup_transform=lookup);source.provider=BodyPoseProvider(CFG)
         def read():

@@ -33,6 +33,32 @@ class Camera:
         return np.zeros((4,4,3),dtype=np.uint8),np.zeros((4,4),dtype=np.uint16)
 
 class StartupTests(unittest.TestCase):
+    def test_nice_only_changes_compute_thread(self):
+        import os,threading
+        from mission.compute_scheduling import inference_thread_nice
+        original=os.getpriority(os.PRIO_PROCESS,threading.get_native_id());observed=[]
+        worker=threading.Thread(target=lambda:observed.append(inference_thread_nice(min(19,original+5))))
+        worker.start();worker.join()
+        self.assertEqual(observed,[min(19,original+5)])
+        self.assertEqual(os.getpriority(os.PRIO_PROCESS,threading.get_native_id()),original)
+
+    def test_shutdown_runtime_error_is_not_confused_with_operational_fault(self):
+        from mission import ros_main
+        from unittest.mock import Mock
+        import signal
+        handlers={};destroy=Mock()
+        def install(sig,handler):handlers[sig]=handler
+        def interrupted_spin(node):
+            try:handlers[signal.SIGINT]()
+            except KeyboardInterrupt:pass
+            raise RuntimeError('interrupted take_message conversion')
+        with patch.object(ros_main.rclpy,'init'),patch.object(ros_main.rclpy,'try_shutdown'),patch.object(ros_main.signal,'signal',side_effect=install),patch.object(ros_main.rclpy,'spin',side_effect=interrupted_spin):
+            ros_main.spin(lambda:SimpleNamespace(destroy_node=destroy))
+        destroy.assert_called_once()
+        with patch.object(ros_main.rclpy,'init'),patch.object(ros_main.rclpy,'try_shutdown'),patch.object(ros_main.signal,'signal'),patch.object(ros_main.rclpy,'spin',side_effect=RuntimeError('real fault')):
+            with self.assertRaisesRegex(RuntimeError,'real fault'):
+                ros_main.spin(lambda:SimpleNamespace(destroy_node=lambda:None))
+
     def test_perception_shutdown_joins_worker_and_closes_backend(self):
         try:
             from grasp_perception import Perception
@@ -161,5 +187,26 @@ class StartupTests(unittest.TestCase):
         with patch.dict(sys.modules,{'drivers.camera':SimpleNamespace(make_camera=lambda cfg:camera)}):
             with self.assertRaisesRegex(ValueError,'CAMERA_PROBE_TIMEOUT'):p.resume_camera()
         self.assertEqual(p.camera_mode,'failed');self.assertTrue(camera.closed)
+
+    def test_camera_retry_discards_expired_frame_without_hiding_fault(self):
+        from unittest.mock import Mock
+        p=Planning.__new__(Planning)
+        p.cfg={'execution':{'camera_admission_attempts':3}}
+        p.compute_metrics={};p.collision=SimpleNamespace(check_deadline=Mock())
+        result=object()
+        p._frame_once=Mock(side_effect=[ValueError('RGBD_STALE_OR_REPEATED'),result])
+        self.assertIs(p.frame(object()),result)
+        self.assertEqual(p.compute_metrics['camera_admission_discarded'],1)
+        self.assertEqual(p._frame_once.call_count,2)
+        p._frame_once=Mock(side_effect=ValueError('ODOMETRY_TIME_RESET'))
+        with self.assertRaisesRegex(ValueError,'ODOMETRY_TIME_RESET'):p.frame(object())
+        self.assertEqual(p._frame_once.call_count,1)
+        p._frame_once=Mock(side_effect=ValueError('RGBD_STALE_OR_REPEATED'))
+        with self.assertRaisesRegex(ValueError,'RGBD_STALE'):p.frame(object())
+        self.assertEqual(p._frame_once.call_count,3)
+        p.collision.check_deadline=Mock(side_effect=ValueError('DEADLINE'))
+        p._frame_once=Mock()
+        with self.assertRaisesRegex(ValueError,'DEADLINE'):p.frame(object())
+        p._frame_once.assert_not_called()
 
 if __name__=='__main__':unittest.main()

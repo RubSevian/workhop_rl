@@ -8,6 +8,8 @@
 #include <fstream>
 #include <string>
 #include <sstream>
+#include <cerrno>
+#include <unistd.h>
 
 namespace sim2real {
 class PolicyRtRegistration {
@@ -36,9 +38,15 @@ class PolicyRtRegistration {
     static thread_local std::unique_ptr<offline_rt::PolicyLease::Exit> exit;
     exit=std::make_unique<offline_rt::PolicyLease::Exit>();exit->owner=&lease;
     lease.data->policy_progress=offline_rt::now();
-    std::cout<<"{\"ready\":true,\"pid\":"<<pid<<",\"tid\":"<<tid
+    std::ostringstream message;
+    message<<"\n{\"ready\":true,\"pid\":"<<pid<<",\"tid\":"<<tid
       <<",\"pid_start\":"<<Start(pid)<<",\"tid_start\":"<<Start(tid)
-      <<",\"uid\":"<<getuid()<<",\"lease_fd\":"<<lease.fd<<"}"<<std::endl;
+      <<",\"uid\":"<<getuid()<<",\"lease_fd\":"<<lease.fd<<"}\n";
+    // One short write: chained iostream insertions can interleave with ROS
+    // logging and destroy the guardian's identity record before RT admission.
+    const auto record=message.str();ssize_t written;
+    do{written=::write(STDOUT_FILENO,record.data(),record.size());}while(written<0&&errno==EINTR);
+    if(written!=static_cast<ssize_t>(record.size()))throw std::runtime_error("RT identity write incomplete");
     const auto deadline=offline_rt::now()+registration_timeout_ns;
     while(lease.data->state!=1&&rclcpp::ok()&&offline_rt::now()<deadline)
       std::this_thread::sleep_for(std::chrono::milliseconds(registration_poll_ms));

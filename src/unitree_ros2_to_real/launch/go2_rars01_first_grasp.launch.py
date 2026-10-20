@@ -21,11 +21,16 @@ def _launch(context):
     failures=module.blockers(cfg)
     if physical and (not cfg['physical_enabled'] or failures):
         raise RuntimeError('PHYSICAL_NOT_READY: '+', '.join(failures+([] if cfg['physical_enabled'] else ['mission_physical_disabled'])))
-    params=dict(mission_config_path=get('mission_config_path'),workspace=get('workspace'),physical=physical)
+    params=dict(mission_config_path=get('mission_config_path'),workspace=get('workspace'),physical=physical,
+                arm_state_transport=cfg['execution'].get('arm_state_transport','yaml'))
     coordinator=Node(package='unitree_legged_real',executable='grasp_mission.py',parameters=[params],output='screen')
     perception=Node(package='unitree_legged_real',executable='grasp_perception.py',prefix=[cfg['paths']['python']],parameters=[params],output='screen',additional_env=dict(PYTHONUNBUFFERED='1',**{key:str(cfg['compute']['cpu_threads']) for key in ('OMP_NUM_THREADS','OPENBLAS_NUM_THREADS','MKL_NUM_THREADS','NUMEXPR_NUM_THREADS')}))
-    if not physical:return [coordinator,perception]
-    actions=[coordinator]
+    collectors=[]
+    if cfg['frames'].get('leg_state_transport','raw')=='native_batch':
+        collectors=[Node(package='unitree_legged_real',executable='scene_leg_collector',parameters=[dict(
+            publish_period_ms=cfg['frames']['leg_collector_period_ms'],pending_capacity=cfg['frames']['leg_collector_capacity'])],output='screen')]
+    if not physical:return [*collectors,coordinator,perception]
+    actions=[*collectors,coordinator]
     # No second arm SDK client. Reusing an already-running owner is allowed only
     # if it reports the mission-capable contract (checked before R3 takeover).
     if get('start_arm_owner')=='true':
@@ -34,6 +39,7 @@ def _launch(context):
             mission_config_path=get('mission_config_path'),workspace=get('workspace'),
             sdk_config_path=cfg['paths']['sdk_config'],config_path=cfg['paths']['deployment'],
             read_only=False,connect_serial=True,device_path=owner['device_path'],
+            fast_state_enabled=cfg['execution'].get('arm_state_transport','yaml')=='typed',
             lock_directory=str(Path(get('workspace'))/owner['lock_directory']),
             journal_path=str(Path(get('workspace'))/owner['journal_path']))],output='screen'))
     nav_share=Path(get_package_share_directory('go2_navigation_bridge'))

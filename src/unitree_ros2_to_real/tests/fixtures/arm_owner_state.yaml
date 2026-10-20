@@ -1,0 +1,142 @@
+# Healthy owner snapshot, session anonymized; codec regression fixture.
+accepted_ns: 24557298664931
+accepted_target:
+- 0
+- 0
+- 0
+- 0
+- 0
+- 0
+arm_emergency_disable_enabled: true
+arm_emergency_validated: false
+arm_home_ready: true
+command_rate_hz: 100
+common_feedback_age_s: 0.006
+connected: true
+dq:
+- -0.00244235992
+- -0.0073261261
+- -0.00244235992
+- -0.0219783783
+- 0.0073261261
+- -0.0219783783
+- -0.0219783783
+enable_attempted: true
+enabled_local: true
+feedback_age_s: 0.006
+feedback_ready: true
+first_accepted_ns: 24557243167564
+frame_received_ns: 24557292664931
+grasp_verification: inactive
+gripper_command_active: false
+gripper_command_torque_nm: 0
+gripper_hold_confirmed: false
+gripper_hold_target: 0
+home_error:
+- -0.00782012939
+- -0.00286102295
+- 0.000953674316
+- -0.00057220459
+- -0.0123977661
+- 0.000190734863
+- -0.0101089478
+home_joint_count: 7
+home_requested: false
+home_target:
+- 0
+- 0
+- 0
+- 0
+- 0
+- 0
+- 0
+last_error: ''
+last_send_gap_ms: 10.010304
+max_send_gap_ms: 10.010304
+measured_dq:
+- -0.00244235992
+- -0.0073261261
+- -0.00244235992
+- -0.0219783783
+- 0.0073261261
+- -0.0219783783
+measured_q:
+- -0.00782012939
+- -0.00286102295
+- 0.000953674316
+- -0.00057220459
+- -0.0123977661
+- 0.000190734863
+mission_blocker: ''
+mission_capable: false
+mission_error: ''
+mission_id: 0
+mission_state: DISABLED
+motor_id:
+- 1
+- 2
+- 3
+- 4
+- 5
+- 6
+- 7
+motor_ids:
+- 1
+- 2
+- 3
+- 4
+- 5
+- 6
+motor_status:
+- 1
+- 1
+- 1
+- 1
+- 1
+- 1
+- 1
+motors_enabled: true
+object_grasped: null
+observed_ns: 24557298811493
+owner_session_id: owner-fixture
+owner_state: HOLD_HOME
+per_joint_freshness_proven: false
+protocol_v2_detected: true
+q:
+- -0.00782012939
+- -0.00286102295
+- 0.000953674316
+- -0.00057220459
+- -0.0123977661
+- 0.000190734863
+- -0.0101089478
+static_hold: true
+stm32_watchdog_tripped: false
+successful_sends: 7
+target_age_s: 0
+target_valid: true
+torque:
+- 0.075214386
+- 0.00683784485
+- 0.0205135345
+- -0.0073261261
+- -0.0122098923
+- -0.00244235992
+- -0.0122098923
+valid:
+- true
+- true
+- true
+- true
+- true
+- true
+valid7:
+- true
+- true
+- true
+- true
+- true
+- true
+- true
+watchdog_armed: true
+watchdog_tripped: false

@@ -1,0 +1,5 @@
+uint64 observed_ns
+string source_session_id
+uint64 samples_received
+uint64 samples_dropped
+go2_scene_interfaces/SceneLegSample[] samples

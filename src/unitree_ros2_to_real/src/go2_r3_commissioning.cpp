@@ -38,6 +38,17 @@ constexpr bool compute_probe=true;
 #else
 constexpr bool compute_probe=false;
 #endif
+#ifdef R3_LIVE_SHADOW_ONLY
+constexpr bool live_shadow=true;
+#else
+constexpr bool live_shadow=false;
+#endif
+void RequireProbeNetwork() {
+ if constexpr(!live_shadow) { RequireIsolatedReplay(); return; }
+ const auto domain=std::getenv("ROS_DOMAIN_ID"),dds=std::getenv("CYCLONEDDS_URI");
+ if(!domain||std::string(domain)!="0"||!dds||std::string(dds).find("name=\"enP8p1s0\"")==std::string::npos)
+  throw std::runtime_error("Live shadow requires real domain0/enP8p1s0");
+}
 int64_t ThreadCpuNs(){timespec t{};return clock_gettime(CLOCK_THREAD_CPUTIME_ID,&t)==0?int64_t(t.tv_sec)*1000000000+t.tv_nsec:-1;}
 SafetyTime TimeNs(int64_t ns){return SafetyTime(std::chrono::nanoseconds(ns));}
 double Age(SafetyTime now,SafetyTime stamp){return std::chrono::duration<double>(now-stamp).count();}
@@ -87,7 +98,7 @@ class R3Node final:public rclcpp::Node {
   receiver_trace_path_=declare_parameter<std::string>("receiver_diagnostics_path","",immutable);
   io_trace_path_=declare_parameter<std::string>("io_diagnostics_path","",immutable);
   if(!receiver_trace_path_.empty()||!io_trace_path_.empty()) {
-   RequireIsolatedReplay();
+   RequireProbeNetwork();
    if(!read_only_||!network_interface_.empty())throw std::runtime_error("Input/IO diagnostics require read_only and no SDK interface");
    if(!receiver_trace_path_.empty())receiver_trace_.reserve(300001);
    if(!io_trace_path_.empty())io_trace_.reserve(300001);
@@ -102,9 +113,9 @@ class R3Node final:public rclcpp::Node {
     throw std::runtime_error("Worker self test requires read_only, domain228, loopback and empty SDK interface");
   }
   if constexpr(compute_probe) {
-   RequireIsolatedReplay();
+   RequireProbeNetwork();
    const auto domain=std::getenv("ROS_DOMAIN_ID"),dds=std::getenv("CYCLONEDDS_URI");
-   if(!domain||std::string(domain)!="228"||!dds||std::string(dds).find("name=\"lo\"")==std::string::npos||
+   if((!live_shadow&&(!domain||std::string(domain)!="228"||!dds||std::string(dds).find("name=\"lo\"")==std::string::npos))||
       operation!=OperationProfile::READ_ONLY||!read_only_||!network_interface_.empty())
     throw std::runtime_error("Compute probe requires loopback domain228, read_only profile and empty SDK interface");
    probe_shared_executor_=declare_parameter<bool>("probe_shared_executor",false,immutable);
@@ -300,6 +311,7 @@ class R3Node final:public rclcpp::Node {
  // The IO callback handles the remote even while Torch is computing.
  // mutex_ serializes cancellation with PolicyResult and packet publication.
  void HandleRemote(SafetyTime now) {
+  if constexpr(live_shadow) { Refresh(now); return; }
   const auto event=remote_->Poll(now);Refresh(now);
   if(event==R3RemoteEvent::TAKEOVER&&policy_rt_&&!policy_rt_->Ready())return;
   switch(event) {
@@ -431,6 +443,7 @@ class R3Node final:public rclcpp::Node {
   }));
  }
  void PortTick() {
+  if constexpr(compute_probe)return; // No arm/NAV service requests from a shadow executor.
   ControlLock lock(mutex_,control_latency_.get(),__LINE__);const auto requests=supervisor_->ConsumePortRequests();
   const auto generation=supervisor_->orchestration_generation();
   if(requests.cancel_navigation){navigation_gate_->Invalidate();nav_cancel_pending_=true;nav_cancel_status_="pending";}
@@ -770,7 +783,7 @@ class R3Node final:public rclcpp::Node {
   snapshot.Add("blockers", std::move(blockers));
   if(compute_probe||(motion_trace_&&motion_trace_->enabled()))snapshot.Add("runtime_io_interval_max_ms",io_interval_max_ms_);
   if constexpr(compute_probe) {
-   snapshot.Add("compute_probe",true);snapshot.Add("probe_jobs",probe_jobs_);
+   snapshot.Add("compute_probe",true);snapshot.Add("live_robot_inputs",live_shadow);snapshot.Add("probe_jobs",probe_jobs_);
    snapshot.Add("probe_misses",probe_misses_);snapshot.Add("probe_exceptions",probe_exceptions_);
    snapshot.Add("probe_error",probe_error_);
   }

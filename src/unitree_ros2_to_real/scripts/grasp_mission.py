@@ -16,6 +16,9 @@ from unitree_go.msg import LowState
 from scipy.spatial.transform import Rotation
 from mission.scene import SceneBuffer, matrix_pose
 from mission.status_codec import decode_status
+from mission.subscription_batch import take_batch
+from mission.native_leg_input import NativeLegInput
+from mission.arm_fast_state import to_mapping
 from mission.leg_state_reader import LegStateReader
 from mission.ros_scene import ROSBodySource, report_scene
 from mission.config import load, blockers
@@ -27,6 +30,8 @@ class Coordinator(Node):
         self.last_leg_tick=None
         self.leg_reader=LegStateReader()
         self.cfg=load(self.declare_parameter('mission_config_path','').value,self.declare_parameter('workspace','').value)
+        self.arm_state_transport=self.declare_parameter('arm_state_transport','yaml').value
+        if self.arm_state_transport not in ('yaml','typed'):raise ValueError('ARM_STATE_TRANSPORT')
         self.physical=self.declare_parameter('physical',False).value
         self.blockers=blockers(self.cfg)
         if not self.cfg['physical_enabled']:self.blockers.append('mission_physical_disabled')
@@ -55,19 +60,33 @@ class Coordinator(Node):
         self.home=self.create_client(Trigger,'/rars01/control/return_home')
         self.topics={'r3':'/go2/locomotion_status','nav':'/go2/navigation/status',
                      'owner':'/rars01/commissioning/state','perception':'/rars01/mission/perception_health'}
+        if self.arm_state_transport=='typed':self.topics['owner']='/rars01/commissioning/fast_state'
         self.gids={};self.gid_since={};self.base_stamp=0;self.stop_home=None;self.stop_home_attempted=False;self.cancel_future=None;self.owner_cancel_ack=False
         for name,topic in self.topics.items():
-            self.create_subscription(String,topic,lambda msg,info,n=name:self.observe(n,msg,info),1)
+            kind=String
+            if name=='owner' and self.arm_state_transport=='typed':
+                from rars01_state_interfaces.msg import ArmFastState
+                kind=ArmFastState
+            depth=self.cfg['frames'].get('arm_history_depth',1) if name=='owner' else 1
+            subscription=self.create_subscription(kind,topic,lambda msg,info,n=name:self.observe(n,msg,info),depth)
+            if name=='owner':self.owner_subscription=subscription
         self.create_subscription(String,'/rars01/mission/computed',self.result,1)
-        self.create_subscription(LowState,'/lowstate',self.legs,qos_profile_sensor_data,raw=True)
-        self.create_subscription(Odometry,'/state_estimation',self.base,
-            QoSProfile(depth=self.cfg['frames']['odometry_buffer_size'],reliability=ReliabilityPolicy.BEST_EFFORT))
+        self.native_leg_input=None
+        if self.cfg['frames'].get('leg_state_transport','raw')=='native_batch':
+            from go2_scene_interfaces.msg import SceneLegBatch
+            self.native_leg_input=NativeLegInput(self.scene_buffer,self.cfg)
+            self.native_leg_subscription=self.create_subscription(SceneLegBatch,'/go2/scene/leg_samples',self.leg_batch,32)
+        else:
+            self.create_subscription(LowState,'/lowstate',self.legs,qos_profile_sensor_data,raw=True)
+        self.odometry_subscription=self.create_subscription(Odometry,'/state_estimation',self.base,
+            QoSProfile(depth=self.cfg['frames'].get('scene_receive_depth',32),reliability=ReliabilityPolicy.BEST_EFFORT))
         self.create_timer(self.cfg['execution']['tick_s'],self.tick)
         self.get_logger().info('Mission preloaded DISARMED; physical blockers: '+', '.join(self.blockers))
 
     def observe(self,name,msg,info):
         try:
-            if len(msg.data)>2000000:raise ValueError('oversized input')
+            typed=name=='owner' and getattr(self,'arm_state_transport','yaml')=='typed'
+            if not typed and len(msg.data)>2000000:raise ValueError('oversized input')
             publishers=self.get_publishers_info_by_topic(self.topics[name])
             if len(publishers)!=1:
                 self.engine.received.pop(name,None);return
@@ -80,7 +99,12 @@ class Coordinator(Node):
                 self.engine.received.pop(name,None)
             self.gids[name]=gid
             # NAV and perception are JSON producers; C++ arm/R3 use flow YAML.
-            value=json.loads(msg.data) if name in ('nav','perception') else decode_status(msg.data)
+            owner_values=[]
+            if name=='owner':
+                batch=take_batch(getattr(self,'owner_subscription',None),msg,self.cfg['frames'].get('arm_history_depth',1))
+                owner_values=[to_mapping(m) if typed else decode_status(m.data) for m in batch]
+                value=owner_values[-1]
+            else:value=json.loads(msg.data) if name in ('nav','perception') else decode_status(msg.data)
             if not isinstance(value,dict):raise ValueError('status must be a mapping')
             # Jazzy MessageInfo exposes timestamps, not the sender GID. Bind to
             # the unique graph endpoint and require a post-discovery producer
@@ -89,7 +113,11 @@ class Coordinator(Node):
             self.engine.observe(name,value,time.monotonic())
             if name=='owner':self.observe_gripper(value)
             if name=='owner' and value.get('feedback_ready'):
-                self.scene_buffer.arm(value['q'],value['frame_received_ns'],value['owner_session_id'])
+                for historical in owner_values:
+                    if (historical.get('feedback_ready')
+                            and historical.get('observed_ns',0)>self.gid_since[name]
+                            and historical.get('owner_session_id')==value['owner_session_id']):
+                        self.scene_buffer.arm(historical['q'],historical['frame_received_ns'],historical['owner_session_id'])
         except (ValueError,TypeError,KeyError,yaml.YAMLError):
             self.engine.received.pop(name,None)
 
@@ -106,6 +134,18 @@ class Coordinator(Node):
         if self.grip_log is not None:self.grip_log.close()
         return super().destroy_node()
 
+    def leg_batch(self,msg):
+        if self.count_publishers('/go2/scene/leg_samples')!=1:return
+        latest=None
+        for batch in take_batch(self.native_leg_subscription,msg,32):
+            try:
+                sample=self.native_leg_input.apply(batch,time.monotonic_ns())
+                if sample is not None:latest=sample
+            except (ValueError,TypeError):continue
+        if latest is not None:
+            stamp,q=latest
+            self.engine.observe('legs',dict(observed_ns=stamp,q=list(q)),time.monotonic())
+
     def legs(self,msg):
         if self.count_publishers('/lowstate')!=1:return
         try:tick,q=self.leg_reader.read(msg)
@@ -118,7 +158,7 @@ class Coordinator(Node):
         self.engine.observe('legs',dict(observed_ns=stamp,q=q),time.monotonic())
 
     def base(self,msg):
-        self.body_source.push(msg)
+        self.body_source.push_batch(self.odometry_subscription,msg)
 
     def refresh_scene(self):
         try:
@@ -158,8 +198,9 @@ class Coordinator(Node):
     def tick(self):
         self.refresh_scene()
         now=time.monotonic();e=self.engine
+        effects=e.step(now,self.get_clock().now().nanoseconds) if self.physical and not self.blockers else e.drain()
         ready=(self.physical and not self.blockers and e.fresh('perception',now)
-               and e.inputs.get('perception',{}).get('ready') is True
+               and e.perception_service_ready(now)
                and e.fresh('owner',now)
                and e.inputs['owner'].get('mission_capable') is True and e.inputs['owner'].get('feedback_ready') is True
                and e.inputs['owner'].get('target_valid') is True
@@ -168,9 +209,8 @@ class Coordinator(Node):
         health=dict(observed_ns=time.monotonic_ns(),session_id=e.session,
                     navigation_session_id=e.inputs.get('nav',{}).get('session_id',''),
                     goal_revision=e.revision,phase=e.state,ready=bool(ready),physical=bool(self.physical),base_locked=e.state in ARM_PHASES|TERMINAL,blockers=self.blockers,
-                    scene_error=self.scene_error,lowstate_decode=self.leg_reader.status(),tf_pair=dict(self.body_source.diagnostics),streams=self.scene_buffer.diagnostics(time.monotonic_ns()))
+                    scene_error=self.scene_error,observation_recovery=e.status(now)['observation_recovery'],lowstate_decode=(self.native_leg_input.status() if getattr(self,'native_leg_input',None) else self.leg_reader.status()),tf_pair=dict(self.body_source.diagnostics),streams=self.scene_buffer.diagnostics(time.monotonic_ns()))
         self.health_pub.publish(String(data=json.dumps(health)))
-        effects=e.step(now,self.get_clock().now().nanoseconds) if self.physical and not self.blockers else e.drain()
         # X uses the same collision planner and owner, never a blind zero target.
         # Owner acknowledges the HOME request, while R3 still waits for measured
         # HOME. B/fault cannot use this path and always revokes execution.

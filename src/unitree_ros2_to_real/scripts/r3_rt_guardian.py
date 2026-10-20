@@ -96,9 +96,26 @@ def load_guardian_config(path):
 
 def main():
     command = sys.argv[1:]
+    live_shadow = command[:1] == ['--live-compute-probe']
+    compute_probe = live_shadow or command[:1] == ['--compute-probe']
+    if compute_probe:
+        command = command[1:]
+        # Diagnostic-only admission uses the same registration/lease/rollback
+        # as normal launch, on the compile-time no-actuator executable.
+        dds = '<CycloneDDS><Domain><General><Interfaces><NetworkInterface name="lo" /></Interfaces></General></Domain></CycloneDDS>'
+        if live_shadow:
+            dds = dds.replace('name="lo"', 'name="enP8p1s0"')
+            if (os.environ.get('ROS_DOMAIN_ID') != '0' or os.environ.get('CYCLONEDDS_URI') != dds
+                    or os.environ.get('GO2_NETWORK_INTERFACE') or os.environ.get('ROS_STATIC_PEERS')):
+                raise RuntimeError('Live shadow requires real domain0/enP8p1s0 without SDK interface')
+        elif (os.environ.get('ROS_DOMAIN_ID') != '228' or os.environ.get('ROS_LOCALHOST_ONLY') != '1'
+                or os.environ.get('CYCLONEDDS_URI') != dds or os.environ.get('GO2_NETWORK_INTERFACE')
+                or os.environ.get('ROS_STATIC_PEERS')):
+            raise RuntimeError('Compute probe requires isolated domain228/loopback')
     if command[:1] == ['--']:
         command = command[1:]
-    if not command or Path(command[0]).name != 'go2_r3_commissioning':
+    expected = 'r3_live_shadow' if live_shadow else ('r3_runtime_timing' if compute_probe else 'go2_r3_commissioning')
+    if not command or Path(command[0]).name != expected:
         raise RuntimeError('Expected installed R3 executable')
     if os.getuid() == 0 or os.sched_getscheduler(0) != os.SCHED_OTHER:
         raise RuntimeError('Guardian must run as the ordinary user in OTHER0')
@@ -144,11 +161,12 @@ def main():
             status_log.write(json.dumps(dict(mono_ns=status_ns, status=value)) + '\n');status_log.flush()
         except Exception as exc:
             status_error = str(exc)
-    sub = node.create_subscription(String, '/go2/locomotion_status', receive, 1)
+    status_topic = '/timing/probe_status' if compute_probe else '/go2/locomotion_status'
+    sub = node.create_subscription(String, status_topic, receive, 1)
     until = time.monotonic()+config["discovery_s"]
     while time.monotonic() < until:
         rclpy.spin_once(node, timeout_sec=config["spin_period_s"])
-    if node.count_publishers('/go2/locomotion_status'):
+    if node.count_publishers(status_topic):
         raise RuntimeError('Existing R3 status publisher; refusing second controller')
     stop = False
     def interrupted(sig, frame):
@@ -186,10 +204,18 @@ def main():
                 pass
     try:
         deadline = time.monotonic()+config["registration_timeout_s"]
-        while ready is None and proc.poll() is None and time.monotonic() < deadline and not stop:
+        while (ready is None or (compute_probe and status is None)) and proc.poll() is None and time.monotonic() < deadline and not stop:
             pump();time.sleep(config["poll_period_s"])
         if not ready or ready['pid'] != proc.pid:
             raise RuntimeError('Native policy registration absent')
+        if compute_probe and (status is None or status.get('compute_probe') is not True
+                or status.get('read_only') is not True or status.get('output_enabled') is not False
+                or status.get('sent_packets') != 0
+                or (live_shadow and (status.get('live_robot_inputs') is not True
+                    or status.get('lowcmd_publisher_present') is not False))
+                or (not live_shadow and (node.count_publishers('/lowcmd')
+                    or node.count_publishers('/api/sport/request')))):
+            raise RuntimeError('Read-only compute probe admission refused')
         lease = os.open(f'/proc/{proc.pid}/fd/{ready["lease_fd"]}', os.O_RDWR|os.O_CLOEXEC)
         event(admission=change_scheduler(proc, ready, lease, executable_sha, config["priority"]), argv=command, exe_sha256=executable_sha)
         # Guard readiness separately: after this write native A/output may run.
@@ -214,7 +240,7 @@ def main():
                     raise RuntimeError('IO_progress_timeout')
                 if status_error:
                     raise RuntimeError(status_error)
-                if node.count_publishers('/go2/locomotion_status') != 1:
+                if node.count_publishers(status_topic) != 1:
                     raise RuntimeError('Native status absent/ambiguous')
                 if (status_ns and now-status_ns > round(config["status_timeout_s"]*1e9)) or (not status_ns and time.monotonic()-began > config["initial_status_timeout_s"]):
                     raise RuntimeError('Native status stale/missing')

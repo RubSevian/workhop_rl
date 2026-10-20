@@ -67,4 +67,36 @@ class GuardianTests(unittest.TestCase):
         self.assertFalse(g.safe_exit({},.1,100,CONFIG))
 
 
+class LiveProbeAdmissionTests(unittest.TestCase):
+    def test_wrong_live_domain_stops_before_child_creation(self):
+        with patch.dict(os.environ, {}, clear=True), patch.object(sys, 'argv', ['guardian', '--live-compute-probe', '/tmp/r3_live_shadow']), patch.object(subprocess, 'Popen', side_effect=AssertionError('unexpected child')):
+            with self.assertRaisesRegex(RuntimeError, 'real domain0'):
+                g.main()
+
+    def test_live_mode_refuses_production_executable(self):
+        env=dict(ROS_DOMAIN_ID='0', CYCLONEDDS_URI='<CycloneDDS><Domain><General><Interfaces><NetworkInterface name="enP8p1s0" /></Interfaces></General></Domain></CycloneDDS>')
+        with patch.dict(os.environ, env, clear=True), patch.object(sys, 'argv', ['guardian', '--live-compute-probe', '/tmp/go2_r3_commissioning']), patch.object(subprocess, 'Popen', side_effect=AssertionError('unexpected child')):
+            with self.assertRaisesRegex(RuntimeError, 'Expected installed'):
+                g.main()
+
+
+class ComputeProbeAdmissionTests(unittest.TestCase):
+    def test_wrong_domain_stops_before_child_creation(self):
+        with patch.dict(os.environ, {}, clear=True), patch.object(sys, 'argv', ['guardian', '--compute-probe', '/tmp/r3_runtime_timing']), patch.object(subprocess, 'Popen', side_effect=AssertionError('unexpected child')):
+            with self.assertRaisesRegex(RuntimeError, 'isolated domain228'):
+                g.main()
+
+    def test_compute_mode_rejects_production_binary(self):
+        env=dict(ROS_DOMAIN_ID='228', ROS_LOCALHOST_ONLY='1', CYCLONEDDS_URI='<CycloneDDS><Domain><General><Interfaces><NetworkInterface name="lo" /></Interfaces></General></Domain></CycloneDDS>')
+        with patch.dict(os.environ, env, clear=True), patch.object(sys, 'argv', ['guardian', '--compute-probe', '/tmp/go2_r3_commissioning']), patch.object(subprocess, 'Popen', side_effect=AssertionError('unexpected child')):
+            with self.assertRaisesRegex(RuntimeError, 'Expected installed R3 executable'):
+                g.main()
+
+    def test_missing_rt_rights_stops_before_ros_and_child(self):
+        env=dict(ROS_DOMAIN_ID='228', ROS_LOCALHOST_ONLY='1', CYCLONEDDS_URI='<CycloneDDS><Domain><General><Interfaces><NetworkInterface name="lo" /></Interfaces></General></Domain></CycloneDDS>')
+        with patch.dict(os.environ, env, clear=True), patch.object(sys, 'argv', ['guardian', '--compute-probe', '/tmp/r3_runtime_timing']), patch.object(g.resource, 'getrlimit', return_value=(0,0)), patch.object(subprocess, 'Popen', side_effect=AssertionError('unexpected child')):
+            with self.assertRaisesRegex(RuntimeError, 'FIFO20 unavailable'):
+                g.main()
+
+
 if __name__ == '__main__':unittest.main()

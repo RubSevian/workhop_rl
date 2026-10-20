@@ -44,7 +44,13 @@ class BodyPose:
     frame: str = 'base'
     world_frame: str = 'map'
 
-    def data(self):return asdict(self)
+    def data(self):
+        # Provider owns validated list matrices. Copy their rows explicitly;
+        # recursive dataclass/deepcopy traversal at every tick adds no safety.
+        return dict(ros_ns=self.ros_ns,mono_ns=self.mono_ns,
+            navigation_session_id=self.navigation_session_id,tf_revision=self.tf_revision,
+            map_vehicle=[row[:] for row in self.map_vehicle],map_body=[row[:] for row in self.map_body],
+            frame=self.frame,world_frame=self.world_frame)
 
 
 class BodyPoseProvider:
@@ -87,11 +93,11 @@ class SceneSnapshot:
     live_legs_ns: int = None
 
     def data(self):
-        d=asdict(self)
-        d['live_feedback_ns']=self.feedback_ns if self.live_feedback_ns is None else self.live_feedback_ns
-        d['live_legs_ns']=self.legs_ns if self.live_legs_ns is None else self.live_legs_ns
-        d.update(frame='base',world_frame='map',anchor_ns=self.body.mono_ns)
-        return d
+        return dict(body=self.body.data(),q7=tuple(self.q7),legs=tuple(self.legs),
+            feedback_ns=self.feedback_ns,legs_ns=self.legs_ns,owner_session_id=self.owner_session_id,
+            live_feedback_ns=self.feedback_ns if self.live_feedback_ns is None else self.live_feedback_ns,
+            live_legs_ns=self.legs_ns if self.live_legs_ns is None else self.live_legs_ns,
+            frame='base',world_frame='map',anchor_ns=self.body.mono_ns)
 
 
 def validate_scene_data(scene,cfg,now_ns,nav_session,owner_session):
@@ -118,6 +124,7 @@ class SceneBuffer:
     """Histories are copied under the caller's lock; all picks are causal."""
     def __init__(self,cfg):
         self.cfg=cfg;self.bodies=deque(maxlen=400);self.arms=deque(maxlen=400);self.legs=deque(maxlen=1000)
+        self.selection={}
 
     def arm(self,q,stamp,owner):
         q=np.asarray(q,dtype=float)
@@ -133,7 +140,8 @@ class SceneBuffer:
         return dict(body_samples=len(self.bodies),arm_samples=len(self.arms),leg_samples=len(self.legs),
             body_age_s=(now_ns-self.bodies[-1].mono_ns)/1e9 if self.bodies else None,
             arm_stream_age_s=(now_ns-self.arms[-1][0])/1e9 if self.arms else None,
-            leg_stream_age_s=(now_ns-self.legs[-1][0])/1e9 if self.legs else None)
+            leg_stream_age_s=(now_ns-self.legs[-1][0])/1e9 if self.legs else None,
+            selection=dict(self.selection))
 
     def snapshot(self,now_ns,capture_ns=None):
         historical=capture_ns is not None and capture_ns!=now_ns
@@ -150,25 +158,42 @@ class SceneBuffer:
         for name,stream in (('arm',self.arms),('legs',self.legs)):
             if not stream or not 0<=(now_ns-stream[-1][0])/1e9<=self.cfg['limits']['arm_age_s']:
                 raise ValueError('SCENE_SNAPSHOT_STALE:live_'+name)
-        body=next((b for b in reversed(self.bodies) if b.mono_ns<=capture_ns),None)
-        if body is None:raise ValueError('BODY_SNAPSHOT_MISSING')
-        # Settle captures a state at the base measurement, rather than mixing
-        # old odometry with the most recently received joint vectors.
-        target=body.mono_ns if capture_ns==now_ns else capture_ns
-        arm=next((a for a in reversed(self.arms) if a[0]<=target),None)
-        leg=next((q for q in reversed(self.legs) if q[0]<=target),None)
-        if arm is None or leg is None:raise ValueError('COHERENT_JOINT_SNAPSHOT_MISSING')
-        if arm[2]!=self.arms[-1][2]:raise ValueError('SCENE_SNAPSHOT_EPOCH_CHANGED')
-        if live is not None and (body.navigation_session_id!=live.body.navigation_session_id
-                or body.tf_revision!=live.body.tf_revision or arm[2]!=live.owner_session_id):
-            raise ValueError('SCENE_SNAPSHOT_EPOCH_CHANGED')
-        stamps=[body.mono_ns,arm[0],leg[0]]
-        if not 0<=(reference_ns-body.mono_ns)/1e9<=self.cfg['limits']['sensor_age_s']:
-            raise ValueError('SCENE_SNAPSHOT_STALE:body')
-        if any(stamp>reference_ns for stamp in stamps):raise ValueError('SCENE_SNAPSHOT_STALE:future')
-        if (max(stamps)-min(stamps))/1e9>self.cfg['frames']['max_state_skew_s']:
-            raise ValueError('SCENE_SNAPSHOT_SKEW')
-        return SceneSnapshot(body,arm[1],leg[1],arm[0],leg[0],arm[2],self.arms[-1][0],self.legs[-1][0])
+        candidates=(b for b in reversed(self.bodies) if b.mono_ns<=capture_ns)
+        newest=None;last_error='BODY_SNAPSHOT_MISSING';skipped=0
+        for body in candidates:
+            if newest is None:newest=body
+            if (body.navigation_session_id!=newest.navigation_session_id
+                    or body.tf_revision!=newest.tf_revision):
+                raise ValueError('SCENE_SNAPSHOT_EPOCH_CHANGED')
+            if not 0<=(reference_ns-body.mono_ns)/1e9<=self.cfg['limits']['sensor_age_s']:
+                # Older candidates cannot regain freshness.
+                last_error='SCENE_SNAPSHOT_STALE:body';break
+            # Live requests choose the newest complete measured tuple, rather
+            # than rejecting every tuple when the newest body lands in a joint
+            # receipt gap. Camera requests keep their fixed exposure target.
+            target=capture_ns if historical else body.mono_ns
+            arm=next((a for a in reversed(self.arms) if a[0]<=target),None)
+            leg=next((q for q in reversed(self.legs) if q[0]<=target),None)
+            if arm is None or leg is None:
+                last_error='COHERENT_JOINT_SNAPSHOT_MISSING'
+            else:
+                if arm[2]!=self.arms[-1][2]:raise ValueError('SCENE_SNAPSHOT_EPOCH_CHANGED')
+                if live is not None and (body.navigation_session_id!=live.body.navigation_session_id
+                        or body.tf_revision!=live.body.tf_revision or arm[2]!=live.owner_session_id):
+                    raise ValueError('SCENE_SNAPSHOT_EPOCH_CHANGED')
+                stamps=[body.mono_ns,arm[0],leg[0]]
+                skew=(max(stamps)-min(stamps))/1e9
+                self.selection=dict(reference_ns=reference_ns,body_ns=stamps[0],
+                    arm_ns=stamps[1],legs_ns=stamps[2],skew_s=skew,
+                    skipped_newer_incomplete=skipped,selected_age_s=(now_ns-body.mono_ns)/1e9)
+                if any(stamp>reference_ns for stamp in stamps):raise ValueError('SCENE_SNAPSHOT_STALE:future')
+                if skew<=self.cfg['frames']['max_state_skew_s']:
+                    return SceneSnapshot(body,arm[1],leg[1],arm[0],leg[0],arm[2],self.arms[-1][0],self.legs[-1][0])
+                last_error='SCENE_SNAPSHOT_SKEW'
+            if historical:break # Do not move camera exposure to another body time.
+            skipped+=1
+        raise ValueError(last_error)
+
 
 
 @dataclass(frozen=True)

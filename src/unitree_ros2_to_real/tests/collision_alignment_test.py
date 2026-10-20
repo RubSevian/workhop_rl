@@ -17,6 +17,9 @@ from rars01_graspnet.gripper_geometry import RarsGripperGeometry
 from rars01_graspnet.kinematics import RarsKinematics
 from rars01_graspnet.real_grasp_trajectory import joint_motion_samples
 CFG=load(ROOT/'repos/rars01_graspnet/config/jetson_orin_nano.yaml',ROOT)
+# This is a synthetic fixture, independent of the operator's deployment flag.
+# Never require editing the real profile merely to run offline safety tests.
+CFG=copy.deepcopy(CFG);CFG['physical_enabled']=False
 GRASP=load_config(CFG['paths']['grasp_config']);G=GRASP['robot']['gripper']['rars01']
 FIELDS=('linkage_radius_m','connecting_rod_length_m','carriage_width_m','jaw_center_End_link_m','jaw_depth_m','jaw_height_m','R_grasp_End_link')
 GEOMETRY=RarsGripperGeometry(**{k:G[k] for k in FIELDS},maximum_width_m=GRASP['robot']['rars01']['max_grasp_width_m'],motor_angle_limit_rad=G['angle_open'])

@@ -18,7 +18,9 @@ class ControlDiagnostics {
   using Value = std::variant<bool, int64_t, uint64_t, double, std::string,
       std::array<float, 12>, std::array<double, 3>,
       std::vector<std::string>, OperationCapabilities>;
-  static constexpr size_t capacity = 128;
+  // CaptureStatus includes129 fields in compute-probe mode. Keep bounded
+  // headroom without dropping fields or weakening any control deadline.
+  static constexpr size_t capacity = 160;
 
   template<class T> void Add(const char* key, T&& value) {
     if (size_ == capacity) throw std::length_error("control diagnostic capacity exceeded");

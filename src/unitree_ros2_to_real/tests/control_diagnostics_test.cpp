@@ -2,6 +2,7 @@
 #include <cassert>
 
 int main() {
+  static_assert(sim2real::ControlDiagnostics::capacity >= 129, "full compute probe status must fit");
   sim2real::ControlDiagnostics snapshot;
   std::string fault = "quote: \"x\"\nline";
   std::array<float,12> pose{}; pose[3] = 1.25F;

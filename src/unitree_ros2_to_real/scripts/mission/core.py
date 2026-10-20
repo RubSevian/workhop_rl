@@ -7,6 +7,12 @@ import copy
 import math
 from .scene import matrix_pose, validate_scene_data
 from .transforms import pose_distance
+from .scene_wait import transient_scene_error
+
+OBSERVATIONS = {'detect', 'observe_grasp', 'grasp_plan'}
+
+def retryable_observation(reason):
+    return transient_scene_error(reason) or reason in ('RGBD_STALE_OR_REPEATED', 'RGBD_TF_FEEDBACK_STALE')
 
 TERMINAL = {'MISSION_COMPLETED_UNVERIFIED', 'OBJECT_NOT_FOUND', 'GRASP_UNREACHABLE', 'BLOCKED', 'CANCELLED'}
 ARM_PHASES = {'BASE_SETTLE','ARM_SCAN_POSE','ARM_SEARCH','VIEW_REFINEMENT','PLAN_GRASP',
@@ -33,9 +39,10 @@ class Mission:
         self.stability_reason='';self.stability_restarts=0
         self.result_after_home = 'MISSION_COMPLETED_UNVERIFIED'
         self.grasp_plan = None
-        self.close_stage = False
         self.last_now = 0.
         self.last_compute_metrics = {}
+        self.recovery_since=None;self.recovery_reason='';self.retry_operation=None
+        self.retry_at=0.;self.observation_retries=0
 
     def observe(self, name, data, now):
         # Duplicate/out-of-order or future producer samples never refresh leases.
@@ -43,6 +50,20 @@ class Mission:
         ttl=self.cfg['limits']['sensor_age_s'] if name in ('base','scene') else self.cfg['execution']['heartbeat_ttl_s']
         if type(stamp) is not int or not 0 <= now-stamp/1e9 <= ttl:
             return False
+        previous=self.inputs.get(name,{})
+        if name=='scene' and stamp==previous.get('observed_ns'):
+            # Same measured geometry can remain valid while newer, real joint
+            # receipts confirm stream health. Refresh only those receipts,
+            # never the geometry timestamp or its lease.
+            fixed=('body','q7','legs','feedback_ns','legs_ns','owner_session_id','frame','world_frame','anchor_ns')
+            if any(data.get(key)!=previous.get(key) for key in fixed):return False
+            keys=('live_feedback_ns','live_legs_ns')
+            if any(type(data.get(key)) is not int
+                   or data[key]<previous.get(key,0)
+                   or not 0<=now-data[key]/1e9<=self.cfg['limits']['arm_age_s']
+                   for key in keys):return False
+            for key in keys:previous[key]=data[key]
+            return True
         if stamp <= self.inputs.get(name, {}).get('observed_ns', 0):
             return False
         self.inputs[name] = copy.deepcopy(data)
@@ -77,6 +98,70 @@ class Mission:
             navigation_session_id=self.nav_session, goal_revision=self.revision,
             owner_session_id=self.owner_session, owner=copy.deepcopy(self.inputs['owner']),
             grasp_plan=self.grasp_plan, scan_index=self.scan_index)))
+
+    def defer_observation(self, reason, now, operation=None):
+        if self.recovery_since is None:self.recovery_since=now
+        self.recovery_reason=reason
+        if operation is not None:
+            self.retry_operation=operation
+            self.retry_at=now+self.cfg['execution'].get('observation_retry_delay_s',.25)
+            self.observation_retries+=1
+
+    def clear_recovery(self):
+        self.recovery_since=None;self.recovery_reason='';self.retry_operation=None
+
+    def wait_for_observation(self, now):
+        """Wait only at rest, never renew a scene lease or resume a trajectory."""
+        perception=self.inputs['perception']
+        reason='' if perception.get('ready') else perception.get('reason','PERCEPTION_INVALID')
+        stationary=(self.state in ('BASE_SETTLE','ARM_SEARCH','PLAN_GRASP')
+                    and (not self.pending or (self.pending['kind']=='compute'
+                         and self.pending['operation'] in OBSERVATIONS)))
+        if stationary:
+            r3=self.inputs['r3'];command=r3.get('motion_command',[])
+            stationary=(r3.get('phase')=='RL_ZERO' and len(command)==3
+                        and all(math.isfinite(v) and abs(v)<=1e-6 for v in command)
+                        and self.fresh('legs',now))
+        if not reason and stationary:
+            if not self.fresh('base',now):reason='SCENE_SNAPSHOT_STALE:body'
+            elif not self.fresh('scene',now):reason='SCENE_SNAPSHOT_STALE:body'
+            else:reason=self.scene_error(now)
+        # Waiting for a goal/navigation can tolerate perception geometry lag,
+        # but NAV readiness/owner/R3 authority are checked separately first.
+        eligible=stationary or self.state in ('WAIT_GOAL','NAVIGATING')
+        if reason:
+            if not eligible or not transient_scene_error(reason):
+                self.cancel(now,reason,True);return True
+            self.defer_observation(reason,now)
+        if self.retry_operation and not stationary:
+            self.cancel(now,'OBSERVATION_RETRY_NOT_STATIONARY',True);return True
+        if self.recovery_since is not None:
+            if now-self.recovery_since>=self.cfg['execution'].get('observation_recovery_timeout_s',30.):
+                self.cancel(now,'OBSERVATION_RECOVERY_TIMEOUT:'+self.recovery_reason,True);return True
+            if now-self.entered>self.cfg['execution']['state_timeout_s'] and self.state in ARM_PHASES:
+                self.cancel(now,'PHASE_TIMEOUT',True);return True
+            if reason:
+                if self.state=='BASE_SETTLE':self.stable_since=None;self.window_pose=None
+                return True
+            if self.retry_operation:
+                if now>=self.retry_at and not self.pending:
+                    operation=self.retry_operation;self.retry_operation=None
+                    self.request(operation,now)
+                return True
+            # A retry in flight keeps the original recovery deadline.
+            if self.pending and self.pending['operation'] in OBSERVATIONS:return False
+            self.clear_recovery()
+        return False
+
+    def perception_service_ready(self, now):
+        # Coordinator health means it can supervise a bounded stationary retry;
+        # perception's own ready flag and all measurement stamps stay unchanged.
+        if not self.fresh('perception',now):return False
+        data=self.inputs['perception']
+        return bool(data.get('ready') or (
+            self.state not in TERMINAL and self.recovery_since is not None
+            and now-self.recovery_since<self.cfg['execution'].get('observation_recovery_timeout_s',30.)
+            and transient_scene_error(data.get('reason',''))))
 
     def done_motion(self, operation, now):
         if operation == 'scan_pose':
@@ -136,11 +221,18 @@ class Mission:
             return False
         if 'trajectory' not in result and age>self.cfg['execution']['heartbeat_ttl_s']:
             return False
+        if (self.recovery_since is not None
+                and now-self.recovery_since>=self.cfg['execution'].get('observation_recovery_timeout_s',30.)):
+            self.cancel(now,'OBSERVATION_RECOVERY_TIMEOUT:'+self.recovery_reason,True)
+            return False
         self.last_compute_metrics=result.get('compute_metrics',{})
         operation = p['operation']
         self.pending = None
         if not result.get('ok'):
             reason = result.get('reason', 'PLAN_REJECTED')
+            if operation in OBSERVATIONS and retryable_observation(reason):
+                self.defer_observation(reason,now,operation)
+                return True
             if operation=='grasp_plan' and reason=='OBJECT_LOST_AFTER_REFINEMENT':
                 self.next_search(now)
                 return True
@@ -150,6 +242,7 @@ class Mission:
             else:
                 self.cancel(now, reason, True)
             return True
+        if operation in OBSERVATIONS:self.clear_recovery()
         if operation == 'observe_grasp':
             self.last_observation=result.get('observation',{})
             self.detect_at=now+self.cfg['search']['settle_s']
@@ -200,18 +293,20 @@ class Mission:
               or owner.get('owner_session_id') != self.owner_session
               or r3.get('navigation_session_id') != self.nav_session):
             self.cancel(now, 'SESSION_CHANGED')
-        elif not nav.get('navigation_ready') or not owner.get('feedback_ready') or not owner.get('target_valid') or not self.inputs['perception'].get('ready'):
+        elif not nav.get('navigation_ready') or not owner.get('feedback_ready') or not owner.get('target_valid'):
             self.cancel(now, 'TF_ODOM_ARM_OR_PERCEPTION_INVALID', True)
         elif self.state!='WAIT_GOAL' and now-self.started > self.cfg['execution']['mission_timeout_s']:
             self.cancel(now, 'MISSION_TIMEOUT', True)
+        elif self.state!='WAIT_GOAL' and (nav['goal']['revision'] != self.revision or nav['goal'].get('stamp_ns')!=self.goal_stamp):
+            self.cancel(now, 'GOAL_REPLACED')
+        elif self.wait_for_observation(now):
+            pass
         elif self.state == 'WAIT_GOAL':
             goal = nav['goal']
             if goal['revision'] > self.last_revision and goal.get('stamp_ns', 0) > self.armed_ros_ns and goal['state'] in ('REQUESTED','ACTIVE'):
                 self.started=now
                 self.revision, self.goal_stamp = goal['revision'], goal['stamp_ns']
                 self.transition('NAVIGATING', now)
-        elif nav['goal']['revision'] != self.revision or nav['goal'].get('stamp_ns')!=self.goal_stamp:
-            self.cancel(now, 'GOAL_REPLACED')
         elif self.state == 'NAVIGATING':
             goal_state = nav['goal']['state']
             if goal_state == 'SUCCEEDED':
@@ -311,7 +406,7 @@ class Mission:
         return [(kind,data) for kind,data in effects if self.state not in TERMINAL or kind=='cancel']
 
     def status(self, now):
-        return dict(test_mode='ready_observe' if self.ready_observe else 'full',last_observation=self.last_observation,last_compute_metrics=self.last_compute_metrics,grasp_verification='stub',object_grasped=None,observed_ns=int(now*1e9), session_id=self.session, state=self.state,
+        return dict(observation_recovery=dict(reason=self.recovery_reason,since=self.recovery_since,retry_operation=self.retry_operation,retries=self.observation_retries),test_mode='ready_observe' if self.ready_observe else 'full',last_observation=self.last_observation,last_compute_metrics=self.last_compute_metrics,grasp_verification='stub',object_grasped=None,observed_ns=int(now*1e9), session_id=self.session, state=self.state,
                     reason=self.reason, navigation_session_id=self.nav_session,
                     goal_revision=self.revision, goal_stamp_ns=self.goal_stamp,
                     elapsed_s=max(0.,now-self.started) if self.started else 0.,
