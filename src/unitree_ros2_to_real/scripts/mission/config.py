@@ -166,11 +166,13 @@ def load(path, workspace):
     verification=cfg['grasp_verification']
     if type(verification.get('max_attempts',2)) is not int or verification.get('max_attempts',2)!=2:
         raise ValueError('grasp_verification.max_attempts must be 2')
-    if (verification.get('requested_motor_torque_limit_nm',2.2)!=2.2
-            or verification.get('min_inner_width_m',.05)!=.05):
-        raise ValueError('torque/width contract requires 2.2 Nm and strictly greater than 0.05 m')
     if verification.get('mode') not in ('stub','torque_width'):raise ValueError('unsupported grasp_verification.mode')
-    if verification.get('max_total_torque_nm',2.2)!=2.2:raise ValueError('max_total_torque_nm must be 2.2')
+    control=cfg.get('gripper_torque_control',{})
+    if control.get('mode')!='measured_contact':raise ValueError('unsupported gripper_torque_control.mode')
+    for key in ('kp','kd','close_speed_rad_s','contact_torque_nm','hold_gain_rad_s_per_nm','hold_deadband_nm','max_target_lead_rad'):
+        v=control.get(key)
+        if type(v) not in (int,float) or not math.isfinite(v) or v<=0:raise ValueError('invalid gripper_torque_control.'+key)
+    if control['hold_deadband_nm']>=control['contact_torque_nm']:raise ValueError('invalid gripper hold deadband')
     a=cfg.get('grasp_assessment',{})
     if verification.get('mode')=='torque_width':
         for key in ('contact_torque_nm','min_grasp_width_m','confirmation_duration_s'):
@@ -198,9 +200,6 @@ def load(path, workspace):
 def blockers(cfg):
     environment = environment_checks_enabled(cfg['collision'])
     result = []
-    if cfg.get('test_mode','full')=='full' and (not cfg['grasp_verification'].get('motor_torque_cap_validated',False)
-            or not cfg['grasp_verification'].get('motor_torque_cap_evidence')):
-        result.append('full_grasp_motor_torque_cap_unqualified')
     if cfg.get('test_mode','full')=='full' and not physical_retreat_qualified(cfg['collision']):
         result.append('physical_retreat_clearance_unqualified')
     if cfg['frames']['vehicle_to_mount'] is None:

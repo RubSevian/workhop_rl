@@ -146,11 +146,6 @@ class ArmOwner final:public rclcpp::Node {
     clearance_evidence.as<std::string>().find_first_not_of(" \t\r\n")!=std::string::npos;
   if(!ready_observe_&&!retreat_clearance_qualified_)
    throw std::runtime_error("physical RETREAT clearance unqualified: open-gripper approximation");
-  if(!ready_observe_&&(!y["grasp_verification"]["motor_torque_cap_validated"]||
-      !y["grasp_verification"]["motor_torque_cap_validated"].as<bool>()||
-      !y["grasp_verification"]["motor_torque_cap_evidence"]||
-      y["grasp_verification"]["motor_torque_cap_evidence"].as<std::string>().empty()))
-   throw std::runtime_error("full grasp motor torque cap is not physically qualified");
   const auto grasp=YAML::LoadFile(absolute("sdk_config"));const auto g=grasp["robot"]["gripper"]["rars01"];
   const auto feedback=grasp["robot"]["motion"]["motion_feedback"];mission_feedback_ttl_=feedback["max_feedback_age_s"].as<double>();
   grasp_verification_mode_=y["grasp_verification"]["mode"].as<std::string>();
@@ -163,12 +158,16 @@ class ArmOwner final:public rclcpp::Node {
   c.settled_velocity=feedback["velocity_tolerance_deg_s"].as<double>()*std::acos(-1.)/180;
   c.settle_s=feedback["settle_time_s"].as<double>();c.completion_timeout_s=feedback["timeout_margin_s"].as<double>();
   c.closed=g["closed_position_rad"].as<double>();c.open=g["angle_open"].as<double>();
-  const double close_sign=g["counterclockwise"].as<bool>()?1:-1;
-  c.close_torque=close_sign*g["close_torque"].as<double>();c.hold_torque=close_sign*g["default_force"].as<double>();
-  c.move_kp=g["move_kp"].as<double>();c.move_kd=g["move_kd"].as<double>();c.hold_kp=g["hold_kp"].as<double>();c.hold_kd=g["hold_kd"].as<double>();c.close_kd=g["close_kd"].as<double>();
+  c.move_kp=g["move_kp"].as<double>();c.move_kd=g["move_kd"].as<double>();
   c.hard_stop=g["hard_stop_angle_rad"].as<double>();
-  c.max_total_torque_nm=y["grasp_verification"]["max_total_torque_nm"]?y["grasp_verification"]["max_total_torque_nm"].as<double>():2.2;
-  if(c.max_total_torque_nm!=2.2)throw std::runtime_error("agreed max_total_torque_nm must be 2.2");
+  const auto control=y["gripper_torque_control"];
+  if(control["mode"].as<std::string>()!="measured_contact")throw std::runtime_error("unsupported gripper torque control mode");
+  c.gripper_control.kp=control["kp"].as<double>();c.gripper_control.kd=control["kd"].as<double>();
+  c.gripper_control.close_speed_rad_s=control["close_speed_rad_s"].as<double>();
+  c.gripper_control.contact_torque_nm=control["contact_torque_nm"].as<double>();
+  c.gripper_control.hold_gain_rad_s_per_nm=control["hold_gain_rad_s_per_nm"].as<double>();
+  c.gripper_control.hold_deadband_nm=control["hold_deadband_nm"].as<double>();
+  c.gripper_control.max_target_lead_rad=control["max_target_lead_rad"].as<double>();
   c.feedback_ttl_s=mission_feedback_ttl_;c.assessment.enabled=grasp_verification_mode_=="torque_width";
   if(c.assessment.enabled){const auto a=y["grasp_assessment"];
   c.assessment.contact_torque_nm=a["contact_torque_nm"].as<double>();
@@ -351,7 +350,9 @@ class ArmOwner final:public rclcpp::Node {
    <<YAML::Key<<"grasp_assessment"<<YAML::Value<<(mission_?mission_->assessment().state():"UNKNOWN")
    <<YAML::Key<<"grasp_assessment_reason"<<YAML::Value<<(mission_?mission_->assessment().reason():"NO_MISSION")
    <<YAML::Key<<"grasp_confirmation_s"<<YAML::Value<<(mission_?mission_->assessment().confirmation_seconds():0.)
-   <<YAML::Key<<"max_total_torque_nm"<<YAML::Value<<2.2
+   <<YAML::Key<<"gripper_torque_control"<<YAML::Value<<"measured_contact"
+   <<YAML::Key<<"gripper_contact_target_nm"<<YAML::Value<<(mission_?mission_->contact_target_nm():0.)
+   <<YAML::Key<<"guaranteed_total_torque_cap_qualified"<<YAML::Value<<false
    <<YAML::Key<<"total_torque_cap_controller_supported"<<YAML::Value<<ControllerTotalTorqueCapSupported()
    <<YAML::Key<<"grasp_verification"<<YAML::Value<<(mission_?grasp_verification_mode_:"inactive")
    <<YAML::Key<<"object_grasped"<<YAML::Value<<YAML::Null

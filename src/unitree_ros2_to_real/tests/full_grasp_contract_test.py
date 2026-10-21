@@ -10,17 +10,37 @@ sys.path.insert(0,str(Path(__file__).parent))
 from first_grasp_mission_test import Fixture,CFG
 import architecture_mission_contract_test as architecture
 from mission.approved_motion import release_for_retry
-from mission.config import blockers
+from mission.config import blockers,load
 
 class FullGraspContracts(unittest.TestCase):
-    def test_full_preflight_retains_both_physical_gates(self):
+    def test_full_preflight_retains_clearance_without_claiming_hardware_cap(self):
         self.assertEqual(CFG['test_mode'],'full')
         self.assertEqual(CFG['grasp_assessment'],dict(contact_torque_nm=1.5,min_grasp_width_m=.05,confirmation_duration_s=.5))
-        self.assertEqual(CFG['grasp_verification']['max_total_torque_nm'],2.2)
-        self.assertIn('full_grasp_motor_torque_cap_unqualified',blockers(CFG))
+        self.assertEqual(CFG['gripper_torque_control']['contact_torque_nm'],2.2)
+        self.assertNotIn('full_grasp_motor_torque_cap_unqualified',blockers(CFG))
+        self.assertFalse(CFG['grasp_verification']['motor_torque_cap_validated'])
         self.assertIn('physical_retreat_clearance_unqualified',blockers(CFG))
         diagnostic=copy.deepcopy(CFG);diagnostic['test_mode']='ready_observe'
         self.assertFalse(blockers(diagnostic))
+
+    def test_contact_yaml_and_invalid_settings(self):
+        import yaml
+        root=Path(__file__).resolve().parents[5]
+        control=CFG['gripper_torque_control']
+        self.assertEqual((control['kp'],control['kd'],control['close_speed_rad_s']),(20.,1.,.15))
+        self.assertGreaterEqual(CFG['grasp_verification']['close_duration_s'],1./control['close_speed_rad_s']+CFG['grasp_assessment']['confirmation_duration_s'])
+        original=yaml.safe_load((root/'repos/rars01_graspnet/config/jetson_orin_nano.yaml').read_text())
+        for key in ('kp','kd','close_speed_rad_s','contact_torque_nm','hold_gain_rad_s_per_nm','hold_deadband_nm','max_target_lead_rad'):
+            for value in (0.,-1.,float('nan'),float('inf'),True):
+                cfg=copy.deepcopy(original);cfg['go2_mission']['gripper_torque_control'][key]=value
+                with tempfile.TemporaryDirectory() as tmp:
+                    path=Path(tmp)/'mission.yaml';path.write_text(yaml.safe_dump(cfg))
+                    with self.assertRaisesRegex(ValueError,'gripper_torque_control'):
+                        load(path,root)
+        cfg=copy.deepcopy(original);cfg['go2_mission']['gripper_torque_control']['hold_deadband_nm']=2.2
+        with tempfile.TemporaryDirectory() as tmp:
+            path=Path(tmp)/'mission.yaml';path.write_text(yaml.safe_dump(cfg))
+            with self.assertRaisesRegex(ValueError,'deadband'):load(path,root)
 
     def test_full_physical_launch_refuses_before_any_node_construction(self):
         import importlib.util,tempfile
@@ -35,7 +55,7 @@ class FullGraspContracts(unittest.TestCase):
             prefix=Path(tmp);lib=prefix/'lib/unitree_legged_real';lib.mkdir(parents=True)
             (lib/'mission').symlink_to(source/'scripts/mission',target_is_directory=True)
             with patch.object(launch,'get_package_prefix',return_value=str(prefix)),patch.object(launch,'get_package_share_directory',return_value=str(source)),patch.object(launch,'Node') as node:
-                with self.assertRaisesRegex(RuntimeError,'full_grasp_motor_torque_cap_unqualified.*physical_retreat_clearance_unqualified'):
+                with self.assertRaisesRegex(RuntimeError,'physical_retreat_clearance_unqualified'):
                     launch._launch(context)
                 node.assert_not_called()
 

@@ -1,6 +1,7 @@
 #pragma once
 #include "rars_auto_home.hpp"
 #include "grasp_assessment.hpp"
+#include "measured_gripper_control.hpp"
 #include <algorithm>
 #include <array>
 #include <cmath>
@@ -34,14 +35,16 @@ struct MissionStreamConfig {
  rars_arm::RarsArm::MotorValues kp{},kd{};
  double gripper_velocity=2,rate=100, start_tolerance=.02, reached_tolerance=.02, settled_velocity=.035;
  double settle_s=.2, completion_timeout_s=5.5, max_duration_s=60;
- double closed=0,open=1,close_torque=-2.2,hold_torque=-2.2;
- double move_kp=20,move_kd=1,hold_kp=20,hold_kd=1,close_kd=.5;
- double close_duration_s=2.,hard_stop=.01;
- GraspAssessmentConfig assessment;double feedback_ttl_s=.1,max_total_torque_nm=2.2;
+ double closed=0,open=1;
+ MeasuredGripperConfig gripper_control;
+ double move_kp=20,move_kd=1;
+ double close_duration_s=8.,hard_stop=.01;
+ GraspAssessmentConfig assessment;double feedback_ttl_s=.1;
 };
 class MissionStream {
  public:
- explicit MissionStream(MissionStreamConfig config):cfg_(config),assessment_(config.assessment){
+ explicit MissionStream(MissionStreamConfig config):cfg_(config),assessment_(config.assessment),gripper_(config.gripper_control,config.assessment,config.closed,config.open,config.rate,config.feedback_ttl_s){
+  if(config.gripper_control.close_speed_rad_s>config.gripper_velocity)throw std::invalid_argument("closing speed exceeds SDK limit");
   for(size_t j=0;j<6;++j)if(!std::isfinite(cfg_.lower[j])||!std::isfinite(cfg_.upper[j])||cfg_.lower[j]>=cfg_.upper[j]||!std::isfinite(cfg_.velocity[j])||cfg_.velocity[j]<=0)throw std::invalid_argument("invalid mission joint limits");
   for(double value:{cfg_.rate,cfg_.gripper_velocity,cfg_.start_tolerance,cfg_.reached_tolerance,cfg_.max_duration_s,cfg_.settle_s,cfg_.completion_timeout_s,cfg_.close_duration_s})if(!std::isfinite(value)||value<=0)throw std::invalid_argument("invalid mission stream setting");
   held_.kp=cfg_.kp;held_.kd=cfg_.kd;
@@ -63,25 +66,35 @@ class MissionStream {
    if(n==0&&!(holding_&&j==6)&&std::abs(q-status.joints.position[j])>cfg_.start_tolerance)return false;
    if(n&&j<6&&std::abs(q-points[n-1][j])*cfg_.rate>(search?(*cfg_.search_velocity)[j]:cfg_.velocity[j])+1e-5)return false;
    if(n&&j==6&&std::abs(q-points[n-1][j])*cfg_.rate>cfg_.gripper_velocity+1e-5)return false;
-   if(holding_&&!release&&j==6&&std::abs(q-held_.q[6])>1e-5)return false;
+   if(holding_&&!release&&j==6&&((n==0&&std::abs(q-held_.q[6])>cfg_.start_tolerance)||(n&&std::abs(q-points[0][6])>1e-5)))return false;
    if((kind=="close"||release)&&j<6&&std::abs(q-points[0][j])>1e-5)return false;
   }
   if(release&&(cfg_.open>cfg_.closed?1.:-1.)*(points.back()[6]-status.joints.position[6]) < -cfg_.start_tolerance)return false;
   if(kind=="home")for(size_t j=0;j<6;++j)if(std::abs(points.back()[j])>1e-6)return false;
-  if(release){holding_=false;hold_command_torque_=0;}
-  if(kind=="close")assessment_.Begin(now);
+  if(release){holding_=false;gripper_.Stop();}
+  if(kind=="close"){assessment_.Begin(now);gripper_.Begin(now,status);}
   Capture(status);last_id_=id;kind_=kind;points_=points;started_=now;settled_.reset();
   next_index_=0;busy_=true;state_="EXECUTING";error_.clear();return true;
  }
  void Cancel(const AutoHomeStatus& status,const std::string& reason){
   if(status.feedback_ready)Capture(status);
-  busy_=false;points_.clear();settled_.reset();state_="CANCELLED";error_=reason;
+  gripper_.Stop();busy_=false;points_.clear();settled_.reset();state_="CANCELLED";error_=reason;
  }
  AutoHomeController::Command Tick(ArmTime now,const AutoHomeStatus& status,bool authority){
   if(!initialized_)Capture(status);
   ObserveAssessment(now,status);
   
+  if(gripper_.active()&&!gripper_.Update(now,status,authority,holding_)){
+   // With untrustworthy contact feedback, remove positional closing effort.
+   // Do not automatically resume this operation when feedback returns.
+   if(!authority&&status.feedback_ready)Capture(status);
+   holding_=false;gripper_.Stop();busy_=false;points_.clear();settled_.reset();
+   error_="gripper_control:"+gripper_.reason();assessment_.Reset();
+   held_.kp[6]=0;held_.kd[6]=cfg_.gripper_control.kd;held_.torque[6]=0;
+   state_=authority?"FAILED":"CANCELLED";return held_;
+  }
   if(busy_&&!authority)Cancel(status,"authority_revoked");
+  if(gripper_.active())ApplyGripper();
   if(!busy_)return held_;
   const double elapsed=std::chrono::duration<double>(now-started_).count();
   // No burst/catch-up sends after a
@@ -90,20 +103,16 @@ class MissionStream {
   const auto index=std::min({points_.size()-1,size_t(std::max(0.,elapsed)*cfg_.rate),next_index_});
   next_index_=index+1;
   held_.q=points_[index];
-  if(holding_){held_.kp[6]=cfg_.hold_kp;held_.kd[6]=cfg_.hold_kd;held_.torque[6]=hold_command_torque_;}
+  if(gripper_.active())ApplyGripper();
   if(kind_=="close"){
-   held_.q[6]=cfg_.closed;held_.kp[6]=0;held_.kd[6]=cfg_.close_kd;held_.torque[6]=cfg_.close_torque;
-   const double q=status.joints.position[6];
    const double sign=cfg_.open>cfg_.closed?1:-1;
-   const bool at_stop=sign*(q-cfg_.closed)<cfg_.hard_stop;
-   // Stub: complete a bounded actuator command, never infer an object.
-   // Reaching the closed stop also completes normally; do not press it for
-   // the remainder of the timer or turn an empty grasp into a mission fault.
-   if(at_stop||elapsed>=cfg_.close_duration_s||(cfg_.assessment.enabled&&assessment_.state()=="GRASPED")){
-    holding_=true;held_.q[6]=at_stop?cfg_.closed:std::clamp(q,std::min(cfg_.closed,cfg_.open),std::max(cfg_.closed,cfg_.open));
-    hold_command_torque_=at_stop?0.:cfg_.hold_torque;
-    held_.kp[6]=cfg_.hold_kp;held_.kd[6]=cfg_.hold_kd;held_.torque[6]=hold_command_torque_;
-    busy_=false;state_="SUCCEEDED";
+   const bool at_stop=sign*(status.joints.position[6]-cfg_.closed)<cfg_.hard_stop;
+   // Contact switches to regulation immediately, but leaves the confirmation
+   // interval available before reporting a completed close to Mission.
+   if(at_stop){gripper_.CaptureClosedStop();ApplyGripper();}
+   if(gripper_.contact())holding_=true;
+   if(at_stop||elapsed>=cfg_.close_duration_s||(holding_&&cfg_.assessment.enabled&&assessment_.state()=="GRASPED")){
+    holding_=true;busy_=false;state_="SUCCEEDED";
    }
   }else if(index==points_.size()-1){
    bool reached=true;for(size_t j=0;j<((holding_||kind_=="home")?6u:7u);++j)reached=reached&&std::abs(status.joints.position[j]-held_.q[j])<=cfg_.reached_tolerance&&std::abs(status.joints.velocity[j])<=cfg_.settled_velocity;
@@ -126,6 +135,7 @@ class MissionStream {
   if((kind_=="close"&&(state_=="EXECUTING"||state_=="SUCCEEDED"))||(holding_&&kind_!="release"))assessment_.Observe(now,status,true,holding_,cfg_.feedback_ttl_s);
   else if(kind_!="release")assessment_.Reset();
  }
+ double contact_target_nm()const{return cfg_.gripper_control.contact_torque_nm;}
  const GraspAssessment& assessment()const{return assessment_;}
  const std::string& operation()const{return kind_;}
  bool has_command()const{return initialized_;}
@@ -139,11 +149,12 @@ class MissionStream {
   if(holding_)held_.q[6]=grip;else {held_.kp[6]=cfg_.move_kp;held_.kd[6]=cfg_.move_kd;held_.torque[6]=0;}
   initialized_=true;
  }
- MissionStreamConfig cfg_;GraspAssessment assessment_;AutoHomeController::Command held_;
+ void ApplyGripper(){held_.q[6]=gripper_.target();held_.kp[6]=cfg_.gripper_control.kp;held_.kd[6]=cfg_.gripper_control.kd;held_.torque[6]=0;}
+ MissionStreamConfig cfg_;GraspAssessment assessment_;MeasuredGripperControl gripper_;AutoHomeController::Command held_;
  std::vector<std::array<float,7>> points_;
  ArmTime started_{};std::optional<ArmTime> settled_;
  bool initialized_=false,busy_=false,holding_=false;uint64_t last_id_=0;
  size_t next_index_=0;
- double hold_command_torque_=0;std::string kind_,state_="IDLE",error_;
+ std::string kind_,state_="IDLE",error_;
 };
 } // namespace sim2real

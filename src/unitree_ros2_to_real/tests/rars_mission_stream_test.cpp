@@ -4,6 +4,18 @@
 #include <iostream>
 using namespace sim2real;
 ArmTime at(double s){return ArmTime(std::chrono::duration_cast<ArmClock::duration>(std::chrono::duration<double>(s)));}
+// This legacy sampler suite supplies explicit healthy synthetic SDK frames.
+// Invalid/stale/cached feedback is tested in measured_gripper_control_test.
+class FreshStream : public MissionStream {
+ public:using MissionStream::MissionStream;
+ AutoHomeController::Command Tick(ArmTime now,const AutoHomeStatus& input,bool authority){
+  auto s=input;s.state=AutoHomeState::HOLD_HOME;s.feedback_stamp=now;
+  s.joints.valid.fill(true);s.joints.error.fill(1);for(int i=0;i<7;++i)s.joints.motor_id[i]=i+1;
+  s.joints.torque[6]=2.2F;s.communication.connected=s.communication.enabled=s.communication.feedback_received=true;
+  s.communication.valid_frames=++frames_;return MissionStream::Tick(now,s,authority);
+ }
+ private:uint64_t frames_=0;
+};
 int main(){
  for(const auto* phase:{"ARM_RETURN_HOME","ARM_HOME_BLOCKED","ARM_HOME_SETTLE"})assert(ControlledStopHomePhaseAllowed(phase));
  for(const auto* phase:{"CANCEL_TASKS","PD_CAPTURE","PD_HOLD_CONFIRMED","ARM_DISABLE","LIE_DOWN","EMERGENCY_FAULT",""})assert(!ControlledStopHomePhaseAllowed(phase));
@@ -26,7 +38,7 @@ int main(){
  assert(PlanTimestampAllowed(2'100'000'000,3'000'000'000,2'000'000'000));
 
  MissionStreamConfig cfg;cfg.close_duration_s=.5;cfg.lower.fill(-3);cfg.upper.fill(3);cfg.velocity.fill(1);cfg.kp.fill(20);cfg.kd.fill(1);
- MissionStream stream(cfg);AutoHomeStatus feedback;feedback.feedback_ready=feedback.motors_enabled=feedback.target_fresh=true;
+ FreshStream stream(cfg);AutoHomeStatus feedback;feedback.feedback_ready=feedback.motors_enabled=feedback.target_fresh=true;
  feedback.joints.position.fill(0);feedback.joints.velocity.fill(0);feedback.joints.position[6]=.8;
  std::array<float,7> q=feedback.joints.position;std::vector<std::array<float,7>> points(101,q);
  for(size_t i=0;i<points.size();++i)points[i][0]=.1*i/100;
@@ -39,7 +51,7 @@ int main(){
  for(int n=0;n<70;++n){feedback.joints.position[6]=n<40?float(.8-n*.01):.4f;
   feedback.joints.velocity[6]=n<40?-.5f:0;stream.Tick(at(3+n*.01),feedback,true);}
  assert(stream.holding()&&stream.state()=="SUCCEEDED"&&!stream.HoldConfirmed(feedback));
- assert(stream.command().torque[6]<0&&stream.command().kp[6]==cfg.hold_kp);
+ assert(stream.command().torque[6]==0&&stream.command().kp[6]==cfg.gripper_control.kp);
  const auto grip=stream.command().q[6];
  points.assign(101,feedback.joints.position);
  for(size_t i=0;i<points.size();++i){points[i][0]=.1*(1-i/100.);points[i][6]=grip;}
@@ -57,7 +69,7 @@ int main(){
  // Neither joint NaNs, unbounded velocity nor opening a held gripper is accepted.
  points[0]=feedback.joints.position;points[1][0]=10;
  assert(!stream.Start(5,"move",points,at(7),feedback));
- points[1]=points[0];points[1][6]=.8;
+ points[1]=points[0];points[1][6]=grip+.1;
  assert(!stream.Start(5,"move",points,at(7),feedback));
  points[1]=points[0];points[1][0]=NAN;
  assert(!stream.Start(5,"move",points,at(7),feedback));
@@ -84,7 +96,7 @@ int main(){
  // Empty/closed gripper finishes normally; a stalled open gripper is also
  // unverified after the timer. Neither case claims object presence.
  for(float final_grip:{0.f,.8f}){
-  MissionStream stub(cfg);AutoHomeStatus f=feedback;f.joints.position.fill(0);f.joints.position[6]=.8;
+  FreshStream stub(cfg);AutoHomeStatus f=feedback;f.joints.position.fill(0);f.joints.position[6]=.8;
   std::vector<std::array<float,7>> close_points(2,f.joints.position);
   assert(stub.Start(1,"close",close_points,at(20),f));
   for(int n=0;n<70;++n){f.joints.position[6]=final_grip;f.joints.velocity.fill(0);stub.Tick(at(20+n*.01),f,true);}
@@ -93,7 +105,7 @@ int main(){
  }
  // Waiting for the next plan preserves the completed trajectory target.
  {
-  MissionStream waiting(cfg);AutoHomeStatus f=feedback;f.joints.position.fill(0);f.joints.velocity.fill(0);
+  FreshStream waiting(cfg);AutoHomeStatus f=feedback;f.joints.position.fill(0);f.joints.velocity.fill(0);
   std::vector<std::array<float,7>> path(2,f.joints.position);
   assert(waiting.Start(1,"move",path,at(1),f));
   for(int n=0;n<40;++n)waiting.Tick(at(1+n*.01),f,true);
@@ -104,7 +116,7 @@ int main(){
  }
  // A delayed callback does not reject a healthy stream or jump over samples.
  {
-  MissionStream delayed(cfg);AutoHomeStatus f=feedback;f.joints.position.fill(0);f.joints.velocity.fill(0);
+  FreshStream delayed(cfg);AutoHomeStatus f=feedback;f.joints.position.fill(0);f.joints.velocity.fill(0);
   std::vector<std::array<float,7>> path(101,f.joints.position);
   for(size_t i=0;i<path.size();++i)path[i][0]=.1*i/100;
   assert(delayed.Start(1,"move",path,at(30),f));
@@ -113,7 +125,7 @@ int main(){
   assert(delayed.busy()&&std::abs(after_gap.q[0]-first.q[0])<=.00101);
   delayed.Tick(at(30.04),f,false);assert(delayed.state()=="CANCELLED");
   MissionStreamConfig longer=cfg;longer.max_duration_s=180;
-  MissionStream long_stream(longer);path.assign(6002,f.joints.position);
+  FreshStream long_stream(longer);path.assign(6002,f.joints.position);
   assert(long_stream.Start(1,"move",path,at(40),f));
  }
  // Unqualified open-jaw approximation never authorizes physical RETREAT.
@@ -133,7 +145,7 @@ int main(){
   AutoHomeStatus f=feedback;f.joints.position.fill(0);f.joints.velocity.fill(0);
   std::vector<std::array<float,7>> path(101,f.joints.position);
   for(size_t i=0;i<path.size();++i)path[i][0]=.15F*i/100;
-  MissionStream ordinary(search),preset(search);
+  FreshStream ordinary(search),preset(search);
   assert(!ordinary.Start(1,"move",path,at(50),f));
   assert(preset.Start(1,"move",path,at(50),f,true));
   for(size_t i=0;i<path.size();++i)path[i][0]=.25F*i/100;

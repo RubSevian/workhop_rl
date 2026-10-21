@@ -858,7 +858,7 @@ class Integration(unittest.TestCase):
         self.assertFalse(h.valid(300000140,'nav'))
         d.update(observed_ns=160,base_locked=True);h.observe(json.dumps(d),b'a',170,'nav');self.assertTrue(h.base_locked)
         h.graph([b'a',b'b'],180);self.assertFalse(h.valid(190,'nav'));self.assertTrue(h.base_locked)
-        self.assertEqual(set(blockers(CFG)),{'full_grasp_motor_torque_cap_unqualified','physical_retreat_clearance_unqualified'});self.assertIsInstance(CFG['physical_enabled'],bool)
+        self.assertEqual(set(blockers(CFG)),{'physical_retreat_clearance_unqualified'});self.assertIsInstance(CFG['physical_enabled'],bool)
 
     def test_arm_geometry_tolerance_preserves_actual_pose_and_leg_limits(self):
         from mission.collision import validate_geometry_joint

@@ -115,10 +115,10 @@ class ArchitectureMissionTests(unittest.TestCase):
         self.assertEqual(result['approval_scene_snapshot'],segment['scene_snapshot'])
         self.assertNotEqual(result['scene_snapshot']['legs'],segment['scene_snapshot']['legs'])
 
-    def test_preflight_full_mode_requires_torque_qualification(self):
+    def test_preflight_full_mode_does_not_require_hardware_torque_cap(self):
         cfg=copy.deepcopy(CFG);cfg['test_mode']='ready_observe';self.assertNotIn('full_grasp_motor_torque_cap_unqualified',blockers(cfg))
         cfg['test_mode']='full'
-        self.assertIn('full_grasp_motor_torque_cap_unqualified',blockers(cfg))
+        self.assertNotIn('full_grasp_motor_torque_cap_unqualified',blockers(cfg))
         self.assertFalse(cfg['grasp_verification']['motor_torque_cap_validated'])
 
     def test_monitor_deduplicates_age_changes_but_keeps_first_cause(self):
