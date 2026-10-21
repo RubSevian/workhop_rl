@@ -202,21 +202,27 @@ bool R3Supervisor::Released(SafetyTime now) const {
 R3Reply R3Supervisor::Fail(const std::string& message) const {return {false,message};}
 std::vector<std::string> R3Supervisor::Blockers(SafetyTime now,bool physical) const {
  auto b=inputs_.ready.Blockers();std::erase(b,std::string("explicit_output_enable"));
+ const bool pd_lift=PdLiftActive();
+ if(pd_lift) {
+  std::erase(b,std::string("arm_feedback_ready"));
+  std::erase(b,std::string("arm_target_ready"));
+ }
+ if(inputs_.arm_fault_confirmed)b.emplace_back("arm_physical_fault");
  if(!seen_)b.emplace_back("inputs_unavailable");
- if(!inputs_.arm_control_ready)b.emplace_back("arm_control_not_ready");
+ if(!pd_lift&&!inputs_.arm_control_ready)b.emplace_back("arm_control_not_ready");
  if(system_state_==SystemState::STANDBY||system_state_==SystemState::TAKEOVER) {
   if(!output_enabled_&&capabilities_.require_navigation_ready&&!inputs_.navigation_ready)b.emplace_back("navigation_not_ready");
-  if(capabilities_.require_perception_ready&&!inputs_.perception_ready)b.emplace_back("perception_not_ready");
+  if(!output_enabled_&&capabilities_.require_perception_ready&&!inputs_.perception_ready)b.emplace_back("perception_not_ready");
   if(capabilities_.require_emergency_arm_validation&&!inputs_.arm_emergency_validated)b.emplace_back("arm_emergency_not_validated");
  }
  if(!Released(now))b.emplace_back("sport_release_not_fresh_verified");
  if(!Fresh(now,inputs_.lowstate_stamp,profile_.lowstate_timeout_s))b.emplace_back("lowstate_age");
  if(!Fresh(now,inputs_.remote_stamp,profile_.remote_timeout_s))b.emplace_back("remote_age");
- if(!Fresh(now,inputs_.arm_stamp,profile_.arm_timeout_s))b.emplace_back("arm_feedback_age");
- if(!Fresh(now,inputs_.target_stamp,profile_.arm_timeout_s))b.emplace_back("arm_target_age");
+ if(!pd_lift&&!Fresh(now,inputs_.arm_stamp,profile_.arm_timeout_s))b.emplace_back("arm_feedback_age");
+ if(!pd_lift&&!Fresh(now,inputs_.target_stamp,profile_.arm_timeout_s))b.emplace_back("arm_target_age");
  const bool runtime=system_state_==SystemState::ACTIVE||(system_state_==SystemState::CONTROLLED_STOP&&NeedsPolicy());
- if(!runtime&&!inputs_.arm_static_hold)b.emplace_back("arm_static_hold");
- if(!runtime&&profile_.require_arm_home_ready&&!inputs_.arm_home_ready)b.emplace_back("arm_home_not_ready");
+ if(!pd_lift&&!runtime&&!inputs_.arm_static_hold)b.emplace_back("arm_static_hold");
+ if(!pd_lift&&!runtime&&profile_.require_arm_home_ready&&!inputs_.arm_home_ready)b.emplace_back("arm_home_not_ready");
  if(fault_)b.emplace_back("fault_latched");
  if(physical) {
   if(!profile_.gate0_verified)b.emplace_back("gate0_not_passed");
@@ -231,6 +237,14 @@ std::vector<std::string> R3Supervisor::Blockers(SafetyTime now,bool physical) co
 R3Reply R3Supervisor::Require(SafetyTime now) const {
  const auto b=Blockers(now);if(b.empty())return {true,"ready"};
  std::ostringstream s;for(const auto& v:b)s<<v<<',';return Fail(s.str());
+}
+std::vector<std::string> R3Supervisor::PhaseWarnings(SafetyTime now) const {
+ std::vector<std::string> result;
+ if(!output_enabled_||fault_)return result;
+ if(capabilities_.require_navigation_ready&&!inputs_.navigation_ready)result.emplace_back("NAV_UNAVAILABLE:future_navigation_blocked");
+ if(capabilities_.require_perception_ready&&!inputs_.perception_ready)result.emplace_back("PERCEPTION_UNAVAILABLE:future_manipulation_blocked");
+ if(PdLiftActive()&&!ArmReadyForRl(now))result.emplace_back("ARM_FEEDBACK_UNAVAILABLE:RL_entry_blocked");
+ return result;
 }
 void R3Supervisor::Zero(){command_={};navigation_active_=false;have_command_=false;}
 void R3Supervisor::InvalidatePolicyWork(){++policy_generation_;pending_policy_.reset();zero_policy_handoff_started_.reset();}
@@ -264,7 +278,7 @@ std::vector<std::string> R3Supervisor::RemoteSequenceBlockers(SafetyTime now) co
  if(!capabilities_.physical_leg_output||!capabilities_.allow_sport_release)b.emplace_back("profile_disallows_leg_takeover");
  SystemReadiness r;r.arm_control_ready=inputs_.arm_control_ready;r.arm_home_ready=inputs_.arm_home_ready;
  r.navigation_ready=inputs_.navigation_ready;r.perception_ready=inputs_.perception_ready;r.arm_emergency_validated=inputs_.arm_emergency_validated;
- for(const auto& blocker:r.TakeoverBlockers(capabilities_))if(std::find(b.begin(),b.end(),blocker)==b.end())b.push_back(blocker);
+ if(!output_enabled_)for(const auto& blocker:r.TakeoverBlockers(capabilities_))if(std::find(b.begin(),b.end(),blocker)==b.end())b.push_back(blocker);
  if(!seen_||(inputs_.sport!=SportMode::ACTIVE&&inputs_.sport!=SportMode::RELEASED)||
     !(profile_.sport_startup_only?sport_startup_checked_:Fresh(now,inputs_.sport_stamp,profile_.sport_timeout_s)))b.emplace_back("sport_state_not_fresh_known");
  if(capabilities_.allow_rl&&!profile_.policy_timing_reviewed)b.emplace_back("policy_timing_not_reviewed");
@@ -320,6 +334,11 @@ R3SequenceAction R3Supervisor::RemoteSequenceNext(SafetyTime now) {
  if(state()==R3State::HOLD_CURRENT||state()==R3State::HOLDING) {
   if(!sequence_hold_started_){sequence_hold_stamp_=now;sequence_hold_started_=true;}
   if(std::chrono::duration<double>(now-sequence_hold_stamp_).count()>=(state()==R3State::HOLD_CURRENT?profile_.capture_hold_s:profile_.hold_s)) {
+   if(state()==R3State::HOLDING&&!ArmReadyForRl(now)) {
+    // Never fake HOME or silently enable an unqualified failed-arm descent.
+    stop_blocker_="RL_ENTRY_BLOCKED_ARM_UNAVAILABLE:qualified_pd_descent_required";
+    CancelRemoteSequence();return R3SequenceAction::NONE;
+   }
    sequence_hold_started_=false;
    return state()==R3State::HOLD_CURRENT?R3SequenceAction::STAND:R3SequenceAction::RL;
   }
@@ -358,12 +377,18 @@ R3Reply R3Supervisor::RequestStand(SafetyTime now) {
  auto r=Require(now);if(!r.success)return r;
  Capture(now);Zero();SetPhase(R3State::STAND_TRANSITION);return {true,"linear measured->stand"};
 }
+bool R3Supervisor::ArmReadyForRl(SafetyTime now) const {
+ return !inputs_.arm_fault_confirmed&&inputs_.arm_control_ready&&inputs_.ready.arm_feedback_ready&&inputs_.ready.arm_target_ready&&
+  Fresh(now,inputs_.arm_stamp,profile_.arm_timeout_s)&&Fresh(now,inputs_.target_stamp,profile_.arm_timeout_s)&&
+  (!profile_.require_arm_home_ready||inputs_.arm_home_ready)&&inputs_.arm_static_hold;
+}
 R3Reply R3Supervisor::RequestRl(SafetyTime now) {
  if(system_state_==SystemState::CONTROLLED_STOP)return Fail("controlled_stop_in_progress");
  if(!IsActive())return Fail("active custom output required; use A to reacquire from SYSTEM_HOLD");
  if(!capabilities_.allow_rl)return Fail("profile_disallows_rl");
  if(state()!=R3State::HOLDING)return Fail("RL entry only from HOLDING");
  if(!profile_.policy_timing_reviewed)return Fail("timing review required before RL");
+ if(!ArmReadyForRl(now))return Fail("RL entry requires fresh enabled HOME arm; no stale actor input");
  auto r=Require(now);if(!r.success)return r;
  InvalidatePolicyWork();Zero();reset_policy_=true;have_policy_=false;policy_stamp_=now;SetPhase(R3State::RL_ZERO);return {true,"zero + ResetPolicyState before any inference"};
 }
@@ -407,7 +432,7 @@ R3Reply R3Supervisor::ControlledAbort(SafetyTime now) {
 R3Reply R3Supervisor::Emergency(SafetyTime now) {
  if(system_state_==SystemState::EMERGENCY_FAULT)return {true,"central emergency already latched"};
  CancelRemoteSequence();++orchestration_generation_;
- if(!fault_){fault_policy_age_s_=PolicyAgeSeconds(now);fault_inference_age_s_=PolicyInferenceAgeSeconds(now);fault_observation_age_s_=PolicyObservationAgeSeconds(now);}
+ if(!fault_){fault_phase_=phase_;fault_blockers_=Blockers(now);fault_inputs_=inputs_;fault_time_=now;fault_policy_age_s_=PolicyAgeSeconds(now);fault_inference_age_s_=PolicyInferenceAgeSeconds(now);fault_observation_age_s_=PolicyObservationAgeSeconds(now);}
  InvalidatePolicyWork();Zero();arm_hold_request_=true;fault_=true;have_policy_=false;reset_policy_=false;
  if(last_fault_.empty())last_fault_="operator_emergency";
  ports_.arm_return_home=false;
@@ -421,7 +446,10 @@ R3Reply R3Supervisor::Emergency(SafetyTime now) {
  SetPhase(R3State::EMERGENCY_DAMP);return {true,"latched leg damping; cancel missions; asynchronous validated arm emergency; no recovery"};
 }
 void R3Supervisor::Fault(const std::string& why,SafetyTime now) {
+ if(fault_)return; // Preserve the first cause; downstream failures are consequences.
  if(!fault_) {
+  fault_phase_=phase_;fault_blockers_=Blockers(now);
+  fault_inputs_=inputs_;fault_time_=now;
   fault_policy_age_s_=PolicyAgeSeconds(now);
   fault_inference_age_s_=PolicyInferenceAgeSeconds(now);
   fault_observation_age_s_=PolicyObservationAgeSeconds(now);

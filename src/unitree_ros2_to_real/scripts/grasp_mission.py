@@ -24,6 +24,7 @@ from mission.leg_state_reader import LegStateReader
 from mission.ros_scene import ROSBodySource, report_scene
 from mission.config import load, blockers
 from mission.core import Mission, TERMINAL, ARM_PHASES
+from mission.health_contract import source_ttl
 
 class Coordinator(Node):
     def __init__(self):
@@ -59,6 +60,7 @@ class Coordinator(Node):
         self.trajectory_pub=self.create_publisher(String,'/rars01/mission/trajectory',1)
         self.cancel=self.create_client(Trigger,'/rars01/mission/cancel_manipulation')
         self.cancel_nav=self.create_client(Trigger,'/go2/mission/cancel_navigation')
+        self.invalidate_nav=self.create_client(Trigger,'/go2/mission/invalidate_navigation_goal')
         self.home=self.create_client(Trigger,'/rars01/control/return_home')
         self.topics={'r3':'/go2/locomotion_status','nav':'/go2/navigation/status',
                      'owner':'/rars01/commissioning/state','perception':'/rars01/mission/perception_health'}
@@ -86,7 +88,7 @@ class Coordinator(Node):
         self.get_logger().info('Mission preloaded DISARMED; physical blockers: '+', '.join(self.blockers))
 
     def observe(self,name,msg,info):
-        started=time.monotonic();value=None;outcome='decode_error';publisher_count=None
+        started=time.monotonic();value=None;outcome='decode_error';publisher_count=None;parse_error=None
         try:
             typed=name=='owner' and getattr(self,'arm_state_transport','yaml')=='typed'
             if not typed and len(msg.data)>2000000:raise ValueError('oversized input')
@@ -120,7 +122,7 @@ class Coordinator(Node):
             if outcome=='stamp_rejected':
                 stamp=value.get('observed_ns');age=time.monotonic()-stamp/1e9 if type(stamp) is int else None
                 outcome=('invalid_stamp' if age is None else 'future_stamp' if age<0
-                         else 'producer_stamp_stale' if age>self.cfg['execution']['heartbeat_ttl_s']
+                         else 'producer_stamp_stale' if age>source_ttl(self.cfg,name)
                          else 'duplicate_or_out_of_order')
             if name=='owner':self.observe_gripper(value)
             if name=='owner' and value.get('feedback_ready'):
@@ -130,9 +132,16 @@ class Coordinator(Node):
                             and historical.get('owner_session_id')==value['owner_session_id']):
                         self.scene_buffer.arm(historical['q'],historical['frame_received_ns'],historical['owner_session_id'])
         except (ValueError,TypeError,KeyError,yaml.YAMLError) as error:
+            parse_error=str(error)
             outcome='invalid_input:'+type(error).__name__
             self.engine.received.pop(name,None)
         finally:
+            if outcome!='accepted':
+                detail=self.engine.input_rejections.get(name,{})
+                detail.update(subsystem=name,source_topic=self.topics[name],publisher_count=publisher_count,
+                    publisher_gid=self.gids.get(name,b'').hex(),parse_exception=parse_error,
+                    receive_mono_ns=int(started*1e9),action_taken='REJECT_INPUT')
+                self.engine.input_rejections[name]=detail
             diagnostics=getattr(self,'input_diagnostics',None)
             if diagnostics is not None:
                 diagnostics.callback(name,started,time.monotonic(),outcome,value,publisher_count)
@@ -249,7 +258,9 @@ class Coordinator(Node):
             self.stop_home=dict(id=e.request_id,session_id=e.session,navigation_session_id=e.inputs['nav']['session_id'],owner_session_id=owner['owner_session_id'],goal_revision=e.revision,operation='home',owner=owner,grasp_plan=None,scan_index=0,observed_ns=time.monotonic_ns())
             self.compute_pub.publish(String(data=json.dumps(self.stop_home)))
         for kind,data in effects:
-            if kind=='cancel_navigation':
+            if kind=='invalidate_navigation_goal':
+                if self.invalidate_nav.service_is_ready():self.invalidate_nav.call_async(Trigger.Request())
+            elif kind=='cancel_navigation':
                 if self.cancel_nav.service_is_ready():self.cancel_nav.call_async(Trigger.Request())
             elif kind=='cancel':
                 if self.cancel.service_is_ready():

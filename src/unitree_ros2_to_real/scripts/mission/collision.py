@@ -329,9 +329,11 @@ class Collision:
         self.last_failure=dict(reason=reason,sample_index=sample,pair=pair,distance_m=distance,category=category,surface_collision=collision)
         return False
 
-    def validated_scene(self,scene,payload):
+    def validated_scene(self,scene,payload,*,reference_ns=None):
         if not isinstance(scene,dict):raise ValueError('COLLISION_STATE_SNAPSHOT_REQUIRED')
-        now=time.monotonic_ns()
+        # Candidate passes share the acquisition-time scene. Execution admission
+        # always uses live time; source stamps and work deadlines are never renewed.
+        now=time.monotonic_ns() if reference_ns is None else reference_ns
         if 'scene_snapshot' in scene:
             from .scene import validate_scene_data
             validate_scene_data(scene['scene_snapshot'],self.cfg,now,
@@ -344,7 +346,7 @@ class Collision:
             if not scene.get('scene_revision') or scene['scene_revision']!=self.cfg['collision'].get('scene_revision'):raise ValueError('COLLISION_SCENE_REVISION_MISMATCH')
         return rigid(scene['map_body'])
 
-    def check(self,points,scene,payload=False):
+    def check(self,points,scene,payload=False,*,reference_ns=None):
         payload=bool(payload and self.payload_enabled)
         self.last_failure={}
         started=time.monotonic_ns()
@@ -354,7 +356,7 @@ class Collision:
             self.check_deadline()
             p=np.asarray(points,dtype=float)
             if p.ndim!=2 or p.shape[1]!=7 or len(p)<2 or not np.isfinite(p).all():raise ValueError('INVALID_COLLISION_PATH')
-            map_body=self.validated_scene(scene,payload)
+            map_body=self.validated_scene(scene,payload,reference_ns=reference_ns)
             if payload and (self.payload_size is None or self.payload_xyz is None):raise ValueError('PAYLOAD_GEOMETRY_MISSING')
             rate=scene['command_rate_hz'];velocity=np.asarray(scene['velocity_limits'],dtype=float)
             if not np.isfinite(rate) or rate<=0 or velocity.shape!=(7,) or not np.isfinite(velocity).all() or np.any(velocity<=0):raise ValueError('COLLISION_VELOCITY_LIMITS_MISSING')

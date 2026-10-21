@@ -111,7 +111,14 @@ class StartupTests(unittest.TestCase):
         context=LaunchContext()
         context.launch_configurations.update(workspace=str(root),physical='true',start_arm_owner='true',
             network_interface='enP8p1s0',mission_config_path=str(root/'repos/rars01_graspnet/config/jetson_orin_nano.yaml'))
-        actions=module._launch(context)
+        # Test this checkout's launch/config pair, independently of the active
+        # installed baseline. Actions are only constructed, never executed.
+        prefix=Path(self.enterContext(tempfile.TemporaryDirectory()))
+        package_lib=prefix/'lib/unitree_legged_real'
+        package_lib.mkdir(parents=True)
+        (package_lib/'mission').symlink_to(SCRIPTS/'mission',target_is_directory=True)
+        with patch.object(module,'get_package_prefix',return_value=str(prefix)),patch.object(module,'get_package_share_directory',return_value=str(SCRIPTS.parent)):
+            actions=module._launch(context)
         self.assertEqual(len(actions),2)
         self.assertIsInstance(actions[0],RegisterEventHandler);self.assertIsInstance(actions[1],Node)
         handler=actions[0].event_handler

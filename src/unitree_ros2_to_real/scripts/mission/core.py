@@ -8,15 +8,16 @@ import math
 from .scene import matrix_pose, validate_scene_data
 from .transforms import pose_distance
 from .scene_wait import transient_scene_error
+from .health_contract import source_ttl, input_diagnostic
 
 OBSERVATIONS = {'detect', 'observe_grasp', 'grasp_plan'}
 
 def retryable_observation(reason):
     return transient_scene_error(reason) or reason in ('RGBD_STALE_OR_REPEATED', 'RGBD_TF_FEEDBACK_STALE')
 
-TERMINAL = {'MISSION_COMPLETED_UNVERIFIED', 'OBJECT_NOT_FOUND', 'GRASP_UNREACHABLE', 'BLOCKED', 'CANCELLED'}
+TERMINAL = {'MISSION_COMPLETED_UNVERIFIED','GRASP_PRESUMED_SUCCESS','TARGET_NOT_GRASPED', 'OBJECT_NOT_FOUND', 'GRASP_UNREACHABLE', 'BLOCKED', 'CANCELLED'}
 ARM_PHASES = {'BASE_SETTLE','ARM_SCAN_POSE','ARM_SEARCH','VIEW_REFINEMENT','PLAN_GRASP',
-              'PREGRASP','GRASP','RETREAT','RETURN_HOME'}
+              'PREGRASP','GRASP','RETREAT','RETURN_HOME','RETURN_SEARCH'}
 
 class Mission:
     def __init__(self, cfg, session):
@@ -39,18 +40,25 @@ class Mission:
         self.stability_reason='';self.stability_restarts=0
         self.result_after_home = 'MISSION_COMPLETED_UNVERIFIED'
         self.grasp_plan = None
+        self.object_anchor=None;self.q_search=None;self.grasp_attempt=0
+        self.attempt_segments=[];self.last_grasp_error=''
         self.last_now = 0.
         self.last_compute_metrics = {}
         self.stale_input_diagnostic=None
         self.wait_goal_stale_since=None
         self.recovery_since=None;self.recovery_reason='';self.retry_operation=None
         self.retry_at=0.;self.observation_retries=0
+        self.input_rejections={}
+        self.availability={}
+        self.new_goal_after_recovery=False
 
     def observe(self, name, data, now):
         # Duplicate/out-of-order or future producer samples never refresh leases.
         stamp = data.get('observed_ns')
-        ttl=self.cfg['limits']['sensor_age_s'] if name in ('base','scene') else self.cfg['execution']['heartbeat_ttl_s']
+        ttl=source_ttl(self.cfg,name)
         if type(stamp) is not int or not 0 <= now-stamp/1e9 <= ttl:
+            reason=('INVALID_STAMP' if type(stamp) is not int else 'FUTURE_STAMP' if now<stamp/1e9 else 'SOURCE_STATUS_STALE')
+            self.input_rejections[name]=input_diagnostic(self.cfg,name,data,now,phase=self.state,reason=reason,action='REJECT_INPUT')
             return False
         previous=self.inputs.get(name,{})
         if name=='scene' and stamp==previous.get('observed_ns'):
@@ -67,14 +75,64 @@ class Mission:
             for key in keys:previous[key]=data[key]
             return True
         if stamp <= self.inputs.get(name, {}).get('observed_ns', 0):
+            self.input_rejections[name]=input_diagnostic(self.cfg,name,data,now,phase=self.state,reason='DUPLICATE_OR_OUT_OF_ORDER',action='REJECT_INPUT')
             return False
         self.inputs[name] = copy.deepcopy(data)
         self.received[name] = stamp/1e9
         return True
 
     def fresh(self, name, now):
-        ttl=self.cfg['limits']['sensor_age_s'] if name in ('base','scene') else self.cfg['execution']['heartbeat_ttl_s']
+        ttl=source_ttl(self.cfg,name)
         return name in self.received and 0 <= now-self.received[name] <= ttl
+
+    def wait_goal_step(self, now, ros_now_ns, active):
+        """Recoverable task admission; this never grants leg or arm authority."""
+        for name in ('r3','owner'):
+            if not self.fresh(name,now):
+                if self.stale_input_diagnostic is None:
+                    self.stale_input_diagnostic=input_diagnostic(self.cfg,name,self.inputs.get(name,{}),now,
+                        phase=self.state,reason='STALE_INPUT:'+name,action='CANCEL_MISSION')
+                    self.stale_input_diagnostic.update(state_before=self.state,stale_sources=[name],
+                        inputs={name:dict(accepted_stamp_ns=self.inputs.get(name,{}).get('observed_ns'),
+                            accepted_age_s=now-self.received[name] if name in self.received else None)})
+                self.cancel(now,'STALE_INPUT:'+name,True);return self.drain()
+        r3,owner=self.inputs['r3'],self.inputs['owner']
+        if not active:
+            self.cancel(now,'R3_AUTHORITY_REVOKED');return self.drain()
+        if (r3.get('controller_session_id')!=self.r3_session or owner.get('owner_session_id')!=self.owner_session
+                or r3.get('navigation_session_id')!=self.nav_session):
+            self.cancel(now,'SESSION_CHANGED');return self.drain()
+        if not owner.get('feedback_ready') or not owner.get('target_valid'):
+            self.cancel(now,'ARM_FEEDBACK_OR_TARGET_INVALID',True);return self.drain()
+        nav=self.inputs.get('nav',{})
+        nav_ok=self.fresh('nav',now) and nav.get('navigation_ready') is True
+        vision_ok=self.fresh('perception',now) and self.inputs['perception'].get('ready') is True
+        self.availability={'navigation':bool(nav_ok),'manipulation':bool(vision_ok)}
+        if not nav_ok:
+            reason='NAV_STATUS_UNAVAILABLE' if not self.fresh('nav',now) else 'NAV_LOCALIZATION_UNAVAILABLE'
+            if self.wait_goal_stale_since is None:
+                self.wait_goal_stale_since=now;self.new_goal_after_recovery=True
+                if self.stale_input_diagnostic is None:
+                    self.stale_input_diagnostic=input_diagnostic(self.cfg,'nav',nav,now,phase=self.state,reason=reason,action='BLOCK_NEW_GOAL')
+                    self.stale_input_diagnostic.update(state_before=self.state,stale_sources=['nav'])
+                self.effects.append(('invalidate_navigation_goal',{'reason':reason}))
+                self.events.append(dict(state=self.state,time=now,reason=reason,severity='BLOCKED',operation='NAVIGATION'))
+            self.reason=reason
+            return self.drain()
+        if nav.get('session_id')!=self.nav_session:
+            self.cancel(now,'SESSION_CHANGED');return self.drain()
+        if self.new_goal_after_recovery:
+            self.last_revision=nav['goal']['revision'];self.armed_ros_ns=ros_now_ns
+            self.wait_goal_stale_since=None;self.new_goal_after_recovery=False
+            self.reason='RECOVERED_NEW_GOAL_REQUIRED'
+            self.events.append(dict(state=self.state,time=now,reason=self.reason,severity='RECOVERED',operation='NAVIGATION'))
+            return self.drain()
+        self.reason='' if vision_ok else 'PERCEPTION_STATUS_UNAVAILABLE' if not self.fresh('perception',now) else 'PERCEPTION_NOT_READY'
+        goal=nav['goal']
+        if goal['revision']>self.last_revision and goal.get('stamp_ns',0)>self.armed_ros_ns and goal['state'] in ('REQUESTED','ACTIVE'):
+            self.started=now;self.revision,self.goal_stamp=goal['revision'],goal['stamp_ns']
+            self.transition('NAVIGATING',now)
+        return self.drain()
 
     def scene_error(self,now):
         try:validate_scene_data(self.inputs['scene'],self.cfg,int(now*1e9),self.nav_session,self.owner_session)
@@ -99,7 +157,22 @@ class Mission:
         self.effects.append(('compute', dict(self.pending, session_id=self.session,
             navigation_session_id=self.nav_session, goal_revision=self.revision,
             owner_session_id=self.owner_session, owner=copy.deepcopy(self.inputs['owner']),
-            grasp_plan=self.grasp_plan, scan_index=self.scan_index)))
+            grasp_plan=self.grasp_plan, object_anchor=self.object_anchor,q_search=self.q_search,
+            grasp_attempt=self.grasp_attempt,reverse_segment=copy.deepcopy(self.attempt_segments[-1]) if operation=='reverse_search' and self.attempt_segments else None,
+            scan_index=self.scan_index)))
+
+    def failed_grasp_attempt(self, reason, now):
+        self.last_grasp_error=reason
+        if self.inputs['owner'].get('gripper_command_active') and self.inputs['owner'].get('object_hold_state')!='EMPTY':
+            self.cancel(now,'OBJECT_HOLD_UNKNOWN_NO_AUTOMATIC_RELEASE',True);return
+        if self.grasp_attempt>=2:
+            self.go_home('TARGET_NOT_GRASPED',now);return
+        self.grasp_attempt+=1;self.grasp_plan=None
+        if self.attempt_segments:
+            self.transition('RETURN_SEARCH',now,reason);self.request('reverse_search',now)
+        elif self.q_search is not None and max(abs(a-b) for a,b in zip(self.inputs['owner']['q'][:6],self.q_search))<=self.cfg['execution']['start_tolerance_rad']:
+            self.transition('PLAN_GRASP',now,reason);self.request('grasp_plan',now)
+        else:self.cancel(now,'Q_SEARCH_RETURN_PATH_MISSING',True)
 
     def defer_observation(self, reason, now, operation=None):
         if self.recovery_since is None:self.recovery_since=now
@@ -114,6 +187,7 @@ class Mission:
 
     def wait_for_observation(self, now):
         """Wait only at rest, never renew a scene lease or resume a trajectory."""
+        if self.state in ('WAIT_GOAL','NAVIGATING'):return False
         perception=self.inputs['perception']
         reason='' if perception.get('ready') else perception.get('reason','PERCEPTION_INVALID')
         stationary=(self.state in ('BASE_SETTLE','ARM_SEARCH','PLAN_GRASP')
@@ -143,7 +217,6 @@ class Mission:
             if now-self.entered>self.cfg['execution']['state_timeout_s'] and self.state in ARM_PHASES:
                 self.cancel(now,'PHASE_TIMEOUT',True);return True
             if reason:
-                if self.state=='BASE_SETTLE':self.stable_since=None;self.window_pose=None
                 return True
             if self.retry_operation:
                 if now>=self.retry_at and not self.pending:
@@ -182,10 +255,19 @@ class Mission:
         elif operation == 'approach':
             self.request('close', now)
         elif operation == 'close':
-            self.transition('RETREAT', now)
-            self.request('retreat', now)
+            assessment=self.inputs['owner'].get('grasp_assessment','UNKNOWN')
+            if assessment=='GRASP_PRESUMED_SUCCESS':
+                self.transition('RETREAT',now);self.request('retreat',now)
+            elif assessment=='NOT_GRASPED':self.failed_grasp_attempt('TORQUE_WIDTH_NOT_SATISFIED',now)
+            else:self.cancel(now,'GRASP_TORQUE_SEMANTICS_UNQUALIFIED',True)
+        elif operation=='reverse_search':
+            self.attempt_segments.pop()
+            if self.attempt_segments:self.request('reverse_search',now)
+            elif self.q_search is not None and max(abs(a-b) for a,b in zip(self.inputs['owner']['q'][:6],self.q_search))<=self.cfg['execution']['start_tolerance_rad']:
+                self.transition('PLAN_GRASP',now,'RETRY_AT_Q_SEARCH');self.request('grasp_plan',now)
+            else:self.cancel(now,'Q_SEARCH_NOT_REACHED',True)
         elif operation == 'retreat':
-            self.go_home('MISSION_COMPLETED_UNVERIFIED', now)
+            self.go_home('GRASP_PRESUMED_SUCCESS', now)
         elif operation == 'home':
             owner = self.inputs['owner']
             if not owner.get('arm_home_ready'):
@@ -239,8 +321,8 @@ class Mission:
                 self.next_search(now)
                 return True
             # Unsafe HOME never falls through to a direct zero joint target.
-            if operation in ('grasp_plan',) and reason in ('IK_FAIL','NO_CANDIDATES'):
-                self.go_home('GRASP_UNREACHABLE', now)
+            if operation=='grasp_plan' and (reason in ('IK_FAIL','NO_CANDIDATES') or reason.startswith('NO_COLLISION_FREE_CANDIDATE:')):
+                self.failed_grasp_attempt(reason,now)
             else:
                 self.cancel(now, reason, True)
             return True
@@ -250,11 +332,16 @@ class Mission:
             self.detect_at=now+self.cfg['search']['settle_s']
         elif operation == 'detect':
             if result.get('found'):
+                self.object_anchor=copy.deepcopy(result.get('object_anchor'))
+                self.q_search=list(result.get('q_search',self.inputs['owner']['q'][:6]))
+                self.grasp_attempt=1
+                self.attempt_segments=[]
                 self.transition('VIEW_REFINEMENT', now)
                 self.request('refine', now)
             else:
                 self.next_search(now)
         elif operation == 'grasp_plan':
+            if result.get('object_anchor') is not None:self.object_anchor=copy.deepcopy(result['object_anchor'])
             self.grasp_plan = result['grasp_plan']
             self.transition('PREGRASP', now)
             self.request('pregrasp', now)
@@ -262,6 +349,7 @@ class Mission:
             # The owner does its own bounds/authority/start validation. It does
             # not take arbitrary joint targets from a CUDA process directly.
             self.pending = dict(p, kind='motion', at=now,
+                                trajectory=copy.deepcopy(result['trajectory']),
                                 scene=copy.deepcopy(result['trajectory'].get('scene_snapshot',self.inputs.get('scene'))))
             self.effects.append(('trajectory', dict(result['trajectory'], id=p['id'],
                 session_id=self.session, navigation_session_id=self.nav_session,
@@ -287,8 +375,24 @@ class Mission:
             self.started = now
             self.transition('WAIT_GOAL', now, 'new operator goal required')
             return self.drain()
-        if not all(self.fresh(n, now) for n in ('r3','nav','owner','perception')):
-            names=('r3','nav','owner','perception')
+        if self.state=='WAIT_GOAL':return self.wait_goal_step(now,ros_now_ns,active)
+        if self.state=='BASE_SETTLE' and self.stable_since is None:
+            command=r3.get('motion_command',[])
+            if (self.fresh('r3',now) and r3.get('phase')=='RL_ZERO' and len(command)==3
+                    and all(math.isfinite(x) and abs(x)<=1e-6 for x in command)
+                    and r3.get('observed_ns',0)/1e9>=self.goal_reached):
+                self.stable_since=now
+        if (self.state=='NAVIGATING' and self.fresh('r3',now) and self.fresh('owner',now) and active
+                and (not self.fresh('nav',now) or not nav.get('navigation_ready')
+                     or nav.get('goal',{}).get('state')=='LOCALIZATION_LOST')):
+            self.pending=None;self.grasp_plan=None
+            self.effects.append(('invalidate_navigation_goal',{'reason':'NAV_LOCALIZATION_OR_STATUS_LOST'}))
+            self.new_goal_after_recovery=True;self.wait_goal_stale_since=now
+            self.transition('WAIT_GOAL',now,'NAV_LOCALIZATION_OR_STATUS_LOST')
+            return self.drain()
+        required=('r3','nav','owner') if self.state=='NAVIGATING' else ('r3','nav','owner','perception')
+        if not all(self.fresh(n, now) for n in required):
+            names=required
             diagnostic=dict(observed_ns=int(now*1e9),state_before=self.state,
                 stale_sources=[n for n in names if not self.fresh(n,now)],
                 heartbeat_ttl_s=self.cfg['execution']['heartbeat_ttl_s'],
@@ -298,19 +402,6 @@ class Mission:
                     for n in names})
             if self.stale_input_diagnostic is None:self.stale_input_diagnostic=diagnostic
             stale=diagnostic['stale_sources']
-            may_wait=(self.state=='WAIT_GOAL' and set(stale)<= {'nav','perception'}
-                and active and r3.get('phase')=='RL_ZERO' and not self.pending
-                and owner.get('feedback_ready') and owner.get('target_valid')
-                and nav.get('session_id')==self.nav_session
-                and r3.get('controller_session_id')==self.r3_session
-                and owner.get('owner_session_id')==self.owner_session)
-            if may_wait:
-                if self.wait_goal_stale_since is None:
-                    self.wait_goal_stale_since=now
-                    self.effects.append(('cancel_navigation',{'reason':'WAIT_GOAL_STALE_INPUT'}))
-                if now-self.wait_goal_stale_since<self.cfg['execution'].get('observation_recovery_timeout_s',30.):
-                    self.reason='WAITING_FOR_FRESH_INPUT:'+','.join(stale)
-                    return self.drain()
             self.cancel(now, 'STALE_INPUT', True)
         elif not active:
             self.cancel(now, 'R3_AUTHORITY_REVOKED')
@@ -324,21 +415,8 @@ class Mission:
             self.cancel(now, 'MISSION_TIMEOUT', True)
         elif self.state!='WAIT_GOAL' and (nav['goal']['revision'] != self.revision or nav['goal'].get('stamp_ns')!=self.goal_stamp):
             self.cancel(now, 'GOAL_REPLACED')
-        elif self.wait_goal_stale_since is not None:
-            if now-self.wait_goal_stale_since>=self.cfg['execution'].get('observation_recovery_timeout_s',30.):
-                self.cancel(now,'WAIT_GOAL_INPUT_TIMEOUT',True)
-            else:
-                self.wait_goal_stale_since=None
-                self.last_revision=nav['goal']['revision'];self.armed_ros_ns=ros_now_ns
-                self.reason='RECOVERED_NEW_GOAL_REQUIRED'
         elif self.wait_for_observation(now):
             pass
-        elif self.state == 'WAIT_GOAL':
-            goal = nav['goal']
-            if goal['revision'] > self.last_revision and goal.get('stamp_ns', 0) > self.armed_ros_ns and goal['state'] in ('REQUESTED','ACTIVE'):
-                self.started=now
-                self.revision, self.goal_stamp = goal['revision'], goal['stamp_ns']
-                self.transition('NAVIGATING', now)
         elif self.state == 'NAVIGATING':
             goal_state = nav['goal']['state']
             if goal_state == 'SUCCEEDED':
@@ -370,37 +448,27 @@ class Mission:
                 if not zero or r3['observed_ns']/1e9<self.goal_reached:
                     # NAV status and R3 status are independent. Lock the base,
                     # wait for a post-goal zero acknowledgement, then start
-                    # the existing continuous stability window.
-                    self.stable_since,self.window_pose=None,None
+                    # the fixed five-second delay. Sway does not restart it.
+                    self.stable_since=None
                     self.stability_reason='WAITING_FOR_RL_ZERO'
+                    if now-self.entered>self.cfg['settle']['timeout_s']:
+                        self.cancel(now,'BASE_ZERO_ACK_TIMEOUT',True)
                 elif len(pose) != 7 or not all(math.isfinite(v) for v in pose):
                     self.cancel(now, 'BASE_POSE_INVALID', True)
                 elif base.get('tilt_rad', math.inf) > self.cfg['settle']['max_tilt_rad']:
-                    self.stable_since,self.window_pose=None,None
-                    self.stability_reason='ABSOLUTE_TILT';self.stability_restarts+=1
+                    self.cancel(now,'BASE_TILT_UNSAFE',True)
                 elif min(scene['feedback_ns'],scene['legs_ns'],scene['body']['mono_ns'])/1e9<self.goal_reached:
                     self.stability_reason='WAITING_FOR_POST_GOAL_SNAPSHOT'
-                elif self.window_pose is None:
-                    self.window_pose,self.stable_since=list(pose),now
-                    self.stability_reason='STABLE_WINDOW'
+                elif self.stable_since is not None and now-self.stable_since>=self.cfg['settle']['min_stable_s']:
+                    self.scene_anchor=copy.deepcopy(scene)
+                    self.scene_anchor.update(captured_ns=int(now*1e9),goal_revision=self.revision,mission_session_id=self.session)
+                    self.base_anchor=matrix_pose(scene['body']['map_body'])
+                    self.leg_anchor=list(scene['legs'])
+                    self.stability_reason='FIXED_WAIT_COMPLETE'
+                    self.transition('ARM_SCAN_POSE',now)
+                    self.request('scan_pose',now)
                 else:
-                    pe, re = pose_distance(self.window_pose, pose)
-                    if pe > self.cfg['settle']['max_translation_m']+1e-12 or re > self.cfg['settle']['max_rotation_rad']+1e-12:
-                        self.window_pose,self.stable_since=list(pose),now
-                        self.stability_reason='TRANSLATION' if pe>self.cfg['settle']['max_translation_m']+1e-12 else 'ROTATION'
-                        self.stability_restarts+=1
-                    elif (now-self.stable_since>=self.cfg['settle']['min_stable_s']
-                          and now-self.goal_reached>=self.cfg['settle']['min_stable_s']):
-                        # All anchors come from this single coherent epoch.
-                        self.scene_anchor=copy.deepcopy(scene)
-                        self.scene_anchor.update(captured_ns=int(now*1e9),goal_revision=self.revision,mission_session_id=self.session)
-                        self.base_anchor=matrix_pose(scene['body']['map_body'])
-                        self.leg_anchor=list(scene['legs'])
-                        self.stability_reason='SCENE_ANCHOR_CAPTURED'
-                        self.transition('ARM_SCAN_POSE', now)
-                        self.request('scan_pose', now)
-                if self.state == 'BASE_SETTLE' and now-self.entered > self.cfg['settle']['timeout_s']:
-                    self.cancel(now, 'BASE_SETTLE_TIMEOUT', True)
+                    self.stability_reason='FIXED_WAIT_AFTER_RL_ZERO'
             else:
                 # The five-second stability window ends before arm motion.
                 # Ordinary measured base/leg changes do not revoke a segment.
@@ -417,6 +485,11 @@ class Mission:
                     p = self.pending
                     if owner.get('mission_id') == p['id']:
                         if owner.get('mission_state') == 'SUCCEEDED':
+                            if p['operation'] in ('refine','pregrasp','approach'):
+                                approved=copy.deepcopy(p['trajectory'])
+                                approved['id']=p['id']
+                                approved.setdefault('scene_snapshot',p['scene'])
+                                self.attempt_segments.append(approved)
                             self.pending = None
                             self.done_motion(p['operation'], now)
                         elif owner.get('mission_state') in ('FAILED','CANCELLED'):
@@ -438,7 +511,7 @@ class Mission:
         return [(kind,data) for kind,data in effects if self.state not in TERMINAL or kind=='cancel']
 
     def status(self, now):
-        return dict(wait_goal_stale_since=self.wait_goal_stale_since,stale_input_diagnostic=self.stale_input_diagnostic,observation_recovery=dict(reason=self.recovery_reason,since=self.recovery_since,retry_operation=self.retry_operation,retries=self.observation_retries),test_mode='ready_observe' if self.ready_observe else 'full',last_observation=self.last_observation,last_compute_metrics=self.last_compute_metrics,grasp_verification='stub',object_grasped=None,observed_ns=int(now*1e9), session_id=self.session, state=self.state,
+        return dict(availability=self.availability,input_rejections=self.input_rejections,wait_goal_stale_since=self.wait_goal_stale_since,stale_input_diagnostic=self.stale_input_diagnostic,observation_recovery=dict(reason=self.recovery_reason,since=self.recovery_since,retry_operation=self.retry_operation,retries=self.observation_retries),test_mode='ready_observe' if self.ready_observe else 'full',last_observation=self.last_observation,last_compute_metrics=self.last_compute_metrics,grasp_verification='stub',object_grasped=None,observed_ns=int(now*1e9), session_id=self.session, state=self.state,
                     reason=self.reason, navigation_session_id=self.nav_session,
                     goal_revision=self.revision, goal_stamp_ns=self.goal_stamp,
                     elapsed_s=max(0.,now-self.started) if self.started else 0.,
@@ -447,4 +520,5 @@ class Mission:
                     stable_since=self.stable_since,stable_duration_s=max(0.,now-self.stable_since) if self.stable_since is not None else 0.,
                     goal_reached_duration_s=max(0.,now-self.goal_reached) if self.goal_reached is not None else 0.,
                     stability_reason=self.stability_reason,stability_restarts=self.stability_restarts,
-                    scene_anchor=self.scene_anchor)
+                    scene_anchor=self.scene_anchor,object_anchor=self.object_anchor,q_search=self.q_search,
+                    grasp_attempt=self.grasp_attempt,last_grasp_error=self.last_grasp_error)

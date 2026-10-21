@@ -49,6 +49,7 @@ struct R3Inputs {
  bool arm_static_hold=false,arm_home_ready=false;
  bool arm_control_ready=false,navigation_ready=false,perception_ready=false,arm_emergency_validated=false;
  bool own_output_healthy=false;
+ bool arm_fault_confirmed=false;
 };
 struct R3Reply { bool success=false;std::string message; };
 enum class LowCmdWaitResult { WAITING, CLEAR, TIMEOUT };
@@ -140,6 +141,12 @@ class R3Supervisor {
  const R3Profile& profile() const {return profile_;}
  std::vector<std::string> Blockers(SafetyTime now,bool physical=true) const;
  const std::string& last_fault() const {return last_fault_;}
+ const std::vector<std::string>& fault_blockers() const {return fault_blockers_;}
+ SystemPhase fault_phase() const {return fault_phase_;}
+ const R3Inputs& fault_inputs() const {return fault_inputs_;}
+ SafetyTime fault_time() const {return fault_time_;}
+ std::vector<std::string> PhaseWarnings(SafetyTime now) const;
+ bool PdLiftActive() const {return output_enabled_&&(phase_==SystemPhase::STAND_TRANSITION||phase_==SystemPhase::HOLDING)&&system_state_==SystemState::TAKEOVER;}
  size_t deadline_misses() const {return deadline_misses_;}
  private:
  R3Reply VelocityCommand(const std::array<double,3>& command,SafetyTime now,bool navigation);
@@ -152,6 +159,7 @@ class R3Supervisor {
  void InvalidatePolicyWork();
  bool CurrentPolicy(const PolicyTicket& ticket) const;
  bool IsActive() const;
+ bool ArmReadyForRl(SafetyTime now) const;
  R3Profile profile_;R3Inputs inputs_;
  const OperationProfile operation_;
  const OperationCapabilities capabilities_;
@@ -185,6 +193,10 @@ class R3Supervisor {
  // Separate transition deadline; never refresh the timestamp of an old action.
  std::optional<SafetyTime> zero_policy_handoff_started_;
  std::string last_fault_;
+ std::vector<std::string> fault_blockers_;
+ SystemPhase fault_phase_=SystemPhase::DISARMED;
+ R3Inputs fault_inputs_{};
+ SafetyTime fault_time_{};
 };
 enum class R3RemoteEvent { NONE,TAKEOVER,CONTROLLED_ABORT,EMERGENCY };
 class R3RemoteCommands {

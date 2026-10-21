@@ -54,13 +54,18 @@ class Fixture:
         if kind=='compute':self.m.result(self.compute(data),self.now)
         elif kind=='trajectory':
             self.commands+=1;self.owner['q']=data['points'][-1].copy()
-            if data['kind']=='close':self.owner.update(q=self.owner['q'][:6]+[.4],gripper_command_active=True,gripper_hold_target=.4)
+            # Synthetic owner outcome only; no physical torque qualification.
+            if data['kind']=='close':self.owner.update(q=self.owner['q'][:6]+[.4],gripper_command_active=True,gripper_hold_target=.4,grasp_assessment='GRASP_PRESUMED_SUCCESS')
             self.owner.update(mission_id=data['id'],mission_state='SUCCEEDED',arm_home_ready=all(abs(x)<1e-6 for x in self.owner['q'][:6]))
         elif kind=='cancel':self.owner['mission_state']='CANCELLED'
     def compute(self,data):
         out={k:data[k] for k in ('id','session_id','navigation_session_id','owner_session_id','goal_revision')}
         out.update(ok=True,observed_ns=int(self.now*1e9))
         op=data['operation']
+        if op=='reverse_search':
+            out['trajectory']=copy.deepcopy(data['reverse_segment'])
+            out['trajectory']['points']=out['trajectory']['points'][::-1]
+            return out
         if op=='detect':out['found']=self.branch!='not_found'
         elif op=='grasp_plan':
             if self.branch=='ik_fail':out.update(ok=False,reason='IK_FAIL')
@@ -84,7 +89,7 @@ class Fixture:
         self.nav['goal']['state']='SUCCEEDED';self.tick()
     def run(self):
         self.start()
-        for _ in range(1000):
+        for _ in range(2000):
             self.tick()
             if self.m.state in TERMINAL:return self.m.state
         raise AssertionError(self.m.status(self.now))
@@ -197,7 +202,7 @@ class Integration(unittest.TestCase):
         f=Fixture();f.tick();f.feed()
         f.m.received['owner']=f.now-.31
         f.m.step(f.now,int(f.now*1e9))
-        self.assertEqual(f.m.reason,'STALE_INPUT')
+        self.assertEqual(f.m.reason,'STALE_INPUT:owner')
         d=copy.deepcopy(f.m.stale_input_diagnostic)
         self.assertEqual(d['stale_sources'],['owner'])
         self.assertEqual(d['state_before'],'WAIT_GOAL')
@@ -221,9 +226,9 @@ class Integration(unittest.TestCase):
         self.assertEqual(r['callbacks'],2) # frozen report is not a live view
 
     def test_wait_goal_nav_stale_recovers_requires_new_goal(self):
-        f=Fixture();f.tick();f.feed();f.m.received['nav']=f.now-.301
+        f=Fixture();f.tick();f.feed();f.m.received['nav']=f.now-.601
         effects=f.m.step(f.now,int(f.now*1e9))
-        self.assertEqual(f.m.state,'WAIT_GOAL');self.assertEqual([k for k,d in effects],['cancel_navigation'])
+        self.assertEqual(f.m.state,'WAIT_GOAL');self.assertEqual([k for k,d in effects],['invalidate_navigation_goal'])
         self.assertEqual(f.m.stale_input_diagnostic['stale_sources'],['nav'])
         f.nav['goal']=dict(revision=1,stamp_ns=int(f.now*1e9),state='ACTIVE')
         f.tick(False);self.assertEqual(f.m.reason,'RECOVERED_NEW_GOAL_REQUIRED')
@@ -231,12 +236,12 @@ class Integration(unittest.TestCase):
         f.nav['goal']=dict(revision=2,stamp_ns=int((f.now+.01)*1e9),state='REQUESTED')
         f.tick(False);self.assertEqual(f.m.state,'NAVIGATING')
 
-    def test_wait_goal_timeout_does_not_reset_and_owner_loss_still_blocks(self):
-        f=Fixture();f.tick();f.feed();f.m.received['nav']=f.now-.3
+    def test_wait_goal_soft_loss_does_not_latch_but_owner_loss_still_blocks(self):
+        f=Fixture();f.tick();f.feed();f.m.received['nav']=f.now-.601
         f.m.step(f.now,int(f.now*1e9));since=f.m.wait_goal_stale_since
         f.now+=31;f.feed();f.m.step(f.now,int(f.now*1e9))
-        self.assertEqual(f.m.reason,'WAIT_GOAL_INPUT_TIMEOUT')
-        self.assertEqual(f.m.wait_goal_stale_since,since)
+        self.assertEqual(f.m.reason,'RECOVERED_NEW_GOAL_REQUIRED')
+        self.assertEqual(f.m.state,'WAIT_GOAL');self.assertIsNone(f.m.wait_goal_stale_since)
         f=Fixture();f.tick();f.feed();f.m.received['owner']=f.now-.3
         f.m.step(f.now,int(f.now*1e9));self.assertEqual(f.m.state,'BLOCKED')
 
@@ -258,7 +263,7 @@ class Integration(unittest.TestCase):
             with self.subTest(torque=torque):
                 f=Fixture();f.owner['torque']=[0.]*6+[torque]
                 f.owner['gripper_observation']={'state':'UNKNOWN','error':'disk full'}
-                self.assertEqual(f.run(),'MISSION_COMPLETED_UNVERIFIED')
+                self.assertEqual(f.run(),'GRASP_PRESUMED_SUCCESS')
                 self.assertTrue(f.owner['arm_home_ready'])
 
     def test_detection_weak_frames_are_not_mission_faults(self):
@@ -360,10 +365,10 @@ class Integration(unittest.TestCase):
         f=Fixture('not_found');self.assertEqual(f.run(),'OBJECT_NOT_FOUND')
         operations=[data for kind,data in f.effects if kind=='compute']
         scans=[d for d in operations if d['operation'] in ('scan_pose','scan_step','scan_return','home')]
-        self.assertEqual([d['operation'] for d in scans],['scan_pose']+['scan_step']*11+['scan_return','home'])
-        self.assertEqual([d['scan_index'] for d in scans[1:12]],list(range(1,12)))
+        self.assertEqual([d['operation'] for d in scans],['scan_pose']+['scan_step']*15+['scan_return','home'])
+        self.assertEqual([d['scan_index'] for d in scans[1:16]],list(range(1,16)))
         observations=[d['owner']['q'][0] for d in operations if d['operation']=='detect']
-        np.testing.assert_allclose(observations,[0.,-2.5,-2.,-1.5,-1.,-.5,0.,.5,1.,1.5,2.,2.5])
+        np.testing.assert_allclose(observations,[0.,-.5,-1.,-1.5,-2.,-2.5,-2.,-1.5,-1.,-.5,0.,.5,1.,1.5,2.,2.5])
         self.assertEqual(scans[-1]['owner']['q'][0],0.)
         f=Fixture();f.start()
         for _ in range(1000):
@@ -385,13 +390,13 @@ class Integration(unittest.TestCase):
         self.assertEqual(angles[0],0.)
         self.assertEqual(search['settle_s'],1.)
         self.assertEqual(search['mode'],'stop_and_observe')
-        np.testing.assert_allclose(angles[1:],np.linspace(-2.5,2.5,11),atol=1e-12)
-        self.assertEqual(search['speed_rad_s'],.1)
+        np.testing.assert_allclose(angles,[0.,-.5,-1.,-1.5,-2.,-2.5,-2.,-1.5,-1.,-.5,0.,.5,1.,1.5,2.,2.5],atol=1e-12)
+        self.assertEqual(search['speed_rad_s'],.2)
         # Exercise the unchanged real interpolation, including its 80% reserve.
         points,duration=joint_motion_samples([angles[1]],[angles[2]],.01,.01,[search['speed_rad_s']])
         q=np.asarray(points)[:,0]
         self.assertLessEqual(np.max(np.abs(np.diff(q)))/.01,search['speed_rad_s'])
-        self.assertTrue(np.all(np.diff(q)>=0));self.assertAlmostEqual(q[-1],angles[2])
+        self.assertTrue(np.all(np.diff(q)<=0));self.assertAlmostEqual(q[-1],angles[2])
         self.assertGreater(search['timeout_s'],duration*(len(angles)-1)+search['settle_s']*len(angles))
         _,entry_duration=joint_motion_samples([0.],[angles[1]],.01,.01,[search['speed_rad_s']])
         self.assertLessEqual(entry_duration,CFG['execution']['max_plan_duration_s'])
@@ -404,7 +409,7 @@ class Integration(unittest.TestCase):
                 with self.assertRaisesRegex(ValueError,reason):load(path,ROOT)
             invalid=copy.deepcopy(raw);invalid['search']['max_attempts']-=1;path.write_text(yaml.safe_dump({'go2_mission':invalid}))
             with self.assertRaisesRegex(ValueError,'limits/step/attempts disagree'):load(path,ROOT)
-            invalid=copy.deepcopy(raw);invalid['search'].update(joint1_min_rad=-3.,joint1_max_rad=3.,max_attempts=14)
+            invalid=copy.deepcopy(raw);invalid['search'].update(joint1_min_rad=-3.,joint1_max_rad=3.,max_attempts=19)
             path.write_text(yaml.safe_dump({'go2_mission':invalid}))
             with self.assertRaisesRegex(ValueError,'exceeds joint1 limits'):load(path,ROOT)
 
@@ -443,7 +448,7 @@ class Integration(unittest.TestCase):
         # Missing zero acknowledgement cannot wait forever or start scanning.
         f=Fixture();f.start();f.r3.update(phase='RL_ACTIVE',motion_command=[.1,0,0])
         self.at(f,f.m.goal_reached+f.m.cfg['settle']['timeout_s']+.01)
-        self.assertEqual(f.m.state,'BLOCKED');self.assertEqual(f.m.reason,'BASE_SETTLE_TIMEOUT')
+        self.assertEqual(f.m.state,'BLOCKED');self.assertEqual(f.m.reason,'BASE_ZERO_ACK_TIMEOUT')
 
     def test_settle_5s_and_operator_boundaries(self):
         f=Fixture();f.start();reached=f.m.goal_reached;f.tick(False);since=f.m.stable_since
@@ -455,7 +460,7 @@ class Integration(unittest.TestCase):
         self.at(f,f.now+.02) # duplicate success must not recapture or restart
         self.assertEqual(f.m.scene_anchor,captured)
         self.assertEqual(sum(e['state']=='ARM_SCAN_POSE' for e in f.m.events),1)
-        for metres,reset in ((.019,False),(.020,False),(.021,True)):
+        for metres,reset in ((.019,False),(.020,False),(.021,False)):
             f=Fixture();f.start();f.tick(False);since=f.m.stable_since
             f.base['pose'][2]=metres
             self.at(f,since+3.)
@@ -463,7 +468,7 @@ class Integration(unittest.TestCase):
             self.assertEqual(f.m.state,'BASE_SETTLE')
         initial=Rotation.from_euler('xyz',[.02,-.03,.1])
         axis=np.array([1.,2.,3.]);axis/=np.linalg.norm(axis)
-        for degrees,reset in ((4.9,False),(5.,False),(5.1,True)):
+        for degrees,reset in ((4.9,False),(5.,False),(5.1,False)):
             f=Fixture();f.base['pose'][3:]=initial.as_quat().tolist()
             f.start();f.tick(False);since=f.m.stable_since
             f.base['pose'][3:]=(initial*Rotation.from_rotvec(axis*np.deg2rad(degrees))).as_quat().tolist()
@@ -475,7 +480,7 @@ class Integration(unittest.TestCase):
         self.at(f,restart+5.+1e-12);self.assertEqual(f.m.state,'ARM_SCAN_POSE')
         f=Fixture();f.start();f.base['tilt_rad']=.3
         self.at(f,f.m.goal_reached+f.m.cfg['settle']['timeout_s']+.01)
-        self.assertEqual(f.m.reason,'BASE_SETTLE_TIMEOUT')
+        self.assertEqual(f.m.reason,'BASE_TILT_UNSAFE')
 
     def test_coherent_anchor_1mm_and_priority(self):
         f=Fixture();f.start();f.tick(False);since=f.m.stable_since
@@ -692,16 +697,15 @@ class Integration(unittest.TestCase):
         legs=copy.deepcopy(sample);legs['legs'][0]+=.00001;coherent(legs)
         result=copy.deepcopy(original)
         planner.validate_result(result,lambda *args:legs)
-        self.assertEqual(len(geometry),1)
-        self.assertEqual(geometry[-1]['legs'],legs['legs'])
+        self.assertEqual(geometry,[]) # legs stay frozen at original approval
         self.assertEqual(result['trajectory']['scene_snapshot']['legs'],tuple(legs['legs']))
-        planner.collision.check=lambda *args:False
-        with self.assertRaisesRegex(ValueError,'COLLISION:arm:leg'):
-            planner.validate_result(copy.deepcopy(original),lambda *args:legs)
+        self.assertEqual(result['trajectory']['approval_collision_context']['legs'],sample['legs'])
+        planner.collision.check=lambda *args:(_ for _ in ()).throw(AssertionError('unexpected geometry pass'))
+        planner.validate_result(copy.deepcopy(original),lambda *args:legs)
         planner.collision.check=lambda points,scene,payload:geometry.append(copy.deepcopy(scene)) or True
         planner.cfg['collision']['environment_enabled']=True
         planner.validate_result(copy.deepcopy(original),lambda *args:moved)
-        self.assertEqual(len(geometry),2) # enabled world geometry still rechecked
+        self.assertEqual(len(geometry),1) # enabled world geometry still rechecked
         planner.cfg['collision']['environment_enabled']=False
         arm=copy.deepcopy(sample);arm['q'][0]=arm['q7'][0]=.001;coherent(arm)
         planner.validate_result(copy.deepcopy(original),lambda *args:arm)
@@ -720,7 +724,7 @@ class Integration(unittest.TestCase):
         self.assertEqual(len(rebuilds),1) # no unbounded chase/replan loop
 
     def test_three_branches(self):
-        for branch,end in [('success','MISSION_COMPLETED_UNVERIFIED'),('not_found','OBJECT_NOT_FOUND'),('ik_fail','GRASP_UNREACHABLE')]:
+        for branch,end in [('success','GRASP_PRESUMED_SUCCESS'),('not_found','OBJECT_NOT_FOUND'),('ik_fail','TARGET_NOT_GRASPED')]:
             f=Fixture(branch);self.assertEqual(f.run(),end)
             self.assertTrue(f.owner['arm_home_ready'])
             self.assertFalse(f.owner['gripper_hold_confirmed']);self.assertIsNone(f.m.status(f.now)['object_grasped'])
@@ -739,7 +743,7 @@ class Integration(unittest.TestCase):
         for _ in range(100):
             f.tick()
             if f.m.state in TERMINAL:break
-        self.assertEqual(f.m.state,'MISSION_COMPLETED_UNVERIFIED')
+        self.assertEqual(f.m.state,'GRASP_PRESUMED_SUCCESS')
         self.assertTrue(f.owner['arm_home_ready']);self.assertIsNone(f.m.status(f.now)['object_grasped'])
 
     def test_trajectory_preparation_is_not_heartbeat(self):

@@ -6,11 +6,13 @@ serial. All motor execution belongs to rars_r3_owner.
 from pathlib import Path
 from types import SimpleNamespace
 import sys
+import copy
 import time
 import numpy as np
 from .transforms import EyeInHand, rigid, fixed_joint
 from .collision import Collision
-from .scene import FrameChain, WorldGraspAnchor
+from .scene import FrameChain, WorldGraspAnchor, WorldObjectAnchor
+from .approved_motion import reverse_segment
 from .scene_wait import select_camera_frame
 from .config import environment_checks_enabled, search_angles
 
@@ -362,10 +364,11 @@ class Planning:
             velocity_limits=self.grasp['robot']['rars01']['position_velocity_limits_rad_s'],
             navigation_session_id=sample['body'].navigation_session_id,tf_revision=sample['body'].tf_revision)
 
-    def checked(self, points, sample, payload, kind='move'):
+    def checked(self, points, sample, payload, kind='move', *, reference_ns=None):
         payload=bool(payload and self.cfg['collision'].get('payload_enabled',True))
         scene=self.collision_scene(sample)
-        if not self.collision.check(points,scene,payload):
+        options={} if reference_ns is None else dict(reference_ns=reference_ns)
+        if not self.collision.check(points,scene,payload,**options):
             reason=self.collision.last_reason
             if reason.startswith(('COLLISION:', 'SOLID_CONTAINMENT_COLLISION', 'ENVIRONMENT_')):
                 raise CandidatePathRejected(str(self.collision.last_failure))
@@ -388,22 +391,23 @@ class Planning:
         if start_error>self.cfg['execution']['start_tolerance_rad']:
             # Match the owner's existing start tolerance. Ordinary sensor
             # variations do not cause an equality/replan loop.
-            if request is not None:
+            if request is not None and not trajectory.get('reused_approval'):
                 updated=self.execute(request,context)
                 self.validate_result(updated,context)
                 result.clear();result.update(updated)
                 return
             raise ValueError('TRAJECTORY_START_CHANGED_REPLAN_REQUIRED')
         self.collision.validated_scene(scene,trajectory['payload_checked'])
-        # Changed legs require actual geometry, never an "unchanged state"
-        # assertion. A common rigid body transform leaves robot-only distances
-        # invariant; world obstacles, if enabled, need the new placement too.
-        geometry_changed=(not np.array_equal(old['legs'],scene['legs'])
-            or (environment_checks_enabled(self.cfg['collision'])
-                and not np.array_equal(old['map_body'],scene['map_body'])))
-        if geometry_changed:
+        # The attempt's collision approval uses frozen leg geometry. Ordinary
+        # RL_ZERO leg feedback changes are not a reason to run geometry again.
+        # A moved external scene still needs checking if that scope is enabled.
+        if (environment_checks_enabled(self.cfg['collision'])
+                and not np.array_equal(old['map_body'],scene['map_body'])):
+            if trajectory.get('reused_approval'):raise ValueError('APPROVED_WORLD_GEOMETRY_CHANGED')
             if not self.collision.check(trajectory['points'],scene,trajectory['payload_checked']):
                 raise ValueError(str(self.collision.last_failure))
+        trajectory.setdefault('approval_collision_context',copy.deepcopy(old))
+        trajectory.setdefault('approval_scene_snapshot',copy.deepcopy(trajectory.get('scene_snapshot')))
         trajectory['collision_context']=scene
         trajectory['scene_snapshot']=fresh['scene_snapshot']
 
@@ -422,7 +426,13 @@ class Planning:
             start[6]=float(owner['gripper_hold_target'])
         legs=sample['legs'];self.joints=start[:6].copy()
         motion=self.grasp['robot']['motion'];target=None;grip=None
-        if op=='detect':return dict(found=self.detect(context,self.cfg['search']['observations']) is not None)
+        if op=='detect':
+            detection=self.detect(context,self.cfg['search']['observations'])
+            if detection is None:return dict(found=False)
+            _,_,det,at,point=detection
+            anchor=WorldObjectAnchor(np.asarray(point).tolist(),at['capture_mono_ns'],at['capture_ros_ns'],
+                at['body'].navigation_session_id,at['body'].tf_revision,request['goal_revision'],request['owner_session_id'],float(det.conf))
+            return dict(found=True,object_anchor=anchor.data(),q_search=list(at.get('q',sample['q'])))
         if op=='scan_pose':
             ready=self.grasp['robot']['ready_pose'];pose=[ready[k] for k in ('x','y','z','roll','pitch')]+[ready.get('yaw',0.)]
             ik=self.ik.solve(*pose,reference_joints=start[:6])
@@ -458,7 +468,11 @@ class Planning:
                 return dict(observation=dict(found=True,confidence=float(d.conf),graspnet_called=True,grasp_count=len(result['grasps']),capture_mono_ns=at['capture_mono_ns'],capture_ros_ns=at['capture_ros_ns'],frame_age_s=at['frame_age_s'],scene_snapshot=at['scene_snapshot']))
             # Inference may take seconds; rebase the RGB-D anchored transform at
             # fresh odom/feedback rather than asking for stale 'latest' TF.
-            current=context(None,None)
+            current=copy.deepcopy(context(None,None))
+            planning_reference_ns=time.monotonic_ns()
+            self.collision.validated_scene(self.collision_scene(current),False,reference_ns=planning_reference_ns)
+            if current['owner_session_id']!=request['owner_session_id']:
+                raise ValueError('PLANNING_SESSION_CHANGED')
             if current['body'].tf_revision!=at['body'].tf_revision or current['body'].navigation_session_id!=at['body'].navigation_session_id:
                 raise ValueError('WORLD_ANCHOR_EPOCH_CHANGED')
             start=np.asarray(current['q7'],dtype=float);self.joints=start[:6].copy()
@@ -474,23 +488,26 @@ class Planning:
                     points=geometry.jaw_collision_points(width)
                     return float((pose6d_to_mat4(*pose)@np.column_stack((points,np.ones(len(points)))).T)[2].min())
             g=self.grasp['grasp_pipeline']['grasp']
-            rejected_paths=[]
+            rejected_paths=[];approved_candidates={}
             def check_candidate_path(points,has_payload,kind='move'):
-                # Each expensive pass starts from a fresh coherent scene. Do
-                # not reuse a timestamp captured before all candidate passes.
-                fresh=context(None,None)
-                return self.checked(points,fresh,has_payload,kind)
+                # Freeze one coherent measured scene for the whole attempt.
+                # validate_result separately checks live admission after planning.
+                return self.checked(points,current,has_payload,kind,reference_ns=planning_reference_ns)
             def validate(candidate):
                 try:
-                    for waypoints,duration,has_payload in [([candidate.pregrasp_joints],motion['pregrasp_duration_s'],False),(candidate.approach_joint_waypoints,motion['grasp_duration_s'],False),(candidate.retreat_joint_waypoints,motion['retreat_duration_s'],True)]:
-                        begin=start.copy() if not has_payload else np.r_[candidate.grasp_joints,start[6]]
-                        if waypoints is candidate.approach_joint_waypoints:begin=np.r_[candidate.pregrasp_joints,start[6]]
-                        check_candidate_path(self.samples(begin,waypoints,duration),has_payload)
+                    approved={}
+                    phases=[('pregrasp',[candidate.pregrasp_joints],motion['pregrasp_duration_s'],False),
+                            ('approach',candidate.approach_joint_waypoints,motion['grasp_duration_s'],False),
+                            ('retreat',candidate.retreat_joint_waypoints,motion['retreat_duration_s'],True)]
+                    for name,waypoints,duration,has_payload in phases:
+                        begin=start.copy() if name=='pregrasp' else np.r_[candidate.pregrasp_joints if name=='approach' else candidate.grasp_joints,start[6]]
+                        approved[name]=check_candidate_path(self.samples(begin,waypoints,duration),has_payload)
                     closure_start=np.r_[candidate.grasp_joints,start[6]]
                     closed=self.grasp['robot']['gripper']['rars01']['closed_position_rad']
-                    check_candidate_path(self.samples(closure_start,[candidate.grasp_joints],motion['grasp_duration_s'],closed),False)
-                    # When enabled, carried-object geometry includes the HOME path.
+                    approved['close']=check_candidate_path(self.samples(closure_start,[candidate.grasp_joints],motion['grasp_duration_s'],closed),False,'close')
+                    approved['close']['points']=[closure_start.tolist(),closure_start.tolist()]
                     check_candidate_path(self.samples(np.r_[candidate.retreat_joints,start[6]],[np.zeros(6)],motion['retreat_duration_s']),True,'home')
+                    approved_candidates[id(candidate)]=approved
                     return True
                 except CandidatePathRejected as error:
                     rejected_paths.append(str(error))
@@ -506,7 +523,31 @@ class Planning:
             # the scene used for final freshness/epoch validation after selection.
             final_scene=context(None,None)
             world.validate(final_scene['body'],time.monotonic_ns(),self.cfg['execution']['mission_timeout_s'],request['goal_revision'],self.cfg['limits']['sensor_age_s'])
-            return dict(grasp_plan=dict(pregrasp=candidate.pregrasp_joints.tolist(),approach=[q.tolist() for q in candidate.approach_joint_waypoints],retreat=[q.tolist() for q in candidate.retreat_joint_waypoints],cost=candidate.cost,object_map=anchor.tolist(),camera_to_arm=cam_to_arm.tolist(),poses_map=poses_map,world_grasp_anchor=world.data(),pose_kind='End_link_TCP'))
+            object_anchor=WorldObjectAnchor(np.asarray(anchor).tolist(),at['capture_mono_ns'],at['capture_ros_ns'],
+                at['body'].navigation_session_id,at['body'].tf_revision,request['goal_revision'],request['owner_session_id'],float(d.conf))
+            return dict(object_anchor=object_anchor.data(),grasp_plan=dict(approved_segments=approved_candidates[id(candidate)],planning_scene_snapshot=copy.deepcopy(current['scene_snapshot']),pregrasp=candidate.pregrasp_joints.tolist(),approach=[q.tolist() for q in candidate.approach_joint_waypoints],retreat=[q.tolist() for q in candidate.retreat_joint_waypoints],cost=candidate.cost,object_map=anchor.tolist(),camera_to_arm=cam_to_arm.tolist(),poses_map=poses_map,world_grasp_anchor=world.data(),pose_kind='End_link_TCP'))
+        elif op=='reverse_search':
+            known_empty=(not owner.get('gripper_command_active') or owner.get('object_hold_state')=='EMPTY')
+            trajectory=reverse_segment(request['reverse_segment'],sample,self.cfg,known_empty=known_empty)
+            return dict(trajectory=trajectory)
+        elif op in ('pregrasp','approach','retreat','close') and request.get('grasp_plan',{}).get('approved_segments'):
+            plan=request['grasp_plan']
+            world=WorldGraspAnchor(**plan['world_grasp_anchor'])
+            world.validate(sample['body'],time.monotonic_ns(),self.cfg['execution']['mission_timeout_s'],request['goal_revision'],self.cfg['limits']['sensor_age_s'])
+            trajectory=copy.deepcopy(plan['approved_segments'][op])
+            old=trajectory['collision_context'];fresh=self.collision_scene(sample)
+            if any(old[key]!=fresh[key] for key in ('owner_session_id','scene_revision','navigation_session_id','tf_revision')):
+                raise ValueError('WORLD_ANCHOR_EPOCH_CHANGED')
+            from .scene import distance
+            pe,re=distance(old['map_body'],fresh['map_body'])
+            if pe>self.cfg['frames']['continuity_translation_m'] or re>self.cfg['frames']['continuity_rotation_rad']:
+                raise ValueError('APPROVED_BODY_DISCONTINUITY')
+            # Never change a checked path to chase the current start. This also
+            # refuses a changed gripper geometry until separately qualified.
+            if np.max(np.abs(start-np.asarray(trajectory['points'][0])))>self.cfg['execution']['start_tolerance_rad']:
+                raise ValueError('TRAJECTORY_START_CHANGED_REPLAN_REQUIRED')
+            trajectory['reused_approval']=True
+            return dict(trajectory=trajectory)
         elif op=='home':target=np.zeros(6)
         elif op=='close':
             # Check the entire jaw sweep; contact changes command mode only in
@@ -539,12 +580,13 @@ class Planning:
             else:raise ValueError('UNKNOWN_OPERATION')
             return dict(trajectory=self.checked(self.samples(start,targets,duration),sample,payload))
         try:
-            trajectory=self.checked(self.samples(start,[target],self.grasp['robot']['ready_pose']['duration'],grip,search=op in ('scan_pose','scan_step','scan_return')),sample,payload,'home' if op=='home' else 'move')
+            trajectory=self.checked(self.samples(start,[target],self.grasp['robot']['ready_pose']['duration'],grip,search=op in ('scan_step','scan_return')),sample,payload,'home' if op=='home' else 'move')
         except CandidatePathRejected:
             if op!='refine':raise
             # Do not move along a colliding recenter path. Keep the current
             # collision-checked pose and obtain fresh images for grasp planning.
             trajectory=self.checked(np.vstack([start,start]),sample,payload)
+        if op in ('scan_step','scan_return'):trajectory['preset_operation']=op
         return dict(trajectory=trajectory)
 
     def close(self):

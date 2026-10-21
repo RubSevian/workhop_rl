@@ -10,6 +10,7 @@ struct ParsedArmStatus {
 };
 inline ParsedArmStatus ParseArmStatus(const std::string& text,double home_tolerance,SafetyTime now) {
  ParsedArmStatus result;
+ bool reported_fault=false;
  auto TimeNs=[](int64_t ns){return SafetyTime(std::chrono::nanoseconds(ns));};
  auto Age=[](SafetyTime a,SafetyTime b){return std::chrono::duration<double>(a-b).count();};
  auto Six=[](const YAML::Node& n){
@@ -21,6 +22,7 @@ inline ParsedArmStatus ParseArmStatus(const std::string& text,double home_tolera
  };
  try {
     const auto y=YAML::Load(text);
+    reported_fault=y["owner_state"]&&y["owner_state"].as<std::string>()=="FAULT_LATCHED";
     auto q=Six(y["measured_q"]),dq=Six(y["measured_dq"]);
     auto ids=y["motor_ids"].as<std::vector<int>>();auto valid=y["valid"].as<std::vector<bool>>();
     if(ids.size()!=6||valid.size()!=6)throw std::runtime_error("arm identity length");
@@ -58,6 +60,7 @@ inline ParsedArmStatus ParseArmStatus(const std::string& text,double home_tolera
      result.inputs.arm_home_ready=y["connected"].as<bool>()&&y["enabled_local"].as<bool>()&&
       !y["watchdog_tripped"].as<bool>()&&!y["stm32_watchdog_tripped"].as<bool>();
     }
+    result.inputs.arm_fault_confirmed=y["owner_state"].as<std::string>()=="FAULT_LATCHED";
     const bool owner_healthy=y["connected"].as<bool>()&&y["enabled_local"].as<bool>()&&
      !y["watchdog_tripped"].as<bool>()&&!y["stm32_watchdog_tripped"].as<bool>()&&
      y["owner_state"].as<std::string>()!="FAULT_LATCHED";
@@ -71,7 +74,7 @@ inline ParsedArmStatus ParseArmStatus(const std::string& text,double home_tolera
      result.inputs.ready.arm_target_ready=Age(now,result.inputs.target_stamp)>=0;
      result.inputs.arm_control_ready=owner_healthy&&motors_healthy&&result.inputs.ready.arm_feedback_ready&&result.inputs.ready.arm_target_ready;
     }
- }catch(const std::exception& e){result=ParsedArmStatus{};result.error=e.what();}
+ }catch(const std::exception& e){result=ParsedArmStatus{};result.inputs.arm_fault_confirmed=reported_fault;result.error=e.what();}
  return result;
 }
 // Call only under the controller lock. Parsing, validation and allocations are
@@ -83,6 +86,7 @@ inline void ApplyArmStatus(const ParsedArmStatus& parsed,R3Inputs& inputs,
  inputs.ready.arm_target_ready=p.ready.arm_target_ready;
  inputs.arm_static_hold=p.arm_static_hold;inputs.arm_home_ready=p.arm_home_ready;
  inputs.arm_control_ready=p.arm_control_ready;inputs.arm_emergency_validated=p.arm_emergency_validated;
+ inputs.arm_fault_confirmed=p.arm_fault_confirmed;
  if(!parsed.error.empty())return;
  inputs.arm_stamp=p.arm_stamp;q=parsed.q;dq=parsed.dq;
  if(p.ready.arm_target_ready){inputs.target_stamp=p.target_stamp;target=parsed.target;}

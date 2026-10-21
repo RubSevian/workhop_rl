@@ -128,6 +128,11 @@ class ArmOwner final:public rclcpp::Node {
   const auto mode=y["test_mode"]?y["test_mode"].as<std::string>():"full";
   if(mode!="full"&&mode!="ready_observe")throw std::runtime_error("invalid test_mode");
   ready_observe_=mode=="ready_observe";
+  if(!ready_observe_&&(!y["grasp_verification"]["motor_torque_cap_validated"]||
+      !y["grasp_verification"]["motor_torque_cap_validated"].as<bool>()||
+      !y["grasp_verification"]["motor_torque_cap_evidence"]||
+      y["grasp_verification"]["motor_torque_cap_evidence"].as<std::string>().empty()))
+   throw std::runtime_error("full grasp motor torque cap is not physically qualified");
   const auto grasp=YAML::LoadFile(absolute("sdk_config"));const auto g=grasp["robot"]["gripper"]["rars01"];
   const auto feedback=grasp["robot"]["motion"]["motion_feedback"];mission_feedback_ttl_=feedback["max_feedback_age_s"].as<double>();
   if(y["grasp_verification"]["mode"].as<std::string>()!="stub")throw std::runtime_error("unsupported grasp verification mode");
@@ -146,6 +151,7 @@ class ArmOwner final:public rclcpp::Node {
   if(g["hold_ramp_s"].as<double>()!=0)throw std::runtime_error("unsupported gripper hold ramp; do not silently alter it");
   // Read authoritative URDF joint bounds without copying them to mission YAML.
   std::ifstream f(absolute("arm_urdf"));std::stringstream buffer;buffer<<f.rdbuf();const auto xml=buffer.str();
+  c.search_velocity=std::array<double,6>{};
   for(int j=0;j<6;++j){
    std::smatch joint,limit,lo,hi;
    if(!std::regex_search(xml,joint,std::regex("<joint\\s+name=\"joint"+std::to_string(j+1)+"\"[\\s\\S]*?</joint>")))throw std::runtime_error("URDF joint limit missing");
@@ -153,6 +159,7 @@ class ArmOwner final:public rclcpp::Node {
    const auto text=limit.str();
    if(!std::regex_search(text,lo,std::regex("lower=\"([^\"]+)\""))||!std::regex_search(text,hi,std::regex("upper=\"([^\"]+)\"")))throw std::runtime_error("URDF bounds missing");
    c.lower[j]=std::stod(lo[1]);c.upper[j]=std::stod(hi[1]);c.velocity[j]=std::min(double(sdk_config.position_velocity_limits[j]),y["execution"]["arm_speed_rad_s"].as<double>());
+   (*c.search_velocity)[j]=std::min(double(sdk_config.position_velocity_limits[j]),y["search"]["speed_rad_s"].as<double>());
   }
   mission_=std::make_unique<MissionStream>(c);
   home_->SetMissionProvider([this](ArmTime now,const AutoHomeStatus& status)->std::optional<AutoHomeController::Command>{
@@ -182,7 +189,8 @@ class ArmOwner final:public rclcpp::Node {
     if(!mission_session_.empty()&&mission_session_!=session){mission_->Cancel(home_->status(),"mission_session_changed");retired_session_=mission_session_;}
     mission_session_=session;health_nav_session_=v["navigation_session_id"].as<std::string>();health_ready_=v["ready"].as<bool>();health_goal_revision_=v["goal_revision"].as<uint64_t>();
     const auto phase=v["phase"].as<std::string>();
-    health_manipulating_=phase=="BASE_SETTLE"||phase=="ARM_SCAN_POSE"||phase=="ARM_SEARCH"||phase=="VIEW_REFINEMENT"||phase=="PLAN_GRASP"||phase=="PREGRASP"||phase=="GRASP"||phase=="RETREAT"||phase=="RETURN_HOME";
+    health_phase_=phase;
+    health_manipulating_=phase=="BASE_SETTLE"||phase=="ARM_SCAN_POSE"||phase=="ARM_SEARCH"||phase=="VIEW_REFINEMENT"||phase=="PLAN_GRASP"||phase=="PREGRASP"||phase=="GRASP"||phase=="RETREAT"||phase=="RETURN_HOME"||phase=="RETURN_SEARCH";
    }catch(...){health_ready_=false;}
   });
   plan_sub_=create_subscription<std_msgs::msg::String>("/rars01/mission/trajectory",1,[this](std_msgs::msg::String::SharedPtr msg){
@@ -215,7 +223,10 @@ class ArmOwner final:public rclcpp::Node {
       v["payload_checked"].as<bool>()!=(payload_checks_enabled_&&mission_->holding()))throw std::runtime_error("plan authority/session/collision rejected");
    const auto kind=v["kind"].as<std::string>();
    if(!ReadyObservePlanAllowed(ready_observe_,ready_move_seen_,kind))throw std::runtime_error("ready_observe permits one initial move and HOME only");
-   if(!mission_->Start(v["id"].as<uint64_t>(),v["kind"].as<std::string>(),result.points,now,home_->status()))throw std::runtime_error("trajectory bounds/start/hold rejected");
+   const auto preset=v["preset_operation"]?v["preset_operation"].as<std::string>():std::string{};
+   const bool search=PresetSearchPlanAllowed(preset,health_phase_);
+   if(!preset.empty()&&!search)throw std::runtime_error("preset search operation/phase rejected");
+   if(!mission_->Start(v["id"].as<uint64_t>(),v["kind"].as<std::string>(),result.points,now,home_->status(),search))throw std::runtime_error("trajectory bounds/start/hold rejected");
    if(ready_observe_&&kind=="move")ready_move_seen_=true;
    mission_blocker_.clear();active_home_=is_home;if(is_home)home_requested_=false;
   }catch(const std::exception& e){mission_blocker_=e.what();}
@@ -348,7 +359,7 @@ class ArmOwner final:public rclcpp::Node {
  int64_t plan_cancelled_ns_=0;
  bool ready_observe_=false,ready_move_seen_=false;
  size_t max_plan_samples_=0;
- std::unique_ptr<MissionStream> mission_;std::string owner_session_,mission_session_,retired_session_,nav_session_,health_nav_session_,r3_session_,r3_nav_session_,mission_blocker_;
+ std::unique_ptr<MissionStream> mission_;std::string owner_session_,mission_session_,retired_session_,nav_session_,health_nav_session_,r3_session_,r3_nav_session_,mission_blocker_,health_phase_;
  uint64_t health_goal_revision_=0;bool health_manipulating_=false;
  double mission_feedback_ttl_=.1,mission_ttl_=.25;bool payload_checks_enabled_=true,r3_authority_=false,r3_active_=false,r3_stopping_=false,nav_ready_=false,health_ready_=false,home_requested_=false,active_home_=false;
  ArmTime r3_stamp_{},nav_stamp_{},health_stamp_{};

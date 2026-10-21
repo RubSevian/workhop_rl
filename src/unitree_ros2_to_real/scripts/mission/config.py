@@ -39,7 +39,9 @@ def allowed_zero_contact_pairs(collision):
 
 def search_angles(search):
     count=round((search['joint1_max_rad']-search['joint1_min_rad'])/search['joint1_step_rad'])+1
-    return [search['joint1_start_rad']]+[search['joint1_min_rad']+i*search['joint1_step_rad'] for i in range(count)]
+    entry=round((search['joint1_start_rad']-search['joint1_min_rad'])/search['joint1_step_rad'])
+    return ([search['joint1_start_rad']-i*search['joint1_step_rad'] for i in range(entry)]
+            +[search['joint1_min_rad']+i*search['joint1_step_rad'] for i in range(count)])
 
 def load(path, workspace):
     cfg = yaml.safe_load(Path(path).read_text())['go2_mission']
@@ -51,6 +53,11 @@ def load(path, workspace):
         cfg['paths'][key] = str((Path(workspace) / value).absolute())
     deployment=yaml.safe_load(Path(cfg['paths']['deployment']).read_text())['real_deployment']
     navigation=yaml.safe_load(Path(cfg['paths']['navigation']).read_text())
+    # This module is also loaded directly by launch via importlib (no package).
+    for key, maximum in (('nav_status_ttl_s', .60), ('perception_status_ttl_s', .50)):
+        value=cfg['execution'].get(key,cfg['execution']['heartbeat_ttl_s'])
+        if type(value) not in (int,float) or not math.isfinite(value) or not 0<value<=maximum:
+            raise ValueError('invalid execution.'+key)
     cfg['limits']={'sensor_age_s':navigation['bridge']['sensor_timeout_s'],
                    'arm_age_s':deployment['rars01']['feedback_timeout_s'],
                    'tf_position_tolerance_m':navigation['bridge']['tf_pair_position_tolerance_m'],
@@ -89,7 +96,10 @@ def load(path, workspace):
     if scan['joint1_min_rad'] >= scan['joint1_max_rad'] or type(scan['max_attempts']) is not int:
         raise ValueError('invalid bounded scan')
     intervals = (scan['joint1_max_rad']-scan['joint1_min_rad'])/scan['joint1_step_rad']
-    if not math.isclose(intervals, scan['max_attempts']-2, rel_tol=0, abs_tol=1e-9):
+    entry=(scan['joint1_start_rad']-scan['joint1_min_rad'])/scan['joint1_step_rad']
+    if (not math.isclose(intervals,round(intervals),abs_tol=1e-9)
+            or not math.isclose(entry,round(entry),abs_tol=1e-9)
+            or len(search_angles(scan))!=scan['max_attempts']):
         raise ValueError('scan limits/step/attempts disagree')
     if not scan['joint1_min_rad']<=scan['joint1_start_rad']<=scan['joint1_max_rad']:
         raise ValueError('search start outside sweep bounds')
@@ -145,6 +155,11 @@ def load(path, workspace):
     environment_checks_enabled(cfg['collision'])
     payload_checks_enabled(cfg['collision'])
     verification=cfg['grasp_verification']
+    if type(verification.get('max_attempts',2)) is not int or verification.get('max_attempts',2)!=2:
+        raise ValueError('grasp_verification.max_attempts must be 2')
+    if (verification.get('requested_motor_torque_limit_nm',2.2)!=2.2
+            or verification.get('min_inner_width_m',.05)!=.05):
+        raise ValueError('torque/width contract requires 2.2 Nm and strictly greater than 0.05 m')
     if verification.get('mode')!='stub':raise ValueError('unsupported grasp_verification.mode')
     duration=verification.get('close_duration_s')
     if type(duration) not in (int,float) or not math.isfinite(duration) or duration<=0 or duration>=cfg['execution']['state_timeout_s']:
@@ -168,6 +183,9 @@ def load(path, workspace):
 def blockers(cfg):
     environment = environment_checks_enabled(cfg['collision'])
     result = []
+    if cfg.get('test_mode','full')=='full' and (not cfg['grasp_verification'].get('motor_torque_cap_validated',False)
+            or not cfg['grasp_verification'].get('motor_torque_cap_evidence')):
+        result.append('full_grasp_motor_torque_cap_unqualified')
     if cfg['frames']['vehicle_to_mount'] is None:
         result.append('vehicle_to_mount_missing')
     for key in (('floor_z_in_map_m',) if environment else ()) + (('payload_box_m', 'payload_tcp_xyz_m') if payload_checks_enabled(cfg['collision']) else ()):

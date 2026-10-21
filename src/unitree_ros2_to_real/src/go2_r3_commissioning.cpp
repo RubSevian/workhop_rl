@@ -780,6 +780,14 @@ class R3Node final:public rclcpp::Node {
   snapshot.Add("deadline_misses", supervisor_->deadline_misses());
   snapshot.Add("fault_latched", supervisor_->fault_latched());
   snapshot.Add("fault", supervisor_->last_fault());
+  snapshot.Add("fault_phase", SystemPhaseName(supervisor_->fault_phase()));
+  snapshot.Add("fault_blockers", supervisor_->fault_blockers());
+  const auto ns=[](SafetyTime value){return std::chrono::duration_cast<std::chrono::nanoseconds>(value.time_since_epoch()).count();};
+  snapshot.Add("fault_observed_ns", ns(supervisor_->fault_time()));
+  snapshot.Add("fault_lowstate_source_ns", ns(supervisor_->fault_inputs().lowstate_stamp));
+  snapshot.Add("fault_arm_source_ns", ns(supervisor_->fault_inputs().arm_stamp));
+  snapshot.Add("fault_target_source_ns", ns(supervisor_->fault_inputs().target_stamp));
+  snapshot.Add("phase_warnings", supervisor_->PhaseWarnings(now));
   snapshot.Add("blockers", std::move(blockers));
   if(compute_probe||(motion_trace_&&motion_trace_->enabled()))snapshot.Add("runtime_io_interval_max_ms",io_interval_max_ms_);
   if constexpr(compute_probe) {

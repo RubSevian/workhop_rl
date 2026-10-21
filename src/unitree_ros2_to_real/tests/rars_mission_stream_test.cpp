@@ -113,5 +113,21 @@ int main(){
   MissionStream long_stream(longer);path.assign(6002,f.joints.position);
   assert(long_stream.Start(1,"move",path,at(40),f));
  }
+ // The higher search speed is confined to preset search phases.
+ assert(PresetSearchPlanAllowed("scan_step","ARM_SEARCH"));
+ assert(PresetSearchPlanAllowed("scan_return","RETURN_HOME"));
+ assert(!PresetSearchPlanAllowed("scan_step","PREGRASP"));
+ assert(!PresetSearchPlanAllowed("pregrasp","ARM_SEARCH"));
+ {
+  MissionStreamConfig search=cfg;search.velocity.fill(.1F);search.search_velocity=std::array<double,6>{.2F,.2F,.2F,.2F,.2F,.2F};
+  AutoHomeStatus f=feedback;f.joints.position.fill(0);f.joints.velocity.fill(0);
+  std::vector<std::array<float,7>> path(101,f.joints.position);
+  for(size_t i=0;i<path.size();++i)path[i][0]=.15F*i/100;
+  MissionStream ordinary(search),preset(search);
+  assert(!ordinary.Start(1,"move",path,at(50),f));
+  assert(preset.Start(1,"move",path,at(50),f,true));
+  for(size_t i=0;i<path.size();++i)path[i][0]=.25F*i/100;
+  MissionStream too_fast(search);assert(!too_fast.Start(1,"move",path,at(50),f,true));
+ }
  std::cout<<"PASS bounded close stub, unknown object, retained command, empty/lost/open HOME6, legacy HOME7, cancel and limits\n";
 }

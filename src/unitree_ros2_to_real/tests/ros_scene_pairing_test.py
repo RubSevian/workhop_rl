@@ -260,7 +260,7 @@ class PairingTests(unittest.TestCase):
         stamp=self.now-200_000_000
         self.live(stamp);self.scene.bodies.append(self.body(stamp));self.live()
         data=dict(self.scene.snapshot(self.now).data(),observed_ns=stamp)
-        mission=NS(cfg=self.cfg,inputs={},received={})
+        mission=NS(cfg=self.cfg,inputs={},received={},state='WAIT_GOAL',input_rejections={})
         self.assertTrue(Mission.observe(mission,'scene',data,self.now/1e9))
         lease=mission.received['scene']
         self.now+=100_000_000;self.live()

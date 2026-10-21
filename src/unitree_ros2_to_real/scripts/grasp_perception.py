@@ -18,6 +18,7 @@ from nav_msgs.msg import Odometry
 from unitree_go.msg import LowState
 from mission.config import load,blockers
 from mission.collision import measured_gripper_width
+from mission.health_contract import source_ttl
 from mission.scene import SceneBuffer
 from mission.status_codec import decode_status
 from mission.subscription_batch import take_batch
@@ -38,7 +39,7 @@ class Perception(Node):
         self.arm_state_transport=self.declare_parameter('arm_state_transport','yaml').value
         if self.arm_state_transport not in ('yaml','typed'):raise ValueError('ARM_STATE_TRANSPORT')
         self.owner_topic='/rars01/commissioning/fast_state' if self.arm_state_transport=='typed' else '/rars01/commissioning/state'
-        self.navigation_session='';self.scene_error=''
+        self.navigation_session='';self.scene_error='';self.last_navigation_stamp=0
         physical=self.declare_parameter('physical',False).value
         self.reason='READ_ONLY';self.backend=None;self.busy=False;self.started=0.;self.last_compute={}
         self.startup_checks=dict(geometry=False,yolo=False,graspnet=False,camera=False)
@@ -97,8 +98,11 @@ class Perception(Node):
         if self.count_publishers('/go2/navigation/status')!=1:return
         try:
             data=json.loads(msg.data)
-            if 0<=(time.monotonic_ns()-data['observed_ns'])/1e9<=self.cfg['execution']['heartbeat_ttl_s']:
+            stamp=data['observed_ns']
+            if (type(stamp) is int and stamp>getattr(self,'last_navigation_stamp',0)
+                    and 0<=(time.monotonic_ns()-stamp)/1e9<=source_ttl(self.cfg,'nav')):
                 self.navigation_session=data['session_id']
+                self.last_navigation_stamp=stamp
         except (ValueError,KeyError,TypeError):return
 
     def leg_batch(self,msg):
@@ -231,11 +235,15 @@ class Perception(Node):
         if self.backend is not None and not self.backend.sensors_ready():
             reason=self.backend.camera_error or 'PERCEPTION_RUNTIME_NOT_READY'
         report_scene(self,reason)
+        camera_mode=self.backend.camera_mode if self.backend else 'unverified'
         self.health.publish(String(data=json.dumps(dict(observed_ns=time.monotonic_ns(),ready=bool(ready),reason=reason,scene_error=self.scene_error,busy=self.busy,last_compute=self.last_compute,busy_elapsed_s=now-self.started if self.busy else 0.,
+            model_ready=bool(self.backend is not None and self.reason=='READY'),
+            camera_state={'standby':'CAMERA_STANDBY','active':'CAMERA_ACTIVE','starting':'CAMERA_STARTING','failed':'CAMERA_FAULT'}.get(camera_mode,'CAMERA_UNVERIFIED'),
+            scene_ready=bool(self.backend is not None and not self.scene_error),
             startup_checks=dict(self.startup_checks),
             inference_nice=getattr(self,'inference_nice',None),
             preload_ready=self.backend is not None and verified(self.backend.startup_checks),
-            camera_mode=self.backend.camera_mode if self.backend else 'unverified',
+            camera_mode=camera_mode,
             lowstate_decode=(self.native_leg_input.status() if getattr(self,'native_leg_input',None) else self.leg_reader.status()),tf_pair=dict(self.body_source.diagnostics),streams=self.scene_buffer.diagnostics(time.monotonic_ns())))))
         try:
             out=self.completed.get_nowait();self.busy=False

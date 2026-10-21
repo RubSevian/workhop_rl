@@ -13,10 +13,14 @@ inline bool PlanTimestampAllowed(int64_t observed_ns,int64_t now_ns,int64_t canc
 inline bool ReadyObservePlanAllowed(bool enabled,bool initial_move_seen,const std::string& kind){
  return !enabled||kind=="home"||(kind=="move"&&!initial_move_seen);
 }
+inline bool PresetSearchPlanAllowed(const std::string& operation,const std::string& phase){
+ return (operation=="scan_step"&&phase=="ARM_SEARCH")||(operation=="scan_return"&&phase=="RETURN_HOME");
+}
 // No SDK, ROS, inference, IK or collision work in this bounded command sampler.
 // Admission is owned by ArmOwner; every tick rechecks its authority lease.
 struct MissionStreamConfig {
  std::array<double,6> lower{},upper{},velocity{};
+ std::optional<std::array<double,6>> search_velocity;
  rars_arm::RarsArm::MotorValues kp{},kd{};
  double gripper_velocity=2,rate=100, start_tolerance=.02, reached_tolerance=.02, settled_velocity=.035;
  double settle_s=.2, completion_timeout_s=5.5, max_duration_s=60;
@@ -30,9 +34,11 @@ class MissionStream {
   for(size_t j=0;j<6;++j)if(!std::isfinite(cfg_.lower[j])||!std::isfinite(cfg_.upper[j])||cfg_.lower[j]>=cfg_.upper[j]||!std::isfinite(cfg_.velocity[j])||cfg_.velocity[j]<=0)throw std::invalid_argument("invalid mission joint limits");
   for(double value:{cfg_.rate,cfg_.gripper_velocity,cfg_.start_tolerance,cfg_.reached_tolerance,cfg_.max_duration_s,cfg_.settle_s,cfg_.completion_timeout_s,cfg_.close_duration_s})if(!std::isfinite(value)||value<=0)throw std::invalid_argument("invalid mission stream setting");
   held_.kp=cfg_.kp;held_.kd=cfg_.kd;
+  if(cfg_.search_velocity)for(double v:*cfg_.search_velocity)if(!std::isfinite(v)||v<=0)throw std::invalid_argument("invalid search velocity");
  }
  bool Start(uint64_t id,const std::string& kind,const std::vector<std::array<float,7>>& points,
-            ArmTime now,const AutoHomeStatus& status){
+            ArmTime now,const AutoHomeStatus& status,bool search=false){
+  if(search&&!cfg_.search_velocity)return false;
   if(id<=last_id_||busy_||!status.feedback_ready||!status.motors_enabled||!status.target_fresh)return false;
   if(kind!="move"&&kind!="home"&&kind!="close")return false;
   if(points.size()<2||points.size()>size_t(cfg_.rate*cfg_.max_duration_s)+1)return false;
@@ -42,7 +48,7 @@ class MissionStream {
    if(j<6&&(q<cfg_.lower[j]||q>cfg_.upper[j]))return false;
    if(j==6&&(q<std::min(cfg_.closed,cfg_.open)||q>std::max(cfg_.closed,cfg_.open)))return false;
    if(n==0&&!(holding_&&j==6)&&std::abs(q-status.joints.position[j])>cfg_.start_tolerance)return false;
-   if(n&&j<6&&std::abs(q-points[n-1][j])*cfg_.rate>cfg_.velocity[j]+1e-5)return false;
+   if(n&&j<6&&std::abs(q-points[n-1][j])*cfg_.rate>(search?(*cfg_.search_velocity)[j]:cfg_.velocity[j])+1e-5)return false;
    if(n&&j==6&&std::abs(q-points[n-1][j])*cfg_.rate>cfg_.gripper_velocity+1e-5)return false;
    if(holding_&&j==6&&std::abs(q-held_.q[6])>1e-5)return false;
    if(kind=="close"&&j<6&&std::abs(q-points[0][j])>1e-5)return false;

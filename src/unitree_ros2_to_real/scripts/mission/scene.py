@@ -197,6 +197,37 @@ class SceneBuffer:
 
 
 @dataclass(frozen=True)
+class WorldObjectAnchor:
+    """Measured 3D object point, distinct from a selected 6D grasp pose."""
+    point_map: list
+    capture_ns: int
+    capture_ros_ns: int
+    navigation_session_id: str
+    tf_revision: str
+    goal_revision: int
+    owner_session_id: str
+    confidence: float
+
+    def data(self):
+        point=np.asarray(self.point_map,dtype=float)
+        if (point.shape!=(3,) or not np.isfinite(point).all()
+                or type(self.capture_ns) is not int or self.capture_ns<=0
+                or type(self.capture_ros_ns) is not int or self.capture_ros_ns<=0
+                or not all(isinstance(v,str) and v for v in (self.navigation_session_id,self.tf_revision,self.owner_session_id))
+                or not np.isfinite(self.confidence) or not 0<=self.confidence<=1):
+            raise ValueError('INVALID_OBJECT_ANCHOR')
+        return dict(point_map=point.tolist(),capture_ns=self.capture_ns,capture_ros_ns=self.capture_ros_ns,
+                    navigation_session_id=self.navigation_session_id,tf_revision=self.tf_revision,
+                    goal_revision=self.goal_revision,owner_session_id=self.owner_session_id,confidence=self.confidence)
+
+    def validate(self,body,goal_revision,owner_session_id):
+        self.data()
+        if (body.navigation_session_id!=self.navigation_session_id or body.tf_revision!=self.tf_revision
+                or self.goal_revision!=goal_revision or self.owner_session_id!=owner_session_id):
+            raise ValueError('OBJECT_ANCHOR_EPOCH_CHANGED')
+
+
+@dataclass(frozen=True)
 class WorldGraspAnchor:
     """A selected grasp in local map; not an object pose or a moving target."""
     map_grasp: list
