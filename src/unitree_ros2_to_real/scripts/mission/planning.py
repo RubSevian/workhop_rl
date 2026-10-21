@@ -324,6 +324,22 @@ class Planning:
 
     def samples(self, start, targets, duration, gripper_end=None, *, search=False):
         from rars01_graspnet.real_grasp_trajectory import waypoint_motion_samples
+        # Measured overshoot is valid geometry, but commanded points must stay
+        # inside the unchanged owner's URDF/closed-gripper bounds.
+        start=np.asarray(start,dtype=float).copy()
+        if getattr(self,'_command_joint_bounds',None) is None:
+            import xml.etree.ElementTree as ET
+            root=ET.parse(self.cfg['paths']['arm_urdf']).getroot()
+            limits=[root.find("joint[@name='joint%d']/limit"%j) for j in range(1,7)]
+            self._command_joint_bounds=np.array([[float(v.get('lower')),float(v.get('upper'))] for v in limits])
+        bounds=self._command_joint_bounds
+        clipped=np.clip(start[:6],bounds[:,0],bounds[:,1])
+        if np.any(np.abs(clipped-start[:6])>self.cfg['collision'].get('arm_joint_measurement_tolerance_rad',0.)+1e-9):
+            raise ValueError('ARM_MEASUREMENT_OUTSIDE_TOLERANCE')
+        start[:6]=clipped
+        closed=self.grasp['robot'].get('gripper',{}).get('rars01',{}).get('closed_position_rad',0.)
+        if closed-self.cfg['collision'].get('gripper_closed_measurement_tolerance_rad',0.)<=start[6]<closed:
+            start[6]=closed
         velocity=np.asarray(self.grasp['robot']['rars01']['position_velocity_limits_rad_s'][:6])
         velocity=np.minimum(velocity,self.cfg['search']['speed_rad_s'] if search else self.cfg['execution']['arm_speed_rad_s'])
         points,_=waypoint_motion_samples(start[:6],targets,duration,1/self.grasp['robot']['rars01']['command_rate_hz'],velocity)

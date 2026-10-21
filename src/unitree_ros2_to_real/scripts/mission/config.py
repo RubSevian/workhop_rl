@@ -113,6 +113,9 @@ def load(path, workspace):
     depth=cfg['frames'].get('arm_history_depth',1)
     if type(depth) is not int or not 1<=depth<=400:
         raise ValueError('frames.arm_history_depth must be in [1,400]')
+    arm_tolerance=cfg['collision'].get('arm_joint_measurement_tolerance_rad',0.)
+    if type(arm_tolerance) not in (int,float) or not math.isfinite(arm_tolerance) or not 0<=arm_tolerance<=math.radians(2)+1e-12:
+        raise ValueError('invalid collision.arm_joint_measurement_tolerance_rad')
     grip_tolerance=cfg['collision'].get('gripper_closed_measurement_tolerance_rad',0.)
     if type(grip_tolerance) not in (int,float) or not math.isfinite(grip_tolerance) or not 0<=grip_tolerance<=math.radians(5)+1e-12:
         raise ValueError('invalid collision.gripper_closed_measurement_tolerance_rad')

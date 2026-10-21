@@ -856,4 +856,41 @@ class Integration(unittest.TestCase):
         h.graph([b'a',b'b'],180);self.assertFalse(h.valid(190,'nav'));self.assertTrue(h.base_locked)
         self.assertEqual(blockers(CFG),[]);self.assertIsInstance(CFG['physical_enabled'],bool)
 
+    def test_arm_geometry_tolerance_preserves_actual_pose_and_leg_limits(self):
+        from mission.collision import validate_geometry_joint
+        tol=CFG['collision']['arm_joint_measurement_tolerance_rad']
+        self.assertAlmostEqual(tol,np.deg2rad(2))
+        for name in ('joint1','joint2','joint3','joint4','joint5','joint6'):
+            for q in (-tol,-.000190734863,0.,3.6,3.6+tol):
+                self.assertEqual(validate_geometry_joint(name,q,0.,3.6,tol),q)
+            for q in (-tol-1e-6,3.6+tol+1e-6,float('nan'),float('inf')):
+                with self.assertRaisesRegex(ValueError,'COLLISION_JOINT_LIMIT'):
+                    validate_geometry_joint(name,q,0.,3.6,tol)
+        for name in ('FR_hip_joint','gripper_left_joint'):
+            with self.assertRaisesRegex(ValueError,'COLLISION_JOINT_LIMIT'):
+                validate_geometry_joint(name,-.00019,0.,3.6,tol)
+        import tempfile,yaml
+        raw=yaml.safe_load((ROOT/'repos/rars01_graspnet/config/jetson_orin_nano.yaml').read_text())
+        with tempfile.TemporaryDirectory() as directory:
+            path=Path(directory)/'config.yaml'
+            for value in (-.1,float('nan'),True,np.deg2rad(2)+.001):
+                raw['go2_mission']['collision']['arm_joint_measurement_tolerance_rad']=float(value) if isinstance(value,np.floating) else value
+                path.write_text(yaml.safe_dump(raw))
+                with self.assertRaisesRegex(ValueError,'arm_joint_measurement_tolerance'):
+                    load(path,ROOT)
+
+
+    def test_measured_undershoot_does_not_become_out_of_bounds_command(self):
+        from mission.planning import Planning
+        planner=Planning.__new__(Planning);planner.cfg=copy.deepcopy(CFG)
+        planner.grasp={'robot':{'rars01':{'position_velocity_limits_rad_s':[1.]*7,'command_rate_hz':100}}}
+        start=np.zeros(7);start[1]=-.00057220459;start[6]=-.0036
+        points=planner.samples(start,[np.zeros(6)],1.)
+        self.assertGreaterEqual(points[:,1].min(),0.);self.assertGreaterEqual(points[:,6].min(),0.)
+        self.assertEqual(start[1],-.00057220459) # measured state not rewritten
+        start[1]=-.04
+        with self.assertRaisesRegex(ValueError,'OUTSIDE_TOLERANCE'):
+            planner.samples(start,[np.zeros(6)],1.)
+
+
 if __name__=='__main__':unittest.main()

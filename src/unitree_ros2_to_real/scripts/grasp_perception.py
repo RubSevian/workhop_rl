@@ -17,6 +17,7 @@ from sensor_msgs.msg import JointState
 from nav_msgs.msg import Odometry
 from unitree_go.msg import LowState
 from mission.config import load,blockers
+from mission.collision import measured_gripper_width
 from mission.scene import SceneBuffer
 from mission.status_codec import decode_status
 from mission.subscription_batch import take_batch
@@ -83,7 +84,7 @@ class Perception(Node):
                         self.scene_buffer.arm(historical['q'],historical['frame_received_ns'],historical['owner_session_id'])
             if self.backend:
                 q=d['q'];joint=JointState();joint.name=['joint'+str(i) for i in range(1,7)]+['gripper_left_joint','gripper_right_joint']
-                width=self.backend.geometry.opening_width(q[6]);joint.position=q[:6]+[width/2,width/2]
+                width=measured_gripper_width(self.backend.geometry,q[6],self.cfg['collision'].get('gripper_closed_measurement_tolerance_rad',0.));joint.position=q[:6]+[width/2,width/2]
                 age=(time.monotonic_ns()-d['frame_received_ns'])/1e9
                 joint.header.stamp=Time(nanoseconds=max(0,self.get_clock().now().nanoseconds-int(age*1e9))).to_msg()
                 self.joints.publish(joint)

@@ -18,6 +18,19 @@ def measured_gripper_width(geometry,angle,tolerance):
     if -tolerance<=angle<0:angle=0.
     return geometry.opening_width(angle)
 
+def validate_geometry_joint(name,value,lower,upper,arm_tolerance):
+    """Accept small arm measurement overshoot, preserving measured FK geometry.
+
+    This does not change URDF/IK/owner command limits and never applies to legs.
+    """
+    if not np.isfinite(arm_tolerance) or not 0<=arm_tolerance<=np.deg2rad(2)+1e-12:
+        raise ValueError('INVALID_ARM_MEASUREMENT_TOLERANCE')
+    tolerance=arm_tolerance if name in ('joint1','joint2','joint3','joint4','joint5','joint6') else 0.
+    if not np.isfinite(value) or not lower-tolerance-1e-9<=value<=upper+tolerance+1e-9:
+        raise ValueError('COLLISION_JOINT_LIMIT:'+name)
+    return value
+
+
 class CollisionComputeTimeout(RuntimeError):
     """Abort the whole planning request; not an infeasible grasp candidate."""
 
@@ -209,8 +222,8 @@ class Collision:
             j=self.model.getJointId(name)
             if j>=self.model.njoints or self.model.nqs[j]!=1:raise ValueError('COLLISION_JOINT_MAPPING:'+name)
             k=self.model.idx_qs[j]
-            if not self.model.lowerPositionLimit[k]-1e-9<=value<=self.model.upperPositionLimit[k]+1e-9:raise ValueError('COLLISION_JOINT_LIMIT:'+name)
-            q[k]=value
+            q[k]=validate_geometry_joint(name,value,self.model.lowerPositionLimit[k],self.model.upperPositionLimit[k],
+                self.cfg['collision'].get('arm_joint_measurement_tolerance_rad',0.))
         self.pin.forwardKinematics(self.model,self.data,q);self.pin.updateFramePlacements(self.model,self.data)
         self.pin.updateGeometryPlacements(self.model,self.data,self.geom,self.gdata,q)
         poses=self.rigid_placements([t.homogeneous for t in self.gdata.oMg])
