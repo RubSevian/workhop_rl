@@ -136,7 +136,8 @@ class ArmOwner final:public rclcpp::Node {
   // Mission evidence is not an owner admission protocol. The owner enforces
   // live authority, feedback, trajectory bounds and the existing stop FSM.
   if(y["frames"]["vehicle_to_mount"].IsNull())throw std::runtime_error("mission mount transform missing");
-  const auto mode=y["test_mode"]?y["test_mode"].as<std::string>():"full";
+  const auto override_mode=declare_parameter<std::string>("test_mode","");
+  const auto mode=override_mode.empty()?(y["test_mode"]?y["test_mode"].as<std::string>():"full"):override_mode;
   if(mode!="full"&&mode!="ready_observe")throw std::runtime_error("invalid test_mode");
   ready_observe_=mode=="ready_observe";
   const auto clearance=y["collision"]["retreat_physical_clearance_validated"];
@@ -152,7 +153,8 @@ class ArmOwner final:public rclcpp::Node {
    throw std::runtime_error("full grasp motor torque cap is not physically qualified");
   const auto grasp=YAML::LoadFile(absolute("sdk_config"));const auto g=grasp["robot"]["gripper"]["rars01"];
   const auto feedback=grasp["robot"]["motion"]["motion_feedback"];mission_feedback_ttl_=feedback["max_feedback_age_s"].as<double>();
-  if(y["grasp_verification"]["mode"].as<std::string>()!="stub")throw std::runtime_error("unsupported grasp verification mode");
+  grasp_verification_mode_=y["grasp_verification"]["mode"].as<std::string>();
+  if(grasp_verification_mode_!="torque_width"&&grasp_verification_mode_!="stub")throw std::runtime_error("unsupported grasp verification mode");
   payload_checks_enabled_=y["collision"]["payload_enabled"]?y["collision"]["payload_enabled"].as<bool>():true;
   MissionStreamConfig c;c.close_duration_s=y["grasp_verification"]["close_duration_s"].as<double>();c.gripper_velocity=sdk_config.position_velocity_limits[6];c.kp=sdk_config.default_kp;c.kd=sdk_config.default_kd;c.rate=sdk_config.command_rate_hz;
   c.start_tolerance=y["execution"]["start_tolerance_rad"].as<double>();c.reached_tolerance=y["execution"]["joint_reached_tolerance_rad"].as<double>();
@@ -165,6 +167,16 @@ class ArmOwner final:public rclcpp::Node {
   c.close_torque=close_sign*g["close_torque"].as<double>();c.hold_torque=close_sign*g["default_force"].as<double>();
   c.move_kp=g["move_kp"].as<double>();c.move_kd=g["move_kd"].as<double>();c.hold_kp=g["hold_kp"].as<double>();c.hold_kd=g["hold_kd"].as<double>();c.close_kd=g["close_kd"].as<double>();
   c.hard_stop=g["hard_stop_angle_rad"].as<double>();
+  c.max_total_torque_nm=y["grasp_verification"]["max_total_torque_nm"]?y["grasp_verification"]["max_total_torque_nm"].as<double>():2.2;
+  if(c.max_total_torque_nm!=2.2)throw std::runtime_error("agreed max_total_torque_nm must be 2.2");
+  c.feedback_ttl_s=mission_feedback_ttl_;c.assessment.enabled=grasp_verification_mode_=="torque_width";
+  if(c.assessment.enabled){const auto a=y["grasp_assessment"];
+  c.assessment.contact_torque_nm=a["contact_torque_nm"].as<double>();
+  c.assessment.min_grasp_width_m=a["min_grasp_width_m"].as<double>();
+  c.assessment.confirmation_duration_s=a["confirmation_duration_s"].as<double>();}
+  c.assessment.radius=g["linkage_radius_m"].as<double>();c.assessment.rod=g["connecting_rod_length_m"].as<double>();
+  c.assessment.carriage=g["carriage_width_m"].as<double>();c.assessment.angle_limit=std::abs(c.open);
+  c.assessment.negative_tolerance=y["collision"]["gripper_closed_measurement_tolerance_rad"].as<double>();
   if(g["hold_ramp_s"].as<double>()!=0)throw std::runtime_error("unsupported gripper hold ramp; do not silently alter it");
   // Read authoritative URDF joint bounds without copying them to mission YAML.
   std::ifstream f(absolute("arm_urdf"));std::stringstream buffer;buffer<<f.rdbuf();const auto xml=buffer.str();
@@ -248,6 +260,7 @@ class ArmOwner final:public rclcpp::Node {
    const auto preset=v["preset_operation"]?v["preset_operation"].as<std::string>():std::string{};
    const bool search=PresetSearchPlanAllowed(preset,health_phase_);
    if(!preset.empty()&&!search)throw std::runtime_error("preset search operation/phase rejected");
+   mission_->ObserveAssessment(now,home_->status());
    if(!mission_->Start(v["id"].as<uint64_t>(),v["kind"].as<std::string>(),result.points,now,home_->status(),search))throw std::runtime_error("trajectory bounds/start/hold rejected");
    if(ready_observe_&&kind=="move")ready_move_seen_=true;
    mission_blocker_.clear();active_home_=is_home;if(is_home)home_requested_=false;
@@ -259,6 +272,7 @@ class ArmOwner final:public rclcpp::Node {
   // A second deadline gate would drop early callbacks under normal jitter.
   try{home_->Tick(ArmClock::now(),connect_,true);}catch(const std::exception& e){home_->Fault(std::string("owner_exception: ")+e.what());}
   const auto& s=home_->status();
+  if(mission_)mission_->ObserveAssessment(ArmClock::now(),s);
   if(s.state!=last_state_){RCLCPP_INFO(get_logger(),"arm state=%s error=%s",AutoHomeStateName(s.state),s.last_error.c_str());last_state_=s.state;}
   // Optional typed snapshot; legacy100Hz YAML remains for native R3/readers.
   if(fast_state_){
@@ -271,7 +285,9 @@ class ArmOwner final:public rclcpp::Node {
    fast.mission_error=(mission_?mission_->error():mission_blocker_);
    fast.mission_blocker=mission_blocker_;
    fast.home_requested=home_requested_;
-   fast.grasp_verification=(mission_?"stub":"inactive");
+   fast.grasp_verification=(mission_?grasp_verification_mode_:"inactive");
+   fast.grasp_assessment=(mission_?mission_->assessment().state():"UNKNOWN");
+   fast.grasp_assessment_reason=(mission_?mission_->assessment().reason():"NO_MISSION");
    fast.home_joint_count=(mission_?6:7);
    fast.gripper_command_active=(mission_&&mission_->holding());
    fast.gripper_hold_confirmed=(mission_&&mission_->HoldConfirmed(s));
@@ -332,7 +348,12 @@ class ArmOwner final:public rclcpp::Node {
    <<YAML::Key<<"planned_disable_sent"<<YAML::Value<<home_->planned_disable_accepted()
    <<YAML::Key<<"planned_disable_physically_confirmed"<<YAML::Value<<false
    <<YAML::Key<<"home_requested"<<YAML::Value<<home_requested_
-   <<YAML::Key<<"grasp_verification"<<YAML::Value<<(mission_?"stub":"inactive")
+   <<YAML::Key<<"grasp_assessment"<<YAML::Value<<(mission_?mission_->assessment().state():"UNKNOWN")
+   <<YAML::Key<<"grasp_assessment_reason"<<YAML::Value<<(mission_?mission_->assessment().reason():"NO_MISSION")
+   <<YAML::Key<<"grasp_confirmation_s"<<YAML::Value<<(mission_?mission_->assessment().confirmation_seconds():0.)
+   <<YAML::Key<<"max_total_torque_nm"<<YAML::Value<<2.2
+   <<YAML::Key<<"total_torque_cap_controller_supported"<<YAML::Value<<ControllerTotalTorqueCapSupported()
+   <<YAML::Key<<"grasp_verification"<<YAML::Value<<(mission_?grasp_verification_mode_:"inactive")
    <<YAML::Key<<"object_grasped"<<YAML::Value<<YAML::Null
    <<YAML::Key<<"home_joint_count"<<YAML::Value<<(mission_?6:7)
    <<YAML::Key<<"gripper_command_active"<<YAML::Value<<(mission_&&mission_->holding())
@@ -387,6 +408,7 @@ class ArmOwner final:public rclcpp::Node {
  size_t max_plan_samples_=0;
  std::unique_ptr<MissionStream> mission_;std::string owner_session_,mission_session_,retired_session_,nav_session_,health_nav_session_,r3_session_,r3_nav_session_,mission_blocker_,health_phase_;
  uint64_t health_goal_revision_=0;bool health_manipulating_=false;
+ std::string grasp_verification_mode_="inactive";
  double mission_feedback_ttl_=.1,mission_ttl_=.25;bool r3_home_phase_allowed_=false,r3_planned_disable_ready_=false,payload_checks_enabled_=true,r3_authority_=false,r3_active_=false,r3_stopping_=false,nav_ready_=false,health_ready_=false,home_requested_=false,active_home_=false;
  ArmTime r3_stamp_{},nav_stamp_{},health_stamp_{};
  rclcpp::Subscription<std_msgs::msg::String>::SharedPtr r3_sub_,nav_sub_,health_sub_,plan_sub_;

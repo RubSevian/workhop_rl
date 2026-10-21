@@ -78,7 +78,7 @@ class ArchitectureMissionTests(unittest.TestCase):
                 super().effect(kind,data)
                 if kind=='trajectory' and data['kind']=='close':self.owner.pop('grasp_assessment',None)
         f=Unknown();self.assertEqual(f.run(),'BLOCKED')
-        self.assertEqual(f.m.reason,'GRASP_TORQUE_SEMANTICS_UNQUALIFIED')
+        self.assertEqual(f.m.reason,'GRASP_ASSESSMENT_UNKNOWN:NO_VALID_ASSESSMENT')
         self.assertFalse(any(k=='compute' and d['operation'] in ('retreat','reverse_search') for k,d in f.effects))
 
     def reverse_fixture(self):
@@ -116,7 +116,7 @@ class ArchitectureMissionTests(unittest.TestCase):
         self.assertNotEqual(result['scene_snapshot']['legs'],segment['scene_snapshot']['legs'])
 
     def test_preflight_full_mode_requires_torque_qualification(self):
-        cfg=copy.deepcopy(CFG);self.assertNotIn('full_grasp_motor_torque_cap_unqualified',blockers(cfg))
+        cfg=copy.deepcopy(CFG);cfg['test_mode']='ready_observe';self.assertNotIn('full_grasp_motor_torque_cap_unqualified',blockers(cfg))
         cfg['test_mode']='full'
         self.assertIn('full_grasp_motor_torque_cap_unqualified',blockers(cfg))
         self.assertFalse(cfg['grasp_verification']['motor_torque_cap_validated'])

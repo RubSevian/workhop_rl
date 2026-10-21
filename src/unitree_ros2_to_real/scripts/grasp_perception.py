@@ -35,6 +35,9 @@ class Perception(Node):
         self.last_leg_tick=None
         self.leg_reader=LegStateReader()
         self.cfg=load(self.declare_parameter('mission_config_path','').value,self.declare_parameter('workspace','').value)
+        mode=self.declare_parameter('test_mode','').value
+        if mode not in ('','full','ready_observe'):raise ValueError('invalid test_mode')
+        if mode:self.cfg['test_mode']=mode
         self.body_source=ROSBodySource(self,self.cfg);self.scene_buffer=SceneBuffer(self.cfg)
         self.arm_state_transport=self.declare_parameter('arm_state_transport','yaml').value
         if self.arm_state_transport not in ('yaml','typed'):raise ValueError('ARM_STATE_TRANSPORT')

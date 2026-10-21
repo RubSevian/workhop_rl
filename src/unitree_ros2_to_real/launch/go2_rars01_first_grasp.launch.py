@@ -17,11 +17,14 @@ def _launch(context):
     module=importlib.util.module_from_spec(spec);spec.loader.exec_module(module)
     cfg=module.load(get('mission_config_path'),get('workspace'))
     if get('physical') not in ('true','false') or get('start_arm_owner') not in ('true','false'):raise ValueError('explicit true/false required')
+    mode=get('test_mode')
+    if mode not in ('','full','ready_observe'):raise ValueError('invalid test_mode')
+    if mode:cfg['test_mode']=mode
     physical=get('physical')=='true'
     failures=module.blockers(cfg)
     if physical and (not cfg['physical_enabled'] or failures):
         raise RuntimeError('PHYSICAL_NOT_READY: '+', '.join(failures+([] if cfg['physical_enabled'] else ['mission_physical_disabled'])))
-    params=dict(mission_config_path=get('mission_config_path'),workspace=get('workspace'),physical=physical,
+    params=dict(mission_config_path=get('mission_config_path'),workspace=get('workspace'),physical=physical,test_mode=mode,
                 arm_state_transport=cfg['execution'].get('arm_state_transport','yaml'))
     coordinator=Node(package='unitree_legged_real',executable='grasp_mission.py',parameters=[params],output='screen')
     perception=Node(package='unitree_legged_real',executable='grasp_perception.py',prefix=[cfg['paths']['python']],parameters=[params],output='screen',additional_env=dict(PYTHONUNBUFFERED='1',**{key:str(cfg['compute']['cpu_threads']) for key in ('OMP_NUM_THREADS','OPENBLAS_NUM_THREADS','MKL_NUM_THREADS','NUMEXPR_NUM_THREADS')}))
@@ -36,7 +39,7 @@ def _launch(context):
     if get('start_arm_owner')=='true':
         owner=cfg['owner']
         actions.append(Node(package='unitree_legged_real',executable='rars_r3_owner',parameters=[dict(
-            mission_config_path=get('mission_config_path'),workspace=get('workspace'),
+            mission_config_path=get('mission_config_path'),workspace=get('workspace'),test_mode=mode,
             sdk_config_path=cfg['paths']['sdk_config'],config_path=cfg['paths']['deployment'],
             read_only=False,connect_serial=True,device_path=owner['device_path'],
             fast_state_enabled=cfg['execution'].get('arm_state_transport','yaml')=='typed',
@@ -78,6 +81,7 @@ def generate_launch_description():
         DeclareLaunchArgument('workspace',default_value=str(Path.home()/'go2_diploma/sim2real')),
         DeclareLaunchArgument('mission_config_path',default_value=PathJoinSubstitution([LaunchConfiguration('workspace'),'repos/rars01_graspnet/config/jetson_orin_nano.yaml'])),
         DeclareLaunchArgument('physical',default_value='false'),
+        DeclareLaunchArgument('test_mode',default_value='',description='full or ready_observe diagnostic; empty uses YAML'),
         DeclareLaunchArgument('start_arm_owner',default_value='true'),
         DeclareLaunchArgument('network_interface',default_value='enP8p1s0'),
         OpaqueFunction(function=_launch)])

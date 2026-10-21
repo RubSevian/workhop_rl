@@ -55,7 +55,7 @@ class Fixture:
         elif kind=='trajectory':
             self.commands+=1;self.owner['q']=data['points'][-1].copy()
             # Synthetic owner outcome only; no physical torque qualification.
-            if data['kind']=='close':self.owner.update(q=self.owner['q'][:6]+[.4],gripper_command_active=True,gripper_hold_target=.4,grasp_assessment='GRASP_PRESUMED_SUCCESS')
+            if data['kind']=='close':self.owner.update(q=self.owner['q'][:6]+[.4],gripper_command_active=True,gripper_hold_target=.4,grasp_assessment='GRASPED')
             self.owner.update(mission_id=data['id'],mission_state='SUCCEEDED',arm_home_ready=all(abs(x)<1e-6 for x in self.owner['q'][:6]))
         elif kind=='cancel':self.owner['mission_state']='CANCELLED'
     def compute(self,data):
@@ -858,7 +858,7 @@ class Integration(unittest.TestCase):
         self.assertFalse(h.valid(300000140,'nav'))
         d.update(observed_ns=160,base_locked=True);h.observe(json.dumps(d),b'a',170,'nav');self.assertTrue(h.base_locked)
         h.graph([b'a',b'b'],180);self.assertFalse(h.valid(190,'nav'));self.assertTrue(h.base_locked)
-        self.assertEqual(blockers(CFG),[]);self.assertIsInstance(CFG['physical_enabled'],bool)
+        self.assertEqual(set(blockers(CFG)),{'full_grasp_motor_torque_cap_unqualified','physical_retreat_clearance_unqualified'});self.assertIsInstance(CFG['physical_enabled'],bool)
 
     def test_arm_geometry_tolerance_preserves_actual_pose_and_leg_limits(self):
         from mission.collision import validate_geometry_joint

@@ -50,7 +50,7 @@ inline ParsedArmStatus ParseArmStatus(const std::string& text,double home_tolera
      const int home_joint_count=y["home_joint_count"]?y["home_joint_count"].as<int>():7;
      if(home_joint_count!=6&&home_joint_count!=7)throw std::runtime_error("invalid HOME joint scope");
      if(home_joint_count==6&&(!y["mission_capable"]||!y["mission_capable"].as<bool>()||
-          !y["grasp_verification"]||y["grasp_verification"].as<std::string>()!="stub"))
+          !y["grasp_verification"]||(y["grasp_verification"].as<std::string>()!="stub"&&y["grasp_verification"].as<std::string>()!="torque_width")))
       throw std::runtime_error("HOME6 requires explicit mission contract");
      const bool gripper_hold=y["gripper_hold_confirmed"]&&y["gripper_hold_confirmed"].as<bool>();
      const double grip_target=gripper_hold?y["gripper_hold_target"].as<double>():0.;

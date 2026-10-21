@@ -158,18 +158,19 @@ class Mission:
             navigation_session_id=self.nav_session, goal_revision=self.revision,
             owner_session_id=self.owner_session, owner=copy.deepcopy(self.inputs['owner']),
             grasp_plan=self.grasp_plan, object_anchor=self.object_anchor,q_search=self.q_search,
-            grasp_attempt=self.grasp_attempt,reverse_segment=copy.deepcopy(self.attempt_segments[-1]) if operation=='reverse_search' and self.attempt_segments else None,
+            grasp_attempt=self.grasp_attempt,reverse_segment=copy.deepcopy(self.attempt_segments[-1]) if operation in ('reverse_search','retry_open') and self.attempt_segments else None,
             scan_index=self.scan_index)))
 
     def failed_grasp_attempt(self, reason, now):
         self.last_grasp_error=reason
-        if self.inputs['owner'].get('gripper_command_active') and self.inputs['owner'].get('object_hold_state')!='EMPTY':
+        if self.inputs['owner'].get('gripper_command_active') and self.inputs['owner'].get('object_hold_state')!='EMPTY' and self.inputs['owner'].get('grasp_assessment')!='NOT_GRASPED':
             self.cancel(now,'OBJECT_HOLD_UNKNOWN_NO_AUTOMATIC_RELEASE',True);return
         if self.grasp_attempt>=2:
             self.go_home('TARGET_NOT_GRASPED',now);return
         self.grasp_attempt+=1;self.grasp_plan=None
         if self.attempt_segments:
-            self.transition('RETURN_SEARCH',now,reason);self.request('reverse_search',now)
+            self.transition('RETURN_SEARCH',now,reason)
+            self.request('retry_open' if self.inputs['owner'].get('gripper_command_active') else 'reverse_search',now)
         elif self.q_search is not None and max(abs(a-b) for a,b in zip(self.inputs['owner']['q'][:6],self.q_search))<=self.cfg['execution']['start_tolerance_rad']:
             self.transition('PLAN_GRASP',now,reason);self.request('grasp_plan',now)
         else:self.cancel(now,'Q_SEARCH_RETURN_PATH_MISSING',True)
@@ -256,10 +257,12 @@ class Mission:
             self.request('close', now)
         elif operation == 'close':
             assessment=self.inputs['owner'].get('grasp_assessment','UNKNOWN')
-            if assessment=='GRASP_PRESUMED_SUCCESS':
+            if assessment=='GRASPED':
                 self.transition('RETREAT',now);self.request('retreat',now)
             elif assessment=='NOT_GRASPED':self.failed_grasp_attempt('TORQUE_WIDTH_NOT_SATISFIED',now)
-            else:self.cancel(now,'GRASP_TORQUE_SEMANTICS_UNQUALIFIED',True)
+            else:self.cancel(now,'GRASP_ASSESSMENT_UNKNOWN:'+self.inputs['owner'].get('grasp_assessment_reason','NO_VALID_ASSESSMENT'),True)
+        elif operation=='retry_open':
+            self.request('reverse_search',now)
         elif operation=='reverse_search':
             self.attempt_segments.pop()
             if self.attempt_segments:self.request('reverse_search',now)
@@ -511,7 +514,7 @@ class Mission:
         return [(kind,data) for kind,data in effects if self.state not in TERMINAL or kind=='cancel']
 
     def status(self, now):
-        return dict(availability=self.availability,input_rejections=self.input_rejections,wait_goal_stale_since=self.wait_goal_stale_since,stale_input_diagnostic=self.stale_input_diagnostic,observation_recovery=dict(reason=self.recovery_reason,since=self.recovery_since,retry_operation=self.retry_operation,retries=self.observation_retries),test_mode='ready_observe' if self.ready_observe else 'full',last_observation=self.last_observation,last_compute_metrics=self.last_compute_metrics,grasp_verification='stub',object_grasped=None,observed_ns=int(now*1e9), session_id=self.session, state=self.state,
+        return dict(availability=self.availability,input_rejections=self.input_rejections,wait_goal_stale_since=self.wait_goal_stale_since,stale_input_diagnostic=self.stale_input_diagnostic,observation_recovery=dict(reason=self.recovery_reason,since=self.recovery_since,retry_operation=self.retry_operation,retries=self.observation_retries),test_mode='ready_observe' if self.ready_observe else 'full',last_observation=self.last_observation,last_compute_metrics=self.last_compute_metrics,grasp_verification='torque_width',grasp_assessment=self.inputs.get('owner',{}).get('grasp_assessment','UNKNOWN'),object_grasped=None,observed_ns=int(now*1e9), session_id=self.session, state=self.state,
                     reason=self.reason, navigation_session_id=self.nav_session,
                     goal_revision=self.revision, goal_stamp_ns=self.goal_stamp,
                     elapsed_s=max(0.,now-self.started) if self.started else 0.,

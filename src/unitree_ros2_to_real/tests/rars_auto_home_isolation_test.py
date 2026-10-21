@@ -9,7 +9,11 @@ assert 'setZero(' not in owner+core+leg
 assert '"connect_serial",false' in owner and '"read_only",true' in owner
 assert 'sendPositionTargets' not in leg and 'sdk_.disable()' in owner
 assert '/rars01/control/return_home' in owner+leg and '/rars01/control/emergency_disable' in owner+leg
-assert 'emergency_disable_validated' in core and 'orchestration_generation()' in leg
+# Validation provenance is loaded/published by Owner, not the transport loop.
+assert 'home.emergency_disable_validated=deployment[' in owner
+assert 'home_->config().emergency_disable_validated' in owner
+assert 'if(!config_.enabled||!config_.emergency_disable_enabled)' in core
+assert 'orchestration_generation()' in leg
 assert 'sdk_->enable' not in leg and 'arm_home_ready' in leg
 assert 'config.motors[i].direction=directions[i]' in owner
 assert 'config.motors[i].zero_offset=z[i]' in owner

@@ -548,6 +548,12 @@ class Planning:
             object_anchor=WorldObjectAnchor(np.asarray(anchor).tolist(),at['capture_mono_ns'],at['capture_ros_ns'],
                 at['body'].navigation_session_id,at['body'].tf_revision,request['goal_revision'],request['owner_session_id'],float(d.conf))
             return dict(object_anchor=object_anchor.data(),grasp_plan=dict(approved_segments=approved_candidates[id(candidate)],planning_scene_snapshot=copy.deepcopy(current['scene_snapshot']),pregrasp=candidate.pregrasp_joints.tolist(),approach=[q.tolist() for q in candidate.approach_joint_waypoints],retreat=[q.tolist() for q in candidate.retreat_joint_waypoints],cost=candidate.cost,object_map=anchor.tolist(),camera_to_arm=cam_to_arm.tolist(),poses_map=poses_map,world_grasp_anchor=world.data(),pose_kind='End_link_TCP'))
+        elif op=='retry_open':
+            from .approved_motion import release_for_retry
+            trajectory=release_for_retry(request['reverse_segment'],sample,self.cfg,
+                open_angle=float(request['reverse_segment']['points'][-1][6]),
+                rate=self.grasp['robot']['rars01']['command_rate_hz'],velocity=self.grasp['robot']['rars01']['position_velocity_limits_rad_s'][6],assessment=owner.get('grasp_assessment'))
+            return dict(trajectory=trajectory)
         elif op=='reverse_search':
             known_empty=(not owner.get('gripper_command_active') or owner.get('object_hold_state')=='EMPTY')
             trajectory=reverse_segment(request['reverse_segment'],sample,self.cfg,known_empty=known_empty)

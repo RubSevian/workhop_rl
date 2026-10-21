@@ -11,7 +11,7 @@ from rars01_state_interfaces.msg import ArmFastState
 class Tests(unittest.TestCase):
     def payload(self):
         value=yaml.safe_load((Path(__file__).with_name('fixtures')/'arm_owner_state.yaml').read_text())
-        value['owner_session_id']='owner-test';return value
+        value['owner_session_id']='owner-test';value['grasp_assessment']='UNKNOWN';value['grasp_assessment_reason']='';return value
     def same(self,a,b):
         if isinstance(a,dict):
             self.assertEqual(a.keys(),b.keys())
@@ -30,6 +30,15 @@ class Tests(unittest.TestCase):
             a['torque'][2]=-float('inf')
             msg=deserialize_message(serialize_message(from_mapping(a)),ArmFastState)
             self.same(a,to_mapping(msg))
+    def test_all_assessment_results_survive_wire_transport(self):
+        for state in ('GRASPED','NOT_GRASPED','UNKNOWN'):
+            value=self.payload();value.update(grasp_assessment=state,grasp_assessment_reason='sampled torque/width')
+            msg=deserialize_message(serialize_message(from_mapping(value)),ArmFastState)
+            result=to_mapping(msg)
+            self.assertEqual(result['grasp_assessment'],state)
+            self.assertEqual(result['grasp_assessment_reason'],value['grasp_assessment_reason'])
+            self.assertIsNone(result['object_grasped']) # Preliminary result never becomes physical certainty.
+
     def test_version_rejected(self):
         msg=from_mapping(self.payload());msg.schema_version=2
         with self.assertRaisesRegex(ValueError,'SCHEMA'):to_mapping(msg)
@@ -41,7 +50,7 @@ class Tests(unittest.TestCase):
         payload=self.payload();payload['observed_ns']=300
         for publishers,old_gid,minimum in [([],None,0),([NS(endpoint_gid=b'a'),NS(endpoint_gid=b'b')],None,0),([NS(endpoint_gid=b'a')],b'a',400)]:
             received={'owner':1};calls=[]
-            node=NS(cfg={'frames':{'arm_history_depth':32}},arm_state_transport='typed',topics={'owner':'test'},gids={} if old_gid is None else {'owner':old_gid},gid_since={'owner':minimum},get_publishers_info_by_topic=lambda _:publishers,engine=NS(received=received,state='IDLE',observe=lambda *x:calls.append(x)))
+            node=NS(cfg={'frames':{'arm_history_depth':32}},arm_state_transport='typed',topics={'owner':'test'},gids={} if old_gid is None else {'owner':old_gid},gid_since={'owner':minimum},get_publishers_info_by_topic=lambda _:publishers,engine=NS(received=received,state='IDLE',input_rejections={},observe=lambda *x:calls.append(x)))
             Coordinator.observe(node,'owner',from_mapping(payload),None)
             self.assertFalse(calls)
             # Existing valid state survives a delayed sample without renewed

@@ -75,6 +75,7 @@ int main(){
  auto parsed=ParseArmStatus(YAML::Dump(y),.15,now);assert(parsed.error.empty()&&parsed.inputs.arm_home_ready);
  // New mission HOME6 contract does not require evidence or closed jaws.
  y["gripper_hold_confirmed"]=false;y["home_joint_count"]=6;y["mission_capable"]=true;y["grasp_verification"]="stub";
+ y["grasp_verification"]="torque_width";
  y["q"]=std::vector<float>{0,0,0,0,0,0,.95f};
  assert(ParseArmStatus(YAML::Dump(y),.15,now).error.empty());
  y["q"]=std::vector<float>{0,0,0,0,0,0,0};assert(ParseArmStatus(YAML::Dump(y),.15,now).error.empty());

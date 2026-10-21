@@ -8,6 +8,8 @@ string mission_state
 string mission_error
 string mission_blocker
 bool home_requested
+string grasp_assessment
+string grasp_assessment_reason
 string grasp_verification
 uint64 home_joint_count
 bool gripper_command_active

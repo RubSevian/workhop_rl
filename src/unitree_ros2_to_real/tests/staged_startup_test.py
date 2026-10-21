@@ -171,7 +171,7 @@ class StartupTests(unittest.TestCase):
         spec=importlib.util.spec_from_file_location('staged_launch',SCRIPTS.parent/'launch/go2_rars01_first_grasp.launch.py')
         module=importlib.util.module_from_spec(spec);spec.loader.exec_module(module)
         context=LaunchContext()
-        context.launch_configurations.update(workspace=str(root),physical='true',start_arm_owner='true',
+        context.launch_configurations.update(workspace=str(root),physical='true',test_mode='ready_observe',start_arm_owner='true',
             network_interface='enP8p1s0',mission_config_path=str(root/'repos/rars01_graspnet/config/jetson_orin_nano.yaml'))
         # Test this checkout's launch/config pair, independently of the active
         # installed baseline. Actions are only constructed, never executed.

@@ -169,7 +169,13 @@ def load(path, workspace):
     if (verification.get('requested_motor_torque_limit_nm',2.2)!=2.2
             or verification.get('min_inner_width_m',.05)!=.05):
         raise ValueError('torque/width contract requires 2.2 Nm and strictly greater than 0.05 m')
-    if verification.get('mode')!='stub':raise ValueError('unsupported grasp_verification.mode')
+    if verification.get('mode') not in ('stub','torque_width'):raise ValueError('unsupported grasp_verification.mode')
+    if verification.get('max_total_torque_nm',2.2)!=2.2:raise ValueError('max_total_torque_nm must be 2.2')
+    a=cfg.get('grasp_assessment',{})
+    if verification.get('mode')=='torque_width':
+        for key in ('contact_torque_nm','min_grasp_width_m','confirmation_duration_s'):
+            v=a.get(key)
+            if type(v) not in (int,float) or not math.isfinite(v) or v<=0:raise ValueError('invalid grasp_assessment.'+key)
     duration=verification.get('close_duration_s')
     if type(duration) not in (int,float) or not math.isfinite(duration) or duration<=0 or duration>=cfg['execution']['state_timeout_s']:
         raise ValueError('invalid grasp_verification.close_duration_s')
