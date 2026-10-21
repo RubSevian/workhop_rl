@@ -52,6 +52,56 @@ class PlanningContracts(unittest.TestCase):
         changed['owner_session_id']='new-owner'
         with self.assertRaisesRegex(ValueError,'SESSION_CHANGED'):p.execute(request,lambda *a:changed)
 
+    def test_open_jaw_collision_reference_preserves_command_and_original_result(self):
+        p,sample=self.setup_planner();checked=[]
+        p.collision.check=lambda points,*a,**k:checked.append(np.asarray(points).copy()) or True
+        points=np.zeros((2,7));points[:,6]=.4;points[-1,0]=.01
+        reference=dict(model='open_gripper_approximation',opening_width_m=.1,motor_angle_rad=.9)
+        result=p.checked(points,sample,False,gripper_reference=reference)
+        np.testing.assert_array_equal(checked[0][:,6],[.9,.9])
+        self.assertEqual(result['points'],points.tolist())
+        self.assertEqual(result['collision_points'],checked[0].tolist())
+        self.assertFalse(result['physical_geometry_qualified'])
+        reference['opening_width_m']=0.;self.assertEqual(result['collision_gripper_reference']['opening_width_m'],.1)
+
+    def test_retreat_reuses_arm_path_after_close_without_rechecking_q7_or_legs(self):
+        p,sample=self.setup_planner();points=np.zeros((2,7));points[:,6]=.9;points[-1,0]=.01
+        trajectory=dict(points=points.tolist(),collision_context=p.collision_scene(sample),collision_checked=True,
+            scene_snapshot=copy.deepcopy(sample['scene_snapshot']),payload_checked=False,
+            collision_points=points.tolist(),collision_gripper_reference=dict(model='open_gripper_approximation',opening_width_m=.1,motor_angle_rad=.9))
+        original=copy.deepcopy(trajectory)
+        world=WorldGraspAnchor(np.eye(4).tolist(),sample['body'].mono_ns,sample['body'].ros_ns,'nav','synthetic-tf-r1',1,.9)
+        request=dict(operation='retreat',owner=dict(gripper_command_active=True,gripper_hold_target=.4),
+            owner_session_id='arm',navigation_session_id='nav',goal_revision=1,
+            grasp_plan=dict(approved_segments={'retreat':trajectory},world_grasp_anchor=world.data()))
+        sample['q7'][6]=.4;sample['scene_snapshot']['q7']=tuple(sample['q7'])
+        sample['legs'][0]+=.01;sample['scene_snapshot']['legs']=tuple(sample['legs'])
+        p.grasp['robot']['rars01']['max_grasp_width_m']=.1
+        p.geometry=NS(opening_width=lambda angle:angle/9)
+        with patch('mission.planning.time.monotonic_ns',return_value=sample['body'].mono_ns):
+            result=p.execute(request,lambda *a:sample);p.validate_result(result,lambda *a:sample,request)
+        actual=result['trajectory']
+        np.testing.assert_array_equal(np.array(actual['points'])[:,:6],points[:,:6])
+        np.testing.assert_array_equal(np.array(actual['points'])[:,6],[.4,.4])
+        self.assertEqual(actual['collision_points'],original['collision_points'])
+        self.assertEqual(trajectory,original);self.assertTrue(actual['reused_approval'])
+        self.assertFalse(actual['physical_geometry_qualified']);self.assertEqual(actual['operation'],'retreat')
+        sample['q7'][0]=sample['q'][0]=.03
+        with patch('mission.planning.time.monotonic_ns',return_value=sample['body'].mono_ns):
+            with self.assertRaisesRegex(ValueError,'START_CHANGED'):p.execute(request,lambda *a:sample)
+
+    def test_physical_retreat_requires_clearance_evidence_even_if_torque_qualified(self):
+        from mission.config import blockers,physical_retreat_qualified
+        p,_=self.setup_planner();cfg=p.cfg;cfg['test_mode']='full'
+        cfg['grasp_verification'].update(motor_torque_cap_validated=True,motor_torque_cap_evidence='synthetic fixture')
+        self.assertIn('physical_retreat_clearance_unqualified',blockers(cfg))
+        cfg['collision']['retreat_physical_clearance_validated']=True
+        for evidence in ('','   ',False,None):
+            cfg['collision']['retreat_physical_clearance_evidence']=evidence
+            self.assertFalse(physical_retreat_qualified(cfg['collision']))
+        cfg['collision']['retreat_physical_clearance_evidence']='synthetic qualification fixture; NOT hardware evidence'
+        self.assertTrue(physical_retreat_qualified(cfg['collision']))
+
     def test_frozen_geometry_reference_cannot_renew_live_admission(self):
         from mission.collision import Collision
         p,sample=self.setup_planner();scene=p.collision_scene(sample);original=copy.deepcopy(scene)
@@ -64,7 +114,7 @@ class PlanningContracts(unittest.TestCase):
 
     def test_candidates_share_one_snapshot_and_next_attempt_acquires_another(self):
         p,sample=self.setup_planner();p.resume_camera=lambda:None;p.compute_metrics={}
-        p.eye=NS(chain=lambda *a:(np.eye(4),np.eye(4)));p.geometry=object();p.ik=object()
+        p.eye=NS(chain=lambda *a:(np.eye(4),np.eye(4)));p.geometry=NS(motor_angle_for_width=lambda width:.9);p.ik=object()
         at=copy.deepcopy(sample);at.update(capture_mono_ns=sample['body'].mono_ns,
                     capture_ros_ns=sample['body'].ros_ns,odom_arm=np.eye(4),arm_camera=np.eye(4))
         p.detect=lambda *a:(None,None,NS(conf=.9,bbox_xyxy=[0,0,1,1]),at,np.array([.1,.2,.3]))
@@ -81,7 +131,7 @@ class PlanningContracts(unittest.TestCase):
             value['scene_snapshot']['legs']=tuple(value['legs']);reads.append(value)
             return value
         def checked(points,scene,payload,kind='move',**options):
-            passes.append((copy.deepcopy(scene),options['reference_ns']))
+            passes.append((copy.deepcopy(scene),options['reference_ns'],copy.deepcopy(options.get('gripper_reference'))))
             return dict(points=np.asarray(points).tolist(),scene_snapshot=copy.deepcopy(scene['scene_snapshot']),
                         collision_context=p.collision_scene(scene),collision_checked=True,payload_checked=False,kind=kind)
         p.checked=checked
@@ -100,8 +150,10 @@ class PlanningContracts(unittest.TestCase):
         with patch.dict(sys.modules,{'graspnetAPI':api,'utils.graspnet_utils':utils,'rars01_graspnet.real_grasp_selection':selection}),patch('mission.planning.time.monotonic_ns',return_value=sample['body'].mono_ns):
             first=p.execute(request,context);second=p.execute(request,context)
         self.assertEqual(len(passes),20)
+        self.assertEqual(sum(reference is not None for _,_,reference in passes),8)
+        self.assertTrue(all(reference['opening_width_m']==.1 for _,_,reference in passes if reference is not None))
         for begin in (0,10):
-            for scene,reference in passes[begin:begin+10]:
+            for scene,reference,_ in passes[begin:begin+10]:
                 self.assertEqual(scene['legs'],passes[begin][0]['legs'])
                 self.assertEqual(reference,sample['body'].mono_ns)
         self.assertNotEqual(passes[0][0]['legs'],passes[10][0]['legs'])

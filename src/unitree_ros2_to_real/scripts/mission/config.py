@@ -15,6 +15,11 @@ def payload_checks_enabled(collision):
         raise ValueError('collision.payload_enabled must be a boolean')
     return enabled
 
+def physical_retreat_qualified(collision):
+    return (collision.get('retreat_physical_clearance_validated') is True
+            and isinstance(collision.get('retreat_physical_clearance_evidence'),str)
+            and bool(collision['retreat_physical_clearance_evidence'].strip()))
+
 def self_collision_pairs(collision, name):
     pairs = collision.get(name, [])
     if not isinstance(pairs, list):
@@ -129,6 +134,10 @@ def load(path, workspace):
     grip_tolerance=cfg['collision'].get('gripper_closed_measurement_tolerance_rad',0.)
     if type(grip_tolerance) not in (int,float) or not math.isfinite(grip_tolerance) or not 0<=grip_tolerance<=math.radians(5)+1e-12:
         raise ValueError('invalid collision.gripper_closed_measurement_tolerance_rad')
+    if type(cfg['collision'].get('retreat_physical_clearance_validated',False)) is not bool:
+        raise ValueError('collision.retreat_physical_clearance_validated must be boolean')
+    if not isinstance(cfg['collision'].get('retreat_physical_clearance_evidence',''),str):
+        raise ValueError('collision.retreat_physical_clearance_evidence must be string')
     recovery=cfg['execution'].get('observation_recovery_timeout_s',30.)
     retry=cfg['execution'].get('observation_retry_delay_s',.25)
     if not 0<retry<recovery<=cfg['execution']['state_timeout_s']:
@@ -186,6 +195,8 @@ def blockers(cfg):
     if cfg.get('test_mode','full')=='full' and (not cfg['grasp_verification'].get('motor_torque_cap_validated',False)
             or not cfg['grasp_verification'].get('motor_torque_cap_evidence')):
         result.append('full_grasp_motor_torque_cap_unqualified')
+    if cfg.get('test_mode','full')=='full' and not physical_retreat_qualified(cfg['collision']):
+        result.append('physical_retreat_clearance_unqualified')
     if cfg['frames']['vehicle_to_mount'] is None:
         result.append('vehicle_to_mount_missing')
     for key in (('floor_z_in_map_m',) if environment else ()) + (('payload_box_m', 'payload_tcp_xyz_m') if payload_checks_enabled(cfg['collision']) else ()):

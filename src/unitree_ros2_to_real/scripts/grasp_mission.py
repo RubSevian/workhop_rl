@@ -22,7 +22,7 @@ from mission.native_leg_input import NativeLegInput
 from mission.arm_fast_state import to_mapping
 from mission.leg_state_reader import LegStateReader
 from mission.ros_scene import ROSBodySource, report_scene
-from mission.config import load, blockers
+from mission.config import load, blockers, physical_retreat_qualified
 from mission.core import Mission, TERMINAL, ARM_PHASES
 from mission.health_contract import source_ttl
 
@@ -277,6 +277,9 @@ class Coordinator(Node):
         if self.grip_log is not None:
             status['gripper_observation']['recording']=dict(path=self.grip_log.path,error=self.grip_log.error,
                 written=self.grip_log.written,dropped=self.grip_log.dropped)
+        status['gripper_collision_policy']=dict(model='open_gripper_approximation',
+            actual_opening_collision_free_guaranteed=False,
+            retreat_physical_clearance_qualified=physical_retreat_qualified(self.cfg['collision']))
         status['payload_collision_enabled']=self.cfg['collision'].get('payload_enabled',True)
         status['environment_collision_enabled']=self.cfg['collision'].get('environment_enabled',True)
         if self.blockers or not self.physical:

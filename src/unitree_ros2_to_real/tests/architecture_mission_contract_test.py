@@ -132,6 +132,25 @@ class ArchitectureMissionTests(unittest.TestCase):
         self.assertIsNotNone(m.observe('r3',{'decode_error':'bad YAML'},500,5000))
         self.assertIsNone(m.observe('r3',{'decode_error':'bad YAML'},600,6000))
 
+    def test_operator_levels_recover_once_and_preserve_diagnostic_evidence(self):
+        from mission.operator_events import render_event
+        m=OperatorEvents()
+        event=m.observe('mission',dict(state='BLOCKED',reason='PHYSICAL_NOT_READY',
+            blockers=['physical_retreat_clearance_unqualified'],
+            stale_input_diagnostic=dict(source_topic='/go2/navigation/status',status_age_ms=601,ttl_ms=600,action_taken='BLOCK_NEW_GOAL')),1,1)
+        self.assertEqual(event['level'],'BLOCKED')
+        line=render_event(event)
+        self.assertIn('physical_retreat_clearance_unqualified',line);self.assertIn('ttl_ms=600',line)
+        data=dict(state='WAIT_GOAL',availability=dict(navigation=True,manipulation=True))
+        event=m.observe('mission',data,2,2)
+        self.assertEqual(event['event_type'],'RECOVERED');self.assertEqual(event['level'],'OK')
+        data['observed_ns']=3;self.assertIsNone(m.observe('mission',data,3,3))
+        warning=m.observe('r3',dict(state='ACTIVE',phase='RL_ZERO',phase_warnings=['NAV_UNAVAILABLE']),4,4)
+        self.assertEqual(warning['level'],'WARNING')
+        fault=m.observe('r3',dict(state='EMERGENCY_FAULT',fault_latched=True,fault='arm_feedback_age',fault_phase='RL_ZERO'),5,5)
+        self.assertEqual(fault['level'],'FAULT');self.assertIn('arm_feedback_age',render_event(fault))
+        with self.assertRaisesRegex(ValueError,'STATUS_MAPPING_REQUIRED'):m.observe('nav',[],6,6)
+
     def test_object_anchor_is_separate_from_grasp_and_epoch_bound(self):
         f=Fixture();f.feed()
         from mission.scene import BodyPose

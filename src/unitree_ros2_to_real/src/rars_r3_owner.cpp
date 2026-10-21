@@ -128,6 +128,12 @@ class ArmOwner final:public rclcpp::Node {
   const auto mode=y["test_mode"]?y["test_mode"].as<std::string>():"full";
   if(mode!="full"&&mode!="ready_observe")throw std::runtime_error("invalid test_mode");
   ready_observe_=mode=="ready_observe";
+  const auto clearance=y["collision"]["retreat_physical_clearance_validated"];
+  const auto clearance_evidence=y["collision"]["retreat_physical_clearance_evidence"];
+  retreat_clearance_qualified_=clearance&&clearance.as<bool>()&&clearance_evidence&&
+    clearance_evidence.as<std::string>().find_first_not_of(" \t\r\n")!=std::string::npos;
+  if(!ready_observe_&&!retreat_clearance_qualified_)
+   throw std::runtime_error("physical RETREAT clearance unqualified: open-gripper approximation");
   if(!ready_observe_&&(!y["grasp_verification"]["motor_torque_cap_validated"]||
       !y["grasp_verification"]["motor_torque_cap_validated"].as<bool>()||
       !y["grasp_verification"]["motor_torque_cap_evidence"]||
@@ -222,6 +228,9 @@ class ArmOwner final:public rclcpp::Node {
       v["navigation_session_id"].as<std::string>()!=nav_session_||v["goal_revision"].as<uint64_t>()!=health_goal_revision_||!v["collision_checked"].as<bool>()||
       v["payload_checked"].as<bool>()!=(payload_checks_enabled_&&mission_->holding()))throw std::runtime_error("plan authority/session/collision rejected");
    const auto kind=v["kind"].as<std::string>();
+   const auto operation=v["operation"]?v["operation"].as<std::string>():"";
+   if(!PhysicalRetreatPlanAllowed(retreat_clearance_qualified_,operation,health_phase_,mission_->holding(),kind))
+    throw std::runtime_error("PHYSICAL_RETREAT_CLEARANCE_UNQUALIFIED");
    if(!ReadyObservePlanAllowed(ready_observe_,ready_move_seen_,kind))throw std::runtime_error("ready_observe permits one initial move and HOME only");
    const auto preset=v["preset_operation"]?v["preset_operation"].as<std::string>():std::string{};
    const bool search=PresetSearchPlanAllowed(preset,health_phase_);
@@ -305,6 +314,7 @@ class ArmOwner final:public rclcpp::Node {
    <<YAML::Key<<"mission_state"<<YAML::Value<<(mission_?mission_->state():"DISABLED")
    <<YAML::Key<<"mission_error"<<YAML::Value<<(mission_?mission_->error():mission_blocker_)
    <<YAML::Key<<"mission_blocker"<<YAML::Value<<mission_blocker_
+   <<YAML::Key<<"retreat_physical_clearance_qualified"<<YAML::Value<<retreat_clearance_qualified_
    <<YAML::Key<<"home_requested"<<YAML::Value<<home_requested_
    <<YAML::Key<<"grasp_verification"<<YAML::Value<<(mission_?"stub":"inactive")
    <<YAML::Key<<"object_grasped"<<YAML::Value<<YAML::Null
@@ -357,7 +367,7 @@ class ArmOwner final:public rclcpp::Node {
  struct ParsedPlan{YAML::Node header;std::vector<std::array<float,7>> points;std::string error;};
  std::future<ParsedPlan> plan_future_;
  int64_t plan_cancelled_ns_=0;
- bool ready_observe_=false,ready_move_seen_=false;
+ bool ready_observe_=false,ready_move_seen_=false,retreat_clearance_qualified_=false;
  size_t max_plan_samples_=0;
  std::unique_ptr<MissionStream> mission_;std::string owner_session_,mission_session_,retired_session_,nav_session_,health_nav_session_,r3_session_,r3_nav_session_,mission_blocker_,health_phase_;
  uint64_t health_goal_revision_=0;bool health_manipulating_=false;

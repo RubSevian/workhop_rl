@@ -113,6 +113,13 @@ int main(){
   MissionStream long_stream(longer);path.assign(6002,f.joints.position);
   assert(long_stream.Start(1,"move",path,at(40),f));
  }
+ // Unqualified open-jaw approximation never authorizes physical RETREAT.
+ assert(!PhysicalRetreatPlanAllowed(false,"retreat","GRASP",false,"move"));
+ assert(!PhysicalRetreatPlanAllowed(false,"","RETREAT",false,"move"));
+ assert(!PhysicalRetreatPlanAllowed(false,"","GRASP",true,"move"));
+ assert(PhysicalRetreatPlanAllowed(false,"home","RETURN_HOME",true,"home"));
+ assert(PhysicalRetreatPlanAllowed(false,"scan_step","ARM_SEARCH",false,"move"));
+ assert(PhysicalRetreatPlanAllowed(true,"retreat","RETREAT",true,"move"));
  // The higher search speed is confined to preset search phases.
  assert(PresetSearchPlanAllowed("scan_step","ARM_SEARCH"));
  assert(PresetSearchPlanAllowed("scan_return","RETURN_HOME"));

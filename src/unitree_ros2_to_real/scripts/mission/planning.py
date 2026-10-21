@@ -9,7 +9,7 @@ import sys
 import copy
 import time
 import numpy as np
-from .transforms import EyeInHand, rigid, fixed_joint
+from .transforms import EyeInHand, fixed_joint
 from .collision import Collision
 from .scene import FrameChain, WorldGraspAnchor, WorldObjectAnchor
 from .approved_motion import reverse_segment
@@ -356,25 +356,35 @@ class Planning:
         map_body=self.frames.body(sample['odom_vehicle'])
         if not np.allclose(map_body,sample['body'].map_body,atol=1e-12,rtol=0):
             raise ValueError('BODY_CONTEXT_FRAME_MISMATCH')
-        return dict(legs=sample['legs'],legs_ns=sample['legs_ns'],feedback_ns=sample['feedback_ns'],
-            scene_snapshot=sample['scene_snapshot'],
+        return dict(legs=list(sample['legs']),legs_ns=sample['legs_ns'],feedback_ns=sample['feedback_ns'],
+            scene_snapshot=copy.deepcopy(sample['scene_snapshot']),
             base_ns=sample['odom_mono_ns'],map_body=map_body.tolist(),owner_session_id=sample['owner_session_id'],
             scene_revision=self.cfg['collision']['scene_revision'],
             command_rate_hz=self.grasp['robot']['rars01']['command_rate_hz'],
             velocity_limits=self.grasp['robot']['rars01']['position_velocity_limits_rad_s'],
             navigation_session_id=sample['body'].navigation_session_id,tf_revision=sample['body'].tf_revision)
 
-    def checked(self, points, sample, payload, kind='move', *, reference_ns=None):
+    def checked(self, points, sample, payload, kind='move', *, reference_ns=None, gripper_reference=None):
         payload=bool(payload and self.cfg['collision'].get('payload_enabled',True))
         scene=self.collision_scene(sample)
         options={} if reference_ns is None else dict(reference_ns=reference_ns)
-        if not self.collision.check(points,scene,payload,**options):
+        command_points=np.asarray(points,dtype=float)
+        collision_points=command_points.copy()
+        if gripper_reference is not None:
+            if (command_points.ndim!=2 or command_points.shape[1]!=7 or len(command_points)<2
+                    or not np.isfinite(command_points).all()):raise ValueError('INVALID_COLLISION_PATH')
+            collision_points[:,6]=gripper_reference['motor_angle_rad']
+        if not self.collision.check(collision_points,scene,payload,**options):
             reason=self.collision.last_reason
             if reason.startswith(('COLLISION:', 'SOLID_CONTAINMENT_COLLISION', 'ENVIRONMENT_')):
                 raise CandidatePathRejected(str(self.collision.last_failure))
             raise ValueError(str(self.collision.last_failure))
-        return dict(kind=kind,points=np.asarray(points).tolist(),collision_checked=True,
-                    payload_checked=bool(payload),collision_context=scene,scene_snapshot=sample['scene_snapshot'])
+        trajectory=dict(kind=kind,points=command_points.tolist(),collision_checked=True,
+                    payload_checked=bool(payload),collision_context=scene,scene_snapshot=copy.deepcopy(sample['scene_snapshot']))
+        if gripper_reference is not None:
+            trajectory.update(collision_gripper_reference=copy.deepcopy(gripper_reference),
+                collision_points=collision_points.tolist(),physical_geometry_qualified=False)
+        return trajectory
 
     def validate_result(self,result,context,request=None):
         if result.get('grasp_plan'):
@@ -413,7 +423,6 @@ class Planning:
 
     def execute(self, request, context):
         from utils.transforms import mat4_to_pose6d,pose6d_to_mat4
-        from scipy.spatial.transform import Rotation
         op=request['operation'];owner=request['owner']
         if op in ('scan_pose','detect','observe_grasp','grasp_plan'):
             self.resume_camera()
@@ -489,10 +498,14 @@ class Planning:
                     return float((pose6d_to_mat4(*pose)@np.column_stack((points,np.ones(len(points)))).T)[2].min())
             g=self.grasp['grasp_pipeline']['grasp']
             rejected_paths=[];approved_candidates={}
-            def check_candidate_path(points,has_payload,kind='move'):
+            reference_gripper=dict(model='open_gripper_approximation',opening_width_m=robot['max_grasp_width_m'],
+                motor_angle_rad=float(self.geometry.motor_angle_for_width(robot['max_grasp_width_m'])))
+            def check_candidate_path(points,has_payload,kind='move',open_reference=False):
                 # Freeze one coherent measured scene for the whole attempt.
                 # validate_result separately checks live admission after planning.
-                return self.checked(points,current,has_payload,kind,reference_ns=planning_reference_ns)
+                options=dict(reference_ns=planning_reference_ns)
+                if open_reference:options['gripper_reference']=reference_gripper
+                return self.checked(points,current,has_payload,kind,**options)
             def validate(candidate):
                 try:
                     approved={}
@@ -501,7 +514,8 @@ class Planning:
                             ('retreat',candidate.retreat_joint_waypoints,motion['retreat_duration_s'],True)]
                     for name,waypoints,duration,has_payload in phases:
                         begin=start.copy() if name=='pregrasp' else np.r_[candidate.pregrasp_joints if name=='approach' else candidate.grasp_joints,start[6]]
-                        approved[name]=check_candidate_path(self.samples(begin,waypoints,duration),has_payload)
+                        approved[name]=check_candidate_path(self.samples(begin,waypoints,duration),has_payload,open_reference=name in ('approach','retreat'))
+                        approved[name]['operation']=name
                     closure_start=np.r_[candidate.grasp_joints,start[6]]
                     closed=self.grasp['robot']['gripper']['rars01']['closed_position_rad']
                     approved['close']=check_candidate_path(self.samples(closure_start,[candidate.grasp_joints],motion['grasp_duration_s'],closed),False,'close')
@@ -542,10 +556,29 @@ class Planning:
             pe,re=distance(old['map_body'],fresh['map_body'])
             if pe>self.cfg['frames']['continuity_translation_m'] or re>self.cfg['frames']['continuity_rotation_rad']:
                 raise ValueError('APPROVED_BODY_DISCONTINUITY')
-            # Never change a checked path to chase the current start. This also
-            # refuses a changed gripper geometry until separately qualified.
-            if np.max(np.abs(start-np.asarray(trajectory['points'][0])))>self.cfg['execution']['start_tolerance_rad']:
+            # Reuse the approved six-axis path. The gripper reference describes
+            # only an open-jaw approximation, never actual-opening clearance.
+            if np.max(np.abs(start[:6]-np.asarray(trajectory['points'][0][:6])))>self.cfg['execution']['start_tolerance_rad']:
                 raise ValueError('TRAJECTORY_START_CHANGED_REPLAN_REQUIRED')
+            if op=='retreat':
+                reference=trajectory.get('collision_gripper_reference',{})
+                if reference.get('model')!='open_gripper_approximation':
+                    raise ValueError('RETREAT_APPROXIMATION_METADATA_MISSING')
+                from .collision import measured_gripper_width
+                width=measured_gripper_width(self.geometry,float(sample['q7'][6]),self.cfg['collision'].get('gripper_closed_measurement_tolerance_rad',0.))
+                if width < -1e-9 or width>self.grasp['robot']['rars01']['max_grasp_width_m']+1e-9:
+                    raise ValueError('RETREAT_GRIPPER_OUTSIDE_EXISTING_RANGE')
+                # Retain the owner's existing hold command; no automatic release.
+                grip=float(start[6])
+                closed=self.grasp['robot']['gripper']['rars01']['closed_position_rad']
+                if closed-self.cfg['collision'].get('gripper_closed_measurement_tolerance_rad',0.)<=grip<closed:grip=closed
+                self.geometry.opening_width(grip) # existing motor-angle limits
+                trajectory.setdefault('collision_points',copy.deepcopy(trajectory['points']))
+                for point in trajectory['points']:point[6]=grip
+                trajectory['physical_geometry_qualified']=False
+            elif abs(start[6]-trajectory['points'][0][6])>self.cfg['execution']['start_tolerance_rad']:
+                raise ValueError('TRAJECTORY_START_CHANGED_REPLAN_REQUIRED')
+            trajectory['operation']=op
             trajectory['reused_approval']=True
             return dict(trajectory=trajectory)
         elif op=='home':target=np.zeros(6)
@@ -560,25 +593,7 @@ class Planning:
             trajectory['points']=[start.tolist(),start.tolist()]
             return dict(trajectory=trajectory)
         else:
-            plan=request['grasp_plan']
-            world=WorldGraspAnchor(**plan['world_grasp_anchor'])
-            # Rebase every stage using fresh odom/FK. Cached joint candidates
-            # are diagnostics, never a substitute for current eye-in-hand TF.
-            _,odom_arm=self.eye.chain(sample['capture_ns'],sample['feedback_ns'],sample['q'],sample['odom_mono_ns'],sample['odom_vehicle'])
-            world.rebase(odom_arm,sample['body'],time.monotonic_ns(),self.cfg['execution']['mission_timeout_s'],request['goal_revision'],self.cfg['limits']['sensor_age_s'])
-            poses={name:mat4_to_pose6d(np.linalg.inv(odom_arm)@rigid(pose)) for name,pose in plan['poses_map'].items()}
-            if op=='pregrasp':
-                ik=self.ik.solve(*poses['pregrasp'],reference_joints=start[:6])
-                if not ik.success:raise ValueError('PREGRASP_REBASE_IK_FAIL')
-                targets=[ik.joints];duration=motion['pregrasp_duration_s']
-            elif op in ('approach','retreat'):
-                from rars01_graspnet.real_grasp_ik import _plan_cartesian_segment
-                source,destination=('pregrasp','grasp') if op=='approach' else ('grasp','retreat')
-                targets=_plan_cartesian_segment(self.ik,poses[source],poses[destination],start[:6],self.grasp['grasp_pipeline']['grasp']['cartesian_ik'],op)
-                if not targets:raise ValueError(op.upper()+'_REBASE_IK_FAIL')
-                duration=motion['grasp_duration_s' if op=='approach' else 'retreat_duration_s']
-            else:raise ValueError('UNKNOWN_OPERATION')
-            return dict(trajectory=self.checked(self.samples(start,targets,duration),sample,payload))
+            raise ValueError('APPROVED_SEGMENTS_REQUIRED')
         try:
             trajectory=self.checked(self.samples(start,[target],self.grasp['robot']['ready_pose']['duration'],grip,search=op in ('scan_step','scan_return')),sample,payload,'home' if op=='home' else 'move')
         except CandidatePathRejected:
