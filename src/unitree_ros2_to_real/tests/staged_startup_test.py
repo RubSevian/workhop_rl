@@ -33,6 +33,68 @@ class Camera:
         return np.zeros((4,4,3),dtype=np.uint8),np.zeros((4,4),dtype=np.uint16)
 
 class StartupTests(unittest.TestCase):
+    def test_controlled_stop_closes_only_task_inference_and_keeps_geometry(self):
+        from unittest.mock import Mock
+        p=Planning.__new__(Planning);p._closed=False
+        p.worker=SimpleNamespace(close=Mock(),is_alive=lambda:False)
+        p.camera=SimpleNamespace(close=Mock());camera=p.camera
+        p.camera_mode='active';p.yolo=object();p.last_detection=object()
+        p.startup_checks=dict.fromkeys(('geometry','yolo','graspnet','camera'),True)
+        p.stop_task_perception()
+        p.worker.close.assert_called_once_with(force=True);camera.close.assert_called_once()
+        self.assertIsNone(p.yolo);self.assertIsNone(p.camera);self.assertTrue(p.sensors_ready())
+        p.startup_checks['geometry']=False;self.assertFalse(p.sensors_ready())
+
+    def perception_mock(self):
+        from grasp_perception import Perception
+        from unittest.mock import Mock
+        import queue,threading
+        node=Perception.__new__(Perception)
+        node.cfg={'execution':{'heartbeat_ttl_s':.25}}
+        node.controlled_stop=False;node.vision_cancel_complete=False;node.vision_reloading=False
+        node.r3_output_stopped=True;node.r3_phase='';node.r3_state='';node.last_r3_stamp=0;node.cancel_thread=None
+        node.backend=SimpleNamespace(collision=SimpleNamespace(work_deadline_ns=None),stop_task_perception=Mock(),
+            startup_checks=dict.fromkeys(('geometry','yolo','graspnet','camera'),True),_preload_perception=Mock())
+        node.busy=False;node.stop_event=threading.Event();node.last_request=0;node.request_session=''
+        node.jobs=queue.Queue(1);node.completed=queue.Queue(1)
+        node.count_publishers=Mock(return_value=1);node.get_logger=Mock(return_value=Mock())
+        return node
+
+    def test_perception_x_stale_status_and_home_permissions(self):
+        import json
+        n=self.perception_mock()
+        def status(state,phase,stamp):
+            n.r3_status(SimpleNamespace(data=json.dumps(dict(state=state,phase=phase,observed_ns=stamp))))
+        status('CONTROLLED_STOP','ARM_RETURN_HOME',time.monotonic_ns()-int(1e9))
+        self.assertFalse(n.controlled_stop);n.backend.stop_task_perception.assert_not_called()
+        n.busy=True;status('CONTROLLED_STOP','ARM_RETURN_HOME',time.monotonic_ns());n.cancel_thread.join(1.)
+        self.assertTrue(n.vision_cancel_complete);self.assertTrue(n.controlled_stop)
+        self.assertIsNotNone(n.backend.collision.work_deadline_ns);n.backend.stop_task_perception.assert_called_once()
+        n.busy=False
+        def request(i,operation):
+            n.request(SimpleNamespace(data=json.dumps(dict(id=i,operation=operation,session_id='session',observed_ns=time.monotonic_ns()))))
+        request(1,'detect');self.assertTrue(n.jobs.empty())
+        request(2,'home');self.assertEqual(n.jobs.get_nowait()['operation'],'home');n.busy=False
+        status('CONTROLLED_STOP','PD_CAPTURE',time.monotonic_ns());request(3,'home');self.assertTrue(n.jobs.empty())
+        # B never starts model reload, and duplicate/stale status never repeats cancel.
+        status('EMERGENCY_FAULT','FAULT',time.monotonic_ns());n.resume_task_perception();n.backend._preload_perception.assert_not_called()
+        n.backend.stop_task_perception.assert_called_once()
+
+    def test_perception_repreload_only_after_output_stop_and_new_fault_wins(self):
+        n=self.perception_mock();n.controlled_stop=n.vision_cancel_complete=True
+        n.request_session='retired';n.last_request=12
+        n.r3_state='SYSTEM_HOLD';n.last_r3_stamp=time.monotonic_ns()
+        n.backend._preload_perception.side_effect=lambda report:n.backend.startup_checks.update(dict.fromkeys(('yolo','graspnet','camera'),True))
+        n.resume_task_perception();n.backend._preload_perception.assert_called_once()
+        self.assertFalse(n.controlled_stop);self.assertFalse(n.vision_reloading);self.assertEqual(n.request_session,'')
+        n=self.perception_mock();n.controlled_stop=n.vision_cancel_complete=True
+        n.r3_state='SYSTEM_HOLD';n.last_r3_stamp=time.monotonic_ns()-int(1e9)
+        n.resume_task_perception();n.backend._preload_perception.assert_not_called()
+        n.last_r3_stamp=time.monotonic_ns()
+        def preload(report):n.r3_state='EMERGENCY_FAULT'
+        n.backend._preload_perception.side_effect=preload
+        n.resume_task_perception();self.assertTrue(n.controlled_stop);n.backend.stop_task_perception.assert_called_once()
+
     def test_nice_only_changes_compute_thread(self):
         import os,threading
         from mission.compute_scheduling import inference_thread_nice

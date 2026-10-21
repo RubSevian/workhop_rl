@@ -15,12 +15,12 @@ struct Journal:AutoHomeJournal {
 };
 struct Transport:AutoHomeTransport {
  rars_arm::JointState joints;rars_arm::CommunicationStatus comm;
- int connects=0,enables=0,sends=0,disables=0;bool connect_ok=true,enable_ok=true,send_ok=true,read_ok=true,reset_on_enable=false;
+ int connects=0,enables=0,sends=0,disables=0;bool connect_ok=true,enable_ok=true,send_ok=true,read_ok=true,reset_on_enable=false,disable_ok=true;
  std::vector<rars_arm::RarsArm::MotorValues> targets;
  Transport(){comm.connected=comm.feedback_received=true;for(size_t i=0;i<7;++i){joints.valid[i]=true;joints.motor_id[i]=i+1;joints.error[i]=0;joints.position[i]=.02F;}}
  bool Connect() override{++connects;comm.connected=connect_ok;return connect_ok;}
  bool Enable() override{++enables;comm.enabled=enable_ok;if(reset_on_enable){read_ok=false;comm.feedback_received=false;}if(enable_ok)joints.error.fill(1);return enable_ok;}
- bool Disable() override{++disables;comm.enabled=false;return true;}
+ bool Disable() override{++disables;if(disable_ok)comm.enabled=false;return disable_ok;}
  bool Send(const rars_arm::RarsArm::MotorValues& target) override{++sends;targets.push_back(target);return send_ok;}
  bool Read(rars_arm::JointState& out) override{if(!read_ok)return false;out=joints;return true;}
  rars_arm::CommunicationStatus Status() const override{return comm;}
@@ -44,6 +44,10 @@ void startup(){
  Transport reset;Journal jr;AutoHomeController countdown(config(),reset,jr);countdown.Tick(t(0));
  reset.comm.connected=false;reset.connect_ok=false;countdown.Tick(t(9));reset.comm.connected=true;countdown.Tick(t(10));
  countdown.Tick(t(19.999));assert(reset.enables==0);countdown.Tick(t(20));assert(reset.enables==1);
+ for(bool stm32:{false,true}){Transport tripped;Journal jt;AutoHomeController c(config(),tripped,jt);start(c);
+  if(stm32)tripped.comm.stm32_watchdog_tripped=true;else tripped.comm.watchdog_tripped=true;
+  assert(!c.PlannedDisable(true)&&tripped.disables==0&&c.status().state==AutoHomeState::FAULT_LATCHED&&jt.faults==1);
+ }
  Transport ro;Journal jro;auto disabled=config();disabled.enabled=false;AutoHomeController readonly(disabled,ro,jro);
  readonly.Tick(t(0));readonly.Tick(t(100));assert(ro.enables==0&&ro.sends==0&&!readonly.status().arm_home_ready);
 }
@@ -175,4 +179,26 @@ void mission_startup_home(){
  tr.joints.position[0]=.06;stream.Cancel(home.status(),"test cancel");
  home.Tick(t(10.05));assert(tr.targets.back()[0]==.05f&&!stream.home6(home.status(),.15));
 }
-int main(){mission_startup_home();control_ports();startup();readiness();incomplete_startup_frame();external_timer_jitter();journal();std::cout<<"PASS AUTO HOME mock: delay/reconnect, enable once, seven zeros, continuous stream, measured readiness, stale/send/disabled/ID/NaN/watchdogs, per-session fault latch and restart without journal guard; no hardware\n";}
+void planned_disable(){
+ Transport tr;Journal j;AutoHomeController c(config(),tr,j);start(c);
+ assert(!c.PlannedDisable(false)&&tr.disables==0&&!c.planned_disable_attempted());
+ const auto measured=c.status().joints.position;const auto stamp=c.status().accepted_stamp;
+ assert(c.PlannedDisable(true)&&tr.disables==1&&j.faults==0&&c.status().state==AutoHomeState::PLANNED_DISABLED);
+ assert(c.status().joints.position==measured&&c.status().accepted_stamp==stamp&&!c.status().arm_home_ready&&!c.status().target_fresh);
+ const int sends=tr.sends;tr.read_ok=false;tr.comm.connected=false;
+ for(int n=0;n<50;++n)c.Tick(t(20+n));
+ assert(tr.enables==1&&tr.sends==sends&&c.status().state==AutoHomeState::PLANNED_DISABLED);
+ assert(c.PlannedDisable(true)&&tr.disables==1&&!c.ReturnHome(t(80)));
+ Transport failed;failed.disable_ok=false;Journal jf;AutoHomeController f(config(),failed,jf);start(f);
+ assert(!f.PlannedDisable(true)&&f.status().state==AutoHomeState::PLANNED_DISABLE_FAILED&&jf.faults==0);
+ const int before=failed.sends;f.Tick(t(100));assert(failed.sends==before&&failed.enables==1);assert(!f.PlannedDisable(true)&&failed.disables==1);
+ Transport fault;Journal jfault;AutoHomeController prior(config(),fault,jfault);start(prior);prior.Fault("prior_fault");
+ assert(!prior.PlannedDisable(true)&&fault.disables==0&&prior.status().state==AutoHomeState::FAULT_LATCHED);
+ for(bool stm32:{false,true}){Transport tripped;Journal jt;AutoHomeController c(config(),tripped,jt);start(c);
+  if(stm32)tripped.comm.stm32_watchdog_tripped=true;else tripped.comm.watchdog_tripped=true;
+  assert(!c.PlannedDisable(true)&&tripped.disables==0&&c.status().state==AutoHomeState::FAULT_LATCHED&&jt.faults==1);
+ }
+ Transport ro;Journal jro;AutoHomeConfig cfg;AutoHomeController read_only(cfg,ro,jro);assert(!read_only.PlannedDisable(true)&&ro.disables==0);
+ auto emergency=config();emergency.emergency_disable_enabled=true;Transport b;Journal jb;AutoHomeController ctl(emergency,b,jb);start(ctl);assert(ctl.PlannedDisable(true));assert(ctl.EmergencyDisable());assert(ctl.status().state==AutoHomeState::FAULT_LATCHED&&jb.faults==1);
+}
+int main(){planned_disable();mission_startup_home();control_ports();startup();readiness();incomplete_startup_frame();external_timer_jitter();journal();std::cout<<"PASS AUTO HOME mock: delay/reconnect, enable once, seven zeros, continuous stream, measured readiness, stale/send/disabled/ID/NaN/watchdogs, per-session fault latch and restart without journal guard; no hardware\n";}

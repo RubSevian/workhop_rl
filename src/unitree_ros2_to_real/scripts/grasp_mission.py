@@ -24,7 +24,7 @@ from mission.leg_state_reader import LegStateReader
 from mission.ros_scene import ROSBodySource, report_scene
 from mission.config import load, blockers, physical_retreat_qualified
 from mission.core import Mission, TERMINAL, ARM_PHASES
-from mission.health_contract import source_ttl
+from mission.health_contract import source_ttl,CONTROLLED_HOME_PHASES
 
 class Coordinator(Node):
     def __init__(self):
@@ -213,7 +213,7 @@ class Coordinator(Node):
                 pending=self.stop_home;self.stop_home=None
                 r3=self.engine.inputs.get('r3',{})
                 age=(time.monotonic_ns()-data.get('observed_ns',0))/1e9
-                if data.get('ok') and r3.get('state')=='CONTROLLED_STOP' and self.engine.fresh('r3',time.monotonic()) and data.get('observed_ns',0)>0 and age>=0:
+                if data.get('ok') and r3.get('state')=='CONTROLLED_STOP' and r3.get('phase') in CONTROLLED_HOME_PHASES and not r3.get('fault_latched') and self.engine.fresh('r3',time.monotonic()) and data.get('observed_ns',0)>0 and age>=0:
                     trajectory=dict(data['trajectory'],**{k:pending[k] for k in ('id','session_id','navigation_session_id','owner_session_id','goal_revision')},observed_ns=time.monotonic_ns())
                     self.trajectory_pub.publish(String(data=json.dumps(trajectory,allow_nan=False)))
                 else:self.get_logger().error('Controlled-stop HOME blocked: '+data.get('reason','authority revoked'))
@@ -252,7 +252,7 @@ class Coordinator(Node):
             except Exception:self.owner_cancel_ack=False
             self.cancel_future=None
         owner=e.inputs.get('owner',{});r3=e.inputs.get('r3',{})
-        if ready and self.owner_cancel_ack and owner.get('home_requested') and r3.get('state')=='CONTROLLED_STOP' and not r3.get('fault_latched') and self.stop_home is None and not self.stop_home_attempted and not e.inputs.get('perception',{}).get('busy',True):
+        if ready and self.owner_cancel_ack and owner.get('home_requested') and r3.get('state')=='CONTROLLED_STOP' and r3.get('phase') in CONTROLLED_HOME_PHASES and not r3.get('fault_latched') and self.stop_home is None and not self.stop_home_attempted and not e.inputs.get('perception',{}).get('busy',True):
             self.stop_home_attempted=True
             e.request_id+=1
             self.stop_home=dict(id=e.request_id,session_id=e.session,navigation_session_id=e.inputs['nav']['session_id'],owner_session_id=owner['owner_session_id'],goal_revision=e.revision,operation='home',owner=owner,grasp_plan=None,scan_index=0,observed_ns=time.monotonic_ns())

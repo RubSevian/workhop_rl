@@ -103,6 +103,17 @@ class ArmOwner final:public rclcpp::Node {
    home_requested_=bool(mission_);
    response->success=mission_?(home_->status().feedback_ready&&home_->status().motors_enabled&&home_->status().target_fresh):home_->ReturnHome(ArmClock::now());response->message=response->success?"HOME stream accepted; completion requires measured HOME":"healthy enabled owner/feedback/target required; no enable issued";
   });
+  planned_disable_=create_service<std_srvs::srv::Trigger>("/rars01/control/planned_disable",[this](std_srvs::srv::Trigger::Request::SharedPtr,std_srvs::srv::Trigger::Response::SharedPtr response){
+   const auto now=ArmClock::now();const double age=std::chrono::duration<double>(now-r3_stamp_).count();
+   if(!r3_planned_disable_ready_||age<0||age>mission_ttl_||count_publishers("/go2/locomotion_status")!=1){
+    response->success=false;response->message="WAIT_R3_PD_HOLD_CONFIRMED_ARM_DISABLE";return;
+   }
+   plan_cancelled_ns_=Ns(now);home_requested_=false;
+   if(mission_)mission_->Cancel(home_->status(),"planned_disable");
+   if(!mission_session_.empty())retired_session_=mission_session_;
+   response->success=home_->PlannedDisable(true);
+   response->message=response->success?"planned disable sent; physical disable not asserted":"planned disable rejected or SDK send failed; stream remains stopped if attempted";
+  });
   emergency_=create_service<std_srvs::srv::Trigger>("/rars01/control/emergency_disable",[this](std_srvs::srv::Trigger::Request::SharedPtr,std_srvs::srv::Trigger::Response::SharedPtr response){
    response->success=home_->EmergencyDisable();response->message=response->success?"disable sent; physical disable requires measured confirmation":"emergency disable rejected: bench validation missing, read-only, or SDK failure";
   });
@@ -114,9 +125,9 @@ class ArmOwner final:public rclcpp::Node {
  bool Authority(ArmTime now,bool home_request=false){
   const auto fresh=[&](ArmTime stamp){return stamp!=ArmTime{}&&std::chrono::duration<double>(now-stamp).count()>=0&&std::chrono::duration<double>(now-stamp).count()<=mission_ttl_;};
   return mission_&&home_->status().feedback_age_s>=0&&home_->status().feedback_age_s<=mission_feedback_ttl_&&fresh(r3_stamp_)&&fresh(nav_stamp_)&&fresh(health_stamp_)&&r3_authority_&&nav_ready_&&health_ready_&&
-   !mission_session_.empty()&&(mission_session_!=retired_session_||(home_request&&r3_stopping_))&&nav_session_==health_nav_session_&&r3_nav_session_==nav_session_&&
+   !mission_session_.empty()&&(mission_session_!=retired_session_||(home_request&&r3_stopping_&&r3_home_phase_allowed_))&&nav_session_==health_nav_session_&&r3_nav_session_==nav_session_&&
    count_publishers("/go2/locomotion_status")==1&&count_publishers("/go2/mission/readiness")==1&&count_publishers("/go2/mission/health")==1&&
-   (r3_active_&&health_goal_revision_>0&&health_manipulating_||(home_request&&r3_stopping_));
+   (r3_active_&&health_goal_revision_>0&&health_manipulating_||(home_request&&r3_stopping_&&r3_home_phase_allowed_));
  }
  void ConfigureMission(const std::string& path,const std::string& workspace,const rars_arm::ArmConfiguration& sdk_config,const std::string&,bool read_only){
   const auto y=YAML::LoadFile(path)["go2_mission"];mission_ttl_=y["execution"]["heartbeat_ttl_s"].as<double>();
@@ -173,13 +184,15 @@ class ArmOwner final:public rclcpp::Node {
    return mission_->Tick(now,status,Authority(now,home_requested_||active_home_));
   });
   r3_sub_=create_subscription<std_msgs::msg::String>("/go2/locomotion_status",1,[this](std_msgs::msg::String::SharedPtr msg){
-   r3_authority_=false;try{auto v=YAML::Load(msg->data);const auto ns=v["observed_ns"].as<int64_t>();
+   r3_authority_=r3_planned_disable_ready_=false;try{auto v=YAML::Load(msg->data);const auto ns=v["observed_ns"].as<int64_t>();
     if(ns<=Ns(r3_stamp_))return;r3_stamp_=ArmTime(std::chrono::nanoseconds(ns));
     r3_nav_session_=v["navigation_session_id"].as<std::string>();
     const auto session=v["controller_session_id"].as<std::string>();
     if(!r3_session_.empty()&&r3_session_!=session){mission_->Cancel(home_->status(),"controller_session_changed");retired_session_=mission_session_;}
     r3_session_=session;r3_active_=v["state"].as<std::string>()=="ACTIVE"&&v["phase"].as<std::string>()=="RL_ZERO";
     r3_stopping_=v["state"].as<std::string>()=="CONTROLLED_STOP";
+    r3_home_phase_allowed_=ControlledStopHomePhaseAllowed(v["phase"].as<std::string>());
+    r3_planned_disable_ready_=r3_stopping_&&v["phase"].as<std::string>()=="ARM_DISABLE"&&v["pd_hold_confirmed"]&&v["pd_hold_confirmed"].as<bool>()&&!v["fault_latched"].as<bool>();
     auto command=v["motion_command"].as<std::vector<double>>();bool zero=command.size()==3;for(double x:command)zero=zero&&std::isfinite(x)&&std::abs(x)<1e-6;
     r3_authority_=v["operation_profile"].as<std::string>()=="full_mission"&&v["capabilities"]["arm_motion"].as<bool>()&&!v["fault_latched"].as<bool>()&&zero;
    }catch(...){r3_authority_=false;}
@@ -315,6 +328,9 @@ class ArmOwner final:public rclcpp::Node {
    <<YAML::Key<<"mission_error"<<YAML::Value<<(mission_?mission_->error():mission_blocker_)
    <<YAML::Key<<"mission_blocker"<<YAML::Value<<mission_blocker_
    <<YAML::Key<<"retreat_physical_clearance_qualified"<<YAML::Value<<retreat_clearance_qualified_
+   <<YAML::Key<<"planned_disable_attempted"<<YAML::Value<<home_->planned_disable_attempted()
+   <<YAML::Key<<"planned_disable_sent"<<YAML::Value<<home_->planned_disable_accepted()
+   <<YAML::Key<<"planned_disable_physically_confirmed"<<YAML::Value<<false
    <<YAML::Key<<"home_requested"<<YAML::Value<<home_requested_
    <<YAML::Key<<"grasp_verification"<<YAML::Value<<(mission_?"stub":"inactive")
    <<YAML::Key<<"object_grasped"<<YAML::Value<<YAML::Null
@@ -371,7 +387,7 @@ class ArmOwner final:public rclcpp::Node {
  size_t max_plan_samples_=0;
  std::unique_ptr<MissionStream> mission_;std::string owner_session_,mission_session_,retired_session_,nav_session_,health_nav_session_,r3_session_,r3_nav_session_,mission_blocker_,health_phase_;
  uint64_t health_goal_revision_=0;bool health_manipulating_=false;
- double mission_feedback_ttl_=.1,mission_ttl_=.25;bool payload_checks_enabled_=true,r3_authority_=false,r3_active_=false,r3_stopping_=false,nav_ready_=false,health_ready_=false,home_requested_=false,active_home_=false;
+ double mission_feedback_ttl_=.1,mission_ttl_=.25;bool r3_home_phase_allowed_=false,r3_planned_disable_ready_=false,payload_checks_enabled_=true,r3_authority_=false,r3_active_=false,r3_stopping_=false,nav_ready_=false,health_ready_=false,home_requested_=false,active_home_=false;
  ArmTime r3_stamp_{},nav_stamp_{},health_stamp_{};
  rclcpp::Subscription<std_msgs::msg::String>::SharedPtr r3_sub_,nav_sub_,health_sub_,plan_sub_;
  rclcpp::Service<std_srvs::srv::Trigger>::SharedPtr cancel_;
@@ -380,7 +396,7 @@ class ArmOwner final:public rclcpp::Node {
  std::unique_ptr<FileAutoHomeJournal> journal_;
  std::unique_ptr<rars_arm::RarsArm> sdk_;std::unique_ptr<SdkHomeTransport> transport_;
  std::unique_ptr<AutoHomeController> home_;
- rclcpp::Service<std_srvs::srv::Trigger>::SharedPtr return_home_,emergency_;
+ rclcpp::Service<std_srvs::srv::Trigger>::SharedPtr return_home_,emergency_,planned_disable_;
  rclcpp::Publisher<rars01_state_interfaces::msg::ArmFastState>::SharedPtr fast_state_;
  rclcpp::Publisher<std_msgs::msg::String>::SharedPtr state_;rclcpp::TimerBase::SharedPtr timer_;
 };

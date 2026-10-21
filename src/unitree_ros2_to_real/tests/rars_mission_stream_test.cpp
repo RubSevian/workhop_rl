@@ -5,6 +5,8 @@
 using namespace sim2real;
 ArmTime at(double s){return ArmTime(std::chrono::duration_cast<ArmClock::duration>(std::chrono::duration<double>(s)));}
 int main(){
+ for(const auto* phase:{"ARM_RETURN_HOME","ARM_HOME_BLOCKED","ARM_HOME_SETTLE"})assert(ControlledStopHomePhaseAllowed(phase));
+ for(const auto* phase:{"CANCEL_TASKS","PD_CAPTURE","PD_HOLD_CONFIRMED","ARM_DISABLE","LIE_DOWN","EMERGENCY_FAULT",""})assert(!ControlledStopHomePhaseAllowed(phase));
  assert(ReadyObservePlanAllowed(true,false,"move"));
  assert(!ReadyObservePlanAllowed(true,true,"move"));
  assert(!ReadyObservePlanAllowed(true,false,"close"));

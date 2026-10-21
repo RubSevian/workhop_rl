@@ -16,6 +16,9 @@ inline bool ReadyObservePlanAllowed(bool enabled,bool initial_move_seen,const st
 inline bool PresetSearchPlanAllowed(const std::string& operation,const std::string& phase){
  return (operation=="scan_step"&&phase=="ARM_SEARCH")||(operation=="scan_return"&&phase=="RETURN_HOME");
 }
+inline bool ControlledStopHomePhaseAllowed(const std::string& phase){
+ return phase=="ARM_RETURN_HOME"||phase=="ARM_HOME_BLOCKED"||phase=="ARM_HOME_SETTLE";
+}
 // An approximate open-jaw collision result is not physical clearance evidence.
 // Use both producer operation and owner health/hold facts, not message metadata alone.
 inline bool PhysicalRetreatPlanAllowed(bool qualified,const std::string& operation,

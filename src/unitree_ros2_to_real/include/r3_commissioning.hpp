@@ -18,7 +18,7 @@ struct R3Profile {
  bool policy_timing_reviewed=false;
  bool gate0_verified=false, mapping_verified=false, emergency_validated=false;
  bool remote_chords_verified=false, robot_supported=false, lie_down_validated=false;
- bool controlled_stop_lie_down_trial=false;
+ bool controlled_stop_lie_down_trial=false,failed_arm_pd_stop_enabled=false;
  std::string emergency_evidence;
  double capture_hold_s=.02,stand_s=8,hold_s=1,lie_down_s=8,sport_timeout_s=.5,command_timeout_s=.25;
  double lowstate_timeout_s=.5,remote_timeout_s=.25,arm_timeout_s=.25;
@@ -84,6 +84,9 @@ class R3Supervisor {
  SystemPortRequests ConsumePortRequests();
  void ArmHomeRequestAccepted(bool accepted,SafetyTime now);
  void ArmEmergencyResult(bool accepted,const std::string& detail);
+ void ArmPlannedDisableResult(bool accepted,SafetyTime now);
+ bool failed_arm_stop() const {return failed_arm_stop_;}
+ bool pd_hold_confirmed() const {return pd_hold_confirmed_;}
  void Observe(const R3Inputs& in,SafetyTime now);
  R3Reply Takeover(SafetyTime now);
  R3Reply StartRemoteSequence(SafetyTime now);
@@ -156,6 +159,9 @@ class R3Supervisor {
  R3Reply Fail(const std::string& message) const;
  void Capture(SafetyTime now);
  void Zero();
+ bool BeginFailedArmStop(SafetyTime now,bool from_pd=false);
+ bool StopHandoffReady(SafetyTime now,bool capturing_pd=true);
+ bool ArmIndependentPd() const {return output_enabled_&&system_state_==SystemState::CONTROLLED_STOP&&failed_arm_stop_&&pd_hold_confirmed_;}
  void InvalidatePolicyWork();
  bool CurrentPolicy(const PolicyTicket& ticket) const;
  bool IsActive() const;
@@ -169,6 +175,9 @@ class R3Supervisor {
  SystemPortRequests ports_;
  uint64_t orchestration_generation_=0;
  bool arm_home_accepted_=false;
+ bool failed_arm_stop_=false,failed_arm_from_pd_=false,pd_hold_confirmed_=false,planned_disable_accepted_=false;
+ std::optional<SafetyTime> pd_packet_published_;
+ SafetyTime planned_disable_started_{};
  SafetyTime stop_started_{},home_settle_started_{},lie_reached_stamp_{};
  bool home_settling_=false,lie_reached_=false;
  SafetyTime passive_started_{};

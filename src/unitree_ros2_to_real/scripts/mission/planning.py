@@ -238,7 +238,15 @@ class Planning:
         self.camera=None;self.camera_mode='standby'
         self.last_detection=None
 
+    def stop_task_perception(self):
+        # Called off the ROS executor; this affects only our inference child/camera.
+        if getattr(self,'worker',None) is not None:self.worker.close(force=True)
+        self.pause_camera();self.yolo=None
+        self.geometry_only_controlled_stop=True
+
     def sensors_ready(self):
+        if getattr(self,'geometry_only_controlled_stop',False):
+            return not getattr(self,'_closed',False) and self.startup_checks.get('geometry') is True and self.camera_mode=='standby'
         if getattr(self,'_closed',False) or not all(self.startup_checks.values()) or not self.worker.is_alive():return False
         if self.camera_mode=='standby':return True
         if self.camera_mode=='starting':

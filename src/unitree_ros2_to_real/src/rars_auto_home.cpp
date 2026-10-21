@@ -33,6 +33,7 @@ bool FileAutoHomeJournal::RecordFault(const std::string& reason){return Save("FA
 const char* AutoHomeStateName(AutoHomeState s){switch(s){
  case AutoHomeState::READ_ONLY:return "READ_ONLY";case AutoHomeState::WAIT_DEVICE:return "WAIT_DEVICE";
  case AutoHomeState::WAIT_COMMUNICATION:return "WAIT_COMMUNICATION";case AutoHomeState::STARTUP_DELAY:return "STARTUP_DELAY";
+ case AutoHomeState::PLANNED_DISABLED:return "PLANNED_DISABLED";case AutoHomeState::PLANNED_DISABLE_FAILED:return "PLANNED_DISABLE_FAILED";
  case AutoHomeState::HOLD_HOME:return "HOLD_HOME";case AutoHomeState::FAULT_LATCHED:return "FAULT_LATCHED";}return "UNKNOWN";}
 AutoHomeController::AutoHomeController(AutoHomeConfig config,AutoHomeTransport& transport,AutoHomeJournal& journal)
  :config_(std::move(config)),transport_(transport),journal_(journal) {
@@ -53,6 +54,24 @@ bool AutoHomeController::ReturnHome(ArmTime now) {
  Observe(now);
  return config_.enabled&&status_.state==AutoHomeState::HOLD_HOME&&status_.communication.enabled&&
   UsableFeedback()&&status_.motors_enabled&&status_.target_fresh;
+}
+bool AutoHomeController::PlannedDisable(bool pd_hold_authorized) {
+ if(!pd_hold_authorized||!config_.enabled||status_.state==AutoHomeState::FAULT_LATCHED)return false;
+ if(planned_disable_attempted_)return planned_disable_accepted_;
+ const auto communication=transport_.Status();
+ if(communication.watchdog_tripped||communication.stm32_watchdog_tripped){Fault("critical_watchdog_before_planned_disable");return false;}
+ for(size_t i=0;i<7;++i){const auto& joints=status_.joints;
+  if((joints.motor_id[i]!=0&&joints.motor_id[i]!=i+1)||(joints.valid[i]&&
+     (!std::isfinite(joints.position[i])||!std::isfinite(joints.velocity[i])||joints.error[i]>1))){Fault("motor_fault_before_planned_disable");return false;}
+ }
+ planned_disable_attempted_=true;
+ // Revoke all target streaming before the SDK call. No fake HOME or feedback.
+ status_.state=AutoHomeState::PLANNED_DISABLE_FAILED;status_.arm_home_ready=status_.target_fresh=false;
+ try{planned_disable_accepted_=transport_.Disable();}
+ catch(const std::exception& e){status_.last_error="planned_disable_exception: "+std::string(e.what());return false;}
+ status_.state=planned_disable_accepted_?AutoHomeState::PLANNED_DISABLED:AutoHomeState::PLANNED_DISABLE_FAILED;
+ status_.last_error=planned_disable_accepted_?"planned_disable_sent_not_physically_confirmed":"planned_disable_send_failed: "+transport_.Error();
+ return planned_disable_accepted_;
 }
 bool AutoHomeController::EmergencyDisable() {
  if(!config_.enabled||!config_.emergency_disable_enabled)return false;
@@ -92,7 +111,7 @@ void AutoHomeController::Observe(ArmTime now) {
 }
 void AutoHomeController::Tick(ArmTime now,bool connect_allowed,bool command_timer_tick) {
  Observe(now);
- if(status_.state==AutoHomeState::FAULT_LATCHED){status_.arm_home_ready=false;status_.target_fresh=false;return;}
+ if(status_.state==AutoHomeState::FAULT_LATCHED||planned_disable_attempted_){status_.arm_home_ready=false;status_.target_fresh=false;return;}
  if(!status_.communication.connected){
   if(status_.enable_attempted){Fault("runtime_disconnected");return;}
   countdown_.reset();last_read_.reset();status_.state=config_.enabled?AutoHomeState::WAIT_DEVICE:AutoHomeState::READ_ONLY;

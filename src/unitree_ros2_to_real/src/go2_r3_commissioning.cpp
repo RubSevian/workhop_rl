@@ -213,6 +213,7 @@ class R3Node final:public rclcpp::Node {
    }catch(...){navigation_gate_->Invalidate();mission_readiness_stamp_={};}
   },state_options);
   arm_home_client_=create_client<std_srvs::srv::Trigger>("/rars01/control/return_home");
+  arm_planned_disable_client_=create_client<std_srvs::srv::Trigger>("/rars01/control/planned_disable");
   arm_emergency_client_=create_client<std_srvs::srv::Trigger>("/rars01/control/emergency_disable");
   nav_cancel_client_=create_client<std_srvs::srv::Trigger>("/go2/mission/cancel_navigation");
   manipulation_cancel_client_=create_client<std_srvs::srv::Trigger>("/rars01/mission/cancel_manipulation");
@@ -449,6 +450,9 @@ class R3Node final:public rclcpp::Node {
   if(requests.cancel_navigation){navigation_gate_->Invalidate();nav_cancel_pending_=true;nav_cancel_status_="pending";}
   if(requests.cancel_manipulation){manipulation_cancel_pending_=true;manipulation_cancel_status_="pending";}
   if(requests.arm_return_home){home_pending_=true;home_port_status_="pending";}
+  if(requests.arm_planned_disable){planned_disable_pending_=true;planned_disable_port_status_="pending";}
+  if(supervisor_->failed_arm_stop())home_pending_=false;
+  if(supervisor_->phase()!=SystemPhase::ARM_DISABLE)planned_disable_pending_=false;
   if(requests.arm_emergency){home_pending_=false;emergency_pending_=true;emergency_port_status_="pending";}
   if(supervisor_->system_state()!=SystemState::CONTROLLED_STOP)home_pending_=false;
   if(home_pending_){
@@ -458,6 +462,20 @@ class R3Node final:public rclcpp::Node {
      ControlLock lock(mutex_,control_latency_.get(),__LINE__);if(generation!=supervisor_->orchestration_generation())return;
      try{const auto result=future.get();home_port_status_=result->success?"accepted_waiting_measured_home":"rejected: "+result->message;supervisor_->ArmHomeRequestAccepted(result->success,SafetyClock::now());}
      catch(const std::exception& e){home_port_status_=e.what();supervisor_->ArmHomeRequestAccepted(false,SafetyClock::now());}
+    });
+   }
+  }
+  if(planned_disable_pending_&&!planned_disable_inflight_){
+   if(!arm_planned_disable_client_->service_is_ready())planned_disable_port_status_="unavailable; PD hold retained";
+   else {
+    planned_disable_pending_=false;planned_disable_inflight_=true;planned_disable_port_status_="request_sent";
+    arm_planned_disable_client_->async_send_request(std::make_shared<std_srvs::srv::Trigger::Request>(),[this,generation](rclcpp::Client<std_srvs::srv::Trigger>::SharedFuture future){
+     ControlLock lock(mutex_,control_latency_.get(),__LINE__);planned_disable_inflight_=false;
+     if(generation!=supervisor_->orchestration_generation()||supervisor_->phase()!=SystemPhase::ARM_DISABLE)return;
+     try{const auto result=future.get();planned_disable_port_status_=result->message;
+      if(!result->success&&result->message=="WAIT_R3_PD_HOLD_CONFIRMED_ARM_DISABLE")planned_disable_pending_=true;
+      else supervisor_->ArmPlannedDisableResult(result->success,SafetyClock::now());
+     }catch(const std::exception& e){planned_disable_port_status_=e.what();supervisor_->ArmPlannedDisableResult(false,SafetyClock::now());}
     });
    }
   }
@@ -729,6 +747,9 @@ class R3Node final:public rclcpp::Node {
   snapshot.Add("stop_blocker", supervisor_->stop_blocker());
   snapshot.Add("arm_home_port", home_port_status_);
   snapshot.Add("arm_emergency_port", emergency_port_status_);
+  snapshot.Add("arm_planned_disable_port", planned_disable_port_status_);
+  snapshot.Add("failed_arm_stop", supervisor_->failed_arm_stop());
+  snapshot.Add("pd_hold_confirmed", supervisor_->pd_hold_confirmed());
   snapshot.Add("navigation_cancel_port", nav_cancel_status_);
   snapshot.Add("manipulation_cancel_port", manipulation_cancel_status_);
   snapshot.Add("orchestration_generation", supervisor_->orchestration_generation());
@@ -847,7 +868,9 @@ class R3Node final:public rclcpp::Node {
  rclcpp::Service<std_srvs::srv::SetBool>::SharedPtr enable_;
  rclcpp::Service<std_srvs::srv::Trigger>::SharedPtr manual_;
  std::vector<rclcpp::Service<std_srvs::srv::Trigger>::SharedPtr> services_;
- rclcpp::Client<std_srvs::srv::Trigger>::SharedPtr arm_home_client_,arm_emergency_client_,nav_cancel_client_,manipulation_cancel_client_;
+ rclcpp::Client<std_srvs::srv::Trigger>::SharedPtr arm_home_client_,arm_emergency_client_,arm_planned_disable_client_,nav_cancel_client_,manipulation_cancel_client_;
+ bool planned_disable_pending_=false,planned_disable_inflight_=false;
+ std::string planned_disable_port_status_="idle";
  bool home_pending_=false,emergency_pending_=false,nav_cancel_pending_=false,manipulation_cancel_pending_=false;
  std::string home_port_status_="idle",emergency_port_status_="idle",nav_cancel_status_="idle",manipulation_cancel_status_="idle";
  rclcpp::TimerBase::SharedPtr port_timer_;rclcpp::CallbackGroup::SharedPtr port_group_;

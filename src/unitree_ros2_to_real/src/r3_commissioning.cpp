@@ -78,6 +78,7 @@ R3Profile LoadR3Profile(const YAML::Node& yaml) {
  p.emergency_validated=r["emergency"]["operator_validated"].as<bool>();p.emergency_evidence=r["emergency"]["evidence"].as<std::string>();
  if(r["emergency"]["motor_kd"] && !r["emergency"]["motor_kd"].IsNull())p.emergency_kd=Array12(r["emergency"]["motor_kd"]);
  if(r["controlled_stop"]){const auto x=r["controlled_stop"];
+  if(x["failed_arm_pd_stop_enabled"])p.failed_arm_pd_stop_enabled=x["failed_arm_pd_stop_enabled"].as<bool>();
   if(x["lie_down_trial"])p.controlled_stop_lie_down_trial=x["lie_down_trial"].as<bool>();
   if(x["arm_home_timeout_s"])p.arm_home_timeout_s=x["arm_home_timeout_s"].as<double>();
   if(x["arm_home_settle_s"])p.arm_home_settle_s=x["arm_home_settle_s"].as<double>();
@@ -127,6 +128,7 @@ R3Supervisor::R3Supervisor(R3Profile p,OperationProfile operation):profile_(std:
  for(double v:{profile_.arm_home_settle_s,profile_.lie_down_settle_s})
   if(!std::isfinite(v)||v<0)throw std::invalid_argument("Finite nonnegative optional settle required");
  if((profile_.lie_down_validated||profile_.controlled_stop_lie_down_trial)&&profile_.lie_down_timeout_s<profile_.lie_down_s)throw std::invalid_argument("Lie timeout before trajectory completes");
+ if(profile_.failed_arm_pd_stop_enabled&&(profile_.lie_down_s!=8.||profile_.lie_down_timeout_s!=12.))throw std::invalid_argument("Failed-arm stop requires agreed 8s trajectory and 12s timeout");
  for(double v:profile_.RemoteBounds())if(!std::isfinite(v)||v<=0||v>.5)throw std::invalid_argument("Remote stick bounds must be finite in (0,0.5]");
  if(profile_.vx_bound>.20||profile_.deadline_burst_limit<1)throw std::invalid_argument("R3 vx bound/valid deadline limit");
  for(float q:profile_.stand)if(!std::isfinite(q)||std::abs(q)>3.5F)throw std::invalid_argument("Stand q outside software contract");
@@ -137,6 +139,8 @@ R3Supervisor::R3Supervisor(R3Profile p,OperationProfile operation):profile_(std:
 R3State R3Supervisor::state() const {
  switch(phase_) {
  case SystemPhase::ARM_RETURN_HOME:case SystemPhase::ARM_HOME_BLOCKED:case SystemPhase::ARM_HOME_SETTLE:return R3State::RL_ZERO;
+ case SystemPhase::CANCEL_TASKS:return failed_arm_from_pd_?R3State::HOLD_CURRENT:R3State::RL_ZERO;
+ case SystemPhase::PD_HOLD_CONFIRMED:case SystemPhase::ARM_DISABLE:case SystemPhase::ARM_DISABLE_BLOCKED:
  case SystemPhase::PD_CAPTURE:return R3State::HOLD_CURRENT;
  case SystemPhase::LIE_DOWN:case SystemPhase::LIE_DOWN_VERIFY:case SystemPhase::LIE_DOWN_BLOCKED:return R3State::LIE_DOWN_TRANSITION;
  case SystemPhase::LIE_DOWN_HOLD:return R3State::HOLDING;
@@ -170,6 +174,7 @@ R3Reply R3Supervisor::Dispatch(SystemEvent e,SafetyTime now,SystemPhase p) {
    case SystemPhase::FAULT_LATCHED:case SystemPhase::EMERGENCY_DAMP:system_state_=SystemState::EMERGENCY_FAULT;break;
    case SystemPhase::CONTROLLED_ABORT:case SystemPhase::LIE_DOWN_TRANSITION:
    case SystemPhase::ARM_RETURN_HOME:case SystemPhase::ARM_HOME_BLOCKED:case SystemPhase::ARM_HOME_SETTLE:
+   case SystemPhase::CANCEL_TASKS:case SystemPhase::PD_HOLD_CONFIRMED:case SystemPhase::ARM_DISABLE:case SystemPhase::ARM_DISABLE_BLOCKED:
    case SystemPhase::PD_CAPTURE:case SystemPhase::LIE_DOWN:case SystemPhase::LIE_DOWN_VERIFY:case SystemPhase::LIE_DOWN_BLOCKED:case SystemPhase::LIE_DOWN_OUTPUT_STOPPING:case SystemPhase::LIE_DOWN_PASSIVE:system_state_=SystemState::CONTROLLED_STOP;break;
    case SystemPhase::LIE_DOWN_HOLD:system_state_=SystemState::SYSTEM_HOLD;break;
    case SystemPhase::HOLD_CURRENT:system_state_=capabilities_.takeover_limit==TakeoverLimit::HOLD_CURRENT&&output_enabled_?SystemState::SYSTEM_HOLD:SystemState::TAKEOVER;break;
@@ -187,11 +192,39 @@ R3Reply R3Supervisor::DispatchEvents(std::span<const SystemEvent> events,SafetyT
  return {true,"no request"};
 }
 SystemPortRequests R3Supervisor::ConsumePortRequests(){return std::exchange(ports_,{});}
-void R3Supervisor::ArmHomeRequestAccepted(bool accepted,SafetyTime){
+void R3Supervisor::ArmHomeRequestAccepted(bool accepted,SafetyTime now){
  if(system_state_!=SystemState::CONTROLLED_STOP||!NeedsPolicy())return;
- arm_home_accepted_=accepted;if(!accepted)stop_blocker_="arm_home_request_not_accepted";
+ arm_home_accepted_=accepted;if(!accepted){stop_blocker_="arm_home_request_not_accepted";if(profile_.failed_arm_pd_stop_enabled)BeginFailedArmStop(now);}
 }
 void R3Supervisor::ArmEmergencyResult(bool,const std::string& detail){arm_emergency_detail_=detail;}
+bool R3Supervisor::StopHandoffReady(SafetyTime now,bool capturing_pd) {
+ if(fault_||!output_enabled_)return false;
+ if(NeedsPolicy()) {
+ if(pending_policy_&&!Fresh(now,pending_policy_->started,profile_.policy_inference_timeout_s)){Fault("policy_inference_timeout",now);return false;}
+ if(zero_policy_handoff_started_&&!Fresh(now,*zero_policy_handoff_started_,profile_.zero_policy_handoff_timeout_s)){Fault("policy_zero_handoff_timeout",now);return false;}
+ if(!zero_policy_handoff_started_&&!Fresh(now,policy_stamp_,profile_.policy_result_timeout_s)){Fault("policy_result_stale",now);return false;}
+ if(have_policy_&&!Fresh(now,policy_observation_stamp_,profile_.policy_observation_timeout_s)){Fault("policy_observation_stale",now);return false;}
+ }
+ if(!Require(now).success){Fault("failed_arm_stop_input_invalid",now);return false;}
+ if(capturing_pd&&!Fresh(now,inputs_.lowstate_stamp,profile_.pd_handoff_lowstate_timeout_s)){Fault("pd_handoff_lowstate_stale",now);return false;}
+ return true;
+}
+bool R3Supervisor::BeginFailedArmStop(SafetyTime now,bool from_pd) {
+ if(!profile_.failed_arm_pd_stop_enabled)return false;
+ if(from_pd?!PdLiftActive():(!NeedsPolicy()||system_state_!=SystemState::CONTROLLED_STOP))return false;
+ if(!StopHandoffReady(now))return false;
+ failed_arm_from_pd_=from_pd;
+ ++orchestration_generation_;Zero();failed_arm_stop_=true;pd_hold_confirmed_=planned_disable_accepted_=false;pd_packet_published_.reset();
+ ports_.cancel_navigation=ports_.cancel_manipulation=true;ports_.arm_return_home=false;
+ stop_blocker_.clear();Dispatch(SystemEvent::ADVANCE_PHASE,now,SystemPhase::CANCEL_TASKS);
+ return true;
+}
+void R3Supervisor::ArmPlannedDisableResult(bool accepted,SafetyTime now) {
+ if(fault_||!failed_arm_stop_||!pd_hold_confirmed_||planned_disable_accepted_||phase_!=SystemPhase::ARM_DISABLE)return;
+ if(!Fresh(now,planned_disable_started_,profile_.arm_home_timeout_s)){stop_blocker_="planned_disable_timeout_pd_hold";Dispatch(SystemEvent::ADVANCE_PHASE,now,SystemPhase::ARM_DISABLE_BLOCKED);return;}
+ planned_disable_accepted_=accepted;
+ if(!accepted){stop_blocker_="planned_disable_failed_pd_hold";Dispatch(SystemEvent::ADVANCE_PHASE,now,SystemPhase::ARM_DISABLE_BLOCKED);}
+}
 bool R3Supervisor::Fresh(SafetyTime now,SafetyTime stamp,double limit) const {
  const double age=std::chrono::duration<double>(now-stamp).count();return age>=0&&age<=limit;
 }
@@ -203,13 +236,14 @@ R3Reply R3Supervisor::Fail(const std::string& message) const {return {false,mess
 std::vector<std::string> R3Supervisor::Blockers(SafetyTime now,bool physical) const {
  auto b=inputs_.ready.Blockers();std::erase(b,std::string("explicit_output_enable"));
  const bool pd_lift=PdLiftActive();
- if(pd_lift) {
+ const bool arm_unused=pd_lift||ArmIndependentPd()||(failed_arm_stop_&&failed_arm_from_pd_&&output_enabled_&&system_state_==SystemState::CONTROLLED_STOP);
+ if(arm_unused) {
   std::erase(b,std::string("arm_feedback_ready"));
   std::erase(b,std::string("arm_target_ready"));
  }
  if(inputs_.arm_fault_confirmed)b.emplace_back("arm_physical_fault");
  if(!seen_)b.emplace_back("inputs_unavailable");
- if(!pd_lift&&!inputs_.arm_control_ready)b.emplace_back("arm_control_not_ready");
+ if(!arm_unused&&!inputs_.arm_control_ready)b.emplace_back("arm_control_not_ready");
  if(system_state_==SystemState::STANDBY||system_state_==SystemState::TAKEOVER) {
   if(!output_enabled_&&capabilities_.require_navigation_ready&&!inputs_.navigation_ready)b.emplace_back("navigation_not_ready");
   if(!output_enabled_&&capabilities_.require_perception_ready&&!inputs_.perception_ready)b.emplace_back("perception_not_ready");
@@ -218,11 +252,11 @@ std::vector<std::string> R3Supervisor::Blockers(SafetyTime now,bool physical) co
  if(!Released(now))b.emplace_back("sport_release_not_fresh_verified");
  if(!Fresh(now,inputs_.lowstate_stamp,profile_.lowstate_timeout_s))b.emplace_back("lowstate_age");
  if(!Fresh(now,inputs_.remote_stamp,profile_.remote_timeout_s))b.emplace_back("remote_age");
- if(!pd_lift&&!Fresh(now,inputs_.arm_stamp,profile_.arm_timeout_s))b.emplace_back("arm_feedback_age");
- if(!pd_lift&&!Fresh(now,inputs_.target_stamp,profile_.arm_timeout_s))b.emplace_back("arm_target_age");
+ if(!arm_unused&&!Fresh(now,inputs_.arm_stamp,profile_.arm_timeout_s))b.emplace_back("arm_feedback_age");
+ if(!arm_unused&&!Fresh(now,inputs_.target_stamp,profile_.arm_timeout_s))b.emplace_back("arm_target_age");
  const bool runtime=system_state_==SystemState::ACTIVE||(system_state_==SystemState::CONTROLLED_STOP&&NeedsPolicy());
- if(!pd_lift&&!runtime&&!inputs_.arm_static_hold)b.emplace_back("arm_static_hold");
- if(!pd_lift&&!runtime&&profile_.require_arm_home_ready&&!inputs_.arm_home_ready)b.emplace_back("arm_home_not_ready");
+ if(!arm_unused&&!runtime&&!(failed_arm_stop_&&output_enabled_&&system_state_==SystemState::CONTROLLED_STOP)&&!inputs_.arm_static_hold)b.emplace_back("arm_static_hold");
+ if(!arm_unused&&!runtime&&!(failed_arm_stop_&&output_enabled_&&system_state_==SystemState::CONTROLLED_STOP)&&profile_.require_arm_home_ready&&!inputs_.arm_home_ready)b.emplace_back("arm_home_not_ready");
  if(fault_)b.emplace_back("fault_latched");
  if(physical) {
   if(!profile_.gate0_verified)b.emplace_back("gate0_not_passed");
@@ -335,7 +369,8 @@ R3SequenceAction R3Supervisor::RemoteSequenceNext(SafetyTime now) {
   if(!sequence_hold_started_){sequence_hold_stamp_=now;sequence_hold_started_=true;}
   if(std::chrono::duration<double>(now-sequence_hold_stamp_).count()>=(state()==R3State::HOLD_CURRENT?profile_.capture_hold_s:profile_.hold_s)) {
    if(state()==R3State::HOLDING&&!ArmReadyForRl(now)) {
-    // Never fake HOME or silently enable an unqualified failed-arm descent.
+    if(profile_.failed_arm_pd_stop_enabled&&BeginFailedArmStop(now,true)){CancelRemoteSequence();return R3SequenceAction::NONE;}
+    // Legacy profiles retain their existing hold; never fake HOME.
     stop_blocker_="RL_ENTRY_BLOCKED_ARM_UNAVAILABLE:qualified_pd_descent_required";
     CancelRemoteSequence();return R3SequenceAction::NONE;
    }
@@ -358,6 +393,7 @@ R3Reply R3Supervisor::EnableOutput(bool enable,SafetyTime now) {
  }
  if(state()!=R3State::SPORT_RELEASE_VERIFIED||!output_stopped_)return Fail("requires explicit takeover + verified release + previous output stop");
  auto r=Require(now);if(!r.success)return r;
+ failed_arm_stop_=failed_arm_from_pd_=pd_hold_confirmed_=planned_disable_accepted_=false;pd_packet_published_.reset();
  Capture(now);output_enabled_=true;output_stopped_=false;SetPhase(R3State::LOW_LEVEL_ARMED);Zero();
  passive_packets_sent_=0;passive_packet_pending_=passive_sequence_complete_=false;
  return {true,"first packet HOLD_CURRENT measured q; no stand/RL"};
@@ -416,6 +452,7 @@ R3Reply R3Supervisor::ControlledAbort(SafetyTime now) {
   if(!Fresh(now,policy_stamp_,profile_.policy_result_timeout_s)) {
    Fault("policy_result_stale",now);return Fail("policy result expired before X");
   }
+  if(!StopHandoffReady(now,false))return Fail("critical condition expired before X");
   ++orchestration_generation_;InvalidatePolicyWork();Zero();stop_started_=now;arm_home_accepted_=false;home_settling_=lie_reached_=false;
   // IO keeps the last commanded target while the next 50Hz callback computes
   // the first zero-command action. Its deadline starts at X, not at the old
@@ -435,7 +472,7 @@ R3Reply R3Supervisor::Emergency(SafetyTime now) {
  if(!fault_){fault_phase_=phase_;fault_blockers_=Blockers(now);fault_inputs_=inputs_;fault_time_=now;fault_policy_age_s_=PolicyAgeSeconds(now);fault_inference_age_s_=PolicyInferenceAgeSeconds(now);fault_observation_age_s_=PolicyObservationAgeSeconds(now);}
  InvalidatePolicyWork();Zero();arm_hold_request_=true;fault_=true;have_policy_=false;reset_policy_=false;
  if(last_fault_.empty())last_fault_="operator_emergency";
- ports_.arm_return_home=false;
+ ports_.arm_return_home=ports_.arm_planned_disable=false;
  ports_.cancel_navigation=capabilities_.physical_leg_output;
  ports_.cancel_manipulation=capabilities_.physical_leg_output||capabilities_.allow_arm_motion;
  ports_.arm_emergency=capabilities_.allow_arm_emergency;
@@ -582,6 +619,39 @@ std::optional<unitree_go::msg::LowCmd> R3Supervisor::Tick(SafetyTime now) {
  if(system_state_==SystemState::ACTIVE&&state()==R3State::RL_ACTIVE&&(!have_command_||!Fresh(now,command_stamp_,profile_.command_timeout_s)||now>=command_end_)) {
   Zero();Capture(now);abort_sequence_=false;SetPhase(R3State::CONTROLLED_ABORT);
  }
+ if(failed_arm_stop_&&phase_==SystemPhase::CANCEL_TASKS) {
+  if(!StopHandoffReady(now))return Tick(now);
+  Capture(now);Zero();reset_policy_=false;Dispatch(SystemEvent::ADVANCE_PHASE,now,SystemPhase::PD_CAPTURE);
+  return MakeLowCmd(target_,profile_.kp,profile_.kd);
+ }
+ if(failed_arm_stop_&&phase_==SystemPhase::PD_CAPTURE) {
+  if(!Fresh(now,transition_,profile_.pd_handoff_lowstate_timeout_s)){Fault("pd_hold_confirmation_timeout",now);return Tick(now);}
+  if(pd_packet_published_&&inputs_.lowstate_stamp>*pd_packet_published_&&Fresh(now,inputs_.lowstate_stamp,profile_.pd_handoff_lowstate_timeout_s)) {
+   bool matched=true;for(size_t j=0;j<12;++j)matched=matched&&std::abs(inputs_.measured_q[j]-target_[j])<=profile_.q_capture_tolerance;
+   if(matched){pd_hold_confirmed_=true;Dispatch(SystemEvent::ADVANCE_PHASE,now,SystemPhase::PD_HOLD_CONFIRMED);}
+  }
+  return MakeLowCmd(target_,profile_.kp,profile_.kd);
+ }
+ if(failed_arm_stop_&&phase_==SystemPhase::PD_HOLD_CONFIRMED) {
+  planned_disable_started_=now;ports_.arm_planned_disable=true;
+  Dispatch(SystemEvent::ADVANCE_PHASE,now,SystemPhase::ARM_DISABLE);
+  return MakeLowCmd(target_,profile_.kp,profile_.kd);
+ }
+ if(failed_arm_stop_&&phase_==SystemPhase::ARM_DISABLE) {
+  if(planned_disable_accepted_) {
+   if(!LieDownTargetApproved()||!(profile_.lie_down_validated||profile_.controlled_stop_lie_down_trial)) {
+    stop_blocker_=LieDownTargetApproved()?"lie_down_dynamics_not_commissioned":"lie_down_target_not_approved";
+    Dispatch(SystemEvent::ADVANCE_PHASE,now,SystemPhase::LIE_DOWN_BLOCKED);
+   }else {
+    start_=target_;transition_=now;lie_reached_=false;stop_blocker_.clear();
+    Dispatch(SystemEvent::ADVANCE_PHASE,now,SystemPhase::LIE_DOWN);
+   }
+  }else if(!Fresh(now,planned_disable_started_,profile_.arm_home_timeout_s)) {
+   stop_blocker_="planned_disable_timeout_pd_hold";Dispatch(SystemEvent::ADVANCE_PHASE,now,SystemPhase::ARM_DISABLE_BLOCKED);
+  }
+  return MakeLowCmd(target_,profile_.kp,profile_.kd);
+ }
+ if(failed_arm_stop_&&phase_==SystemPhase::ARM_DISABLE_BLOCKED)return MakeLowCmd(target_,profile_.kp,profile_.kd);
  if(system_state_==SystemState::CONTROLLED_STOP&&NeedsPolicy()) {
   const bool home=arm_home_accepted_&&inputs_.arm_home_ready&&inputs_.arm_stamp>=stop_started_&&inputs_.target_stamp>=stop_started_;
   if(home&&LieDownTargetApproved()&&(profile_.lie_down_validated||profile_.controlled_stop_lie_down_trial)) {
@@ -597,7 +667,8 @@ std::optional<unitree_go::msg::LowCmd> R3Supervisor::Tick(SafetyTime now) {
    if(home&&(!LieDownTargetApproved()||!(profile_.lie_down_validated||profile_.controlled_stop_lie_down_trial))) {
     stop_blocker_=LieDownTargetApproved()?"lie_down_dynamics_not_commissioned":"lie_down_target_not_approved";Dispatch(SystemEvent::ADVANCE_PHASE,now,SystemPhase::ARM_HOME_BLOCKED);
    }else if(std::chrono::duration<double>(now-stop_started_).count()>=profile_.arm_home_timeout_s) {
-    stop_blocker_="arm_home_timeout";Dispatch(SystemEvent::ADVANCE_PHASE,now,SystemPhase::ARM_HOME_BLOCKED);
+    if(profile_.failed_arm_pd_stop_enabled)BeginFailedArmStop(now);
+    else {stop_blocker_="arm_home_timeout";Dispatch(SystemEvent::ADVANCE_PHASE,now,SystemPhase::ARM_HOME_BLOCKED);}
    }else Dispatch(SystemEvent::ADVANCE_PHASE,now,SystemPhase::ARM_RETURN_HOME);
   }
  }
@@ -695,6 +766,8 @@ bool R3Supervisor::AllowsPacket(const unitree_go::msg::LowCmd& cmd,SafetyTime no
  }return true;
 }
 void R3Supervisor::NotifyPacketPublished(const unitree_go::msg::LowCmd& packet,SafetyTime now) {
+ if(failed_arm_stop_&&phase_==SystemPhase::PD_CAPTURE&&output_enabled_&&!fault_&&!pd_packet_published_&&
+    SerializeLowCmd(packet)==SerializeLowCmd(MakeLowCmd(target_,profile_.kp,profile_.kd)))pd_packet_published_=now;
  if(phase_==SystemPhase::LIE_DOWN_PASSIVE) {
   if(!passive_packet_pending_||SerializeLowCmd(packet)!=SerializeLowCmd(MakePassiveLowCmd()))return;
   // Record what was actually published, even if DDS returned after the deadline.

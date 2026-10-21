@@ -47,7 +47,7 @@ class FileAutoHomeJournal final:public AutoHomeJournal {
  bool Save(const std::string& value);
  std::string path_,boot_id_;
 };
-enum class AutoHomeState { READ_ONLY, WAIT_DEVICE, WAIT_COMMUNICATION, STARTUP_DELAY, HOLD_HOME, FAULT_LATCHED };
+enum class AutoHomeState { READ_ONLY, WAIT_DEVICE, WAIT_COMMUNICATION, STARTUP_DELAY, HOLD_HOME, FAULT_LATCHED, PLANNED_DISABLED, PLANNED_DISABLE_FAILED };
 const char* AutoHomeStateName(AutoHomeState state);
 struct AutoHomeStatus {
  AutoHomeStatus(){joints.position.fill(std::numeric_limits<float>::quiet_NaN());joints.velocity.fill(std::numeric_limits<float>::quiet_NaN());home_error.fill(std::numeric_limits<float>::quiet_NaN());}
@@ -73,6 +73,9 @@ class AutoHomeController {
  void Fault(const std::string& reason);
  bool ReturnHome(ArmTime now);
  bool EmergencyDisable();
+ bool PlannedDisable(bool pd_hold_authorized);
+ bool planned_disable_attempted() const {return planned_disable_attempted_;}
+ bool planned_disable_accepted() const {return planned_disable_accepted_;}
  // The existing owner remains the only sender. A mission provider may change
  // targets only after full, fresh feedback; it never enables/re-enables motors.
  struct Command {rars_arm::RarsArm::MotorValues q{},kp{},kd{},torque{};};
@@ -88,6 +91,7 @@ class AutoHomeController {
  std::optional<ArmTime> countdown_,enabled_at_,last_read_,next_send_;
  ArmTime next_connect_{};
  bool have_usable_feedback_=false,emergency_disable_attempted_=false,emergency_disable_accepted_=false;
+ bool planned_disable_attempted_=false,planned_disable_accepted_=false;
  double age_at_read_s_=0;
  Provider provider_;
  rars_arm::RarsArm::MotorValues accepted_target_{};
