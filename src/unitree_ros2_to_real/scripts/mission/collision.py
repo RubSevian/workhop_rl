@@ -56,6 +56,10 @@ def timed_collision_stage(method):
     return measured
 
 
+class CollisionCancelled(RuntimeError):
+    """Explicit operation cancellation, distinct from exhausted compute budget."""
+
+
 class CollisionComputeTimeout(RuntimeError):
     """Abort the whole planning request; not an infeasible grasp candidate."""
 
@@ -186,6 +190,8 @@ class Collision:
         return bool((np.all(a0<=b0) and np.all(b1<=a1)) or (np.all(b0<=a0) and np.all(a1<=b1)))
 
     def check_deadline(self):
+        if getattr(self,'cancel_reason',''):
+            raise CollisionCancelled('COLLISION_CANCELLED:'+self.cancel_reason)
         now=time.monotonic_ns()
         if ((self._check_deadline_ns is not None and now>=self._check_deadline_ns)
                 or (self.work_deadline_ns is not None and now>=self.work_deadline_ns)):
@@ -288,7 +294,7 @@ class Collision:
         self.check_deadline()
         # Keep the original narrow-phase order. Bounding-box distance is a
         # LOWER bound on mesh distance; only proven distant pairs are skipped.
-        transforms=self.rigid_placements(poses)
+        transforms=poses if poses is getattr(self,'_placements_ref',None) else self.rigid_placements(poses)
         world=(transforms@self._local_corners.transpose(0,2,1)).transpose(0,2,1)[:,:,:3]
         low,high=world.min(axis=1),world.max(axis=1)
         pairs=np.asarray(self.pairs,dtype=int).reshape(-1,2)
@@ -314,6 +320,7 @@ class Collision:
             def remember_clear():
                 if cache_key is not None:self._clear_cache[(i,j)]=cache_key
             a,b=self.links[i],self.links[j]
+            self.last_stats['current_pair']=[a,b]
             ga,gb=self.geom.geometryObjects[i].geometry,self.geom.geometryObjects[j].geometry
             ambiguous=(any(type(g).__name__.startswith('BVHModel') for g in (ga,gb))
                        and np.all(low[i]<=high[j]) and np.all(low[j]<=high[i]))
@@ -445,6 +452,9 @@ class Collision:
                     sample+=1
             self.check_deadline()
             self.last_reason='';return True
+        except CollisionCancelled as error:
+            self.failure(str(error))
+            raise
         except CollisionComputeTimeout:
             self.failure('COLLISION_COMPUTE_TIMEOUT')
             raise

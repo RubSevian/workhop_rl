@@ -30,6 +30,7 @@ class CameraPump:
         self.condition=threading.Condition();self.latest=None;self.sequence=0;self.consumed=0
         self.processing_mode=processing_mode;self.requested=0;self.completed=0
         self.raw_timing=None;self.decode_valid=False
+        self.acquire_started_ns=0;self.acquire_completed_ns=0;self.acquire_wall_s=0.;self.max_acquire_wall_s=0.
         self.raw_frames=0;self.processed_frames=0;self.acquisition_cpu_s=0.;self.processing_cpu_s=0.
         self.running=True
         self.stop_timeout_s=stop_timeout_s
@@ -56,7 +57,11 @@ class CameraPump:
         while self.running:
             cpu=time.thread_time()
             try:
+                self.acquire_started_ns=time.monotonic_ns()
                 frames=self.source.acquire_frames()
+                self.acquire_completed_ns=time.monotonic_ns()
+                self.acquire_wall_s=(self.acquire_completed_ns-self.acquire_started_ns)/1e9
+                self.max_acquire_wall_s=max(self.max_acquire_wall_s,self.acquire_wall_s)
                 timing=self.source.frame_timing(frames)
             except Exception:
                 self.acquisition_cpu_s+=time.thread_time()-cpu

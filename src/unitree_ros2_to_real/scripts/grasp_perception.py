@@ -99,7 +99,7 @@ class Perception(Node):
         backend=self.backend
         if backend is None:return # Startup worker checks the latch before release.
         try:
-            if self.busy:backend.collision.work_deadline_ns=time.monotonic_ns()
+            if self.busy:backend.collision.cancel_reason='CONTROLLED_STOP'
             backend.stop_task_perception()
             self.vision_cancel_complete=True
         except Exception as error:
@@ -234,6 +234,9 @@ class Perception(Node):
                     self.busy=False;continue
                 compute_started=time.monotonic();self.backend.compute_metrics={}
                 self.backend.collision.last_stats={}
+                self.backend.collision.cancel_reason=''
+                if getattr(self,'controlled_stop',False) and request['operation']!='home':
+                    self.backend.collision.cancel_reason='CONTROLLED_STOP'
                 # Bound all collision passes for this request, including a
                 # candidate loop/rebuild. This does not change candidate cost.
                 try:
@@ -268,7 +271,7 @@ class Perception(Node):
     def destroy_node(self):
         self.stop_event.set()
         if self.backend is not None:
-            self.backend.collision.work_deadline_ns=time.monotonic_ns()
+            self.backend.collision.cancel_reason='SHUTDOWN'
             # Only terminate our own inference worker, never an arm/leg owner.
             worker=getattr(self.backend,'worker',None)
             if worker is not None:worker.close(force=True)

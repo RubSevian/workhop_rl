@@ -30,6 +30,14 @@ class PlanningContracts(unittest.TestCase):
         self.assertGreaterEqual(p.last_stats['outer']['wall_s'],p.last_stats['inner']['wall_s'])
         self.assertIsNone(p.last_stats['active_stage'])
 
+    def test_cancel_is_distinct_from_timeout(self):
+        from mission.collision import Collision, CollisionCancelled, CollisionComputeTimeout
+        c=Collision.__new__(Collision);c._check_deadline_ns=0;c.work_deadline_ns=0
+        c.cancel_reason='CONTROLLED_STOP'
+        with self.assertRaisesRegex(CollisionCancelled,'COLLISION_CANCELLED:CONTROLLED_STOP'):c.check_deadline()
+        c.cancel_reason=''
+        with self.assertRaises(CollisionComputeTimeout):c.check_deadline()
+
     def setup_planner(self):
         f=Fixture();f.feed();scene=copy.deepcopy(f.m.inputs['scene'])
         body=BodyPose(**scene['body'])

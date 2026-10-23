@@ -69,7 +69,7 @@ class StartupTests(unittest.TestCase):
         self.assertFalse(n.controlled_stop);n.backend.stop_task_perception.assert_not_called()
         n.busy=True;status('CONTROLLED_STOP','ARM_RETURN_HOME',time.monotonic_ns());n.cancel_thread.join(1.)
         self.assertTrue(n.vision_cancel_complete);self.assertTrue(n.controlled_stop)
-        self.assertIsNotNone(n.backend.collision.work_deadline_ns);n.backend.stop_task_perception.assert_called_once()
+        self.assertEqual(n.backend.collision.cancel_reason,'CONTROLLED_STOP');self.assertIsNone(n.backend.collision.work_deadline_ns);n.backend.stop_task_perception.assert_called_once()
         n.busy=False
         def request(i,operation):
             n.request(SimpleNamespace(data=json.dumps(dict(id=i,operation=operation,session_id='session',observed_ns=time.monotonic_ns()))))

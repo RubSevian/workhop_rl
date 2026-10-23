@@ -45,6 +45,9 @@ def _camera_child(pipe, grasp, stop_timeout, mode, factory, parent_pid):
                           pump.latest[2] if pump.latest else None)
                 valid = pump.decode_valid if mode == 'latest_raw' else pump.latest is not None
                 health = (dict(timing) if timing else None, valid, pump.error)
+            pipe.send(('acquisition',dict(sent_mono_ns=time.monotonic_ns(),
+                acquire_started_ns=pump.acquire_started_ns,acquire_completed_ns=pump.acquire_completed_ns,
+                acquire_wall_s=pump.acquire_wall_s,max_acquire_wall_s=pump.max_acquire_wall_s,raw_frames=pump.raw_frames)))
             pipe.send(('health', health))
     except (EOFError, BrokenPipeError):pass
     except BaseException as error:
@@ -85,6 +88,7 @@ class CameraProcess:
                 kind, value=self.pipe.recv()
                 with self.condition:
                     if kind=='ready':self.K=value
+                    elif kind=='acquisition':self.acquisition=value
                     elif kind=='health':self.health=value;self.health_received_ns=time.monotonic_ns()
                     elif kind=='error':self.error=value
                     elif kind=='frame':self.frame=value;self.pending=False
@@ -112,6 +116,7 @@ class CameraProcess:
                     'CAMERA_FRAME_STALE' if any(v>ttl for v in ages.values()) else 'READY')
             received=getattr(self,'health_received_ns',None)
             return dict(ready=reason=='READY',reason=reason,process_alive=alive,
+                acquisition=dict(getattr(self,'acquisition',{})),
                 error=self.error or error,decode_valid=bool(valid),ttl_s=ttl,
                 observed_wall_ns=now,source_timestamps=dict(timing or {}),
                 color_age_s=ages['color_system_ns'],depth_age_s=ages['depth_system_ns'],
