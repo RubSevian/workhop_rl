@@ -8,14 +8,15 @@
 #include "periodic_policy_loop.hpp"
 
 namespace sim2real {
-// IO and inference cannot occupy the workers that deliver observations.
+// IO, inference and (when supplied) LowState have dedicated workers.
 // The two explicit groups must be created with automatic association=false.
 inline void SpinControlExecutors(const rclcpp::Node::SharedPtr& node,
     const rclcpp::CallbackGroup::SharedPtr& io,
     const rclcpp::CallbackGroup::SharedPtr& policy, bool shared_probe = false,
     const std::function<void()>& initialize_policy = {},
     const std::function<void(int64_t,int64_t)>& periodic_policy = {},
-    int64_t policy_period_ns = 20000000) {
+    int64_t policy_period_ns = 20000000,
+    const rclcpp::CallbackGroup::SharedPtr& observations = {}) {
   if(periodic_policy&&(shared_probe||policy_period_ns<=0))
     throw std::invalid_argument("Periodic policy requires its dedicated worker and positive period");
   rclcpp::executors::MultiThreadedExecutor inputs(rclcpp::ExecutorOptions(), 2);
@@ -23,12 +24,14 @@ inline void SpinControlExecutors(const rclcpp::Node::SharedPtr& node,
   if (shared_probe) {
     inputs.add_callback_group(io, node->get_node_base_interface());
     inputs.add_callback_group(policy, node->get_node_base_interface());
+    if(observations)inputs.add_callback_group(observations, node->get_node_base_interface());
     inputs.spin();
     return;
   }
-  rclcpp::executors::SingleThreadedExecutor io_executor, policy_executor;
+  rclcpp::executors::SingleThreadedExecutor io_executor, policy_executor, observation_executor;
   io_executor.add_callback_group(io, node->get_node_base_interface());
   policy_executor.add_callback_group(policy, node->get_node_base_interface());
+  if(observations)observation_executor.add_callback_group(observations, node->get_node_base_interface());
   std::exception_ptr error;
   std::mutex error_mutex;
   auto run = [&](auto& executor, bool is_policy=false) {
@@ -46,16 +49,19 @@ inline void SpinControlExecutors(const rclcpp::Node::SharedPtr& node,
   // jthread joins on every exit path, including failure to create a worker.
   std::jthread io_thread([&] { run(io_executor); });
   std::jthread policy_thread;
+  std::jthread observation_thread;
   try {
+    if(observations)observation_thread=std::jthread([&]{run(observation_executor);});
     policy_thread = std::jthread([&] { run(policy_executor,true); });
     run(inputs);
   } catch (...) {
     rclcpp::shutdown();
-    io_executor.cancel(); policy_executor.cancel(); inputs.cancel();
+    io_executor.cancel(); policy_executor.cancel(); observation_executor.cancel(); inputs.cancel();
     throw;
   }
-  io_executor.cancel(); policy_executor.cancel(); inputs.cancel();
+  io_executor.cancel(); policy_executor.cancel(); observation_executor.cancel(); inputs.cancel();
   io_thread.join(); policy_thread.join();
+  if(observation_thread.joinable())observation_thread.join();
   if (error) std::rethrow_exception(error);
 }
 }  // namespace sim2real

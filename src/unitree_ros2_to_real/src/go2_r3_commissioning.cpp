@@ -175,6 +175,9 @@ class R3Node final:public rclcpp::Node {
   // through the default mutually-exclusive callback group.
   state_group_=create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
   rclcpp::SubscriptionOptions state_options;state_options.callback_group=state_group_;
+  // LowState must not wait for either shared status/service executor worker.
+  lowstate_group_=create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive,false);
+  rclcpp::SubscriptionOptions lowstate_options;lowstate_options.callback_group=lowstate_group_;
   low_sub_=create_subscription<unitree_go::msg::LowState>("/lowstate",rclcpp::SensorDataQoS().keep_last(1),[this](unitree_go::msg::LowState::ConstSharedPtr m){
    ControlScope callback(control_latency_.get(),5,__LINE__);
    const auto callback_started=SafetyClock::now();
@@ -188,7 +191,7 @@ class R3Node final:public rclcpp::Node {
    }
    if(valid)inputs_.measured_q=lowstate_.snapshot().motor_q;
    else if(supervisor_->output_enabled())supervisor_->Fault("invalid_lowstate",now);
-  });
+  },lowstate_options);
   sport_sub_=create_subscription<std_msgs::msg::String>("/go2/commissioning/sport_observation",10,[this](std_msgs::msg::String::ConstSharedPtr m){
    ControlLock lock(mutex_,control_latency_.get(),__LINE__);if(!network_interface_.empty())return;try{auto y=YAML::Load(m->data);inputs_.sport=ParseSportMode(y["state"].as<std::string>());inputs_.sport_stamp=TimeNs(y["observed_ns"].as<int64_t>());}
    catch(...){inputs_.sport=SportMode::ERROR;inputs_.sport_stamp=SafetyTime{};}
@@ -298,6 +301,7 @@ class R3Node final:public rclcpp::Node {
   }
  }
  auto IoGroup()const{return io_group_;}
+ auto LowStateGroup()const{return lowstate_group_;}
  auto PolicyGroup()const{return policy_group_;}
  bool SharedProbeExecutor()const{return probe_shared_executor_;}
  bool DirectPolicy()const{return direct_policy_;}
@@ -874,10 +878,10 @@ class R3Node final:public rclcpp::Node {
  bool home_pending_=false,emergency_pending_=false,nav_cancel_pending_=false,manipulation_cancel_pending_=false;
  std::string home_port_status_="idle",emergency_port_status_="idle",nav_cancel_status_="idle",manipulation_cancel_status_="idle";
  rclcpp::TimerBase::SharedPtr port_timer_;rclcpp::CallbackGroup::SharedPtr port_group_;
- rclcpp::TimerBase::SharedPtr io_timer_,policy_timer_,status_timer_;rclcpp::CallbackGroup::SharedPtr io_group_,policy_group_,status_group_,state_group_;
+ rclcpp::TimerBase::SharedPtr io_timer_,policy_timer_,status_timer_;rclcpp::CallbackGroup::SharedPtr io_group_,policy_group_,status_group_,state_group_,lowstate_group_;
 };
 int main(int argc,char** argv){try{InitializePolicyProcess(argv);}catch(const std::exception& e){std::cerr<<"Startup failed closed: "<<e.what()<<'\n';return 1;}rclcpp::init(argc,argv);try{auto node=std::make_shared<R3Node>();
  std::function<void(int64_t,int64_t)> tick;
  if(node->DirectPolicy())tick=[&](int64_t expected,int64_t actual){node->PolicyCycle(expected,actual);};
- SpinControlExecutors(node,node->IoGroup(),node->PolicyGroup(),node->SharedProbeExecutor(),[&]{node->InitializePolicyWorker();},tick,node->PolicyPeriodNs());}
+ SpinControlExecutors(node,node->IoGroup(),node->PolicyGroup(),node->SharedProbeExecutor(),[&]{node->InitializePolicyWorker();},tick,node->PolicyPeriodNs(),node->LowStateGroup());}
  catch(const std::exception& e){RCLCPP_ERROR(rclcpp::get_logger("r3"),"Startup failed closed: %s",e.what());rclcpp::shutdown();return 1;}rclcpp::shutdown();}

@@ -58,6 +58,8 @@ def search_angles(search):
 
 def load(path, workspace):
     cfg = yaml.safe_load(Path(path).read_text())['go2_mission']
+    if type(cfg.get('local_height_filters_enabled',True)) is not bool:
+        raise ValueError('local_height_filters_enabled must be boolean')
     if cfg.get('test_mode','full') not in ('full','ready_observe'):
         raise ValueError('invalid test_mode')
     aliases=cfg.get('object_class_aliases',[])
