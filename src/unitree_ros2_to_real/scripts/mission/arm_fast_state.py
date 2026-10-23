@@ -11,10 +11,12 @@ def to_mapping(msg):
         raise ValueError('oversized input')
     value = {key: getattr(msg,key) for key in FIELDS}
     for key in ARRAYS:
-        value[key] = list(value[key])
+        # Fixed-size ROS arrays may expose numpy scalars; wire requests use JSON.
+        scalar = bool if key in ('valid', 'valid7') else int if key in ('motor_ids', 'motor_id', 'motor_status') else float
+        value[key] = [scalar(item) for item in value[key]]
     value['object_grasped'] = msg.object_grasped if msg.object_grasped_known else None
     if msg.accepted_target_valid:
-        value.update(accepted_target=list(msg.accepted_target),accepted_ns=msg.accepted_ns)
+        value.update(accepted_target=[float(item) for item in msg.accepted_target],accepted_ns=msg.accepted_ns)
     return value
 
 

@@ -113,7 +113,8 @@ def validate_scene_data(scene,cfg,now_ns,nav_session,owner_session):
         raise ValueError('SCENE_SNAPSHOT_STALE:body')
     for name,key in (('feedback_ns','live_feedback_ns'),('legs_ns','live_legs_ns')):
         stamp=scene.get(key,scene[name])
-        if type(stamp) is not int or not 0<=(now_ns-stamp)/1e9<=cfg['limits']['arm_age_s']:
+        ttl=cfg['limits'].get('legs_age_s',cfg['limits']['arm_age_s']) if name=='legs_ns' else cfg['limits']['arm_age_s']
+        if type(stamp) is not int or not 0<=(now_ns-stamp)/1e9<=ttl:
             raise ValueError('SCENE_SNAPSHOT_STALE:'+key)
     if any(type(stamp) is not int or stamp<=0 or stamp>now_ns for stamp in stamps):
         raise ValueError('SCENE_SNAPSHOT_STALE:historical')
@@ -156,7 +157,8 @@ class SceneBuffer:
         # Current stream health is independent of the age of causal samples
         # selected to match delayed odometry or a camera exposure.
         for name,stream in (('arm',self.arms),('legs',self.legs)):
-            if not stream or not 0<=(now_ns-stream[-1][0])/1e9<=self.cfg['limits']['arm_age_s']:
+            ttl=self.cfg['limits'].get('legs_age_s',self.cfg['limits']['arm_age_s']) if name=='legs' else self.cfg['limits']['arm_age_s']
+            if not stream or not 0<=(now_ns-stream[-1][0])/1e9<=ttl:
                 raise ValueError('SCENE_SNAPSHOT_STALE:live_'+name)
         candidates=(b for b in reversed(self.bodies) if b.mono_ns<=capture_ns)
         newest=None;last_error='BODY_SNAPSHOT_MISSING';skipped=0

@@ -3,13 +3,26 @@ import sys,unittest
 from pathlib import Path
 from dataclasses import asdict
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]/'scripts'))
-from mission.scene import BodyPose,SceneSnapshot
+from mission.scene import BodyPose,SceneSnapshot,validate_scene_data
 
 class ScenePayloadTests(unittest.TestCase):
  def make(self,live=None):
   matrix=[[float(i==j) for j in range(4)] for i in range(4)]
   body=BodyPose(10,20,'nav','tf',[r[:] for r in matrix],[r[:] for r in matrix])
   return SceneSnapshot(body,tuple(float(i) for i in range(7)),tuple(float(i) for i in range(12)),21,22,'arm',live,live)
+ def test_separate_leg_age_preserves_arm_limit(self):
+  cfg={'limits':{'sensor_age_s':.5,'arm_age_s':.25,'legs_age_s':.5},'frames':{'max_state_skew_s':.1}}
+  s=self.make();scene=s.data();now=2_000_000_000
+  scene['body']['mono_ns']=now;scene['feedback_ns']=now;scene['legs_ns']=now
+  scene['live_feedback_ns']=now
+  for age in (265_409_144,500_000_000):
+   scene['live_legs_ns']=now-age
+   validate_scene_data(scene,cfg,now,'nav','arm')
+  scene['live_legs_ns']=now-500_000_001
+  with self.assertRaisesRegex(ValueError,'live_legs_ns'):validate_scene_data(scene,cfg,now,'nav','arm')
+  scene['live_legs_ns']=now;scene['live_feedback_ns']=now-250_000_001
+  with self.assertRaisesRegex(ValueError,'live_feedback_ns'):validate_scene_data(scene,cfg,now,'nav','arm')
+
  def test_payload_matches_recursive_baseline_including_types(self):
   for live in [None,31]:
    s=self.make(live);expected=asdict(s);expected.update(live_feedback_ns=21 if live is None else live,live_legs_ns=22 if live is None else live,frame='base',world_frame='map',anchor_ns=20)

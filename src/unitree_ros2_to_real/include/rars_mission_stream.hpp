@@ -126,7 +126,7 @@ class MissionStream {
  bool home6(const AutoHomeStatus& status,double tolerance)const{
   if(!initialized_)return status.arm_home_ready;
   if(busy_||!status.feedback_ready||!status.motors_enabled||!status.target_fresh)return false;
-  for(size_t j=0;j<6;++j)if(std::abs(status.joints.position[j])>tolerance||std::abs(held_.q[j])>1e-6)return false;
+  for(size_t j=0;j<6;++j)if(std::abs(status.joints.position[j])>tolerance||std::abs(held_.q[j])>tolerance)return false;
   return true;
  }
  // holding() means a gripper command is retained; it is NOT object evidence.

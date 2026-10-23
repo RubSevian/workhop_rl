@@ -13,6 +13,23 @@ from mission.scene import BodyPose, WorldGraspAnchor
 
 
 class PlanningContracts(unittest.TestCase):
+    def test_stage_profiler_preserves_timeout_and_records_inclusive_work(self):
+        from mission.collision import timed_collision_stage, CollisionComputeTimeout
+        class Probe:
+            _profiling=True
+            def __init__(self):self.last_stats={}
+            @timed_collision_stage
+            def outer(self):return self.inner()
+            @timed_collision_stage
+            def inner(self):raise CollisionComputeTimeout('test timeout')
+        p=Probe()
+        with self.assertRaisesRegex(CollisionComputeTimeout,'test timeout'):p.outer()
+        self.assertEqual(p.last_stats['exception_stage'],'inner')
+        self.assertEqual(p.last_stats['inner']['calls'],1)
+        self.assertEqual(p.last_stats['outer']['calls'],1)
+        self.assertGreaterEqual(p.last_stats['outer']['wall_s'],p.last_stats['inner']['wall_s'])
+        self.assertIsNone(p.last_stats['active_stage'])
+
     def setup_planner(self):
         f=Fixture();f.feed();scene=copy.deepcopy(f.m.inputs['scene'])
         body=BodyPose(**scene['body'])
@@ -27,6 +44,48 @@ class PlanningContracts(unittest.TestCase):
         p.collision=NS(validated_scene=lambda *a,**k:None,
                        check=lambda *a,**k:(_ for _ in ()).throw(AssertionError('geometry rerun')))
         return p,sample
+
+    def test_scan_pose_keeps_acquisition_reference_and_live_admission(self):
+        from mission.scene import validate_scene_data
+        p,sample=self.setup_planner();p.compute_metrics={};p.resume_camera=lambda:None
+        acquired=sample['body'].mono_ns;clock=[acquired]
+        p.grasp['robot']['ready_pose']=dict(x=0,y=0,z=0,roll=0,pitch=0,duration=1.)
+        p.grasp['robot']['rars01']['max_grasp_width_m']=.1
+        p.geometry=NS(motor_angle_for_width=lambda width:0.)
+        p.angles=[0.];p.samples=lambda start,*a,**k:np.vstack([start,start])
+        def solve(*a,**k):
+            clock[0]+=1_000_000_000
+            return NS(success=True,joints=np.zeros(6))
+        p.ik=NS(solve=solve)
+        def validate(scene,payload,reference_ns=None):
+            validate_scene_data(scene['scene_snapshot'],p.cfg,
+                clock[0] if reference_ns is None else reference_ns,'nav','arm')
+        def check(points,scene,payload,**options):
+            validate(scene,payload,**options);return True
+        p.collision=NS(validated_scene=validate,check=check)
+        request=dict(id=1,operation='scan_pose',owner={},owner_session_id='arm',navigation_session_id='nav')
+        with patch('mission.planning.time.monotonic_ns',side_effect=lambda:clock[0]):
+            result=p.execute(request,lambda *a:copy.deepcopy(sample))
+            self.assertEqual(p.compute_metrics['planning_reference_ns'],acquired)
+            self.assertEqual(p.compute_metrics['scan_pose_ik_elapsed_s'],1.)
+            self.assertGreater(p.compute_metrics['scene_body_age_at_collision_s'],p.cfg['limits']['sensor_age_s'])
+            # Successful planning is not permission to admit an old live scene.
+            with self.assertRaisesRegex(ValueError,'SCENE_SNAPSHOT_STALE:body'):
+                p.validate_result(result,lambda *a:copy.deepcopy(sample),request)
+            fresh=copy.deepcopy(sample)
+            fresh['scene_snapshot']['body']['mono_ns']=clock[0]
+            fresh['scene_snapshot']['live_feedback_ns']=clock[0]
+            fresh['scene_snapshot']['live_legs_ns']=clock[0]
+            fresh['scene_snapshot']['feedback_ns']=clock[0]
+            fresh['scene_snapshot']['legs_ns']=clock[0]
+            p.validate_result(result,lambda *a:fresh,request)
+            fresh['scene_snapshot']['live_legs_ns']=acquired
+            with self.assertRaisesRegex(ValueError,'SCENE_SNAPSHOT_STALE:live_legs_ns'):
+                p.validate_result(result,lambda *a:fresh,request)
+            # An already stale acquisition must fail before IK/collision work.
+            with self.assertRaisesRegex(ValueError,'SCENE_SNAPSHOT_STALE:body'):
+                p.execute(request,lambda *a:copy.deepcopy(sample))
+        self.assertEqual(result['trajectory']['approval_collision_context']['legs'],sample['legs'])
 
     def test_cached_path_survives_leg_motion_without_ik_or_collision(self):
         p,sample=self.setup_planner();old=p.collision_scene(sample)

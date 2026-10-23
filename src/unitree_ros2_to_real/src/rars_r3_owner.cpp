@@ -1,5 +1,7 @@
 #include "rars_auto_home.hpp"
 #include "rars_mission_stream.hpp"
+#include "retreat_trial.hpp"
+#include "optional_yaml_scalar.hpp"
 #include <regex>
 #include <sstream>
 #include <future>
@@ -85,10 +87,12 @@ class ArmOwner final:public rclcpp::Node {
   sdk_=std::make_unique<rars_arm::RarsArm>(config);transport_=std::make_unique<SdkHomeTransport>(*sdk_);
   home_=std::make_unique<AutoHomeController>(home,*transport_,*journal_);
   owner_session_=std::to_string(Ns(ArmClock::now()));
+  operator_trial_=declare_parameter<bool>("operator_trial",false);
   const auto mission_path=declare_parameter<std::string>("mission_config_path","");
   const auto workspace=declare_parameter<std::string>("workspace","");
   if(!mission_path.empty())ConfigureMission(mission_path,workspace,config,path,read_only);
   cancel_=create_service<std_srvs::srv::Trigger>("/rars01/mission/cancel_manipulation",[this](std_srvs::srv::Trigger::Request::SharedPtr,std_srvs::srv::Trigger::Response::SharedPtr response){
+   RevokeRetreatTrial("CANCELLED");
    plan_cancelled_ns_=Ns(ArmClock::now());
    if(mission_)mission_->Cancel(home_->status(),"operator_cancel");
    // Revoke this coordinator session: queued plans and a late inference result
@@ -100,6 +104,7 @@ class ArmOwner final:public rclcpp::Node {
   if(declare_parameter<bool>("fast_state_enabled",false))
    fast_state_=create_publisher<rars01_state_interfaces::msg::ArmFastState>("/rars01/commissioning/fast_state",10);
   return_home_=create_service<std_srvs::srv::Trigger>("/rars01/control/return_home",[this](std_srvs::srv::Trigger::Request::SharedPtr,std_srvs::srv::Trigger::Response::SharedPtr response){
+   RevokeRetreatTrial("HOME_REQUESTED");
    home_requested_=bool(mission_);
    response->success=mission_?(home_->status().feedback_ready&&home_->status().motors_enabled&&home_->status().target_fresh):home_->ReturnHome(ArmClock::now());response->message=response->success?"HOME stream accepted; completion requires measured HOME":"healthy enabled owner/feedback/target required; no enable issued";
   });
@@ -108,6 +113,7 @@ class ArmOwner final:public rclcpp::Node {
    if(!r3_planned_disable_ready_||age<0||age>mission_ttl_||count_publishers("/go2/locomotion_status")!=1){
     response->success=false;response->message="WAIT_R3_PD_HOLD_CONFIRMED_ARM_DISABLE";return;
    }
+   RevokeRetreatTrial("PLANNED_DISABLED");
    plan_cancelled_ns_=Ns(now);home_requested_=false;
    if(mission_)mission_->Cancel(home_->status(),"planned_disable");
    if(!mission_session_.empty())retired_session_=mission_session_;
@@ -115,6 +121,7 @@ class ArmOwner final:public rclcpp::Node {
    response->message=response->success?"planned disable sent; physical disable not asserted":"planned disable rejected or SDK send failed; stream remains stopped if attempted";
   });
   emergency_=create_service<std_srvs::srv::Trigger>("/rars01/control/emergency_disable",[this](std_srvs::srv::Trigger::Request::SharedPtr,std_srvs::srv::Trigger::Response::SharedPtr response){
+   RevokeRetreatTrial("EMERGENCY");
    response->success=home_->EmergencyDisable();response->message=response->success?"disable sent; physical disable requires measured confirmation":"emergency disable rejected: bench validation missing, read-only, or SDK failure";
   });
   timer_=create_wall_timer(std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::duration<double>(1/config.command_rate_hz)),[this]{Poll();});
@@ -140,11 +147,13 @@ class ArmOwner final:public rclcpp::Node {
   const auto mode=override_mode.empty()?(y["test_mode"]?y["test_mode"].as<std::string>():"full"):override_mode;
   if(mode!="full"&&mode!="ready_observe")throw std::runtime_error("invalid test_mode");
   ready_observe_=mode=="ready_observe";
+  if(operator_trial_)trial_state_="IDLE_UNQUALIFIED";
+  if(operator_trial_&&ready_observe_)throw std::runtime_error("operator_trial requires full mode");
   const auto clearance=y["collision"]["retreat_physical_clearance_validated"];
   const auto clearance_evidence=y["collision"]["retreat_physical_clearance_evidence"];
   retreat_clearance_qualified_=clearance&&clearance.as<bool>()&&clearance_evidence&&
     clearance_evidence.as<std::string>().find_first_not_of(" \t\r\n")!=std::string::npos;
-  if(!ready_observe_&&!retreat_clearance_qualified_)
+  if(!ready_observe_&&!retreat_clearance_qualified_&&!operator_trial_)
    throw std::runtime_error("physical RETREAT clearance unqualified: open-gripper approximation");
   const auto grasp=YAML::LoadFile(absolute("sdk_config"));const auto g=grasp["robot"]["gripper"]["rars01"];
   const auto feedback=grasp["robot"]["motion"]["motion_feedback"];mission_feedback_ttl_=feedback["max_feedback_age_s"].as<double>();
@@ -220,10 +229,11 @@ class ArmOwner final:public rclcpp::Node {
     mission_session_=session;health_nav_session_=v["navigation_session_id"].as<std::string>();health_ready_=v["ready"].as<bool>();health_goal_revision_=v["goal_revision"].as<uint64_t>();
     const auto phase=v["phase"].as<std::string>();
     health_phase_=phase;
-    health_manipulating_=phase=="BASE_SETTLE"||phase=="ARM_SCAN_POSE"||phase=="ARM_SEARCH"||phase=="VIEW_REFINEMENT"||phase=="PLAN_GRASP"||phase=="PREGRASP"||phase=="GRASP"||phase=="RETREAT"||phase=="RETURN_HOME"||phase=="RETURN_SEARCH";
+    health_manipulating_=phase=="BASE_SETTLE"||phase=="ARM_SCAN_POSE"||phase=="ARM_SEARCH"||phase=="VIEW_REFINEMENT"||phase=="PLAN_GRASP"||phase=="PREGRASP"||phase=="GRASP"||phase=="WAIT_RETREAT_APPROVAL"||phase=="RETREAT"||phase=="RETURN_HOME"||phase=="RETURN_SEARCH";
    }catch(...){health_ready_=false;}
   });
   plan_sub_=create_subscription<std_msgs::msg::String>("/rars01/mission/trajectory",1,[this](std_msgs::msg::String::SharedPtr msg){
+   if(trial_pending_){mission_blocker_="RETREAT_TRIAL_PENDING_NO_PLAN_REPLACEMENT";return;}
    if(msg->data.size()>max_plan_samples_*256+65536||plan_future_.valid()){mission_blocker_="plan too large or parser busy";return;}
    // YAML/arrays can take longer than an arm command slot. Decode on a separate
    // OTHER thread. The ROS owner remains responsive to cancel/emergency/timer.
@@ -239,8 +249,15 @@ class ArmOwner final:public rclcpp::Node {
   });
  }
  void AdmitPlan(){
-  if(!mission_||!plan_future_.valid()||plan_future_.wait_for(std::chrono::seconds(0))!=std::future_status::ready)return;
-  auto result=plan_future_.get();try{
+  if(!mission_)return;
+  ParsedPlan result;bool approved_trial=false;
+  if(trial_pending_&&trial_approval_.approved()){
+   result=std::move(*trial_pending_);trial_pending_.reset();approved_trial=true;
+  }else{
+   if(!plan_future_.valid()||plan_future_.wait_for(std::chrono::seconds(0))!=std::future_status::ready)return;
+   result=plan_future_.get();
+  }
+  try{
    if(!result.error.empty())throw std::runtime_error(result.error);
    const auto& v=result.header;const auto now=ArmClock::now();const bool is_home=v["kind"].as<std::string>()=="home";
    // Heartbeat TTL belongs to live Authority(), not parsing/planning duration.
@@ -253,7 +270,29 @@ class ArmOwner final:public rclcpp::Node {
       v["payload_checked"].as<bool>()!=(payload_checks_enabled_&&mission_->holding()))throw std::runtime_error("plan authority/session/collision rejected");
    const auto kind=v["kind"].as<std::string>();
    const auto operation=v["operation"]?v["operation"].as<std::string>():"";
-   if(!PhysicalRetreatPlanAllowed(retreat_clearance_qualified_,operation,health_phase_,mission_->holding(),kind))
+   const bool is_retreat=operation=="retreat";
+   if(operator_trial_&&is_retreat){
+    mission_->ObserveAssessment(now,home_->status());
+    if(kind!="move"||mission_->busy()||!mission_->holding()||!mission_->HoldConfirmed(home_->status())||
+       (health_phase_!="WAIT_RETREAT_APPROVAL"&&health_phase_!="GRASP"))
+      throw std::runtime_error("RETREAT_TRIAL_REQUIRES_STATIONARY_CONFIRMED_GRASP");
+    if(!approved_trial){
+     result.points=SlowRetreat(result.points,max_plan_samples_);
+     const auto ticket="t"+owner_session_+"_"+std::to_string(v["id"].as<uint64_t>())+"_"+std::to_string(Ns(now));
+     trial_approval_.Stage(ticket);trial_plan_id_=v["id"].as<uint64_t>();
+     trial_service_name_="/rars01/mission/approve_retreat/"+ticket;
+     trial_state_="WAITING_OPERATOR";trial_pending_=std::move(result);
+     trial_service_=create_service<std_srvs::srv::Trigger>(trial_service_name_,[this,ticket](std_srvs::srv::Trigger::Request::SharedPtr,std_srvs::srv::Trigger::Response::SharedPtr response){
+      const auto now=ArmClock::now();mission_->ObserveAssessment(now,home_->status());
+      const bool live=trial_pending_.has_value()&&Authority(now)&&health_phase_=="WAIT_RETREAT_APPROVAL"&&!mission_->busy()&&mission_->holding()&&mission_->HoldConfirmed(home_->status());
+      response->success=trial_approval_.Approve(ticket,live);
+      if(response->success)trial_state_="APPROVED_PENDING_REVALIDATION";
+      response->message=response->success?"one-shot approval accepted; all live/start/limit gates rechecked before motion":"approval rejected: ticket, authority, phase or grasp changed";
+     });
+     mission_blocker_="WAIT_OPERATOR_RETREAT_APPROVAL";return;
+    }
+    if(!trial_approval_.Consume(trial_approval_.ticket(),true))throw std::runtime_error("RETREAT_TRIAL_APPROVAL_NOT_VALID");
+   }else if(!PhysicalRetreatPlanAllowed(retreat_clearance_qualified_,operation,health_phase_,mission_->holding(),kind))
     throw std::runtime_error("PHYSICAL_RETREAT_CLEARANCE_UNQUALIFIED");
    if(!ReadyObservePlanAllowed(ready_observe_,ready_move_seen_,kind))throw std::runtime_error("ready_observe permits one initial move and HOME only");
    const auto preset=v["preset_operation"]?v["preset_operation"].as<std::string>():std::string{};
@@ -262,16 +301,24 @@ class ArmOwner final:public rclcpp::Node {
    mission_->ObserveAssessment(now,home_->status());
    if(!mission_->Start(v["id"].as<uint64_t>(),v["kind"].as<std::string>(),result.points,now,home_->status(),search))throw std::runtime_error("trajectory bounds/start/hold rejected");
    if(ready_observe_&&kind=="move")ready_move_seen_=true;
+   if(approved_trial){trial_state_="EXECUTING";trial_service_.reset();}
    mission_blocker_.clear();active_home_=is_home;if(is_home)home_requested_=false;
-  }catch(const std::exception& e){mission_blocker_=e.what();}
+  }catch(const std::exception& e){mission_blocker_=e.what();if(approved_trial)RevokeRetreatTrial("ADMISSION_REJECTED");}
+ }
+ void RevokeRetreatTrial(const std::string& reason){
+  if(!trial_approval_.ticket().empty()||trial_pending_)trial_state_=reason;
+  if(trial_pending_)mission_blocker_="RETREAT_TRIAL_"+reason;
+  trial_pending_.reset();trial_approval_.Revoke();trial_service_.reset();trial_service_name_.clear();
  }
  void Poll(){
+  if(trial_pending_&&(!Authority(ArmClock::now())||(health_phase_!="WAIT_RETREAT_APPROVAL"&&health_phase_!="GRASP")))RevokeRetreatTrial("AUTHORITY_REVOKED");
   AdmitPlan();
   // ROS already schedules this callback at ArmConfiguration.command_rate_hz.
   // A second deadline gate would drop early callbacks under normal jitter.
   try{home_->Tick(ArmClock::now(),connect_,true);}catch(const std::exception& e){home_->Fault(std::string("owner_exception: ")+e.what());}
   const auto& s=home_->status();
   if(mission_)mission_->ObserveAssessment(ArmClock::now(),s);
+  if(trial_state_=="EXECUTING"&&mission_&&mission_->id()==trial_plan_id_&&!mission_->busy())trial_state_=mission_->state();
   if(s.state!=last_state_){RCLCPP_INFO(get_logger(),"arm state=%s error=%s",AutoHomeStateName(s.state),s.last_error.c_str());last_state_=s.state;}
   // Optional typed snapshot; legacy100Hz YAML remains for native R3/readers.
   if(fast_state_){
@@ -342,6 +389,19 @@ class ArmOwner final:public rclcpp::Node {
    <<YAML::Key<<"mission_state"<<YAML::Value<<(mission_?mission_->state():"DISABLED")
    <<YAML::Key<<"mission_error"<<YAML::Value<<(mission_?mission_->error():mission_blocker_)
    <<YAML::Key<<"mission_blocker"<<YAML::Value<<mission_blocker_
+   <<YAML::Key<<"operator_trial"<<YAML::Value<<operator_trial_
+   <<YAML::Key<<"retreat_trial"<<YAML::Value<<YAML::BeginMap
+   <<YAML::Key<<"state"<<YAML::Value<<trial_state_
+   <<YAML::Key<<"plan_id"<<YAML::Value<<trial_plan_id_
+   <<YAML::Key<<"approval_service"<<YAML::Value<<trial_service_name_
+   <<YAML::Key<<"speed_scale"<<YAML::Value<<0.25
+   <<YAML::Key<<"samples"<<YAML::Value<<(trial_pending_?trial_pending_->points.size():0)
+   <<YAML::Key<<"duration_s"<<YAML::Value<<(trial_pending_?(trial_pending_->points.size()-1)/home_->config().command_rate_hz:0.)
+   <<YAML::Key<<"goal_revision"<<YAML::Value<<health_goal_revision_
+   <<YAML::Key<<"mission_session_id"<<YAML::Value<<mission_session_
+   <<YAML::Key<<"start_q"<<YAML::Value<<(trial_pending_?Values(trial_pending_->points.front()):std::vector<float>{})
+   <<YAML::Key<<"end_q"<<YAML::Value<<(trial_pending_?Values(trial_pending_->points.back()):std::vector<float>{})
+   <<YAML::EndMap
    <<YAML::Key<<"retreat_physical_clearance_qualified"<<YAML::Value<<retreat_clearance_qualified_
    <<YAML::Key<<"planned_disable_attempted"<<YAML::Value<<home_->planned_disable_attempted()
    <<YAML::Key<<"planned_disable_sent"<<YAML::Value<<home_->planned_disable_accepted()
@@ -349,6 +409,7 @@ class ArmOwner final:public rclcpp::Node {
    <<YAML::Key<<"home_requested"<<YAML::Value<<home_requested_
    <<YAML::Key<<"grasp_assessment"<<YAML::Value<<(mission_?mission_->assessment().state():"UNKNOWN")
    <<YAML::Key<<"grasp_assessment_reason"<<YAML::Value<<(mission_?mission_->assessment().reason():"NO_MISSION")
+   <<YAML::Key<<"grasp_width_m"<<YAML::Value<<sim2real::OptionalYamlScalar{mission_?mission_->assessment().width():std::nullopt}
    <<YAML::Key<<"grasp_confirmation_s"<<YAML::Value<<(mission_?mission_->assessment().confirmation_seconds():0.)
    <<YAML::Key<<"gripper_torque_control"<<YAML::Value<<"measured_contact"
    <<YAML::Key<<"gripper_contact_target_nm"<<YAML::Value<<(mission_?mission_->contact_target_nm():0.)
@@ -404,6 +465,10 @@ class ArmOwner final:public rclcpp::Node {
  }
  struct ParsedPlan{YAML::Node header;std::vector<std::array<float,7>> points;std::string error;};
  std::future<ParsedPlan> plan_future_;
+ std::optional<ParsedPlan> trial_pending_;RetreatTrialApproval trial_approval_;
+ bool operator_trial_=false;uint64_t trial_plan_id_=0;
+ std::string trial_state_="DISABLED",trial_service_name_;
+ rclcpp::Service<std_srvs::srv::Trigger>::SharedPtr trial_service_;
  int64_t plan_cancelled_ns_=0;
  bool ready_observe_=false,ready_move_seen_=false,retreat_clearance_qualified_=false;
  size_t max_plan_samples_=0;

@@ -4,6 +4,8 @@
 CUDA waits never block ROS callbacks or the independent arm-owner cancel port.
 """
 import json
+from pathlib import Path
+from mission.leg_plan_trace import LegPlanTrace
 import queue
 import threading
 import time
@@ -16,7 +18,7 @@ from std_msgs.msg import String
 from sensor_msgs.msg import JointState
 from nav_msgs.msg import Odometry
 from unitree_go.msg import LowState
-from mission.config import load,blockers
+from mission.config import apply_operator_trial,load,blockers
 from mission.collision import measured_gripper_width
 from mission.health_contract import source_ttl,CONTROLLED_HOME_PHASES
 from mission.scene import SceneBuffer
@@ -38,7 +40,10 @@ class Perception(Node):
         mode=self.declare_parameter('test_mode','').value
         if mode not in ('','full','ready_observe'):raise ValueError('invalid test_mode')
         if mode:self.cfg['test_mode']=mode
+        apply_operator_trial(self.cfg,self.declare_parameter('operator_trial',False).value)
         self.body_source=ROSBodySource(self,self.cfg);self.scene_buffer=SceneBuffer(self.cfg)
+        self.leg_plan_trace=LegPlanTrace(Path(self.get_parameter('workspace').value)/'runtime/leg_plan_trace')
+        self.trace_owner={}
         self.arm_state_transport=self.declare_parameter('arm_state_transport','yaml').value
         if self.arm_state_transport not in ('yaml','typed'):raise ValueError('ARM_STATE_TRANSPORT')
         self.owner_topic='/rars01/commissioning/fast_state' if self.arm_state_transport=='typed' else '/rars01/commissioning/state'
@@ -125,6 +130,7 @@ class Perception(Node):
             batch=take_batch(getattr(self,'owner_subscription',None),msg,self.cfg['frames'].get('arm_history_depth',1))
             values=[to_mapping(m) if getattr(self,'arm_state_transport','yaml')=='typed' else decode_status(m.data) for m in batch]
             d=values[-1]
+            self.trace_owner={k:d.get(k) for k in ('mission_id','mission_state','owner_session_id')}
             if not d['feedback_ready']:return
             with self.lock:
                 for historical in values:
@@ -211,6 +217,7 @@ class Perception(Node):
                 self.reason='INITIALIZING:'+stage
                 self.get_logger().info(self.reason)
             self.backend=Planning(self.cfg,progress=progress,startup_checks=self.startup_checks)
+            self.backend.plan_trace=getattr(self,'leg_plan_trace',None)
             if self.stop_event.is_set():return
             if not verified(self.backend.startup_checks):raise RuntimeError('PRELOAD_CHECKS_INCOMPLETE')
             self.reason='READY'
@@ -226,6 +233,7 @@ class Perception(Node):
                 if getattr(self,'controlled_stop',False) and (request['operation']!='home' or self.r3_phase not in CONTROLLED_HOME_PHASES):
                     self.busy=False;continue
                 compute_started=time.monotonic();self.backend.compute_metrics={}
+                self.backend.collision.last_stats={}
                 # Bound all collision passes for this request, including a
                 # candidate loop/rebuild. This does not change candidate cost.
                 try:
@@ -233,14 +241,18 @@ class Perception(Node):
                     self.backend.collision.work_deadline_ns=request['observed_ns']+int(budget*1e9)
                     self.backend.collision.check_deadline()
                     result=self.backend.execute(request,self.sample_context)
-                    self.backend.validate_result(result,self.sample_context,request)
+                    validation_started_ns=time.monotonic_ns()
+                    try:self.backend.validate_result(result,self.sample_context,request)
+                    finally:self.backend.compute_metrics['live_validation_elapsed_s']=(time.monotonic_ns()-validation_started_ns)/1e9
                     self.backend.collision.check_deadline()
                     out.update(result,ok=True)
                 except Exception as e:out.update(ok=False,reason=str(e) or type(e).__name__)
                 finally:
+                    self.backend.compute_metrics['collision_profile']=dict(getattr(self.backend.collision,'last_stats',{}))
                     self.backend.collision.work_deadline_ns=None
                     if request['operation']=='home':self.backend.pause_camera()
                 self.last_compute=dict(operation=request['operation'],elapsed_s=time.monotonic()-compute_started,**self.backend.compute_metrics)
+                self.leg_plan_trace.result(request,out,self.last_compute)
                 out['compute_metrics']=dict(self.last_compute)
                 out['observed_ns']=time.monotonic_ns()
                 if getattr(self,'controlled_stop',False) and request['operation']!='home':self.busy=False
@@ -271,6 +283,8 @@ class Perception(Node):
             while True:
                 try:pending.get_nowait()
                 except queue.Empty:break
+        trace=getattr(self,'leg_plan_trace',None)
+        if trace is not None:trace.close()
         return super().destroy_node()
 
     def tick(self):
@@ -281,15 +295,23 @@ class Perception(Node):
             with self.lock:self.scene_buffer.snapshot(time.monotonic_ns())
             self.scene_error=''
         except Exception as error:self.scene_error=str(error) or type(error).__name__
+        trace=getattr(self,'leg_plan_trace',None)
+        if trace is not None:
+            with self.lock:
+                latest=self.scene_buffer.legs[-1] if self.scene_buffer.legs else None
+            if latest is not None:
+                trace.observe(latest[1],latest[0],busy=self.busy,r3_phase=self.r3_phase,
+                    owner_status=dict(self.trace_owner))
         now=time.monotonic()
+        runtime_readiness=self.backend.readiness() if self.backend else dict(ready=False,reason='PERCEPTION_NOT_INITIALIZED')
         ready=(self.backend is not None and not getattr(self,'vision_reloading',False) and self.reason=='READY'
                and not self.scene_error
                and (not getattr(self,'controlled_stop',False) or self.r3_phase in CONTROLLED_HOME_PHASES)
-               and self.backend.sensors_ready()
+               and runtime_readiness['ready']
                and (not self.busy or now-self.started<self.cfg['execution']['state_timeout_s']))
         reason=(self.scene_error or self.reason) if self.backend is not None else self.reason
-        if self.backend is not None and not self.backend.sensors_ready():
-            reason=self.backend.camera_error or 'PERCEPTION_RUNTIME_NOT_READY'
+        if self.backend is not None and not runtime_readiness['ready']:
+            reason=runtime_readiness['reason']
         report_scene(self,reason)
         camera_mode=self.backend.camera_mode if self.backend else 'unverified'
         self.health.publish(String(data=json.dumps(dict(observed_ns=time.monotonic_ns(),ready=bool(ready),reason=reason,scene_error=self.scene_error,busy=self.busy,last_compute=self.last_compute,busy_elapsed_s=now-self.started if self.busy else 0.,
@@ -300,7 +322,9 @@ class Perception(Node):
             startup_checks=dict(self.startup_checks),
             inference_nice=getattr(self,'inference_nice',None),
             preload_ready=self.backend is not None and verified(self.backend.startup_checks),
-            camera_mode=camera_mode,
+            camera_mode=camera_mode,runtime_readiness=runtime_readiness,
+            collision_progress=dict(getattr(self.backend.collision,'last_stats',{})) if self.backend else {},
+            leg_plan_trace=dict(path=str(trace.path),error=trace.error,dropped=trace.dropped) if trace else None,
             lowstate_decode=(self.native_leg_input.status() if getattr(self,'native_leg_input',None) else self.leg_reader.status()),tf_pair=dict(self.body_source.diagnostics),streams=self.scene_buffer.diagnostics(time.monotonic_ns())))))
         try:
             out=self.completed.get_nowait();self.busy=False

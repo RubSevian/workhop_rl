@@ -200,11 +200,11 @@ class Planning:
 
     def resume_camera(self):
         if self.camera_mode=='active':return
-        from drivers.camera import make_camera
+        from .camera_process import CameraProcess
         self.camera_mode='starting';self.camera_start_ns=time.monotonic_ns();self.camera_error=''
-        source=make_camera(self.grasp)
         try:
-            source.open();self.camera=CameraPump(source,self.cfg['startup']['camera_stop_timeout_s'],
+            self.camera=CameraProcess(self.grasp,self.cfg['startup']['camera_probe_timeout_s'],
+                self.cfg['startup']['camera_stop_timeout_s'],
                 self.grasp['camera'].get('processing_mode','continuous'))
             deadline=self.camera_start_ns/1e9+self.cfg['startup']['camera_probe_timeout_s']
             count=0;last=0
@@ -230,7 +230,6 @@ class Planning:
             self.startup_checks['camera']=False
             self.camera_error=str(error);self.camera_mode='failed'
             if self.camera is not None:self.camera.close()
-            else:source.close()
             raise
 
     def pause_camera(self):
@@ -244,14 +243,27 @@ class Planning:
         self.pause_camera();self.yolo=None
         self.geometry_only_controlled_stop=True
 
-    def sensors_ready(self):
+    def readiness(self):
         if getattr(self,'geometry_only_controlled_stop',False):
-            return not getattr(self,'_closed',False) and self.startup_checks.get('geometry') is True and self.camera_mode=='standby'
-        if getattr(self,'_closed',False) or not all(self.startup_checks.values()) or not self.worker.is_alive():return False
-        if self.camera_mode=='standby':return True
+            ready=not getattr(self,'_closed',False) and self.startup_checks.get('geometry') is True and self.camera_mode=='standby'
+            return dict(ready=ready,reason='READY' if ready else 'CONTROLLED_STOP_GEOMETRY_NOT_READY')
+        reason=('PERCEPTION_CLOSED' if getattr(self,'_closed',False) else
+                'PERCEPTION_STARTUP_INCOMPLETE' if not all(self.startup_checks.values()) else
+                'GRASPNET_WORKER_EXITED' if not self.worker.is_alive() else '')
+        if reason:return dict(ready=False,reason=reason)
+        if self.camera_mode=='standby':return dict(ready=True,reason='READY')
         if self.camera_mode=='starting':
-            return (time.monotonic_ns()-self.camera_start_ns)/1e9<=self.cfg['startup']['camera_probe_timeout_s']
-        return self.camera_mode=='active' and self.camera is not None and self.camera.fresh(self.cfg['execution']['camera_max_age_s'])
+            ready=(time.monotonic_ns()-self.camera_start_ns)/1e9<=self.cfg['startup']['camera_probe_timeout_s']
+            return dict(ready=ready,reason='READY' if ready else 'CAMERA_START_TIMEOUT')
+        if self.camera_mode!='active' or self.camera is None:return dict(ready=False,reason='CAMERA_NOT_ACTIVE')
+        ttl=self.cfg['execution']['camera_max_age_s']
+        if hasattr(self.camera,'diagnostics'):
+            return self.camera.diagnostics(ttl)
+        ready=self.camera.fresh(ttl)
+        return dict(ready=ready,reason='READY' if ready else 'CAMERA_NOT_READY')
+
+    def sensors_ready(self):
+        return self.readiness()['ready']
 
     def frame(self, context):
         # A delayed/discarded exposure does not invalidate the next real frame.
@@ -432,10 +444,22 @@ class Planning:
     def execute(self, request, context):
         from utils.transforms import mat4_to_pose6d,pose6d_to_mat4
         op=request['operation'];owner=request['owner']
+        camera_started_ns=time.monotonic_ns()
         if op in ('scan_pose','detect','observe_grasp','grasp_plan'):
             self.resume_camera()
+        if op=='scan_pose':
+            self.compute_metrics['camera_resume_elapsed_s']=(time.monotonic_ns()-camera_started_ns)/1e9
         payload=owner.get('gripper_command_active') is True
         sample=context(None,None)
+        planning_reference_ns=None
+        if op=='scan_pose':
+            planning_reference_ns=time.monotonic_ns()
+            self.collision.validated_scene(self.collision_scene(sample),payload,reference_ns=planning_reference_ns)
+            self.compute_metrics.update(planning_reference_ns=planning_reference_ns,
+                scene_body_ns=sample['body'].mono_ns,
+                scene_body_age_at_accept_s=(planning_reference_ns-sample['body'].mono_ns)/1e9)
+        trace=getattr(self,'plan_trace',None)
+        if trace is not None:trace.begin(request,sample,reference_ns=planning_reference_ns)
         if sample['owner_session_id']!=request['owner_session_id'] or sample['body'].navigation_session_id!=request['navigation_session_id']:
             raise ValueError('PLANNING_SESSION_CHANGED')
         start=np.asarray(sample['q7'],dtype=float).copy()
@@ -452,7 +476,9 @@ class Planning:
             return dict(found=True,object_anchor=anchor.data(),q_search=list(at.get('q',sample['q'])))
         if op=='scan_pose':
             ready=self.grasp['robot']['ready_pose'];pose=[ready[k] for k in ('x','y','z','roll','pitch')]+[ready.get('yaw',0.)]
+            ik_started_ns=time.monotonic_ns()
             ik=self.ik.solve(*pose,reference_joints=start[:6])
+            self.compute_metrics['scan_pose_ik_elapsed_s']=(time.monotonic_ns()-ik_started_ns)/1e9
             if not ik.success:raise ValueError('SCAN_POSE_IK_FAIL')
             self.scan_joints=ik.joints.copy();self.scan_joints[0]=self.angles[0]
             target=self.scan_joints;grip=self.geometry.motor_angle_for_width(self.grasp['robot']['rars01']['max_grasp_width_m'])
@@ -488,6 +514,7 @@ class Planning:
             current=copy.deepcopy(context(None,None))
             planning_reference_ns=time.monotonic_ns()
             self.collision.validated_scene(self.collision_scene(current),False,reference_ns=planning_reference_ns)
+            if trace is not None:trace.begin(request,current,reference_ns=planning_reference_ns)
             if current['owner_session_id']!=request['owner_session_id']:
                 raise ValueError('PLANNING_SESSION_CHANGED')
             if current['body'].tf_revision!=at['body'].tf_revision or current['body'].navigation_session_id!=at['body'].navigation_session_id:
@@ -594,6 +621,8 @@ class Planning:
                 raise ValueError('TRAJECTORY_START_CHANGED_REPLAN_REQUIRED')
             trajectory['operation']=op
             trajectory['reused_approval']=True
+            if trace is not None:
+                trace.begin(request,sample,plan_scene=trajectory.get('approval_scene_snapshot',trajectory['scene_snapshot']))
             return dict(trajectory=trajectory)
         elif op=='home':target=np.zeros(6)
         elif op=='close':
@@ -608,13 +637,22 @@ class Planning:
             return dict(trajectory=trajectory)
         else:
             raise ValueError('APPROVED_SEGMENTS_REQUIRED')
+        preparation_started_ns=time.monotonic_ns()
+        points=self.samples(start,[target],self.grasp['robot']['ready_pose']['duration'],grip,search=op in ('scan_step','scan_return'))
+        collision_started_ns=time.monotonic_ns()
+        if op=='scan_pose':
+            self.compute_metrics.update(trajectory_build_elapsed_s=(collision_started_ns-preparation_started_ns)/1e9,
+                collision_started_ns=collision_started_ns,scene_body_age_at_collision_s=(collision_started_ns-sample['body'].mono_ns)/1e9)
         try:
-            trajectory=self.checked(self.samples(start,[target],self.grasp['robot']['ready_pose']['duration'],grip,search=op in ('scan_step','scan_return')),sample,payload,'home' if op=='home' else 'move')
+            trajectory=self.checked(points,sample,payload,'home' if op=='home' else 'move',
+                **({} if planning_reference_ns is None else dict(reference_ns=planning_reference_ns)))
         except CandidatePathRejected:
             if op!='refine':raise
             # Do not move along a colliding recenter path. Keep the current
             # collision-checked pose and obtain fresh images for grasp planning.
             trajectory=self.checked(np.vstack([start,start]),sample,payload)
+        finally:
+            if op=='scan_pose':self.compute_metrics['scan_pose_collision_elapsed_s']=(time.monotonic_ns()-collision_started_ns)/1e9
         if op in ('scan_step','scan_return'):trajectory['preset_operation']=op
         return dict(trajectory=trajectory)
 

@@ -15,6 +15,14 @@ def payload_checks_enabled(collision):
         raise ValueError('collision.payload_enabled must be a boolean')
     return enabled
 
+def apply_operator_trial(cfg, enabled):
+    """Explicit staged commissioning, never physical qualification evidence."""
+    if type(enabled) is not bool:raise ValueError('operator_trial must be boolean')
+    if enabled and cfg.get('test_mode','full')!='full':raise ValueError('operator_trial requires test_mode=full')
+    cfg['operator_trial']=enabled
+    return cfg
+
+
 def physical_retreat_qualified(collision):
     return (collision.get('retreat_physical_clearance_validated') is True
             and isinstance(collision.get('retreat_physical_clearance_evidence'),str)
@@ -63,7 +71,10 @@ def load(path, workspace):
         value=cfg['execution'].get(key,cfg['execution']['heartbeat_ttl_s'])
         if type(value) not in (int,float) or not math.isfinite(value) or not 0<value<=maximum:
             raise ValueError('invalid execution.'+key)
-    cfg['limits']={'sensor_age_s':navigation['bridge']['sensor_timeout_s'],
+    legs_age=cfg['frames'].get('leg_feedback_max_age_s',deployment['rars01']['feedback_timeout_s'])
+    if type(legs_age) not in (int,float) or not math.isfinite(legs_age) or not 0<legs_age<=.5:
+        raise ValueError('invalid frames.leg_feedback_max_age_s (maximum 0.5 s)')
+    cfg['limits']={'legs_age_s':legs_age,'sensor_age_s':navigation['bridge']['sensor_timeout_s'],
                    'arm_age_s':deployment['rars01']['feedback_timeout_s'],
                    'tf_position_tolerance_m':navigation['bridge']['tf_pair_position_tolerance_m'],
                    'tf_quaternion_tolerance':navigation['bridge']['tf_pair_quaternion_tolerance']}
@@ -200,7 +211,7 @@ def load(path, workspace):
 def blockers(cfg):
     environment = environment_checks_enabled(cfg['collision'])
     result = []
-    if cfg.get('test_mode','full')=='full' and not physical_retreat_qualified(cfg['collision']):
+    if cfg.get('test_mode','full')=='full' and not physical_retreat_qualified(cfg['collision']) and cfg.get('operator_trial') is not True:
         result.append('physical_retreat_clearance_unqualified')
     if cfg['frames']['vehicle_to_mount'] is None:
         result.append('vehicle_to_mount_missing')

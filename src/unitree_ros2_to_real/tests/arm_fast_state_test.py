@@ -39,6 +39,19 @@ class Tests(unittest.TestCase):
             self.assertEqual(result['grasp_assessment_reason'],value['grasp_assessment_reason'])
             self.assertIsNone(result['object_grasped']) # Preliminary result never becomes physical certainty.
 
+    def test_wire_snapshot_can_be_embedded_in_compute_json(self):
+        value=self.payload()
+        value.update(accepted_ns=123,accepted_target=[.125]*6)
+        msg=deserialize_message(serialize_message(from_mapping(value)),ArmFastState)
+        decoded=to_mapping(msg)
+        request={'operation':'scan','owner':decoded}
+        restored=json.loads(json.dumps(request,allow_nan=False))
+        self.assertEqual(restored,request)
+        for key in ('motor_ids','motor_id','motor_status'):
+            self.assertTrue(all(type(x) is int for x in decoded[key]))
+        for key in ('q','dq','torque','accepted_target'):
+            self.assertTrue(all(type(x) is float for x in decoded[key]))
+
     def test_version_rejected(self):
         msg=from_mapping(self.payload());msg.schema_version=2
         with self.assertRaisesRegex(ValueError,'SCHEMA'):to_mapping(msg)

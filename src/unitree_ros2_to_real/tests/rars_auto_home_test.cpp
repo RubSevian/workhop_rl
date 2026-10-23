@@ -52,6 +52,14 @@ void startup(){
  readonly.Tick(t(0));readonly.Tick(t(100));assert(ro.enables==0&&ro.sends==0&&!readonly.status().arm_home_ready);
 }
 void readiness(){
+ for(int axis=0;axis<7;++axis)for(double sign:{-1.,1.}){
+  Transport tr;Journal j;auto cfg=config();
+  AutoHomeController c(cfg,tr,j);start(c);
+  const double tolerance=cfg.home_tolerance_rad;
+  tr.joints.position[axis]=sign*(tolerance-1e-6);c.Tick(t(10.02));assert(c.status().arm_home_ready);
+  tr.joints.position[axis]=sign*(tolerance+1e-6);c.Tick(t(10.03));assert(!c.status().arm_home_ready);
+ }
+
  for(int bad=0;bad<10;++bad){Transport tr;Journal j;AutoHomeController c(config(),tr,j);start(c);
   switch(bad){case 0:tr.read_ok=false;break;case 1:tr.joints.error[6]=0;break;
    case 2:tr.joints.error[6]=8;break;case 3:tr.joints.motor_id[6]=6;break;
@@ -177,7 +185,9 @@ void mission_startup_home(){
  assert(stream.Start(1,"move",path,t(10.03),home.status())&&stream.has_command());
  home.Tick(t(10.04));assert(tr.targets.back()[0]==.05f);
  tr.joints.position[0]=.06;stream.Cancel(home.status(),"test cancel");
- home.Tick(t(10.05));assert(tr.targets.back()[0]==.05f&&!stream.home6(home.status(),.15));
+ home.Tick(t(10.05));assert(tr.targets.back()[0]==.05f);
+ assert(stream.home6(home.status(),.15)); // Within this legacy fixture tolerance.
+ assert(!stream.home6(home.status(),.02)); // Outside a stricter, independent HOME tolerance.
 }
 void planned_disable(){
  Transport tr;Journal j;AutoHomeController c(config(),tr,j);start(c);

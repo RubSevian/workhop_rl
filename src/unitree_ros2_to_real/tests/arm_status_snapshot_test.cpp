@@ -30,12 +30,26 @@ int main(){
  {auto n=YAML::Clone(valid);n["motor_status"][6]=0;bad(n);}
  {auto n=YAML::Clone(valid);n["q"][6]=.16;bad(n);}
  {auto n=YAML::Clone(valid);n["home_target"][6]=.01;bad(n);}
- {auto n=YAML::Clone(valid);n["accepted_target"][0]=.01;bad(n);}
+ {auto n=YAML::Clone(valid);n["accepted_target"][0]=.16;bad(n);}
  {auto n=YAML::Clone(valid);n["measured_dq"][0]=".nan";bad(n);}
  for(const char* key:{"observed_ns","frame_received_ns"}){auto n=YAML::Clone(valid);n[key]=int64_t(3000000000);bad(n);}
  {auto n=YAML::Clone(valid);n["accepted_ns"]=int64_t(3000000000);auto p=parse(n);assert(!p.inputs.ready.arm_target_ready&&!p.inputs.arm_control_ready);}
  {auto n=YAML::Clone(valid);n["common_feedback_age_s"]=-1;bad(n);}
  {auto n=YAML::Clone(valid);n.remove("motor_status");bad(n);}
  assert(!ParseArmStatus("not: [valid",.15,now).error.empty());
+ // Owner Cancel captures encoder error; both consumers use absolute HOME tolerance.
+ const double arm_tol=.15;
+ for(int axis=0;axis<7;++axis)for(double sign:{-1.,1.}){
+  auto n=YAML::Clone(valid);const double limit=arm_tol;
+  n["q"][axis]=sign*(limit-1e-6);
+  if(axis<6)n["accepted_target"][axis]=sign*(limit-1e-6);
+  assert(ParseArmStatus(YAML::Dump(n),arm_tol,now).error.empty());
+  n["q"][axis]=sign*(limit+1e-6);
+  assert(!ParseArmStatus(YAML::Dump(n),arm_tol,now).error.empty());
+ }
+ {auto n=YAML::Clone(valid);n["accepted_target"][0]=-.000190734863;
+  assert(ParseArmStatus(YAML::Dump(n),arm_tol,now).inputs.arm_control_ready);
+  n["accepted_target"][0]=-(arm_tol+1e-6);
+  assert(!ParseArmStatus(YAML::Dump(n),arm_tol,now).error.empty());}
  std::cout<<"PASS arm snapshot: health, seven motors, targets, invalidation, timestamps preserved\n";
 }

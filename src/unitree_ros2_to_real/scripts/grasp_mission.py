@@ -22,7 +22,7 @@ from mission.native_leg_input import NativeLegInput
 from mission.arm_fast_state import to_mapping
 from mission.leg_state_reader import LegStateReader
 from mission.ros_scene import ROSBodySource, report_scene
-from mission.config import load, blockers, physical_retreat_qualified
+from mission.config import apply_operator_trial, load, blockers, physical_retreat_qualified
 from mission.core import Mission, TERMINAL, ARM_PHASES
 from mission.health_contract import source_ttl,CONTROLLED_HOME_PHASES
 
@@ -36,6 +36,7 @@ class Coordinator(Node):
         mode=self.declare_parameter('test_mode','').value
         if mode not in ('','full','ready_observe'):raise ValueError('invalid test_mode')
         if mode:self.cfg['test_mode']=mode
+        apply_operator_trial(self.cfg,self.declare_parameter('operator_trial',False).value)
         self.arm_state_transport=self.declare_parameter('arm_state_transport','yaml').value
         if self.arm_state_transport not in ('yaml','typed'):raise ValueError('ARM_STATE_TRANSPORT')
         self.physical=self.declare_parameter('physical',False).value

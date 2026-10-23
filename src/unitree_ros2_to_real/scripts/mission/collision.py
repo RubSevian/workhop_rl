@@ -31,6 +31,31 @@ def validate_geometry_joint(name,value,lower,upper,arm_tolerance):
     return value
 
 
+def timed_collision_stage(method):
+    """Inclusive stage timings; nested totals must not be added together."""
+    from functools import wraps
+    @wraps(method)
+    def measured(self,*args,**kwargs):
+        stats=getattr(self,'last_stats',None)
+        if not getattr(self,'_profiling',False) or stats is None:return method(self,*args,**kwargs)
+        stage=method.__name__;previous=stats.get('active_stage')
+        started=time.monotonic_ns();cpu=time.thread_time_ns()
+        stats['active_stage']=stage
+        try:return method(self,*args,**kwargs)
+        except BaseException:
+            stats.setdefault('exception_stage',stage)
+            raise
+        finally:
+            elapsed=(time.monotonic_ns()-started)/1e9
+            old=stats.get(stage,{})
+            stats[stage]=dict(calls=old.get('calls',0)+1,wall_s=old.get('wall_s',0.)+elapsed,
+                cpu_s=old.get('cpu_s',0.)+(time.thread_time_ns()-cpu)/1e9,
+                max_wall_s=max(old.get('max_wall_s',0.),elapsed),
+                slowest_pair=stats.get('current_pair') if elapsed>=old.get('max_wall_s',0.) else old.get('slowest_pair'))
+            stats['active_stage']=previous
+    return measured
+
+
 class CollisionComputeTimeout(RuntimeError):
     """Abort the whole planning request; not an infeasible grasp candidate."""
 
@@ -130,6 +155,7 @@ class Collision:
         if any(j['type']!='fixed' for j in self.topology.chain('base','arm_mount_link')):raise ValueError('MOVING_BODY_MOUNT')
         self.body_mount=rigid(self.data.oMf[self.model.getFrameId('arm_mount_link')].homogeneous.copy())
 
+    @timed_collision_stage
     def query(self,a,ta,b,tb):
         ta,tb=rigid(ta),rigid(tb)
         x,y=(self.fcl.Transform3s(t[:3,:3],t[:3,3]) for t in (ta,tb))
@@ -138,6 +164,10 @@ class Collision:
         cr=self.fcl.CollisionResult();count=self.fcl.collide(a,x,b,y,self._collision_request,cr)
         if not np.isfinite(d):raise ValueError('NONFINITE_COLLISION_DISTANCE')
         return d,bool(count or cr.isCollision())
+
+    @timed_collision_stage
+    def native_bound_query(self,ga,x,gb,y,out):
+        return self.fcl.collide(ga,x,gb,y,self._bound_request,out)
 
     def local_corners(self,shape):
         key=int(shape.id())
@@ -173,6 +203,7 @@ class Collision:
             raise ValueError('INVALID_ROTATION')
         return t
 
+    @timed_collision_stage
     def mesh_solid(self,shape):
         key=int(shape.id())
         if key not in self._solid_cache:
@@ -180,6 +211,7 @@ class Collision:
             self._solid_cache[key]=(shape,MeshSolid(shape))
         return self._solid_cache[key][1]
 
+    @timed_collision_stage
     def containment_ambiguous(self,a,ta,b,tb,validated=False):
         """Compatibility name: now detects actual closed-mesh containment.
 
@@ -211,6 +243,7 @@ class Collision:
 
     def distance(self,a,ta,b,tb):return self.query(a,ta,b,tb)[0]
 
+    @timed_collision_stage
     def placements(self,state,legs):
         state,legs=np.asarray(state,dtype=float),np.asarray(legs,dtype=float)
         if state.shape!=(7,) or legs.shape!=(12,) or not np.isfinite(np.r_[state,legs]).all():raise ValueError('INVALID_JOINT_STATE')
@@ -241,7 +274,8 @@ class Collision:
         poses=self.placements(state,legs);rows=[]
         if map_body is not None:poses=[rigid(map_body)@t for t in poses]
         for i,j in self.all_pairs:
-            a,b=self.links[i],self.links[j];d,hit=self.query(self.geom.geometryObjects[i].geometry,poses[i],self.geom.geometryObjects[j].geometry,poses[j])
+            a,b=self.links[i],self.links[j]
+            self.last_stats['current_pair']=[a,b];d,hit=self.query(self.geom.geometryObjects[i].geometry,poses[i],self.geom.geometryObjects[j].geometry,poses[j])
             if d<threshold or hit:
                 relation=self.topology.relation(a,b)
                 rows.append(dict(pair=[a,b],geometry=[self.geom.geometryObjects[k].name for k in (i,j)],distance_m=d,
@@ -249,6 +283,7 @@ class Collision:
                     clearance_policy='excluded_by_config' if frozenset((a,b)) in self.ignored_pairs else 'allowed_zero_contact' if frozenset((a,b)) in self.zero_contact_pairs else 'assembly' if relation in ('same_body','rigid_assembly') else 'penetration_only' if relation=='moving_adjacent' else 'configured_margin',margin_m=self.margin))
         return sorted(rows,key=lambda r:r['distance_m'])
 
+    @timed_collision_stage
     def self_failure(self,poses,sample=0):
         self.check_deadline()
         # Keep the original narrow-phase order. Bounding-box distance is a
@@ -293,7 +328,7 @@ class Collision:
             if native_mesh:
                 x,y=(self.fcl.Transform3s(t[:3,:3],t[:3,3]) for t in (transforms[i],transforms[j]))
                 out=self.fcl.CollisionResult()
-                count=self.fcl.collide(ga,x,gb,y,self._bound_request,out)
+                count=self.native_bound_query(ga,x,gb,y,out)
                 hit=bool(count or out.isCollision())
                 lower=float(out.distance_lower_bound)
                 self.last_stats['native_bound_queries']=self.last_stats.get('native_bound_queries',0)+1
@@ -329,6 +364,7 @@ class Collision:
         self.last_failure=dict(reason=reason,sample_index=sample,pair=pair,distance_m=distance,category=category,surface_collision=collision)
         return False
 
+    @timed_collision_stage
     def validated_scene(self,scene,payload,*,reference_ns=None):
         if not isinstance(scene,dict):raise ValueError('COLLISION_STATE_SNAPSHOT_REQUIRED')
         # Candidate passes share the acquisition-time scene. Execution admission
@@ -339,7 +375,7 @@ class Collision:
             validate_scene_data(scene['scene_snapshot'],self.cfg,now,
                                 scene['navigation_session_id'],scene['owner_session_id'])
         else:
-            for key,ttl in [('legs_ns',self.cfg['limits']['arm_age_s']),('feedback_ns',self.cfg['limits']['arm_age_s']),('base_ns',self.cfg['limits']['sensor_age_s'])]:
+            for key,ttl in [('legs_ns',self.cfg['limits'].get('legs_age_s',self.cfg['limits']['arm_age_s'])),('feedback_ns',self.cfg['limits']['arm_age_s']),('base_ns',self.cfg['limits']['sensor_age_s'])]:
                 if type(scene.get(key)) is not int or not 0<=(now-scene[key])/1e9<=ttl:raise ValueError('COLLISION_STATE_STALE:'+key)
         if self.environment_enabled:
             if self.floor is None or self.cfg['collision'].get('environment_frame')!='map':raise ValueError('SURVEYED_MAP_ENVIRONMENT_MISSING')
@@ -351,10 +387,13 @@ class Collision:
         self.last_failure={}
         started=time.monotonic_ns()
         self._check_deadline_ns=started+int(self.check_timeout_s*1e9)
-        self.last_stats=dict(samples=0,duplicate_samples=0,narrowphase_queries=0,broadphase_skipped=0)
+        self._profiling=True
+        cpu_started=time.thread_time_ns()
+        self.last_stats=dict(started_ns=started,timeout_s=self.check_timeout_s,samples=0,duplicate_samples=0,narrowphase_queries=0,broadphase_skipped=0)
         try:
             self.check_deadline()
             p=np.asarray(points,dtype=float)
+            self.last_stats['input_points']=len(p) if p.ndim else 0
             if p.ndim!=2 or p.shape[1]!=7 or len(p)<2 or not np.isfinite(p).all():raise ValueError('INVALID_COLLISION_PATH')
             map_body=self.validated_scene(scene,payload,reference_ns=reference_ns)
             if payload and (self.payload_size is None or self.payload_xyz is None):raise ValueError('PAYLOAD_GEOMETRY_MISSING')
@@ -379,6 +418,8 @@ class Collision:
                         continue
                     previous=state.copy()
                     self.last_stats['samples']+=1
+                    self.last_stats['current_pair']=None
+                    self.last_stats['sample_index']=sample
                     poses=self.placements(state,scene['legs'])
                     if self.self_failure(poses,sample):return False
                     world=[map_body@t for t in poses]
@@ -411,4 +452,7 @@ class Collision:
         finally:
             self._clear_cache=None
             self.last_stats['elapsed_s']=(time.monotonic_ns()-started)/1e9
+            self.last_stats['thread_cpu_s']=(time.thread_time_ns()-cpu_started)/1e9
+            self.last_stats['result_reason']=self.last_reason
+            self._profiling=False
             self._check_deadline_ns=None

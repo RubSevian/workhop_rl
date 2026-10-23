@@ -37,6 +37,24 @@ int main(){
  assert(!PlanTimestampAllowed(2'000'000'000,3'000'000'000,2'000'000'000));
  assert(PlanTimestampAllowed(2'100'000'000,3'000'000'000,2'000'000'000));
 
+ // Cancelling at measured HOME captures encoder quantization, not exact zero.
+ {
+  MissionStreamConfig c;c.lower.fill(-3);c.upper.fill(3);c.velocity.fill(1);
+  MissionStream home_stream(c);AutoHomeStatus s;
+  s.feedback_ready=s.motors_enabled=s.target_fresh=true;
+  s.joints.position.fill(-0.000190734863F);
+  home_stream.Cancel(s,"operator_cancel");
+  assert(home_stream.home6(s,.02));
+  s.joints.position[0]=.021F;
+  assert(!home_stream.home6(s,.02));
+  home_stream.Cancel(s,"operator_cancel");
+  s.joints.position[0]=0; // Measured HOME cannot hide an out-of-HOME target.
+  assert(!home_stream.home6(s,.02));
+  s.joints.position.fill(0);home_stream.Cancel(s,"operator_cancel");
+  s.feedback_ready=false;assert(!home_stream.home6(s,.02));
+  s.feedback_ready=true;s.motors_enabled=false;assert(!home_stream.home6(s,.02));
+  s.motors_enabled=true;s.target_fresh=false;assert(!home_stream.home6(s,.02));
+ }
  MissionStreamConfig cfg;cfg.close_duration_s=.5;cfg.lower.fill(-3);cfg.upper.fill(3);cfg.velocity.fill(1);cfg.kp.fill(20);cfg.kd.fill(1);
  FreshStream stream(cfg);AutoHomeStatus feedback;feedback.feedback_ready=feedback.motors_enabled=feedback.target_fresh=true;
  feedback.joints.position.fill(0);feedback.joints.velocity.fill(0);feedback.joints.position[6]=.8;

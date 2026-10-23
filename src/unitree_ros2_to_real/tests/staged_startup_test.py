@@ -13,7 +13,7 @@ SCRIPTS=Path(__file__).resolve().parents[1]/'scripts'
 sys.path.insert(0,str(SCRIPTS))
 from mission.startup import StartupRelease,MARKER,verified
 from mission.solid import MeshSolid
-from mission.planning import Planning
+from mission.planning import Planning, CameraPump
 
 class Shape:
     num_tris=4
@@ -181,11 +181,13 @@ class StartupTests(unittest.TestCase):
         (package_lib/'mission').symlink_to(SCRIPTS/'mission',target_is_directory=True)
         with patch.object(module,'get_package_prefix',return_value=str(prefix)),patch.object(module,'get_package_share_directory',return_value=str(SCRIPTS.parent)):
             actions=module._launch(context)
-        self.assertEqual(len(actions),2)
-        self.assertIsInstance(actions[0],RegisterEventHandler);self.assertIsInstance(actions[1],Node)
-        handler=actions[0].event_handler
+        self.assertEqual(len(actions),3)
+        self.assertIsInstance(actions[0],Node) # diagnostic monitor starts before preload
+        self.assertIn('architecture_monitor.py',str(actions[0].node_executable))
+        self.assertIsInstance(actions[1],RegisterEventHandler);self.assertIsInstance(actions[2],Node)
+        handler=actions[1].event_handler
         def output(data):
-            event=ProcessIO(action=actions[1],name='preload',cmd=[],cwd=None,env=None,pid=1,text=data,fd=1)
+            event=ProcessIO(action=actions[2],name='preload',cmd=[],cwd=None,env=None,pid=1,text=data,fd=1)
             self.assertTrue(handler.matches(event));return handler.handle(event,context)
         self.assertEqual(output(b'INITIALIZING:camera_probe\n'),[])
         self.assertEqual(output(MARKER[:10].encode()),[])
@@ -231,9 +233,11 @@ class StartupTests(unittest.TestCase):
         p.startup_checks=dict(geometry=True,yolo=True,graspnet=True,camera=True)
         p.worker=SimpleNamespace(is_alive=lambda:True)
         cameras=[]
-        def make_camera(cfg):
-            c=Camera();cameras.append(c);return c
-        with patch.dict(sys.modules,{'drivers.camera':SimpleNamespace(make_camera=make_camera)}):
+        # Probe lifecycle is tested at the process facade boundary here;
+        # real spawn/IPC and blocked SDK calls have their own camera_process_test.
+        def make_camera(cfg, start_timeout, stop_timeout, mode):
+            c=Camera();cameras.append(c);return CameraPump(c,stop_timeout,mode)
+        with patch('mission.camera_process.CameraProcess',side_effect=make_camera):
             p.resume_camera();self.assertTrue(p.sensors_ready())
             first_stamp=p.camera.last_frame_timing['color_system_ns']
             p.pause_camera();self.assertTrue(cameras[0].closed);self.assertIsNone(p.camera)
@@ -253,7 +257,8 @@ class StartupTests(unittest.TestCase):
         def repeated():
             frames=original();camera.last_frame_timing={'color_system_ns':stamp,'depth_system_ns':stamp};return frames
         camera.get_frame=repeated
-        with patch.dict(sys.modules,{'drivers.camera':SimpleNamespace(make_camera=lambda cfg:camera)}):
+        with patch('mission.camera_process.CameraProcess',
+                   side_effect=lambda cfg,start_timeout,stop_timeout,mode:CameraPump(camera,stop_timeout,mode)):
             with self.assertRaisesRegex(ValueError,'CAMERA_PROBE_TIMEOUT'):p.resume_camera()
         self.assertEqual(p.camera_mode,'failed');self.assertTrue(camera.closed)
 

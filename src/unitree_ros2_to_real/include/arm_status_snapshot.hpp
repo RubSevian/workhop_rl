@@ -69,7 +69,7 @@ inline ParsedArmStatus ParseArmStatus(const std::string& text,double home_tolera
     const bool motors_healthy=std::all_of(motor_states.begin(),motor_states.end(),[](int v){return v==1;});
     if(y["target_valid"].as<bool>()) {
      result.target=Six(y["accepted_target"]);
-     if(result.inputs.arm_home_ready)for(float v:result.target)if(v!=0)throw std::runtime_error("HOME accepted target must be zero");
+     if(result.inputs.arm_home_ready)for(float v:result.target)if(std::abs(v)>home_tolerance)throw std::runtime_error("HOME accepted target outside tolerance");
      result.inputs.target_stamp=TimeNs(y["accepted_ns"].as<int64_t>());
      result.inputs.ready.arm_target_ready=Age(now,result.inputs.target_stamp)>=0;
      result.inputs.arm_control_ready=owner_healthy&&motors_healthy&&result.inputs.ready.arm_feedback_ready&&result.inputs.ready.arm_target_ready;
