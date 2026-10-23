@@ -286,6 +286,43 @@ class Integration(unittest.TestCase):
             planner.frame=lambda context:(_ for _ in ()).throw(ValueError('RGBD_STALE_OR_REPEATED'))
             with self.assertRaisesRegex(ValueError,'RGBD_STALE'):planner.detect(None,1)
 
+    def test_search_confirms_two_of_five_without_relaxing_geometry(self):
+        from mission.planning import Planning
+        from types import SimpleNamespace as NS
+        from unittest.mock import patch
+        def run(frames,required=2,class_name="cup",confidence=.9):
+            planner=Planning.__new__(Planning);planner.cfg=copy.deepcopy(CFG)
+            planner.cfg['search']['max_center_shift_px']=1.
+            planner.grasp={'graspnet':{'min_depth':.05,'max_depth':1.}}
+            planner.camera=NS(K=np.eye(3));planner.yolo=None;planner.yolo_options={}
+            planner.frame=lambda context:(None,np.full((5,5),500),{'odom_arm':np.eye(4),'arm_camera':np.eye(4)})
+            def detection(position):
+                if position is None:return []
+                mask=np.zeros((5,5),bool);mask[position,position]=True
+                return [NS(class_name=class_name,conf=confidence,mask=mask)]
+            sequence=iter(frames)
+            module=NS(detect_objects=lambda *a:(None,detection(next(sequence))))
+            with patch.dict(sys.modules,{'utils.yolo_utils':module}):result=planner.detect(None,5,required=required)
+            return result,planner.compute_metrics
+        result,metrics=run([1,1],class_name='light blue coffee cup')
+        self.assertIsNotNone(result)
+        result,metrics=run([1]*5,class_name='bottle')
+        self.assertIsNone(result)
+        result,metrics=run([1]*5,class_name='light blue coffee cup',confidence=.24)
+        self.assertIsNone(result)
+        result,metrics=run([None,1,None,None,1])
+        self.assertIsNotNone(result);self.assertEqual(metrics['confirmation_frames'],[2,5])
+        result,metrics=run([1,1])
+        self.assertIsNotNone(result);self.assertEqual(metrics['yolo_calls'],2)
+        result,metrics=run([None,1,None,None,None])
+        self.assertIsNone(result);self.assertEqual(metrics['yolo_calls'],5)
+        result,metrics=run([0,None,4,None,None])
+        self.assertIsNone(result) # two spatially inconsistent detections
+        result,metrics=run([0,None,4,None,4])
+        self.assertIsNotNone(result);self.assertEqual(metrics['confirmation_frames'],[3,5])
+        result,metrics=run([1,None,1,1,1],required=None)
+        self.assertIsNone(result) # refinement still requires consecutive frames
+
     def test_search_speed_does_not_limit_grasp_motion(self):
         from mission.planning import Planning
         planner=Planning.__new__(Planning);planner.cfg=copy.deepcopy(CFG)
@@ -336,9 +373,12 @@ class Integration(unittest.TestCase):
         planner.eye=SimpleNamespace(chain=lambda *args:(np.eye(4),np.eye(4)))
         planner.fk=SimpleNamespace(forward=lambda q:np.eye(4))
         planner.samples=lambda start,targets,*args,**kwargs:np.vstack([start,np.r_[targets[0],start[6]]])
-        planner.checked=lambda points,*args:{'points':points}
+        planner.checked=lambda points,*args,**kwargs:{'points':points}
+        planner.compute_metrics={}
+        planner.collision=SimpleNamespace(validated_scene=lambda *args,**kwargs:None)
+        planner.collision_scene=lambda sample:{}
         sample=dict(q7=[0.]*7,q=[0.]*6,legs=[0.]*12,owner_session_id='arm',
-                    body=SimpleNamespace(navigation_session_id='nav'),capture_ns=1,
+                    body=SimpleNamespace(navigation_session_id='nav',mono_ns=1),capture_ns=1,
                     feedback_ns=1,odom_mono_ns=1,odom_vehicle=np.eye(4))
         request=dict(operation='refine',owner={},owner_session_id='arm',navigation_session_id='nav')
         for target in (np.zeros(6),np.array([.01,0,0,0,0,0]),np.array([.01,.01,0,0,0,0])):
@@ -348,9 +388,9 @@ class Integration(unittest.TestCase):
                 np.testing.assert_allclose(result['trajectory']['points'][-1][:6],target)
         from mission.planning import CandidatePathRejected
         checked=planner.checked
-        def reject_motion(points,*args):
+        def reject_motion(points,*args,**kwargs):
             if not np.array_equal(points[0],points[-1]):raise CandidatePathRejected('COLLISION:arm:leg')
-            return checked(points,*args)
+            return checked(points,*args,**kwargs)
         planner.checked=reject_motion
         planner.ik=SimpleNamespace(solve=lambda *args,**kwargs:SimpleNamespace(success=True,joints=np.array([.01,0,0,0,0,0])))
         result=planner.execute(request,lambda *args:sample)
@@ -569,7 +609,7 @@ class Integration(unittest.TestCase):
             if change=='revision':revision='r2'
             with self.assertRaises(ValueError):p.observe(candidate,stamp,stamp,now+10**7,session,revision)
             self.assertTrue(p.fault)
-        with self.assertRaisesRegex(ValueError,'STALE'):BodyPoseProvider(cfg).observe(vehicle,now,now,now+10**9,'nav','r')
+        with self.assertRaisesRegex(ValueError,'STALE'):BodyPoseProvider(cfg).observe(vehicle,now,now,now+int(cfg['limits']['sensor_age_s']*1e9)+1,'nav','r')
         buffer=SceneBuffer(cfg);buffer.bodies.append(body)
         with self.assertRaises(ValueError):buffer.snapshot(now)
         buffer.arm([0.]*7,now,'arm');buffer.leg([0.,.8,-1.5]*4,now)
@@ -591,7 +631,7 @@ class Integration(unittest.TestCase):
         snapshot=buffer.snapshot(now,capture)
         self.assertEqual(snapshot.q7,tuple([.1]*7))
         self.assertEqual(snapshot.feedback_ns,capture)
-        with self.assertRaisesRegex(ValueError,'RGBD_STALE'):buffer.snapshot(now,now-601_000_000)
+        with self.assertRaisesRegex(ValueError,'RGBD_STALE'):buffer.snapshot(now,now-int(CFG['execution']['camera_max_age_s']*1e9)-1_000_000)
         with self.assertRaisesRegex(ValueError,'RGBD_STALE'):buffer.snapshot(now,now+1)
         # Historical state must belong to the same arm owner and TF epoch.
         buffer.arms[-1]=(now,tuple([.2]*7),'restarted')
@@ -615,7 +655,7 @@ class Integration(unittest.TestCase):
             _,_,sample=planner.frame(context)
             self.assertEqual(sample['capture_mono_ns'],4_500_000_000)
             with self.assertRaisesRegex(ValueError,'RGBD_STALE_OR_REPEATED'):planner.frame(context)
-            planner.last_frame_mono_ns=0;timing['color_system_ns']=timing['depth_system_ns']=9_399_000_000
+            planner.last_frame_mono_ns=0;timing['color_system_ns']=timing['depth_system_ns']=10_000_000_000-int(CFG['execution']['camera_max_age_s']*1e9)-1_000_000
             with self.assertRaisesRegex(ValueError,'RGBD_STALE_OR_REPEATED'):planner.frame(context)
 
     def test_body_source_ignores_unrelated_tf_writers(self):
@@ -677,7 +717,7 @@ class Integration(unittest.TestCase):
         planner.collision=SimpleNamespace(validated_scene=lambda *args:checked.append('fresh admission'),
             check=lambda points,scene,payload:geometry.append(copy.deepcopy(scene)) or True,
             last_failure={'reason':'COLLISION:arm:leg'})
-        original=dict(trajectory=dict(points=[[0.]*7]*2,collision_context=planner.collision_scene(sample),payload_checked=False))
+        original=dict(trajectory=dict(points=[[0.]*7]*2,collision_context=planner.collision_scene(sample),payload_checked=False,collision_checked=True))
         moved=copy.deepcopy(sample);moved['odom_vehicle']=np.asarray(moved['odom_vehicle']).copy();moved['odom_vehicle'][0,3]+=.001
         def coherent(state):
             state['body']=BodyPose(now,now,'nav','synthetic-tf-r1',np.asarray(state['odom_vehicle']).tolist(),planner.frames.body(state['odom_vehicle']).tolist())
@@ -687,7 +727,7 @@ class Integration(unittest.TestCase):
         rebuilds=[]
         def rebuild(request,context):
             state=context(0,0);rebuilds.append(state)
-            return dict(trajectory=dict(points=[state['q7']]*2,collision_context=planner.collision_scene(state),payload_checked=False))
+            return dict(trajectory=dict(points=[state['q7']]*2,collision_context=planner.collision_scene(state),payload_checked=False,collision_checked=True))
         planner.execute=rebuild
         result=copy.deepcopy(original)
         planner.validate_result(result,lambda *args:moved,request={'operation':'pregrasp'})
@@ -724,9 +764,9 @@ class Integration(unittest.TestCase):
         self.assertEqual(len(rebuilds),1) # no unbounded chase/replan loop
 
     def test_three_branches(self):
-        for branch,end in [('success','GRASP_PRESUMED_SUCCESS'),('not_found','OBJECT_NOT_FOUND'),('ik_fail','TARGET_NOT_GRASPED')]:
+        for branch,end in [('success','GRASP_PRESUMED_SUCCESS'),('not_found','OBJECT_NOT_FOUND'),('ik_fail','BLOCKED')]:
             f=Fixture(branch);self.assertEqual(f.run(),end)
-            self.assertTrue(f.owner['arm_home_ready'])
+            self.assertEqual(f.owner['arm_home_ready'],branch!='ik_fail')
             self.assertFalse(f.owner['gripper_hold_confirmed']);self.assertIsNone(f.m.status(f.now)['object_grasped'])
             self.assertEqual(f.owner['gripper_command_active'],branch=='success')
             count=f.commands

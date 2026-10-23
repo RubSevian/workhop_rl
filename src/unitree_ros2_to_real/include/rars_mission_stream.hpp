@@ -18,6 +18,18 @@ inline bool ReadyObservePlanAllowed(bool enabled,bool initial_move_seen,const st
 inline bool PresetSearchPlanAllowed(const std::string& operation,const std::string& phase){
  return (operation=="scan_step"&&phase=="ARM_SEARCH")||(operation=="scan_return"&&phase=="RETURN_HOME");
 }
+// Explicit operator policy; never label these paths collision checked.
+inline bool UncheckedSearchPlanAllowed(const std::string& policy,const std::string& operation,
+ const std::string& phase,const std::string& kind,bool holding,
+ const std::vector<std::array<float,7>>& points){
+ if(policy!="preset_search_unchecked"||kind!="move"||holding||points.size()<2)return false;
+ if(operation=="scan_pose")return phase=="ARM_SCAN_POSE";
+ if(!PresetSearchPlanAllowed(operation,phase))return false;
+ // Search sweeps may move only joint 1; do not admit arbitrary arm paths.
+ for(const auto& q:points)for(size_t j=1;j<7;++j)
+  if(!std::isfinite(q[j])||std::abs(q[j]-points.front()[j])>1e-6F)return false;
+ return true;
+}
 inline bool ControlledStopHomePhaseAllowed(const std::string& phase){
  return phase=="ARM_RETURN_HOME"||phase=="ARM_HOME_BLOCKED"||phase=="ARM_HOME_SETTLE";
 }

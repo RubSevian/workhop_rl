@@ -153,6 +153,19 @@ int main(){
  assert(PhysicalRetreatPlanAllowed(false,"home","RETURN_HOME",true,"home"));
  assert(PhysicalRetreatPlanAllowed(false,"scan_step","ARM_SEARCH",false,"move"));
  assert(PhysicalRetreatPlanAllowed(true,"retreat","RETREAT",true,"move"));
+ // Unchecked preset admission must not admit object paths or payload motion.
+ {
+  std::vector<std::array<float,7>> path(2);path[1][0]=.1F;
+  assert(UncheckedSearchPlanAllowed("preset_search_unchecked","scan_pose","ARM_SCAN_POSE","move",false,path));
+  assert(UncheckedSearchPlanAllowed("preset_search_unchecked","scan_step","ARM_SEARCH","move",false,path));
+  assert(UncheckedSearchPlanAllowed("preset_search_unchecked","scan_return","RETURN_HOME","move",false,path));
+  assert(!UncheckedSearchPlanAllowed("preset_search_unchecked","approach","ARM_SEARCH","move",false,path));
+  assert(!UncheckedSearchPlanAllowed("preset_search_unchecked","scan_step","PREGRASP","move",false,path));
+  assert(!UncheckedSearchPlanAllowed("preset_search_unchecked","scan_step","ARM_SEARCH","move",true,path));
+  assert(!UncheckedSearchPlanAllowed("","scan_step","ARM_SEARCH","move",false,path));
+  path[1][1]=.01F;
+  assert(!UncheckedSearchPlanAllowed("preset_search_unchecked","scan_step","ARM_SEARCH","move",false,path));
+ }
  // The higher search speed is confined to preset search phases.
  assert(PresetSearchPlanAllowed("scan_step","ARM_SEARCH"));
  assert(PresetSearchPlanAllowed("scan_return","RETURN_HOME"));

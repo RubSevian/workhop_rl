@@ -13,6 +13,19 @@ from mission.scene import WorldObjectAnchor
 
 
 class ArchitectureMissionTests(unittest.TestCase):
+    def test_r3_status_has_separate_half_second_ttl(self):
+        from mission.health_contract import source_ttl
+        f=Fixture();f.feed()
+        self.assertEqual(source_ttl(f.m.cfg,'r3'),.5)
+        self.assertEqual(source_ttl(f.m.cfg,'owner'),.25)
+        for age,expected in ((.281,True),(.499,True),(.501,False)):
+            f.m.received['r3']=f.now-age
+            self.assertEqual(f.m.fresh('r3',f.now),expected)
+        f.m.received['owner']=f.now-.281
+        self.assertFalse(f.m.fresh('owner',f.now))
+        cfg=copy.deepcopy(f.m.cfg);cfg['execution'].pop('r3_status_ttl_s')
+        self.assertEqual(source_ttl(cfg,'r3'),.25)
+
     def test_perception_status_missing_in_wait_goal_is_recoverable(self):
         f=Fixture();f.tick();f.feed();f.m.received['perception']=f.now-1.
         f.m.step(f.now,int(f.now*1e9))
@@ -47,30 +60,19 @@ class ArchitectureMissionTests(unittest.TestCase):
         f=Fixture();f.start();f.base['tilt_rad']=.3;f.tick(False)
         self.assertEqual(f.m.state,'BLOCKED');self.assertEqual(f.m.reason,'BASE_TILT_UNSAFE')
 
-    def test_two_failures_return_to_actual_search_configuration(self):
-        class AtNonzeroSearch(Fixture):
-            def compute(self,data):
-                result=super().compute(data)
-                if data['operation']=='detect':result['found']=data['scan_index']==2
-                return result
-        f=AtNonzeroSearch('ik_fail');self.assertEqual(f.run(),'TARGET_NOT_GRASPED')
-        plans=[d for k,d in f.effects if k=='compute' and d['operation']=='grasp_plan']
-        self.assertEqual(len(plans),2);self.assertEqual(f.m.grasp_attempt,2)
-        self.assertAlmostEqual(f.m.q_search[0],-1.)
-        np.testing.assert_allclose(plans[1]['owner']['q'][:6],f.m.q_search,atol=1e-12)
-        self.assertTrue(any(k=='compute' and d['operation']=='reverse_search' for k,d in f.effects))
-        self.assertTrue(f.owner['arm_home_ready']);self.assertEqual(f.m.last_grasp_error,'IK_FAIL')
-
-    def test_second_attempt_may_succeed_but_third_is_never_issued(self):
-        class FirstFailure(Fixture):
-            attempts=0
-            def compute(self,data):
-                result=super().compute(data)
-                if data['operation']=='grasp_plan':
-                    self.attempts+=1
-                    if self.attempts==1:result.update(ok=False,reason='NO_CANDIDATES')
-                return result
-        f=FirstFailure();self.assertEqual(f.run(),'GRASP_PRESUMED_SUCCESS');self.assertEqual(f.attempts,2)
+    def test_planning_rejection_waits_for_operator_without_retry_or_motion(self):
+        for reason in ('IK_FAIL','NO_CANDIDATES','CANDIDATE_GEOMETRY_REJECTED','NO_COLLISION_FREE_CANDIDATE: arm/leg'):
+            class Rejected(Fixture):
+                def compute(self,data):
+                    result=super().compute(data)
+                    if data['operation']=='grasp_plan':result.update(ok=False,reason=reason)
+                    return result
+            f=Rejected();self.assertEqual(f.run(),'BLOCKED');self.assertEqual(f.m.reason,reason)
+            plans=[d for k,d in f.effects if k=='compute' and d['operation']=='grasp_plan']
+            self.assertEqual(len(plans),1)
+            self.assertFalse(any(k=='compute' and d['operation'] in ('pregrasp','close','reverse_search','home','scan_step') for k,d in f.effects))
+            for _ in range(10):f.tick()
+            self.assertEqual(f.m.state,'BLOCKED');self.assertIsNone(f.m.pending)
 
     def test_unknown_grasp_does_not_start_reverse_or_retreat(self):
         class Unknown(Fixture):

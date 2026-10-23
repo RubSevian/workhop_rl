@@ -9,7 +9,7 @@ def source_ttl(cfg, name):
     if name in ('base', 'scene'):
         return cfg['limits']['sensor_age_s']
     execution = cfg['execution']
-    key = {'nav': 'nav_status_ttl_s', 'perception': 'perception_status_ttl_s'}.get(name)
+    key = {'r3': 'r3_status_ttl_s', 'nav': 'nav_status_ttl_s', 'perception': 'perception_status_ttl_s'}.get(name)
     return execution.get(key, execution['heartbeat_ttl_s']) if key else execution['heartbeat_ttl_s']
 
 

@@ -180,7 +180,7 @@ class Planning:
         if not resolve_yolo_model_path(self.grasp['yolo']['model_name'],Path(cfg['paths']['grasp_root'])).is_file():
             raise ValueError('YOLO_MODEL_MISSING_NO_AUTODOWNLOAD')
         report('yolo_load')
-        self.yolo,self.yolo_options=load_yolo(self.grasp,project_root=Path(cfg['paths']['grasp_root']),extra_classes=[cfg['object_class']])
+        self.yolo,self.yolo_options=load_yolo(self.grasp,project_root=Path(cfg['paths']['grasp_root']),extra_classes=[cfg['object_class'],*cfg.get('object_class_aliases',[])])
         report('yolo_warmup')
         from utils.yolo_utils import detect_objects
         detect_objects(self.yolo,np.zeros((self.grasp['camera']['color_height'],self.grasp['camera']['color_width'],3),dtype=np.uint8),self.yolo_options)
@@ -321,33 +321,78 @@ class Planning:
         self.joints=np.asarray(sample['q'])
         return color,depth,dict(sample,frame_timing=timing,arm_camera=arm_camera,odom_arm=odom_arm,capture_mono_ns=capture_mono,capture_ros_ns=stamp,frame_age_s=(time.monotonic_ns()-capture_mono)/1e9)
 
-    def detect(self, context, count):
+    def detect(self, context, count, required=None):
         from utils.yolo_utils import detect_objects
-        from scipy.spatial.transform import Rotation
-        selected=[];centers=[]
-        for _ in range(count):
+        from itertools import combinations
+        strict=required is None
+        required=count if strict else required
+        selected=[];centers=[];valid_frames=[]
+        metrics=getattr(self,'compute_metrics',{});self.compute_metrics=metrics
+        observations=[];metrics['detection_observations']=observations
+        metrics.update(detection_required=required,detection_budget=count,detection_confirmed=False)
+        for index in range(count):
+            frame_started=time.monotonic()
             color,depth,sample=self.frame(context)
+            frame_wait_s=time.monotonic()-frame_started
             started=time.monotonic()
             _,detections=detect_objects(self.yolo,color,self.yolo_options)
-            metrics=getattr(self,'compute_metrics',{});self.compute_metrics=metrics
             metrics['yolo_calls']=metrics.get('yolo_calls',0)+1
             metrics['yolo_elapsed_s']=metrics.get('yolo_elapsed_s',0.)+time.monotonic()-started
-            candidates=[d for d in detections if d.class_name==self.cfg['object_class'] and d.conf>=self.cfg['search']['confidence']]
-            if not candidates:return None
+            record=dict(frame=index+1,detections=[dict(class_name=d.class_name,confidence=float(d.conf),bbox_xyxy=list(d.bbox_xyxy) if hasattr(d,'bbox_xyxy') else None) for d in detections])
+            record.update(yolo_s=time.monotonic()-started,frame_wait_s=frame_wait_s)
+            observations.append(record)
+            def debug_frame(confirmed=False):
+                writer=getattr(self,'detection_debug',None)
+                if writer is None:return
+                try:
+                    request=getattr(self,'debug_request',{})
+                    writer.submit(color,dict(record,operation_id=request.get('id'),operation=request.get('operation'),
+                        scan_index=request.get('scan_index'),required=required,budget=count,confirmed=confirmed,
+                        capture_mono_ns=sample.get('capture_mono_ns'),
+                        capture_age_at_result_s=(time.monotonic_ns()-sample['capture_mono_ns'])/1e9 if sample.get('capture_mono_ns') else None))
+                except Exception as error:metrics['debug_error']=str(error)
+            candidates=[d for d in detections if d.class_name in {self.cfg['object_class'],*self.cfg.get('object_class_aliases',[])} and d.conf>=self.cfg['search']['confidence']]
+            if not candidates:
+                record['reason']='NO_TARGET_ABOVE_CONFIDENCE'
+                debug_frame()
+                if strict:return None
+                continue
             d=max(candidates,key=lambda x:x.conf)
-            mask=d.mask.astype(bool) if d.mask is not None else np.zeros(depth.shape,dtype=bool)
-            if d.mask is None:return None
+            if d.mask is None:
+                record['reason']='MASK_MISSING'
+                debug_frame()
+                if strict:return None
+                continue
+            mask=d.mask.astype(bool)
             valid=mask&(depth>0)&(depth>=1000*self.grasp['graspnet']['min_depth'])&(depth<=1000*self.grasp['graspnet']['max_depth'])
             yy,xx=np.nonzero(valid)
-            if not len(xx):return None
+            if not len(xx):
+                record['reason']='VALID_DEPTH_MISSING'
+                debug_frame()
+                if strict:return None
+                continue
             center=np.array([np.median(xx),np.median(yy)])
             z=float(np.median(depth[valid]))/1000
             point=z*np.linalg.solve(self.camera.K,np.r_[center,1.])
             anchor=sample['odom_arm']@sample['arm_camera']@np.r_[point,1.]
-            selected.append((color,depth,d,sample,anchor[:3]));centers.append(center)
-        if max(np.linalg.norm(c-centers[0]) for c in centers)>self.cfg['search']['max_center_shift_px']:return None
-        self.last_detection=selected[-1]
-        return self.last_detection
+            selected.append((color,depth,d,sample,anchor[:3]));centers.append(center);valid_frames.append(index+1)
+            record.update(reason='VALID_TARGET',center_px=center.tolist(),depth_m=z)
+            if not strict and len(selected)>=required:
+                # Two non-consecutive valid views may confirm the target. A
+                # mismatched early view must not poison a later agreeing pair.
+                for indices in combinations(range(len(selected)),required):
+                    if all(np.linalg.norm(centers[i]-centers[j])<=self.cfg['search']['max_center_shift_px'] for i,j in combinations(indices,2)):
+                        metrics.update(detection_confirmed=True,confirmation_frames=[valid_frames[i] for i in indices])
+                        debug_frame(True)
+                        self.last_detection=selected[indices[-1]]
+                        return self.last_detection
+            debug_frame(strict and len(selected)==count and max(np.linalg.norm(c-centers[0]) for c in centers)<=self.cfg['search']['max_center_shift_px'])
+        if strict and len(selected)==count and max(np.linalg.norm(c-centers[0]) for c in centers)<=self.cfg['search']['max_center_shift_px']:
+            metrics['detection_confirmed']=True
+            self.last_detection=selected[-1]
+            return self.last_detection
+        metrics['detection_reason']='INSUFFICIENT_AGREEING_FRAMES'
+        return None
 
     def samples(self, start, targets, duration, gripper_end=None, *, search=False):
         from rars01_graspnet.real_grasp_trajectory import waypoint_motion_samples
@@ -436,7 +481,7 @@ class Planning:
         # The attempt's collision approval uses frozen leg geometry. Ordinary
         # RL_ZERO leg feedback changes are not a reason to run geometry again.
         # A moved external scene still needs checking if that scope is enabled.
-        if (environment_checks_enabled(self.cfg['collision'])
+        if (trajectory.get('collision_checked') is True and environment_checks_enabled(self.cfg['collision'])
                 and not np.array_equal(old['map_body'],scene['map_body'])):
             if trajectory.get('reused_approval'):raise ValueError('APPROVED_WORLD_GEOMETRY_CHANGED')
             if not self.collision.check(trajectory['points'],scene,trajectory['payload_checked']):
@@ -449,15 +494,17 @@ class Planning:
     def execute(self, request, context):
         from utils.transforms import mat4_to_pose6d,pose6d_to_mat4
         op=request['operation'];owner=request['owner']
+        self.debug_request={k:request.get(k) for k in ('id','operation','scan_index','session_id')}
         camera_started_ns=time.monotonic_ns()
-        if op in ('scan_pose','detect','observe_grasp','grasp_plan'):
+        if op in ('detect','observe_grasp','grasp_plan'):
             self.resume_camera()
-        if op=='scan_pose':
             self.compute_metrics['camera_resume_elapsed_s']=(time.monotonic_ns()-camera_started_ns)/1e9
         payload=owner.get('gripper_command_active') is True
         sample=context(None,None)
         planning_reference_ns=None
-        if op=='scan_pose':
+        if op in ('scan_pose','refine'):
+            # Check acquisition freshness before IK; later geometry passes use
+            # this same scene/time. validate_result still admits live data.
             planning_reference_ns=time.monotonic_ns()
             self.collision.validated_scene(self.collision_scene(sample),payload,reference_ns=planning_reference_ns)
             self.compute_metrics.update(planning_reference_ns=planning_reference_ns,
@@ -473,7 +520,8 @@ class Planning:
         legs=sample['legs'];self.joints=start[:6].copy()
         motion=self.grasp['robot']['motion'];target=None;grip=None
         if op=='detect':
-            detection=self.detect(context,self.cfg['search']['observations'])
+            detection=self.detect(context,self.cfg['search']['observations'],
+                required=self.cfg['search'].get('confirmation_frames',self.cfg['search']['observations']))
             if detection is None:return dict(found=False)
             _,_,det,at,point=detection
             anchor=WorldObjectAnchor(np.asarray(point).tolist(),at['capture_mono_ns'],at['capture_ros_ns'],
@@ -489,8 +537,9 @@ class Planning:
             target=self.scan_joints;grip=self.geometry.motor_angle_for_width(self.grasp['robot']['rars01']['max_grasp_width_m'])
         elif op in ('scan_step','scan_return'):
             if self.scan_joints is None:raise ValueError('NO_SCAN_POSE')
-            target=self.scan_joints.copy();target[0]=self.angles[0] if op=='scan_return' else self.angles[request['scan_index']]
+            target=start[:6].copy();target[0]=self.angles[0] if op=='scan_return' else self.angles[request['scan_index']]
         elif op=='refine':
+            refine_started_ns=time.monotonic_ns()
             if self.last_detection is None:raise ValueError('NO_STABLE_OBJECT')
             # Recompute the fixed odom object in current arm coordinates.
             _,_,_,old,anchor=self.last_detection
@@ -503,6 +552,7 @@ class Planning:
             # Recentring is optional: an unavailable IK must not reject a
             # visible target. Fresh detection still precedes GraspNet.
             target=ik.joints if ik.success else start[:6].copy()
+            self.compute_metrics['refine_prepare_elapsed_s']=(time.monotonic_ns()-refine_started_ns)/1e9
         elif op in ('grasp_plan','observe_grasp'):
             detection=self.detect(context,self.cfg['refinement']['fresh_frames'])
             if detection is None:
@@ -556,19 +606,27 @@ class Planning:
                         begin=start.copy() if name=='pregrasp' else np.r_[candidate.pregrasp_joints if name=='approach' else candidate.grasp_joints,start[6]]
                         approved[name]=check_candidate_path(self.samples(begin,waypoints,duration),has_payload,open_reference=name in ('approach','retreat'))
                         approved[name]['operation']=name
+                    name='close'
                     closure_start=np.r_[candidate.grasp_joints,start[6]]
                     closed=self.grasp['robot']['gripper']['rars01']['closed_position_rad']
                     approved['close']=check_candidate_path(self.samples(closure_start,[candidate.grasp_joints],motion['grasp_duration_s'],closed),False,'close')
                     approved['close']['points']=[closure_start.tolist(),closure_start.tolist()]
+                    name='home'
                     check_candidate_path(self.samples(np.r_[candidate.retreat_joints,start[6]],[np.zeros(6)],motion['retreat_duration_s']),True,'home')
                     approved_candidates[id(candidate)]=approved
                     return True
                 except CandidatePathRejected as error:
                     rejected_paths.append(str(error))
+                    self.compute_metrics.setdefault('collision_rejections',[]).append(dict(stage=name,detail=str(error)))
                     return False
-            candidate=_select_executable_grasp(self.ik,GeometryOnly(),GraspGroup(result['grasps']),cam_to_arm,g['pregrasp_offset_m'],g.get('retreat_offset_m',g['pregrasp_offset_m']),g['insertion_depth_m'],robot['max_grasp_depth_m'],g['min_base_z_m'],g['min_jaw_z_m'],'rars01',True,True,np.array([g['position_compensation_base_m'][axis] for axis in 'xyz']),g['ik_candidate_limit'],g['cartesian_ik'],g['candidate_selection'],path_validator=validate)
+            rejections=[]
+            self.compute_metrics['grasp_rejections']=rejections
+            candidate=_select_executable_grasp(self.ik,GeometryOnly(),GraspGroup(result['grasps']),cam_to_arm,g['pregrasp_offset_m'],g.get('retreat_offset_m',g['pregrasp_offset_m']),g['insertion_depth_m'],robot['max_grasp_depth_m'],g['min_base_z_m'],g['min_jaw_z_m'],'rars01',True,True,np.array([g['position_compensation_base_m'][axis] for axis in 'xyz']),g['ik_candidate_limit'],g['cartesian_ik'],g['candidate_selection'],path_validator=validate,rejection_diagnostics=rejections)
             if candidate is None:
                 if rejected_paths:raise ValueError('NO_COLLISION_FREE_CANDIDATE: '+rejected_paths[-1])
+                if any(item['reason'] in ('DEPTH_LIMIT','BASE_HEIGHT_LIMIT','JAW_HEIGHT_LIMIT') for item in rejections):
+                    raise ValueError('CANDIDATE_GEOMETRY_REJECTED')
+                if any(item['reason']=='NO_CANDIDATES' for item in rejections):raise ValueError('NO_CANDIDATES')
                 raise ValueError('IK_FAIL')
             poses_map={name:(odom_now@pose6d_to_mat4(*pose)).tolist() for name,pose in [('pregrasp',candidate.pregrasp6d),('grasp',candidate.grasp6d),('retreat',candidate.retreat6d)]}
             world=WorldGraspAnchor(poses_map['grasp'],at['capture_mono_ns'],at['capture_ros_ns'],
@@ -644,10 +702,17 @@ class Planning:
             raise ValueError('APPROVED_SEGMENTS_REQUIRED')
         preparation_started_ns=time.monotonic_ns()
         points=self.samples(start,[target],self.grasp['robot']['ready_pose']['duration'],grip,search=op in ('scan_step','scan_return'))
-        collision_started_ns=time.monotonic_ns()
-        if op=='scan_pose':
-            self.compute_metrics.update(trajectory_build_elapsed_s=(collision_started_ns-preparation_started_ns)/1e9,
-                collision_started_ns=collision_started_ns,scene_body_age_at_collision_s=(collision_started_ns-sample['body'].mono_ns)/1e9)
+        if op in ('scan_pose','scan_step','scan_return'):
+            # Operator-approved preset search policy, NOT collision approval.
+            # Freshness, epochs, start tolerance and owner limits still apply.
+            self.compute_metrics.update(collision_policy='preset_search_unchecked',
+                trajectory_build_elapsed_s=(time.monotonic_ns()-preparation_started_ns)/1e9)
+            trajectory=dict(kind='move',points=points.tolist(),collision_checked=False,
+                collision_policy='preset_search_unchecked',operation=op,
+                payload_checked=bool(payload and self.cfg['collision'].get('payload_enabled',True)),
+                collision_context=self.collision_scene(sample),scene_snapshot=copy.deepcopy(sample['scene_snapshot']))
+            if op in ('scan_step','scan_return'):trajectory['preset_operation']=op
+            return dict(trajectory=trajectory)
         try:
             trajectory=self.checked(points,sample,payload,'home' if op=='home' else 'move',
                 **({} if planning_reference_ns is None else dict(reference_ns=planning_reference_ns)))
@@ -655,15 +720,13 @@ class Planning:
             if op!='refine':raise
             # Do not move along a colliding recenter path. Keep the current
             # collision-checked pose and obtain fresh images for grasp planning.
-            trajectory=self.checked(np.vstack([start,start]),sample,payload)
-        finally:
-            if op=='scan_pose':self.compute_metrics['scan_pose_collision_elapsed_s']=(time.monotonic_ns()-collision_started_ns)/1e9
-        if op in ('scan_step','scan_return'):trajectory['preset_operation']=op
+            trajectory=self.checked(np.vstack([start,start]),sample,payload,reference_ns=planning_reference_ns)
         return dict(trajectory=trajectory)
 
     def close(self):
         if getattr(self,'_closed',False):return
         self._closed=True
+        if getattr(self,'detection_debug',None) is not None:self.detection_debug.close()
         errors=[]
         try:
             if getattr(self,'camera',None) is not None:self.camera.close()

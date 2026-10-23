@@ -218,6 +218,9 @@ class Perception(Node):
                 self.get_logger().info(self.reason)
             self.backend=Planning(self.cfg,progress=progress,startup_checks=self.startup_checks)
             self.backend.plan_trace=getattr(self,'leg_plan_trace',None)
+            if self.cfg['execution'].get('detection_debug_enabled',False):
+                from mission.detection_debug import DetectionDebug
+                self.backend.detection_debug=DetectionDebug(Path(self.get_parameter('workspace').value)/'runtime/detection_debug')
             if self.stop_event.is_set():return
             if not verified(self.backend.startup_checks):raise RuntimeError('PRELOAD_CHECKS_INCOMPLETE')
             self.reason='READY'
@@ -249,11 +252,17 @@ class Perception(Node):
                     finally:self.backend.compute_metrics['live_validation_elapsed_s']=(time.monotonic_ns()-validation_started_ns)/1e9
                     self.backend.collision.check_deadline()
                     out.update(result,ok=True)
-                except Exception as e:out.update(ok=False,reason=str(e) or type(e).__name__)
+                except Exception as e:
+                    out.update(ok=False,reason=str(e) or type(e).__name__)
+                    if request['operation']=='grasp_plan':
+                        diagnostics={key:self.backend.compute_metrics.get(key,[]) for key in ('grasp_rejections','collision_rejections')}
+                        self.get_logger().warning('GRASP_PLAN_REJECTED '+json.dumps(dict(reason=out['reason'],**diagnostics),ensure_ascii=False))
                 finally:
                     self.backend.compute_metrics['collision_profile']=dict(getattr(self.backend.collision,'last_stats',{}))
                     self.backend.collision.work_deadline_ns=None
                     if request['operation']=='home':self.backend.pause_camera()
+                debug=getattr(self.backend,'detection_debug',None)
+                if debug is not None:self.backend.compute_metrics['detection_debug']=dict(directory=str(debug.directory),error=debug.error,dropped=debug.dropped)
                 self.last_compute=dict(operation=request['operation'],elapsed_s=time.monotonic()-compute_started,**self.backend.compute_metrics)
                 self.leg_plan_trace.result(request,out,self.last_compute)
                 out['compute_metrics']=dict(self.last_compute)

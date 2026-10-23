@@ -264,12 +264,15 @@ class ArmOwner final:public rclcpp::Node {
    // Recheck cancellation, sessions, current feedback and start pose on admission.
    if(!PlanTimestampAllowed(v["observed_ns"].as<int64_t>(),Ns(now),plan_cancelled_ns_))
       throw std::runtime_error("plan timestamp invalid or predates cancellation");
+   const auto operation=v["operation"]?v["operation"].as<std::string>():"";
+   const auto policy=v["collision_policy"]?v["collision_policy"].as<std::string>():"";
+   const bool collision_admitted=v["collision_checked"].as<bool>()||
+    UncheckedSearchPlanAllowed(policy,operation,health_phase_,v["kind"].as<std::string>(),mission_->holding(),result.points);
    if(!Authority(now,is_home)||count_publishers("/rars01/mission/trajectory")!=1||
       v["session_id"].as<std::string>()!=mission_session_||v["owner_session_id"].as<std::string>()!=owner_session_||
-      v["navigation_session_id"].as<std::string>()!=nav_session_||v["goal_revision"].as<uint64_t>()!=health_goal_revision_||!v["collision_checked"].as<bool>()||
+      v["navigation_session_id"].as<std::string>()!=nav_session_||v["goal_revision"].as<uint64_t>()!=health_goal_revision_||!collision_admitted||
       v["payload_checked"].as<bool>()!=(payload_checks_enabled_&&mission_->holding()))throw std::runtime_error("plan authority/session/collision rejected");
    const auto kind=v["kind"].as<std::string>();
-   const auto operation=v["operation"]?v["operation"].as<std::string>():"";
    const bool is_retreat=operation=="retreat";
    if(operator_trial_&&is_retreat){
     mission_->ObserveAssessment(now,home_->status());

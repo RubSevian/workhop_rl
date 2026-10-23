@@ -121,7 +121,7 @@ install(DIRECTORY deployment/ DESTINATION share/${PROJECT_NAME}/deployment USE_S
 install(DIRECTORY config/ DESTINATION share/${PROJECT_NAME}/config)
 install(FILES launch/go2_rars01_first_grasp.launch.py launch/go2_rars01_r3_commissioning.launch.py DESTINATION share/${PROJECT_NAME}/launch)
 install(DIRECTORY scripts/mission DESTINATION lib/${PROJECT_NAME} FILES_MATCHING PATTERN "*.py")
-install(PROGRAMS scripts/grasp_mission.py scripts/grasp_perception.py scripts/architecture_monitor.py scripts/physical_trial.py scripts/r3_status.py scripts/r3_manual_cmd.py scripts/r3_sport_monitor.py scripts/r3_rt_guardian.py DESTINATION lib/${PROJECT_NAME})
+install(PROGRAMS scripts/detection_viewer.py scripts/grasp_mission.py scripts/grasp_perception.py scripts/architecture_monitor.py scripts/physical_trial.py scripts/r3_status.py scripts/r3_manual_cmd.py scripts/r3_sport_monitor.py scripts/r3_rt_guardian.py DESTINATION lib/${PROJECT_NAME})
 install(FILES scripts/r3_manual_lib.py DESTINATION lib/${PROJECT_NAME})
 if(BUILD_TESTING)
   add_executable(retreat_trial_test tests/retreat_trial_test.cpp)

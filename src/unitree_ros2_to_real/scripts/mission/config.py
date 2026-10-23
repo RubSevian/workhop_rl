@@ -60,6 +60,9 @@ def load(path, workspace):
     cfg = yaml.safe_load(Path(path).read_text())['go2_mission']
     if cfg.get('test_mode','full') not in ('full','ready_observe'):
         raise ValueError('invalid test_mode')
+    aliases=cfg.get('object_class_aliases',[])
+    if not isinstance(aliases,list) or any(not isinstance(name,str) or not name.strip() for name in aliases):
+        raise ValueError('invalid object_class_aliases')
     if cfg['version'] != 1:
         raise ValueError('unsupported mission config')
     for key, value in cfg['paths'].items():
@@ -67,7 +70,7 @@ def load(path, workspace):
     deployment=yaml.safe_load(Path(cfg['paths']['deployment']).read_text())['real_deployment']
     navigation=yaml.safe_load(Path(cfg['paths']['navigation']).read_text())
     # This module is also loaded directly by launch via importlib (no package).
-    for key, maximum in (('nav_status_ttl_s', .60), ('perception_status_ttl_s', .50)):
+    for key, maximum in (('r3_status_ttl_s', .50), ('nav_status_ttl_s', .60), ('perception_status_ttl_s', .50)):
         value=cfg['execution'].get(key,cfg['execution']['heartbeat_ttl_s'])
         if type(value) not in (int,float) or not math.isfinite(value) or not 0<value<=maximum:
             raise ValueError('invalid execution.'+key)
@@ -81,6 +84,9 @@ def load(path, workspace):
     # Never feed malformed limits to search/timers, even in read-only mode.
     for group in ('search', 'refinement', 'settle', 'execution'):
         for key, value in cfg[group].items():
+            if group == 'execution' and key == 'detection_debug_enabled':
+                if type(value) is not bool:raise ValueError('invalid execution.detection_debug_enabled')
+                continue
             if group == 'execution' and key == 'arm_state_transport':
                 if value not in ('yaml','typed'):
                     raise ValueError('invalid execution.arm_state_transport')
@@ -124,6 +130,10 @@ def load(path, workspace):
         if limit is None or not (float(limit.get('lower')) <= scan['joint1_min_rad']
                                  < scan['joint1_max_rad'] <= float(limit.get('upper'))):
             raise ValueError('search exceeds joint1 limits in '+path)
+    observations=scan['observations'];confirmations=scan.get('confirmation_frames',observations)
+    if (type(observations) is not int or type(confirmations) is not int
+            or not 1<=confirmations<=observations<=5):
+        raise ValueError('search requires 1 <= confirmation_frames <= observations <= 5')
     if not 3 <= cfg['refinement']['fresh_frames'] <= 5:
         raise ValueError('refinement requires 3-5 fresh frames')
     if cfg['settle']['min_stable_s'] < 5 or cfg['settle']['timeout_s'] <= cfg['settle']['min_stable_s']:

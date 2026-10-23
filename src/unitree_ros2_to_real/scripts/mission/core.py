@@ -326,8 +326,10 @@ class Mission:
                 self.next_search(now)
                 return True
             # Unsafe HOME never falls through to a direct zero joint target.
-            if operation=='grasp_plan' and (reason in ('IK_FAIL','NO_CANDIDATES') or reason.startswith('NO_COLLISION_FREE_CANDIDATE:')):
-                self.failed_grasp_attempt(reason,now)
+            if operation=='grasp_plan' and (reason in ('IK_FAIL','NO_CANDIDATES','CANDIDATE_GEOMETRY_REJECTED') or reason.startswith('NO_COLLISION_FREE_CANDIDATE:')):
+                # Planning rejection is diagnostic: wait for the operator.
+                # Physical failed-grasp retries retain their existing policy.
+                self.cancel(now, reason, True)
             else:
                 self.cancel(now, reason, True)
             return True
@@ -403,6 +405,7 @@ class Mission:
                 heartbeat_ttl_s=self.cfg['execution']['heartbeat_ttl_s'],
                 inputs={n:dict(accepted_stamp_ns=self.inputs.get(n,{}).get('observed_ns'),
                     lease_present=n in self.received,
+                    ttl_s=source_ttl(self.cfg,n),
                     accepted_age_s=now-self.received[n] if n in self.received else None)
                     for n in names})
             if self.stale_input_diagnostic is None:self.stale_input_diagnostic=diagnostic

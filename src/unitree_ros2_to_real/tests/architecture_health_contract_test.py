@@ -22,7 +22,7 @@ class HeartbeatContracts(unittest.TestCase):
         self.cfg = load(CONFIG, ROOT)
 
     def test_source_specific_admission_and_later_freshness_share_one_clock(self):
-        for name, ttl in [('nav', .60), ('perception', .50), ('r3', .25),
+        for name, ttl in [('nav', .60), ('perception', .50), ('r3', .50),
                           ('owner', .25), ('base', .50), ('scene', .50)]:
             with self.subTest(name=name):
                 for age, accepted in [(ttl-.001, True), (ttl, True), (ttl+.001, False)]:
@@ -69,11 +69,11 @@ class HeartbeatContracts(unittest.TestCase):
 
     def test_legacy_config_falls_back_to_250ms_without_other_changes(self):
         cfg=copy.deepcopy(self.cfg)
-        for key in ('nav_status_ttl_s','perception_status_ttl_s'):cfg['execution'].pop(key)
+        for key in ('r3_status_ttl_s','nav_status_ttl_s','perception_status_ttl_s'):cfg['execution'].pop(key)
         for name in ('r3','owner','nav','perception','compute'):
             self.assertEqual(source_ttl(cfg,name),.25)
         self.assertEqual(source_ttl(cfg,'scene'),.50)
-        self.assertEqual(cfg['execution']['camera_max_age_s'],.60)
+        self.assertEqual(cfg['execution']['camera_max_age_s'],1.00)
 
     def test_bad_ttl_is_rejected_and_launch_direct_import_still_works(self):
         spec=importlib.util.spec_from_file_location('standalone_config',PACKAGE/'scripts/mission/config.py')
