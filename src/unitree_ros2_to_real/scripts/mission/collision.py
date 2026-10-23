@@ -190,6 +190,8 @@ class Collision:
         return bool((np.all(a0<=b0) and np.all(b1<=a1)) or (np.all(b0<=a0) and np.all(a1<=b1)))
 
     def check_deadline(self):
+        callback=getattr(self,'cancel_check',None)
+        if callback is not None:callback()
         if getattr(self,'cancel_reason',''):
             raise CollisionCancelled('COLLISION_CANCELLED:'+self.cancel_reason)
         now=time.monotonic_ns()
@@ -416,7 +418,9 @@ class Collision:
             carried_shape=self.fcl.Box(*self.payload_size) if payload else None
             for start,end in zip(p[:-1],p[1:]):
                 count=max(1,int(np.ceil(np.max(np.abs(end-start))/self.cfg['collision']['sample_max_joint_step_rad'])))
-                for alpha in np.linspace(0,1,count+1):
+                # Most command intervals need no extra subdivision; avoid allocating
+                # a linspace array without changing the checked grid or its indices.
+                for alpha in ((0.,1.) if count==1 else np.linspace(0,1,count+1)):
                     self.check_deadline()
                     state=start+alpha*(end-start)
                     if previous is not None and np.array_equal(state,previous):
@@ -425,6 +429,9 @@ class Collision:
                         continue
                     previous=state.copy()
                     self.last_stats['samples']+=1
+                    if self.last_stats['samples']%32==0:
+                        time.sleep(0) # Yield the Python worker to ROS; no freshness/geometry bypass.
+                        self.check_deadline()
                     self.last_stats['current_pair']=None
                     self.last_stats['sample_index']=sample
                     poses=self.placements(state,scene['legs'])

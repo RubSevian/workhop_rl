@@ -22,8 +22,8 @@ class HeartbeatContracts(unittest.TestCase):
         self.cfg = load(CONFIG, ROOT)
 
     def test_source_specific_admission_and_later_freshness_share_one_clock(self):
-        for name, ttl in [('nav', .60), ('perception', .50), ('r3', .50),
-                          ('owner', .25), ('base', .50), ('scene', .50)]:
+        for name, ttl in [('nav', .60), ('perception', 1.00), ('r3', .50),
+                          ('owner', .25), ('base', 1.00), ('scene', 1.00)]:
             with self.subTest(name=name):
                 for age, accepted in [(ttl-.001, True), (ttl, True), (ttl+.001, False)]:
                     m=Mission(copy.deepcopy(self.cfg), 'test')
@@ -39,15 +39,15 @@ class HeartbeatContracts(unittest.TestCase):
             self.assertTrue(m.observe('nav', {'observed_ns': int((100+delay)*1e9)}, 100+delay+.05))
         self.assertFalse(m.observe('nav', {'observed_ns': 101_000_000_000}, 101.65))
         self.assertTrue(m.observe('nav', {'observed_ns': 102_000_000_000}, 102.49))
-        self.assertFalse(m.observe('base', {'observed_ns': 101_990_000_000}, 102.501))
+        self.assertFalse(m.observe('base', {'observed_ns': 101_990_000_000}, 103.001))
         self.assertFalse(m.observe('owner', {'observed_ns': 102_000_000_000}, 102.251))
 
     def test_status_alive_does_not_make_scene_valid(self):
         m=Mission(self.cfg, 'test')
         self.assertTrue(m.observe('perception', {'observed_ns': 100_000_000_000, 'ready': False}, 100.49))
         self.assertFalse(m.perception_service_ready(100.49))
-        self.assertFalse(m.fresh('perception', 100.51))
-        self.assertFalse(m.observe('scene', {'observed_ns': 100_000_000_000}, 100.501))
+        self.assertFalse(m.fresh('perception', 101.001))
+        self.assertFalse(m.observe('scene', {'observed_ns': 100_000_000_000}, 101.001))
 
     def test_future_duplicate_and_out_of_order_never_renew_lease(self):
         m=Mission(self.cfg, 'test')
@@ -72,7 +72,7 @@ class HeartbeatContracts(unittest.TestCase):
         for key in ('r3_status_ttl_s','nav_status_ttl_s','perception_status_ttl_s'):cfg['execution'].pop(key)
         for name in ('r3','owner','nav','perception','compute'):
             self.assertEqual(source_ttl(cfg,name),.25)
-        self.assertEqual(source_ttl(cfg,'scene'),.50)
+        self.assertEqual(source_ttl(cfg,'scene'),1.00)
         self.assertEqual(cfg['execution']['camera_max_age_s'],1.00)
 
     def test_bad_ttl_is_rejected_and_launch_direct_import_still_works(self):
@@ -82,7 +82,7 @@ class HeartbeatContracts(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             path=Path(directory)/'mission.yaml'
             for key, values in [('nav_status_ttl_s', (True,0.,float('nan'),.601)),
-                                ('perception_status_ttl_s', (True,-1.,float('inf'),.501))]:
+                                ('perception_status_ttl_s', (True,-1.,float('inf'),1.001))]:
                 for value in values:
                     data=copy.deepcopy(raw);data['go2_mission']['execution'][key]=value
                     path.write_text(yaml.safe_dump(data))

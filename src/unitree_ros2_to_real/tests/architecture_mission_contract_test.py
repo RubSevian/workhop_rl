@@ -1,5 +1,6 @@
 """v4 mission/recovery/reverse contracts; synthetic inputs, zero physical IO."""
 import copy
+import json
 from pathlib import Path
 import sys
 import unittest
@@ -13,6 +14,25 @@ from mission.scene import WorldObjectAnchor
 
 
 class ArchitectureMissionTests(unittest.TestCase):
+    def test_periodic_status_excludes_trajectory_without_mutating_execution(self):
+        f=Fixture()
+        for kind in ('compute','motion'):
+            for count in (2,3221):
+                pending=dict(id=42,operation='scan_pose',kind=kind,at=f.now,
+                    trajectory=dict(points=[[.1]*7 for _ in range(count)],collision_checked=True),
+                    scene={'large_diagnostics':[0]*count})
+                f.m.pending=pending
+                expected=copy.deepcopy(pending)
+                status=f.m.status(f.now)
+                self.assertEqual(status['pending'],dict(id=42,operation='scan_pose',kind=kind,at=f.now))
+                self.assertLess(len(json.dumps(status)),6000)
+                self.assertIs(f.m.pending,pending)
+                self.assertEqual(f.m.pending,expected)
+                status['pending']['id']=99
+                self.assertEqual(f.m.pending['id'],42)
+        f.m.pending=None
+        self.assertIsNone(f.m.status(f.now)['pending'])
+
     def test_r3_status_has_separate_half_second_ttl(self):
         from mission.health_contract import source_ttl
         f=Fixture();f.feed()
@@ -27,7 +47,7 @@ class ArchitectureMissionTests(unittest.TestCase):
         self.assertEqual(source_ttl(cfg,'r3'),.25)
 
     def test_perception_status_missing_in_wait_goal_is_recoverable(self):
-        f=Fixture();f.tick();f.feed();f.m.received['perception']=f.now-1.
+        f=Fixture();f.tick();f.feed();f.m.received['perception']=f.now-1.001
         f.m.step(f.now,int(f.now*1e9))
         self.assertEqual(f.m.state,'WAIT_GOAL')
         self.assertEqual(f.m.reason,'PERCEPTION_STATUS_UNAVAILABLE')
@@ -57,7 +77,7 @@ class ArchitectureMissionTests(unittest.TestCase):
         f.base['pose'][0]=.03;f.now=since+3.-.02;f.tick(False)
         self.assertEqual(f.m.stable_since,since)
         f.now=since+5.001-.02;f.tick(False);self.assertEqual(f.m.state,'ARM_SCAN_POSE')
-        f=Fixture();f.start();f.base['tilt_rad']=.3;f.tick(False)
+        f=Fixture();f.start();f.base['tilt_rad']=f.m.cfg['settle']['max_tilt_rad']+.01;f.tick(False)
         self.assertEqual(f.m.state,'BLOCKED');self.assertEqual(f.m.reason,'BASE_TILT_UNSAFE')
 
     def test_planning_rejection_waits_for_operator_without_retry_or_motion(self):

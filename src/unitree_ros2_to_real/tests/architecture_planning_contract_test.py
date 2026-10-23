@@ -13,6 +13,26 @@ from mission.scene import BodyPose, WorldGraspAnchor
 
 
 class PlanningContracts(unittest.TestCase):
+    def test_object_motion_uses_existing_duration_and_motor_velocity_limits(self):
+        p,_=self.setup_planner()
+        p._command_joint_bounds=np.array([[-3.,3.]]*6)
+        p.grasp['robot']['ready_pose']={'duration':3.}
+        p.grasp['robot']['rars01']['position_velocity_limits_rad_s']=[1.]*7
+        start=np.zeros(7);target=np.ones(6)*.5
+        points=p.samples(start,[target],1.5,object_motion=True)
+        speed=np.abs(np.diff(points[:,:6],axis=0))*100.
+        self.assertAlmostEqual((len(points)-1)/100.,3.)
+        self.assertGreater(speed.max(),.1)
+        self.assertLessEqual(speed.max(),.8+1e-6)
+        np.testing.assert_allclose(points[-1,:6],target)
+        slow=p.samples(start,[target],3.)
+        self.assertLessEqual((np.abs(np.diff(slow[:,:6],axis=0))*100.).max(),.08+1e-6)
+        # A restrictive motor limit stretches the duration instead of being bypassed.
+        p.grasp['robot']['rars01']['position_velocity_limits_rad_s']=[.05]*7
+        limited=p.samples(start,[target],1.5,object_motion=True)
+        self.assertGreater((len(limited)-1)/100.,3.)
+        self.assertLessEqual((np.abs(np.diff(limited[:,:6],axis=0))*100.).max(),.04+1e-6)
+
     def test_stage_profiler_preserves_timeout_and_records_inclusive_work(self):
         from mission.collision import timed_collision_stage, CollisionComputeTimeout
         class Probe:
@@ -49,7 +69,7 @@ class PlanningContracts(unittest.TestCase):
         p.grasp={'robot':{'motion':{'pregrasp_duration_s':1.,'grasp_duration_s':1.,'retreat_duration_s':1.},
                          'rars01':{'command_rate_hz':100.,'position_velocity_limits_rad_s':[1.]*7},
                          'gripper':{'rars01':{'closed_position_rad':0.}}}}
-        p.collision=NS(validated_scene=lambda *a,**k:None,
+        p.collision=NS(check_deadline=lambda:None,validated_scene=lambda *a,**k:None,
                        check=lambda *a,**k:(_ for _ in ()).throw(AssertionError('geometry rerun')))
         return p,sample
 

@@ -131,7 +131,7 @@ class PairingTests(unittest.TestCase):
         self.live();self.buffer.set_transform(tf('camera_init','aft_mapped',self.now),'test')
         self.source.push(odom(self.now));self.scene.bodies.append(self.source.select('nav'))
         original=self.source.provider.last.mono_ns
-        for _ in range(60):
+        for _ in range(int(self.cfg['limits']['sensor_age_s']*100)+1):
             self.now+=10_000_000;self.live();self.source.push(odom(self.now))
             self.assertIsNone(self.source.select('nav'))
         self.assertEqual(self.source.provider.last.mono_ns,original)
@@ -244,7 +244,7 @@ class PairingTests(unittest.TestCase):
         validate_scene_data(snapshot.data(),self.cfg,self.now,'nav','arm')
         # A camera at newer cannot silently inherit older's exposure/geometry.
         with self.assertRaisesRegex(ValueError,'SKEW'):self.scene.snapshot(self.now,newer)
-        self.now+=450_000_000;self.live()
+        self.now+=round(self.cfg['limits']['sensor_age_s']*1e9)+1;self.live()
         with self.assertRaisesRegex(ValueError,'STALE:body'):self.scene.snapshot(self.now)
 
     def test_complete_tuple_cannot_fall_back_across_epoch(self):
@@ -286,7 +286,7 @@ class PairingTests(unittest.TestCase):
         from grasp_perception import Perception
         from grasp_mission import Coordinator
         output=[];observations={}
-        backend=NS(sensors_ready=lambda:True,startup_checks=dict(geometry=True,yolo=True,graspnet=True,camera=True),camera_mode='standby')
+        backend=NS(readiness=lambda:dict(ready=True,reason='READY'),collision=NS(last_stats={}),sensors_ready=lambda:True,startup_checks=dict(geometry=True,yolo=True,graspnet=True,camera=True),camera_mode='standby')
         perception=NS(cfg=self.cfg,body_source=self.source,scene_buffer=self.scene,
             leg_reader=NS(status=lambda:dict(mode='test',projected=0,fallback=0)),leg_receive_stats={},
             navigation_session='nav',lock=contextlib.nullcontext(),scene_error='',backend=backend,
@@ -301,6 +301,11 @@ class PairingTests(unittest.TestCase):
         coordinator=NS(cfg=self.cfg,body_source=coordinator_source,scene_buffer=coordinator_scene,
             engine=engine,scene_error='',get_logger=lambda:NS(info=lambda text:None))
         perception.odometry_subscription=None;coordinator.odometry_subscription=None
+        perception.owner_subscription=None;perception.owner=lambda msg:None
+        perception.native_leg_input=None;perception.mission_status_subscription=None
+        perception.odom=lambda msg:Perception.odom(perception,msg)
+        perception.mission_status=lambda msg:None
+        perception.body_source.listener.tf_sub=None
         start=self.now
         for i in range(100):
             self.now=start+i*10_000_000
@@ -315,6 +320,20 @@ class PairingTests(unittest.TestCase):
                 self.assertEqual(coordinator.scene_error,'')
                 validate_scene_data(observations['scene'],self.cfg,self.now,'nav','arm')
         self.assertTrue(output[-1]['tf_pair']['selected_stamp_ns'])
+        # Encoded worker output is published only while its request remains live.
+        from mission.compute_cancel import ComputeCancellation
+        perception.compute_cancel=ComputeCancellation();published=[]
+        perception.results=NS(publish=lambda msg:published.append(msg.data))
+        request=dict(id=42,session_id='session',operation='scan_pose',observed_ns=self.now)
+        perception.compute_cancel.begin(request)
+        result=dict(id=42,session_id='session',ok=True,trajectory={'points':[[0.]*7]*2})
+        encoded=json.dumps(result)
+        perception.completed.put((result,encoded));Perception.tick(perception)
+        self.assertEqual(published,[encoded])
+        perception.completed.put((result,encoded))
+        perception.compute_cancel.observe(dict(session_id='session',observed_ns=self.now,state='BLOCKED'))
+        Perception.tick(perception)
+        self.assertEqual(published,[encoded])
 
     def test_odometry_tf_pose_mismatch_is_reported_and_not_adopted(self):
         self.buffer.set_transform(tf('camera_init','aft_mapped',self.now),'test')
@@ -350,7 +369,7 @@ class PairingTests(unittest.TestCase):
         self.assertIsNone(self.source.select('nav'))
         self.assertEqual(self.scene.snapshot(self.now).body,body)
         self.assertGreater(self.source.diagnostics['candidate_position_error_m'],.001)
-        self.now+=401_000_000;self.live()
+        self.now+=round(self.cfg['limits']['sensor_age_s']*1e9)+1;self.live()
         self.assertIsNone(self.source.select('nav'))
         with self.assertRaisesRegex(ValueError,'STALE:body'):self.scene.snapshot(self.now)
 

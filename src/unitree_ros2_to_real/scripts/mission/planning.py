@@ -394,7 +394,7 @@ class Planning:
         metrics['detection_reason']='INSUFFICIENT_AGREEING_FRAMES'
         return None
 
-    def samples(self, start, targets, duration, gripper_end=None, *, search=False):
+    def samples(self, start, targets, duration, gripper_end=None, *, search=False, object_motion=False):
         from rars01_graspnet.real_grasp_trajectory import waypoint_motion_samples
         # Measured overshoot is valid geometry, but commanded points must stay
         # inside the unchanged owner's URDF/closed-gripper bounds.
@@ -413,7 +413,10 @@ class Planning:
         if closed-self.cfg['collision'].get('gripper_closed_measurement_tolerance_rad',0.)<=start[6]<closed:
             start[6]=closed
         velocity=np.asarray(self.grasp['robot']['rars01']['position_velocity_limits_rad_s'][:6])
-        velocity=np.minimum(velocity,self.cfg['search']['speed_rad_s'] if search else self.cfg['execution']['arm_speed_rad_s'])
+        if not object_motion:
+            velocity=np.minimum(velocity,self.cfg['search']['speed_rad_s'] if search else self.cfg['execution']['arm_speed_rad_s'])
+        else:
+            duration=self.grasp['robot']['ready_pose']['duration']
         points,_=waypoint_motion_samples(start[:6],targets,duration,1/self.grasp['robot']['rars01']['command_rate_hz'],velocity)
         p=np.vstack([start[:6],*points]);grip=np.full(len(p),start[6])
         if gripper_end is not None:
@@ -561,6 +564,7 @@ class Planning:
             color,depth,d,at,anchor=detection
             opts=self.grasp['graspnet'];robot=self.grasp['robot']['rars01']
             result=self.worker.infer(color,depth,self.camera.K,num_point=opts['num_point'],min_depth=opts['min_depth'],max_depth=opts['max_depth'],collision_thresh=opts['collision_thresh'],voxel_size=.01,bbox_xyxy=d.bbox_xyxy,target_margin_px=opts['target_margin_px'],target_expand_ratio=opts['target_expand_ratio'],max_grasp_width_m=robot['max_grasp_width_m'],max_grasp_depth_m=robot['max_grasp_depth_m'],timeout_s=opts['worker_timeout_s'],include_diagnostics=self.cfg['compute'].get('grasp_full_diagnostics',True))
+            self.collision.check_deadline()
             self.compute_metrics['graspnet_worker_elapsed_s']=result.get('elapsed_s')
             if op=='observe_grasp':
                 return dict(observation=dict(found=True,confidence=float(d.conf),graspnet_called=True,grasp_count=len(result['grasps']),capture_mono_ns=at['capture_mono_ns'],capture_ros_ns=at['capture_ros_ns'],frame_age_s=at['frame_age_s'],scene_snapshot=at['scene_snapshot']))
@@ -604,7 +608,7 @@ class Planning:
                             ('retreat',candidate.retreat_joint_waypoints,motion['retreat_duration_s'],True)]
                     for name,waypoints,duration,has_payload in phases:
                         begin=start.copy() if name=='pregrasp' else np.r_[candidate.pregrasp_joints if name=='approach' else candidate.grasp_joints,start[6]]
-                        approved[name]=check_candidate_path(self.samples(begin,waypoints,duration),has_payload,open_reference=name in ('approach','retreat'))
+                        approved[name]=check_candidate_path(self.samples(begin,waypoints,duration,object_motion=True),has_payload,open_reference=name in ('approach','retreat'))
                         approved[name]['operation']=name
                     name='close'
                     closure_start=np.r_[candidate.grasp_joints,start[6]]
@@ -621,7 +625,7 @@ class Planning:
                     return False
             rejections=[]
             self.compute_metrics['grasp_rejections']=rejections
-            candidate=_select_executable_grasp(self.ik,GeometryOnly(),GraspGroup(result['grasps']),cam_to_arm,g['pregrasp_offset_m'],g.get('retreat_offset_m',g['pregrasp_offset_m']),g['insertion_depth_m'],robot['max_grasp_depth_m'],g['min_base_z_m'],g['min_jaw_z_m'],'rars01',True,True,np.array([g['position_compensation_base_m'][axis] for axis in 'xyz']),g['ik_candidate_limit'],g['cartesian_ik'],g['candidate_selection'],path_validator=validate,rejection_diagnostics=rejections,local_height_filters_enabled=self.cfg.get('local_height_filters_enabled',True))
+            candidate=_select_executable_grasp(self.ik,GeometryOnly(),GraspGroup(result['grasps']),cam_to_arm,g['pregrasp_offset_m'],g.get('retreat_offset_m',g['pregrasp_offset_m']),g['insertion_depth_m'],robot['max_grasp_depth_m'],g['min_base_z_m'],g['min_jaw_z_m'],'rars01',True,True,np.array([g['position_compensation_base_m'][axis] for axis in 'xyz']),g['ik_candidate_limit'],g['cartesian_ik'],g['candidate_selection'],path_validator=validate,rejection_diagnostics=rejections,local_height_filters_enabled=self.cfg.get('local_height_filters_enabled',True),cancel_check=self.collision.check_deadline)
             if candidate is None:
                 if rejected_paths:raise ValueError('NO_COLLISION_FREE_CANDIDATE: '+rejected_paths[-1])
                 if any(item['reason'] in ('DEPTH_LIMIT','BASE_HEIGHT_LIMIT','JAW_HEIGHT_LIMIT') for item in rejections):

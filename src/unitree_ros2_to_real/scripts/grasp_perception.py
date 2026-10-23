@@ -6,6 +6,7 @@ CUDA waits never block ROS callbacks or the independent arm-owner cancel port.
 import json
 from pathlib import Path
 from mission.leg_plan_trace import LegPlanTrace
+from mission.compute_cancel import ComputeCancellation
 import queue
 import threading
 import time
@@ -23,7 +24,7 @@ from mission.collision import measured_gripper_width
 from mission.health_contract import source_ttl,CONTROLLED_HOME_PHASES
 from mission.scene import SceneBuffer
 from mission.status_codec import decode_status
-from mission.subscription_batch import take_batch
+from mission.subscription_batch import take_batch, dispatch_pending
 from mission.native_leg_input import NativeLegInput
 from mission.scene_wait import camera_context, transient_scene_error
 from mission.arm_fast_state import to_mapping
@@ -53,6 +54,7 @@ class Perception(Node):
         self.reason='READ_ONLY';self.backend=None;self.busy=False;self.started=0.;self.last_compute={}
         self.startup_checks=dict(geometry=False,yolo=False,graspnet=False,camera=False)
         self.lock=threading.Lock();self.last_request=0;self.request_session=''
+        self.compute_cancel=ComputeCancellation()
         self.jobs=queue.Queue(maxsize=1);self.completed=queue.Queue(maxsize=1)
         self.stop_event=threading.Event();self.worker_thread=None
         self.health=self.create_publisher(String,'/rars01/mission/perception_health',1)
@@ -75,6 +77,7 @@ class Perception(Node):
         self.create_subscription(String,'/go2/navigation/status',self.nav_status,1)
         self.create_subscription(String,'/rars01/mission/compute',self.request,1)
         self.create_subscription(String,'/go2/locomotion_status',self.r3_status,1)
+        self.mission_status_subscription=self.create_subscription(String,'/go2/mission/status',self.mission_status,1)
         self.create_timer(self.cfg['execution']['tick_s'],self.tick)
         if physical and self.cfg['physical_enabled'] and not blockers(self.cfg):
             self.reason='INITIALIZING'
@@ -194,6 +197,15 @@ class Perception(Node):
                     owner_session_id=snapshot.owner_session_id,odom_mono_ns=body.mono_ns,
                     odom_vehicle=body.map_vehicle,body=body,scene_snapshot=snapshot.data())
 
+    def mission_status(self,msg):
+        if self.count_publishers('/go2/mission/status')!=1:return
+        try:
+            status=json.loads(msg.data)
+            stamp=status['observed_ns']
+            if type(stamp) is not int or not 0<=(time.monotonic_ns()-stamp)/1e9<=self.cfg['execution']['heartbeat_ttl_s']:return
+            self.compute_cancel.observe(status)
+        except (ValueError,KeyError,TypeError):return
+
     def request(self,msg):
         if self.backend is None or self.busy or self.count_publishers('/rars01/mission/compute')!=1:return
         try:
@@ -204,6 +216,7 @@ class Perception(Node):
             if d['id']<=self.last_request:return
             if self.request_session and d['session_id']!=self.request_session:return
             self.request_session=d['session_id'];self.last_request=d['id'];self.busy=True;self.started=time.monotonic()
+            self.compute_cancel.begin(d)
             self.jobs.put_nowait(d)
         except (ValueError,KeyError,TypeError,queue.Full):return
 
@@ -218,6 +231,7 @@ class Perception(Node):
                 self.get_logger().info(self.reason)
             self.backend=Planning(self.cfg,progress=progress,startup_checks=self.startup_checks)
             self.backend.plan_trace=getattr(self,'leg_plan_trace',None)
+            self.backend.collision.cancel_check=self.compute_cancel.check
             if self.cfg['execution'].get('detection_debug_enabled',False):
                 from mission.detection_debug import DetectionDebug
                 self.backend.detection_debug=DetectionDebug(Path(self.get_parameter('workspace').value)/'runtime/detection_debug')
@@ -268,7 +282,12 @@ class Perception(Node):
                 out['compute_metrics']=dict(self.last_compute)
                 out['observed_ns']=time.monotonic_ns()
                 if getattr(self,'controlled_stop',False) and request['operation']!='home':self.busy=False
-                elif not self.stop_event.is_set():self.completed.put_nowait(out)
+                elif not self.compute_cancel.allows(out):self.busy=False
+                elif not self.stop_event.is_set():
+                    encoding_started=time.monotonic()
+                    encoded=json.dumps(out,allow_nan=False)
+                    self.last_compute['result_encode_s']=time.monotonic()-encoding_started
+                    self.completed.put_nowait((out,encoded))
         except Exception as e:
             self.reason='PERCEPTION_INIT_FAILED:'+str(e)
             self.get_logger().error(self.reason)
@@ -300,6 +319,19 @@ class Perception(Node):
         return super().destroy_node()
 
     def tick(self):
+        tick_started=time.monotonic_ns()
+        previous=getattr(self,'last_tick_started_ns',tick_started)
+        self.last_tick_started_ns=tick_started
+        self.tick_gap_s=(tick_started-previous)/1e9
+        self.max_tick_gap_s=max(getattr(self,'max_tick_gap_s',0.),self.tick_gap_s)
+        # A timer can be selected before ready subscriptions after a long callback.
+        # Ingest already-received measurements BEFORE judging their real age.
+        dispatch_pending(self.owner_subscription,self.owner)
+        if self.native_leg_input is not None:
+            dispatch_pending(self.native_leg_subscription,self.leg_batch)
+        dispatch_pending(self.odometry_subscription,self.odom)
+        dispatch_pending(self.body_source.listener.tf_sub,self.body_source.listener.callback)
+        dispatch_pending(self.mission_status_subscription,self.mission_status)
         try:
             body=self.body_source.select(self.navigation_session)
             if body:
@@ -327,6 +359,8 @@ class Perception(Node):
         report_scene(self,reason)
         camera_mode=self.backend.camera_mode if self.backend else 'unverified'
         self.health.publish(String(data=json.dumps(dict(observed_ns=time.monotonic_ns(),ready=bool(ready),reason=reason,scene_error=self.scene_error,busy=self.busy,last_compute=self.last_compute,busy_elapsed_s=now-self.started if self.busy else 0.,
+            callback_timing=dict(gap_s=self.tick_gap_s,max_gap_s=self.max_tick_gap_s,
+                preparation_s=(time.monotonic_ns()-tick_started)/1e9,previous_tick_s=getattr(self,'last_tick_duration_s',0.)),
             model_ready=bool(self.backend is not None and self.reason=='READY' and not getattr(self,'controlled_stop',False)),
             controlled_stop_geometry_only=bool(getattr(self,'vision_cancel_complete',False)),
             camera_state={'standby':'CAMERA_STANDBY','active':'CAMERA_ACTIVE','starting':'CAMERA_STARTING','failed':'CAMERA_FAULT'}.get(camera_mode,'CAMERA_UNVERIFIED'),
@@ -339,10 +373,11 @@ class Perception(Node):
             leg_plan_trace=dict(path=str(trace.path),error=trace.error,dropped=trace.dropped) if trace else None,
             lowstate_decode=(self.native_leg_input.status() if getattr(self,'native_leg_input',None) else self.leg_reader.status()),tf_pair=dict(self.body_source.diagnostics),streams=self.scene_buffer.diagnostics(time.monotonic_ns())))))
         try:
-            out=self.completed.get_nowait();self.busy=False
-            if not getattr(self,'controlled_stop',False) or out.get('compute_metrics',{}).get('operation')=='home':
-                self.results.publish(String(data=json.dumps(out,allow_nan=False)))
+            out,encoded=self.completed.get_nowait();self.busy=False
+            if self.compute_cancel.allows(out) and (not getattr(self,'controlled_stop',False) or out.get('compute_metrics',{}).get('operation')=='home'):
+                self.results.publish(String(data=encoded))
         except queue.Empty:pass
+        self.last_tick_duration_s=(time.monotonic_ns()-tick_started)/1e9
 
 def main():
     from mission.ros_main import spin

@@ -46,7 +46,7 @@ class Mission:
         self.last_compute_metrics = {}
         self.stale_input_diagnostic=None
         self.wait_goal_stale_since=None
-        self.recovery_since=None;self.recovery_reason='';self.retry_operation=None
+        self.recovery_since=None;self.recovery_reason='';self.retry_operation=None;self.recovery_retry_active=False
         self.retry_at=0.;self.observation_retries=0
         self.input_rejections={}
         self.availability={}
@@ -179,12 +179,13 @@ class Mission:
         if self.recovery_since is None:self.recovery_since=now
         self.recovery_reason=reason
         if operation is not None:
+            self.recovery_retry_active=True
             self.retry_operation=operation
             self.retry_at=now+self.cfg['execution'].get('observation_retry_delay_s',.25)
             self.observation_retries+=1
 
     def clear_recovery(self):
-        self.recovery_since=None;self.recovery_reason='';self.retry_operation=None
+        self.recovery_since=None;self.recovery_reason='';self.retry_operation=None;self.recovery_retry_active=False
 
     def wait_for_observation(self, now):
         """Wait only at rest, never renew a scene lease or resume a trajectory."""
@@ -224,8 +225,10 @@ class Mission:
                     operation=self.retry_operation;self.retry_operation=None
                     self.request(operation,now)
                 return True
-            # A retry in flight keeps the original recovery deadline.
-            if self.pending and self.pending['operation'] in OBSERVATIONS:return False
+            # Preserve the deadline only for an actual retry after a failed
+            # observation, not an original compute with a recovered health blip.
+            if (self.recovery_retry_active and self.pending
+                    and self.pending['operation'] in OBSERVATIONS):return False
             self.clear_recovery()
         return False
 
@@ -343,8 +346,9 @@ class Mission:
                 self.q_search=list(result.get('q_search',self.inputs['owner']['q'][:6]))
                 self.grasp_attempt=1
                 self.attempt_segments=[]
-                self.transition('VIEW_REFINEMENT', now)
-                self.request('refine', now)
+                refine=self.cfg['refinement'].get('enabled',True)
+                self.transition('VIEW_REFINEMENT' if refine else 'PLAN_GRASP', now)
+                self.request('refine' if refine else 'grasp_plan', now)
             else:
                 self.next_search(now)
         elif operation == 'grasp_plan':
@@ -521,11 +525,16 @@ class Mission:
         return [(kind,data) for kind,data in effects if self.state not in TERMINAL or kind=='cancel']
 
     def status(self, now):
-        return dict(operator_trial=bool(self.cfg.get('operator_trial')),retreat_operator_approval_required=self.state=='WAIT_RETREAT_APPROVAL',availability=self.availability,input_rejections=self.input_rejections,wait_goal_stale_since=self.wait_goal_stale_since,stale_input_diagnostic=self.stale_input_diagnostic,observation_recovery=dict(reason=self.recovery_reason,since=self.recovery_since,retry_operation=self.retry_operation,retries=self.observation_retries),test_mode='ready_observe' if self.ready_observe else 'full',last_observation=self.last_observation,last_compute_metrics=self.last_compute_metrics,grasp_verification='torque_width',grasp_assessment=self.inputs.get('owner',{}).get('grasp_assessment','UNKNOWN'),object_grasped=None,observed_ns=int(now*1e9), session_id=self.session, state=self.state,
+        # Periodic health/status is consumed on sensor callback executors.
+        # Keep the full approved trajectory in self.pending and its command;
+        # LegPlanTrace records it once. Never resend thousands of points here.
+        pending=None if self.pending is None else {
+            key:self.pending[key] for key in ('id','operation','kind','at') if key in self.pending}
+        return dict(operator_trial=bool(self.cfg.get('operator_trial')),retreat_operator_approval_required=self.state=='WAIT_RETREAT_APPROVAL',availability=self.availability,input_rejections=self.input_rejections,wait_goal_stale_since=self.wait_goal_stale_since,stale_input_diagnostic=self.stale_input_diagnostic,observation_recovery=dict(reason=self.recovery_reason,since=self.recovery_since,retry_operation=self.retry_operation,retry_active=self.recovery_retry_active,retries=self.observation_retries),test_mode='ready_observe' if self.ready_observe else 'full',last_observation=self.last_observation,last_compute_metrics=self.last_compute_metrics,grasp_verification='torque_width',grasp_assessment=self.inputs.get('owner',{}).get('grasp_assessment','UNKNOWN'),object_grasped=None,observed_ns=int(now*1e9), session_id=self.session, state=self.state,
                     reason=self.reason, navigation_session_id=self.nav_session,
                     goal_revision=self.revision, goal_stamp_ns=self.goal_stamp,
                     elapsed_s=max(0.,now-self.started) if self.started else 0.,
-                    phase_elapsed_s=max(0.,now-self.entered), pending=self.pending,
+                    phase_elapsed_s=max(0.,now-self.entered), pending=pending,
                     scan_index=self.scan_index,goal_reached_monotonic=self.goal_reached,
                     stable_since=self.stable_since,stable_duration_s=max(0.,now-self.stable_since) if self.stable_since is not None else 0.,
                     goal_reached_duration_s=max(0.,now-self.goal_reached) if self.goal_reached is not None else 0.,

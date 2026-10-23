@@ -72,7 +72,7 @@ def load(path, workspace):
     deployment=yaml.safe_load(Path(cfg['paths']['deployment']).read_text())['real_deployment']
     navigation=yaml.safe_load(Path(cfg['paths']['navigation']).read_text())
     # This module is also loaded directly by launch via importlib (no package).
-    for key, maximum in (('r3_status_ttl_s', .50), ('nav_status_ttl_s', .60), ('perception_status_ttl_s', .50)):
+    for key, maximum in (('r3_status_ttl_s', .50), ('nav_status_ttl_s', .60), ('perception_status_ttl_s', 1.00)):
         value=cfg['execution'].get(key,cfg['execution']['heartbeat_ttl_s'])
         if type(value) not in (int,float) or not math.isfinite(value) or not 0<value<=maximum:
             raise ValueError('invalid execution.'+key)
@@ -86,6 +86,9 @@ def load(path, workspace):
     # Never feed malformed limits to search/timers, even in read-only mode.
     for group in ('search', 'refinement', 'settle', 'execution'):
         for key, value in cfg[group].items():
+            if group == 'refinement' and key == 'enabled':
+                if type(value) is not bool:raise ValueError('invalid refinement.enabled')
+                continue
             if group == 'execution' and key == 'detection_debug_enabled':
                 if type(value) is not bool:raise ValueError('invalid execution.detection_debug_enabled')
                 continue

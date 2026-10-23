@@ -56,6 +56,8 @@ class StartupTests(unittest.TestCase):
         node.backend=SimpleNamespace(collision=SimpleNamespace(work_deadline_ns=None),stop_task_perception=Mock(),
             startup_checks=dict.fromkeys(('geometry','yolo','graspnet','camera'),True),_preload_perception=Mock())
         node.busy=False;node.stop_event=threading.Event();node.last_request=0;node.request_session=''
+        from mission.compute_cancel import ComputeCancellation
+        node.compute_cancel=ComputeCancellation()
         node.jobs=queue.Queue(1);node.completed=queue.Queue(1)
         node.count_publishers=Mock(return_value=1);node.get_logger=Mock(return_value=Mock())
         return node
@@ -135,7 +137,9 @@ class StartupTests(unittest.TestCase):
                 self.worker=SimpleNamespace(close=lambda force:calls.append('inference stopped'))
             def close(self):calls.append('backend closed')
         node=Perception.__new__(Perception)
-        node.cfg={'startup':{'shutdown_timeout_s':1.}};node.backend=None;node.startup_checks={}
+        node.cfg={'startup':{'shutdown_timeout_s':1.},'execution':{}};node.backend=None;node.startup_checks={}
+        from mission.compute_cancel import ComputeCancellation
+        node.compute_cancel=ComputeCancellation()
         node.stop_event=threading.Event();node.jobs=queue.Queue(1);node.completed=queue.Queue(1)
         node.get_logger=lambda:SimpleNamespace(info=lambda msg:ready.set(),error=lambda msg:None,warning=lambda msg:None)
         with patch.dict(sys.modules,{'mission.planning':SimpleNamespace(Planning=Backend)}),patch.object(Node,'destroy_node',return_value=True):

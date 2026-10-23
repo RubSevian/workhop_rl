@@ -119,7 +119,15 @@ class Integration(unittest.TestCase):
         self.assertEqual(retry['operation'],'detect');self.assertEqual(f.m.scan_index,index)
         self.assertEqual(f.commands,commands)
         self.assertTrue(f.m.result(f.compute(retry),f.now))
-        self.assertEqual(f.m.state,'VIEW_REFINEMENT');self.assertIsNone(f.m.recovery_since)
+        self.assertEqual(f.m.state,'PLAN_GRASP');self.assertIsNone(f.m.recovery_since)
+
+    def test_refinement_toggle_keeps_fresh_grasp_plan_operation(self):
+        for enabled,expected in ((False,'PLAN_GRASP'),(True,'VIEW_REFINEMENT')):
+            f,request=self.observation_fixture()
+            f.m.cfg['refinement']['enabled']=enabled
+            self.assertTrue(f.m.result(f.compute(request),f.now))
+            self.assertEqual(f.m.state,expected)
+            self.assertEqual(f.m.pending['operation'],'refine' if enabled else 'grasp_plan')
 
     def test_scene_lag_waits_then_recovers_without_cancel(self):
         f,request=self.observation_fixture()
@@ -130,7 +138,51 @@ class Integration(unittest.TestCase):
         self.assertFalse(f.m.inputs['perception']['ready'])
         self.assertFalse(f.m.perception_service_ready(f.now+1.))
         f.perception.update(ready=True,reason='READY');f.tick(False)
-        self.assertTrue(f.m.result(f.compute(request),f.now));self.assertEqual(f.m.state,'VIEW_REFINEMENT')
+        self.assertTrue(f.m.result(f.compute(request),f.now));self.assertEqual(f.m.state,'PLAN_GRASP')
+
+    def test_recovered_health_does_not_timeout_ongoing_grasp_plan(self):
+        f,detect=self.observation_fixture()
+        self.assertTrue(f.m.result(f.compute(detect),f.now))
+        self.assertEqual(f.m.state,'PLAN_GRASP')
+        request=next(data for kind,data in f.m.drain() if kind=='compute')
+        pending_id=f.m.pending['id'];commands=f.commands
+        f.perception.update(ready=False,reason='SCENE_SNAPSHOT_STALE:live_arm')
+        f.tick(False);since=f.m.recovery_since
+        self.assertIsNotNone(since)
+        f.now+=.2;f.perception.update(ready=True,reason='READY');f.tick(False)
+        self.assertIsNone(f.m.recovery_since)
+        # Same original computation continues beyond the former recovery deadline.
+        f.now=since+31.;f.tick(False)
+        self.assertEqual(f.m.state,'PLAN_GRASP')
+        self.assertEqual(f.m.pending['id'],pending_id)
+        self.assertEqual(f.commands,commands)
+        self.assertTrue(f.m.result(f.compute(request),f.now))
+        self.assertEqual(f.m.state,'PREGRASP')
+
+    def test_real_retry_in_flight_keeps_deadline_despite_ready_status(self):
+        f,request=self.observation_fixture()
+        failed=f.compute(request);failed.update(ok=False,reason='RGBD_STALE_OR_REPEATED')
+        f.m.result(failed,f.now);since=f.m.recovery_since
+        for _ in range(30):
+            effects=f.tick(False)
+            if any(kind=='compute' for kind,_ in effects):break
+        self.assertIsNotNone(f.m.pending)
+        self.assertTrue(f.m.recovery_retry_active)
+        self.assertTrue(f.perception['ready'])
+        self.assertEqual(f.m.recovery_since,since)
+        f.now=since+31.;f.tick(False)
+        self.assertEqual(f.m.state,'BLOCKED')
+        self.assertTrue(f.m.reason.startswith('OBSERVATION_RECOVERY_TIMEOUT:'))
+
+    def test_ready_status_cannot_clear_recovery_with_stale_measurements(self):
+        f,request=self.observation_fixture()
+        f.perception.update(ready=False,reason='SCENE_SNAPSHOT_STALE:live_arm');f.tick(False)
+        since=f.m.recovery_since
+        f.perception.update(ready=True,reason='READY');f.feed()
+        f.m.inputs['scene']['live_feedback_ns']=int((f.now-.4)*1e9)
+        self.assertTrue(f.m.wait_for_observation(f.now))
+        self.assertEqual(f.m.recovery_since,since)
+        self.assertIn('STALE',f.m.recovery_reason)
 
     def test_recovery_is_bounded_and_does_not_hide_authority_loss(self):
         for failure in ('timeout','authority','epoch','motion'):
@@ -518,7 +570,7 @@ class Integration(unittest.TestCase):
         f.base['pose'][0]=.021;self.at(f,since+3.);restart=f.m.stable_since
         self.at(f,restart+4.999);self.assertEqual(f.m.state,'BASE_SETTLE')
         self.at(f,restart+5.+1e-12);self.assertEqual(f.m.state,'ARM_SCAN_POSE')
-        f=Fixture();f.start();f.base['tilt_rad']=.3
+        f=Fixture();f.start();f.base['tilt_rad']=f.m.cfg['settle']['max_tilt_rad']+.01
         self.at(f,f.m.goal_reached+f.m.cfg['settle']['timeout_s']+.01)
         self.assertEqual(f.m.reason,'BASE_TILT_UNSAFE')
 
@@ -604,7 +656,7 @@ class Integration(unittest.TestCase):
             p=BodyPoseProvider(cfg);p.observe(vehicle,now,now,now,'nav','r1')
             candidate=vehicle.copy();stamp=now+10**7;session,revision='nav','r1'
             if change=='time':stamp=now-1
-            if change=='jump':candidate[0,3]+=.101
+            if change=='jump':candidate[0,3]+=cfg['frames']['continuity_translation_m']+.001
             if change=='session':session='new-nav'
             if change=='revision':revision='r2'
             with self.assertRaises(ValueError):p.observe(candidate,stamp,stamp,now+10**7,session,revision)
@@ -849,7 +901,7 @@ class Integration(unittest.TestCase):
         f=Fixture();f.start();f.owner['owner_session_id']='restarted';f.tick()
         self.assertEqual(f.m.state,'CANCELLED')
     def test_motion_allows_body_and_leg_variations(self):
-        for change,delta in (('legs',.00001),('legs',.001),('base',.00001),('base',.001),('jump',.101),('tilt',.3)):
+        for change,delta in (('legs',.00001),('legs',.001),('base',.00001),('base',.001),('jump',CFG['frames']['continuity_translation_m']+.001),('tilt',CFG['settle']['max_tilt_rad']+.01)):
             f=Fixture();f.start()
             while f.m.state=='BASE_SETTLE':f.tick(False)
             # Produce a checked segment but leave it executing in the owner.

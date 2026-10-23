@@ -17,7 +17,7 @@ from scipy.spatial.transform import Rotation
 from mission.scene import SceneBuffer, matrix_pose
 from mission.status_codec import decode_status
 from mission.input_diagnostics import InputDiagnostics
-from mission.subscription_batch import take_batch
+from mission.subscription_batch import take_batch, dispatch_pending
 from mission.native_leg_input import NativeLegInput
 from mission.arm_fast_state import to_mapping
 from mission.leg_state_reader import LegStateReader
@@ -70,6 +70,7 @@ class Coordinator(Node):
                      'owner':'/rars01/commissioning/state','perception':'/rars01/mission/perception_health'}
         if self.arm_state_transport=='typed':self.topics['owner']='/rars01/commissioning/fast_state'
         self.gids={};self.gid_since={};self.base_stamp=0;self.stop_home=None;self.stop_home_attempted=False;self.cancel_future=None;self.owner_cancel_ack=False
+        self.status_subscriptions={}
         for name,topic in self.topics.items():
             kind=String
             if name=='owner' and self.arm_state_transport=='typed':
@@ -77,6 +78,7 @@ class Coordinator(Node):
                 kind=ArmFastState
             depth=self.cfg['frames'].get('arm_history_depth',1) if name=='owner' else 1
             subscription=self.create_subscription(kind,topic,lambda msg,info,n=name:self.observe(n,msg,info),depth)
+            self.status_subscriptions[name]=subscription
             if name=='owner':self.owner_subscription=subscription
         self.create_subscription(String,'/rars01/mission/computed',self.result,1)
         self.native_leg_input=None
@@ -226,6 +228,13 @@ class Coordinator(Node):
 
     def tick(self):
         tick_started=time.monotonic();self.input_diagnostics.tick(tick_started)
+        # Drain bounded queued source samples, never relax a freshness limit.
+        for name,subscription in self.status_subscriptions.items():
+            dispatch_pending(subscription,lambda msg,n=name:self.observe(n,msg,None))
+        if self.native_leg_input is not None:
+            dispatch_pending(self.native_leg_subscription,self.leg_batch)
+        dispatch_pending(self.odometry_subscription,self.base)
+        dispatch_pending(self.body_source.listener.tf_sub,self.body_source.listener.callback)
         self.refresh_scene()
         now=time.monotonic();e=self.engine
         effects=e.step(now,self.get_clock().now().nanoseconds) if self.physical and not self.blockers else e.drain()
