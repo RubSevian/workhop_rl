@@ -11,12 +11,11 @@ import numpy as np
 from .transforms import rigid, xyzrpy
 from .config import ignored_self_collision_pairs, allowed_zero_contact_pairs, environment_checks_enabled, payload_checks_enabled
 
+from .gripper_measurement import closed_zero
+
 def measured_gripper_width(geometry,angle,tolerance):
-    """Only the closed-stop undershoot is normalized, never a motor command."""
-    if not np.isfinite(angle) or not np.isfinite(tolerance) or not 0<=tolerance<=np.deg2rad(5)+1e-12:
-        raise ValueError('INVALID_GRIPPER_MEASUREMENT_TOLERANCE')
-    if -tolerance<=angle<0:angle=0.
-    return geometry.opening_width(angle)
+    """Symmetric measured closed-zero band; never changes a motor command."""
+    return geometry.opening_width(closed_zero(angle,tolerance))
 
 def validate_geometry_joint(name,value,lower,upper,arm_tolerance):
     """Accept small arm measurement overshoot, preserving measured FK geometry.

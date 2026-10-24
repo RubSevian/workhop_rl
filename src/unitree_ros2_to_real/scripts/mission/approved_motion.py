@@ -2,6 +2,7 @@
 import copy
 import numpy as np
 from .scene import distance
+from .gripper_measurement import gripper_start_error
 
 
 def reverse_segment(segment, current, cfg, *, known_empty):
@@ -23,7 +24,9 @@ def reverse_segment(segment, current, cfg, *, known_empty):
     pe,re=distance(old['body']['map_body'],fresh['body']['map_body'])
     if pe>cfg['frames']['continuity_translation_m'] or re>cfg['frames']['continuity_rotation_rad']:
         raise ValueError('REVERSE_BODY_DISCONTINUITY')
-    if np.max(np.abs(np.asarray(current['q7'])-points[-1]))>cfg['execution']['start_tolerance_rad']:
+    error=np.abs(np.asarray(current['q7'])-points[-1])
+    error[6]=gripper_start_error(current['q7'][6],points[-1,6],cfg['collision'].get('gripper_closed_measurement_tolerance_rad',0.))
+    if np.max(error)>cfg['execution']['start_tolerance_rad']+1e-9:
         raise ValueError('REVERSE_START_CHANGED')
     result=copy.deepcopy(segment)
     result.setdefault('approval_scene_snapshot',copy.deepcopy(old))

@@ -33,6 +33,32 @@ class PlanningContracts(unittest.TestCase):
         self.assertGreater((len(limited)-1)/100.,3.)
         self.assertLessEqual((np.abs(np.diff(limited[:,:6],axis=0))*100.).max(),.04+1e-6)
 
+    def test_scan_pose_uses_motor_limits_while_search_and_home_stay_capped(self):
+        p,_=self.setup_planner()
+        p._command_joint_bounds=np.array([[-3.,3.]]*6)
+        p.cfg['search']['speed_rad_s']=.2
+        p.cfg['execution']['arm_speed_rad_s']=.1
+        start=np.zeros(7);target=np.array([.5,0,0,0,0,0])
+        peak=lambda points:np.abs(np.diff(points[:,:6],axis=0)).max()*100.
+        self.assertGreater(peak(p.samples(start,[target],3.,scan_pose=True)),.2)
+        self.assertLessEqual(peak(p.samples(start,[target],3.,search=True)),.2+1e-6)
+        self.assertLessEqual(peak(p.samples(start,[target],3.)),.1+1e-6)
+        p.grasp['robot']['rars01']['position_velocity_limits_rad_s']=[.05]*7
+        self.assertLessEqual(peak(p.samples(start,[target],3.,scan_pose=True)),.05+1e-6)
+
+    def test_closed_zero_does_not_rewrite_positive_command_or_feedback(self):
+        from mission.gripper_measurement import gripper_start_error
+        p,_=self.setup_planner();p._command_joint_bounds=np.array([[-3.,3.]]*6)
+        p.cfg['collision']['gripper_closed_measurement_tolerance_rad']=.025
+        for value in (-.025,0.,.025):
+            start=np.zeros(7);start[6]=value
+            points=p.samples(start,[np.zeros(6)],1.)
+            self.assertEqual(start[6],value)
+            self.assertEqual(points[0,6],max(0.,value))
+            self.assertEqual(gripper_start_error(value,.02,.025),0.)
+        self.assertGreater(gripper_start_error(.025001,0.,.025),.025)
+        self.assertGreater(gripper_start_error(-.025001,0.,.025),.025)
+
     def test_stage_profiler_preserves_timeout_and_records_inclusive_work(self):
         from mission.collision import timed_collision_stage, CollisionComputeTimeout
         class Probe:

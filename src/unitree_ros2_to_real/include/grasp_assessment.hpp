@@ -8,13 +8,21 @@ namespace sim2real {
 struct GraspAssessmentConfig {
  bool enabled=false;
  double contact_torque_nm=1.5,min_grasp_width_m=.05,confirmation_duration_s=.5;
+ // Legacy field name: negative_tolerance now defines a symmetric closed-zero band.
  double radius=.0375,rod=.040,carriage=.030,angle_limit=1.,negative_tolerance=0.;
 };
+// Interpretation only: retain raw encoder positions for MIT and diagnostics.
+inline double GripperClosedZero(double q,double tolerance){
+ return std::abs(q)<=tolerance+1e-9?0.:q;
+}
+inline double GripperStartError(double measured,double commanded,double tolerance){
+ return std::abs(GripperClosedZero(measured,tolerance)-GripperClosedZero(commanded,tolerance));
+}
 // Exact scalar port of RarsGripperGeometry.opening_width/linkage_angle_for_width.
 // Same YAML geometry; no new jaw calibration. Parity against Python is tested.
 inline double GripperInnerWidth(double q,const GraspAssessmentConfig& c){
- if(!std::isfinite(q)||q < -c.negative_tolerance||q>c.angle_limit+1e-9)throw std::invalid_argument("gripper measured angle invalid");
- q=std::max(0.,q);
+ if(!std::isfinite(q)||q < -c.negative_tolerance-1e-9||q>c.angle_limit+1e-9)throw std::invalid_argument("gripper measured angle invalid");
+ q=GripperClosedZero(q,c.negative_tolerance);
  const double x=c.carriage/2.;
  const double cosine=(x*x+c.radius*c.radius-c.rod*c.rod)/(2*x*c.radius);
  if(cosine < -1.-1e-9||cosine>1.+1e-9)throw std::invalid_argument("gripper linkage invalid");

@@ -129,12 +129,12 @@ class ArmOwner final:public rclcpp::Node {
   for(size_t i=0;i<7;++i)RCLCPP_INFO(get_logger(),"saved calibration motor%zu direction=%g offset=%g",i+1,config.motors[i].direction,config.motors[i].zero_offset);
  }
  private:
- bool Authority(ArmTime now,bool home_request=false){
+ bool Authority(ArmTime now,bool home_request=false,bool retain_completed_hold=false){
   const auto fresh=[&](ArmTime stamp){return stamp!=ArmTime{}&&std::chrono::duration<double>(now-stamp).count()>=0&&std::chrono::duration<double>(now-stamp).count()<=mission_ttl_;};
   return mission_&&home_->status().feedback_age_s>=0&&home_->status().feedback_age_s<=mission_feedback_ttl_&&fresh(r3_stamp_)&&fresh(nav_stamp_)&&fresh(health_stamp_)&&r3_authority_&&nav_ready_&&health_ready_&&
    !mission_session_.empty()&&(mission_session_!=retired_session_||(home_request&&r3_stopping_&&r3_home_phase_allowed_))&&nav_session_==health_nav_session_&&r3_nav_session_==nav_session_&&
    count_publishers("/go2/locomotion_status")==1&&count_publishers("/go2/mission/readiness")==1&&count_publishers("/go2/mission/health")==1&&
-   (r3_active_&&health_goal_revision_>0&&health_manipulating_||(home_request&&r3_stopping_&&r3_home_phase_allowed_));
+   (r3_active_&&health_goal_revision_>0&&(health_manipulating_||(retain_completed_hold&&mission_->CompletedHomeHoldAllowed(health_phase_)))||(home_request&&r3_stopping_&&r3_home_phase_allowed_));
  }
  void ConfigureMission(const std::string& path,const std::string& workspace,const rars_arm::ArmConfiguration& sdk_config,const std::string&,bool read_only){
   const auto y=YAML::LoadFile(path)["go2_mission"];mission_ttl_=y["execution"]["heartbeat_ttl_s"].as<double>();
@@ -189,6 +189,7 @@ class ArmOwner final:public rclcpp::Node {
   // Read authoritative URDF joint bounds without copying them to mission YAML.
   std::ifstream f(absolute("arm_urdf"));std::stringstream buffer;buffer<<f.rdbuf();const auto xml=buffer.str();
   c.search_velocity=std::array<double,6>{};
+  c.motor_velocity=std::array<double,6>{};
   for(int j=0;j<6;++j){
    std::smatch joint,limit,lo,hi;
    if(!std::regex_search(xml,joint,std::regex("<joint\\s+name=\"joint"+std::to_string(j+1)+"\"[\\s\\S]*?</joint>")))throw std::runtime_error("URDF joint limit missing");
@@ -196,12 +197,13 @@ class ArmOwner final:public rclcpp::Node {
    const auto text=limit.str();
    if(!std::regex_search(text,lo,std::regex("lower=\"([^\"]+)\""))||!std::regex_search(text,hi,std::regex("upper=\"([^\"]+)\"")))throw std::runtime_error("URDF bounds missing");
    c.lower[j]=std::stod(lo[1]);c.upper[j]=std::stod(hi[1]);c.velocity[j]=std::min(double(sdk_config.position_velocity_limits[j]),y["execution"]["arm_speed_rad_s"].as<double>());
+   (*c.motor_velocity)[j]=double(sdk_config.position_velocity_limits[j]);
    (*c.search_velocity)[j]=std::min(double(sdk_config.position_velocity_limits[j]),y["search"]["speed_rad_s"].as<double>());
   }
   mission_=std::make_unique<MissionStream>(c);
   home_->SetMissionProvider([this](ArmTime now,const AutoHomeStatus& status)->std::optional<AutoHomeController::Command>{
    if(!mission_->has_command())return std::nullopt;
-   return mission_->Tick(now,status,Authority(now,home_requested_||active_home_));
+   return mission_->Tick(now,status,Authority(now,home_requested_||active_home_,true));
   });
   r3_sub_=create_subscription<std_msgs::msg::String>("/go2/locomotion_status",1,[this](std_msgs::msg::String::SharedPtr msg){
    r3_authority_=r3_planned_disable_ready_=false;try{auto v=YAML::Load(msg->data);const auto ns=v["observed_ns"].as<int64_t>();
@@ -301,8 +303,9 @@ class ArmOwner final:public rclcpp::Node {
    const auto preset=v["preset_operation"]?v["preset_operation"].as<std::string>():std::string{};
    const bool search=PresetSearchPlanAllowed(preset,health_phase_);
    if(!preset.empty()&&!search)throw std::runtime_error("preset search operation/phase rejected");
+   const bool motor_limits=MotorLimitPlanAllowed(operation,health_phase_,kind);
    mission_->ObserveAssessment(now,home_->status());
-   if(!mission_->Start(v["id"].as<uint64_t>(),v["kind"].as<std::string>(),result.points,now,home_->status(),search))throw std::runtime_error("trajectory bounds/start/hold rejected");
+   if(!mission_->Start(v["id"].as<uint64_t>(),v["kind"].as<std::string>(),result.points,now,home_->status(),search,motor_limits))throw std::runtime_error("trajectory bounds/start/hold rejected");
    if(ready_observe_&&kind=="move")ready_move_seen_=true;
    if(approved_trial){trial_state_="EXECUTING";trial_service_.reset();}
    mission_blocker_.clear();active_home_=is_home;if(is_home)home_requested_=false;

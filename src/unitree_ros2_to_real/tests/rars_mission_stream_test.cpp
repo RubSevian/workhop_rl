@@ -182,5 +182,56 @@ int main(){
   for(size_t i=0;i<path.size();++i)path[i][0]=.25F*i/100;
   MissionStream too_fast(search);assert(!too_fast.Start(1,"move",path,at(50),f,true));
  }
+ // Both sides of the measured closed-zero band agree at admission.
+ {
+  MissionStreamConfig c=cfg;c.start_tolerance=.025;c.assessment.negative_tolerance=.025;
+  for(float q:{-.025F,0.F,.025F}){
+   AutoHomeStatus f=feedback;f.joints.position.fill(0);f.joints.position[6]=q;
+   std::vector<std::array<float,7>> path(2,f.joints.position);
+   for(auto& point:path)point[6]=.02F;
+   MissionStream stream(c);assert(stream.Start(1,"move",path,at(50),f));
+   assert(f.joints.position[6]==q);
+  }
+  for(float q:{-.025001F,.025001F}){
+   AutoHomeStatus f=feedback;f.joints.position.fill(0);f.joints.position[6]=q;
+   std::vector<std::array<float,7>> path(2,std::array<float,7>{});
+   MissionStream stream(c);assert(!stream.Start(1,"move",path,at(50),f));
+  }
+  for(float delta:{.024999F,.025F,.025001F}){
+   AutoHomeStatus f=feedback;f.joints.position.fill(0);
+   std::vector<std::array<float,7>> path(2,f.joints.position);for(auto& point:path)point[0]=delta;
+   MissionStream stream(c);assert(stream.Start(1,"move",path,at(50),f)==(delta<=.025F));
+  }
+ }
+ // YAML motor speeds are confined to explicitly agreed operation/phase pairs.
+ for(const auto& pair:std::vector<std::pair<std::string,std::string>>{
+     {"scan_pose","ARM_SCAN_POSE"},{"pregrasp","PREGRASP"},{"approach","GRASP"},
+     {"retreat","RETREAT"},{"retreat","WAIT_RETREAT_APPROVAL"},{"retreat","GRASP"},
+     {"reverse_search","RETURN_SEARCH"}}){
+  assert(MotorLimitPlanAllowed(pair.first,pair.second,"move"));
+  assert(!MotorLimitPlanAllowed(pair.first,"ARM_SEARCH","move"));
+  assert(!MotorLimitPlanAllowed(pair.first,pair.second,"home"));
+ }
+ for(const auto* op:{"home","refine","scan_step","scan_return","close","unknown"})
+  assert(!MotorLimitPlanAllowed(op,"GRASP","move"));
+ {
+  MissionStreamConfig c=cfg;c.velocity.fill(.1);c.search_velocity=std::array<double,6>{};
+  c.search_velocity->fill(.2);c.motor_velocity=std::array<double,6>{};c.motor_velocity->fill(1.);
+  AutoHomeStatus f=feedback;f.joints.position.fill(0);f.joints.velocity.fill(0);
+  std::vector<std::array<float,7>> path(101,f.joints.position);
+  for(size_t i=0;i<path.size();++i)path[i][0]=.3F*i/100;
+  MissionStream motor(c),ordinary(c),search(c),ambiguous(c);
+  assert(motor.Start(1,"move",path,at(50),f,false,true));
+  assert(!ordinary.Start(1,"move",path,at(50),f));
+  assert(!search.Start(1,"move",path,at(50),f,true));
+  assert(!ambiguous.Start(1,"move",path,at(50),f,true,true));
+  for(size_t i=0;i<path.size();++i)path[i][0]=1.1F*i/100;
+  MissionStream too_fast(c);assert(!too_fast.Start(1,"move",path,at(50),f,false,true));
+  c.motor_velocity.reset();MissionStream missing(c);
+  assert(!missing.Start(1,"move",path,at(50),f,false,true));
+  c.motor_velocity=std::array<double,6>{};bool invalid=false;
+  try{MissionStream bad(c);}catch(const std::invalid_argument&){invalid=true;}
+  assert(invalid);
+ }
  std::cout<<"PASS bounded close stub, unknown object, retained command, empty/lost/open HOME6, legacy HOME7, cancel and limits\n";
 }

@@ -14,3 +14,12 @@ rows=np.array([[float(v) for v in line.split()] for line in subprocess.check_out
 error=max(abs(geometry.opening_width(q)-width) for q,width in rows)
 assert error<1e-12,(len(rows),error)
 print(f'PASS native/Python measured-angle linkage: {len(rows)} samples, max error {error:.3g}m')
+
+sys.path.insert(0,str(Path(__file__).resolve().parents[1]/'scripts'))
+from mission.gripper_measurement import closed_zero
+rows=np.array([[float(v) for v in line.split()] for line in subprocess.check_output([sys.argv[1],'--closed-zero-grid'],text=True).splitlines()])
+tolerance=cfg['go2_mission']['collision']['gripper_closed_measurement_tolerance_rad']
+assert tolerance==.025
+error=max(abs(geometry.opening_width(closed_zero(q,tolerance))-width) for q,width in rows)
+assert error<1e-12,(len(rows),error)
+print(f'PASS symmetric closed-zero Python/C++ parity: {len(rows)} samples')

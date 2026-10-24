@@ -13,6 +13,7 @@ from .transforms import EyeInHand, fixed_joint
 from .collision import Collision
 from .scene import FrameChain, WorldGraspAnchor, WorldObjectAnchor
 from .approved_motion import reverse_segment
+from .gripper_measurement import gripper_start_error, closed_zero
 from .scene_wait import select_camera_frame
 from .config import environment_checks_enabled, search_angles
 
@@ -394,7 +395,7 @@ class Planning:
         metrics['detection_reason']='INSUFFICIENT_AGREEING_FRAMES'
         return None
 
-    def samples(self, start, targets, duration, gripper_end=None, *, search=False, object_motion=False):
+    def samples(self, start, targets, duration, gripper_end=None, *, search=False, object_motion=False, scan_pose=False):
         from rars01_graspnet.real_grasp_trajectory import waypoint_motion_samples
         # Measured overshoot is valid geometry, but commanded points must stay
         # inside the unchanged owner's URDF/closed-gripper bounds.
@@ -410,12 +411,14 @@ class Planning:
             raise ValueError('ARM_MEASUREMENT_OUTSIDE_TOLERANCE')
         start[:6]=clipped
         closed=self.grasp['robot'].get('gripper',{}).get('rars01',{}).get('closed_position_rad',0.)
-        if closed-self.cfg['collision'].get('gripper_closed_measurement_tolerance_rad',0.)<=start[6]<closed:
+        if start[6]<closed and closed_zero(start[6]-closed,self.cfg['collision'].get('gripper_closed_measurement_tolerance_rad',0.))==0.:
             start[6]=closed
         velocity=np.asarray(self.grasp['robot']['rars01']['position_velocity_limits_rad_s'][:6])
-        if not object_motion:
-            velocity=np.minimum(velocity,self.cfg['search']['speed_rad_s'] if search else self.cfg['execution']['arm_speed_rad_s'])
-        else:
+        if search:
+            velocity=np.minimum(velocity,self.cfg['search']['speed_rad_s'])
+        elif not (object_motion or scan_pose):
+            velocity=np.minimum(velocity,self.cfg['execution']['arm_speed_rad_s'])
+        if object_motion:
             duration=self.grasp['robot']['ready_pose']['duration']
         points,_=waypoint_motion_samples(start[:6],targets,duration,1/self.grasp['robot']['rars01']['command_rate_hz'],velocity)
         p=np.vstack([start[:6],*points]);grip=np.full(len(p),start[6])
@@ -471,7 +474,7 @@ class Planning:
         if any(old[key]!=scene[key] for key in ('owner_session_id','scene_revision','navigation_session_id','tf_revision')):
             raise ValueError('WORLD_ANCHOR_EPOCH_CHANGED')
         start_error=np.max(np.abs(np.asarray(fresh['q'])-trajectory['points'][0][:6]))
-        if start_error>self.cfg['execution']['start_tolerance_rad']:
+        if start_error>self.cfg['execution']['start_tolerance_rad']+1e-9:
             # Match the owner's existing start tolerance. Ordinary sensor
             # variations do not cause an equality/replan loop.
             if request is not None and not trajectory.get('reused_approval'):
@@ -497,6 +500,9 @@ class Planning:
     def execute(self, request, context):
         from utils.transforms import mat4_to_pose6d,pose6d_to_mat4
         op=request['operation'];owner=request['owner']
+        if hasattr(getattr(self,'ik',None),'begin_operation'):
+            self.compute_metrics['ik_calls']=[]
+            self.ik.begin_operation(self.compute_metrics['ik_calls'],self.collision.check_deadline)
         self.debug_request={k:request.get(k) for k in ('id','operation','scan_index','session_id')}
         camera_started_ns=time.monotonic_ns()
         if op in ('detect','observe_grasp','grasp_plan'):
@@ -625,6 +631,7 @@ class Planning:
                     return False
             rejections=[]
             self.compute_metrics['grasp_rejections']=rejections
+            self.compute_metrics['ik_transform_audit']=dict(camera_to_current_arm=cam_to_arm.tolist(), current_odom_arm=odom_now.tolist(), capture_odom_arm=at['odom_arm'].tolist(), capture_arm_camera=at['arm_camera'].tolist(), tcp_frame='End_link', units='m_rad')
             candidate=_select_executable_grasp(self.ik,GeometryOnly(),GraspGroup(result['grasps']),cam_to_arm,g['pregrasp_offset_m'],g.get('retreat_offset_m',g['pregrasp_offset_m']),g['insertion_depth_m'],robot['max_grasp_depth_m'],g['min_base_z_m'],g['min_jaw_z_m'],'rars01',True,True,np.array([g['position_compensation_base_m'][axis] for axis in 'xyz']),g['ik_candidate_limit'],g['cartesian_ik'],g['candidate_selection'],path_validator=validate,rejection_diagnostics=rejections,local_height_filters_enabled=self.cfg.get('local_height_filters_enabled',True),cancel_check=self.collision.check_deadline)
             if candidate is None:
                 if rejected_paths:raise ValueError('NO_COLLISION_FREE_CANDIDATE: '+rejected_paths[-1])
@@ -666,7 +673,7 @@ class Planning:
                 raise ValueError('APPROVED_BODY_DISCONTINUITY')
             # Reuse the approved six-axis path. The gripper reference describes
             # only an open-jaw approximation, never actual-opening clearance.
-            if np.max(np.abs(start[:6]-np.asarray(trajectory['points'][0][:6])))>self.cfg['execution']['start_tolerance_rad']:
+            if np.max(np.abs(start[:6]-np.asarray(trajectory['points'][0][:6])))>self.cfg['execution']['start_tolerance_rad']+1e-9:
                 raise ValueError('TRAJECTORY_START_CHANGED_REPLAN_REQUIRED')
             if op=='retreat':
                 reference=trajectory.get('collision_gripper_reference',{})
@@ -679,12 +686,12 @@ class Planning:
                 # Retain the owner's existing hold command; no automatic release.
                 grip=float(start[6])
                 closed=self.grasp['robot']['gripper']['rars01']['closed_position_rad']
-                if closed-self.cfg['collision'].get('gripper_closed_measurement_tolerance_rad',0.)<=grip<closed:grip=closed
+                if grip<closed and closed_zero(grip-closed,self.cfg['collision'].get('gripper_closed_measurement_tolerance_rad',0.))==0.:grip=closed
                 self.geometry.opening_width(grip) # existing motor-angle limits
                 trajectory.setdefault('collision_points',copy.deepcopy(trajectory['points']))
                 for point in trajectory['points']:point[6]=grip
                 trajectory['physical_geometry_qualified']=False
-            elif abs(start[6]-trajectory['points'][0][6])>self.cfg['execution']['start_tolerance_rad']:
+            elif gripper_start_error(start[6],trajectory['points'][0][6],self.cfg['collision'].get('gripper_closed_measurement_tolerance_rad',0.))>self.cfg['execution']['start_tolerance_rad']+1e-9:
                 raise ValueError('TRAJECTORY_START_CHANGED_REPLAN_REQUIRED')
             trajectory['operation']=op
             trajectory['reused_approval']=True
@@ -705,7 +712,7 @@ class Planning:
         else:
             raise ValueError('APPROVED_SEGMENTS_REQUIRED')
         preparation_started_ns=time.monotonic_ns()
-        points=self.samples(start,[target],self.grasp['robot']['ready_pose']['duration'],grip,search=op in ('scan_step','scan_return'))
+        points=self.samples(start,[target],self.grasp['robot']['ready_pose']['duration'],grip,search=op in ('scan_step','scan_return'),scan_pose=op=='scan_pose')
         if op in ('scan_pose','scan_step','scan_return'):
             # Operator-approved preset search policy, NOT collision approval.
             # Freshness, epochs, start tolerance and owner limits still apply.

@@ -13,8 +13,20 @@ AutoHomeStatus sample(double seconds,float torque=1.6F,float q=.7F,uint64_t fram
  s.joints.valid[6]=true;s.joints.motor_id[6]=7;s.joints.error[6]=1;s.joints.position[6]=q;s.joints.torque[6]=torque;return s;
 }
 void feed(GraspAssessment& a,double start,int count,float torque=1.6F,float q=.7F){for(int i=0;i<=count;++i)a.Observe(t(start+i*.01),sample(start+i*.01,torque,q,1+uint64_t(std::llround((start+i*.01)*1000))),true,false,.1);}
-int main(int argc,char**){
+int main(int argc,char** argv){
+ if(argc>1&&std::string(argv[1])=="--closed-zero-grid"){
+  auto c=cfg();c.negative_tolerance=.025;std::cout<<std::setprecision(17);
+  for(double q:{-.025,double(-.025F),-.024,0.,.024,.025,double(.025F),.025001,.05,.7})std::cout<<q<<' '<<GripperInnerWidth(q,c)<<'\n';
+  return 0;
+ }
  if(argc>1){auto c=cfg();std::cout<<std::setprecision(17);for(int n=0;n<=200;++n){double q=n/200.;std::cout<<q<<' '<<GripperInnerWidth(q,c)<<'\n';}return 0;}
+ {
+  auto c=cfg();c.negative_tolerance=.025;
+  for(double q:{-.025,0.,.025,double(-.025F),double(.025F)})assert(std::abs(GripperInnerWidth(q,c))<1e-12);
+  assert(GripperInnerWidth(.025001,c)>0.);
+  bool rejected=false;try{GripperInnerWidth(-.025001,c);}catch(const std::invalid_argument&){rejected=true;}
+  assert(rejected);
+ }
  assert(GripperInnerWidth(.7,cfg())>=.05);
  GraspAssessment a(cfg());feed(a,10,49);assert(a.state()=="UNKNOWN");feed(a,10.5,0);assert(a.state()=="GRASPED");
  // Strict absolute measured-torque boundary; commanded tau never substitutes.

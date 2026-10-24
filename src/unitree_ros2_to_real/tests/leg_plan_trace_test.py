@@ -44,6 +44,20 @@ class Tests(unittest.TestCase):
             self.assertEqual(rows[-1]['record_type'],'compute_result')
             self.assertEqual(len(rows[-1]['trajectory']['points']),2)
 
+    def test_ik_details_survive_removal_from_periodic_status(self):
+        with tempfile.TemporaryDirectory() as root:
+            trace=LegPlanTrace(root)
+            metrics={'ik_calls':[{'target_pose6d':[0.]*6,'attempt_count':1,'success':False}],
+                     'ik_transform_audit':{'tcp_frame':'End_link'}}
+            trace.result(dict(id=7,operation='grasp_plan',session_id='session'),
+                         dict(ok=False,reason='IK_REJECTED'),metrics)
+            metrics.pop('ik_calls')
+            trace.close()
+            row=json.loads(trace.path.read_text())
+            self.assertEqual(row['metrics']['ik_calls'][0]['attempt_count'],1)
+            self.assertEqual(row['operation_id'],7)
+            self.assertEqual(trace.error,'')
+
     def test_file_error_is_diagnostic_only(self):
         with tempfile.TemporaryDirectory() as root:
             blocker=Path(root)/'file';blocker.write_text('not a directory')

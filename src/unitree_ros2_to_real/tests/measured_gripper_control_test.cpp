@@ -12,6 +12,42 @@ AutoHomeStatus sample(double seconds,float q,float tau,uint64_t frame){
 MissionStreamConfig config(){MissionStreamConfig c;c.lower.fill(-3);c.upper.fill(3);c.velocity.fill(1);c.assessment.enabled=true;return c;}
 int main(){
  const auto c=config();
+ {
+  auto cfg=c;cfg.assessment.negative_tolerance=.025;
+  MeasuredGripperControl m(cfg.gripper_control,cfg.assessment,0,1,100,.1);
+  auto s=sample(1,.02F,0,1);m.Begin(t(1),s);assert(m.Update(t(1),s,true,false));
+  assert(m.target()==double(s.joints.position[6])); // geometry zero must not rewrite MIT target
+  assert(s.joints.position[6]==.02F);
+ }
+
+ // Close -> HOME -> terminal success retains the live regulator. Terminal
+ // phase alone cannot enable it; cancellation/fault still revokes the hold.
+ {
+  auto cfg=c;MissionStream m(cfg);auto s=sample(10,.7F,2.2F,1);
+  std::vector<std::array<float,7>> close(2,s.joints.position);
+  assert(!m.CompletedHomeHoldAllowed("GRASP_PRESUMED_SUCCESS"));
+  assert(m.Start(1,"close",close,t(10),s));
+  for(int n=0;n<=60;++n)m.Tick(t(10+n*.01),sample(10+n*.01,.7F,2.2F,n+2),true);
+  assert(m.holding()&&!m.busy());
+  assert(!m.CompletedHomeHoldAllowed("GRASP_PRESUMED_SUCCESS"));
+  s=sample(11,.7F,2.2F,100);
+  auto point=s.joints.position;point[6]=m.command().q[6];
+  std::vector<std::array<float,7>> home(2,point);
+  assert(m.Start(2,"home",home,t(11),s));
+  assert(!m.CompletedHomeHoldAllowed("GRASP_PRESUMED_SUCCESS"));
+  for(int n=0;n<=30;++n)m.Tick(t(11+n*.01),sample(11+n*.01,.7F,2.2F,n+101),true);
+  assert(m.CompletedHomeHoldAllowed("GRASP_PRESUMED_SUCCESS"));
+  for(const auto* phase:{"BLOCKED","CANCELLED","TARGET_NOT_GRASPED","IDLE"})assert(!m.CompletedHomeHoldAllowed(phase));
+  for(int n=31;n<=130;++n){
+   const auto cmd=m.Tick(t(11+n*.01),sample(11+n*.01,.7F,2.2F,n+101),m.CompletedHomeHoldAllowed("GRASP_PRESUMED_SUCCESS"));
+   assert(m.holding()&&m.CompletedHomeHoldAllowed("GRASP_PRESUMED_SUCCESS"));
+   assert(cmd.kp[6]==cfg.gripper_control.kp&&cmd.torque[6]==0);
+  }
+  // All live authority checks remain necessary even after terminal success.
+  const auto cmd=m.Tick(t(12.31),sample(12.31,.7F,2.2F,232),false);
+  assert(!m.holding()&&cmd.kp[6]==0);
+  assert(!m.CompletedHomeHoldAllowed("GRASP_PRESUMED_SUCCESS"));
+ }
  // Polarity of measured torque is deliberately irrelevant. Both closing joint
  // directions are supported without using torque sign as an extra criterion.
  for(double polarity:{-1.,1.})for(bool reverse:{false,true}){

@@ -303,9 +303,9 @@ class Integration(unittest.TestCase):
             def opening_width(self,a):
                 if not 0<=a<=1:raise ValueError('outside limits')
                 return a
-        g=Geometry();tol=np.deg2rad(5)
-        for a in (-.00705718994,-tol,0.):self.assertEqual(measured_gripper_width(g,a,tol),0.)
-        self.assertEqual(measured_gripper_width(g,tol,tol),tol)
+        g=Geometry();tol=.025
+        for a in (-.00705718994,-tol,0.,tol,.02,float(np.float32(-tol)),float(np.float32(tol))):self.assertEqual(measured_gripper_width(g,a,tol),0.)
+        self.assertEqual(measured_gripper_width(g,tol+1e-6,tol),tol+1e-6)
         for a in (-tol-1e-6,1.01,float('nan')):
             with self.assertRaises(ValueError):measured_gripper_width(g,a,tol)
 
@@ -955,7 +955,8 @@ class Integration(unittest.TestCase):
     def test_arm_geometry_tolerance_preserves_actual_pose_and_leg_limits(self):
         from mission.collision import validate_geometry_joint
         tol=CFG['collision']['arm_joint_measurement_tolerance_rad']
-        self.assertAlmostEqual(tol,np.deg2rad(2))
+        self.assertAlmostEqual(tol,.025)
+        self.assertEqual(tol,CFG['execution']['start_tolerance_rad'])
         for name in ('joint1','joint2','joint3','joint4','joint5','joint6'):
             for q in (-tol,-.000190734863,0.,3.6,3.6+tol):
                 self.assertEqual(validate_geometry_joint(name,q,0.,3.6,tol),q)

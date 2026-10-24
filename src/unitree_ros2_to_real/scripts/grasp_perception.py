@@ -277,8 +277,13 @@ class Perception(Node):
                     if request['operation']=='home':self.backend.pause_camera()
                 debug=getattr(self.backend,'detection_debug',None)
                 if debug is not None:self.backend.compute_metrics['detection_debug']=dict(directory=str(debug.directory),error=debug.error,dropped=debug.dropped)
-                self.last_compute=dict(operation=request['operation'],elapsed_s=time.monotonic()-compute_started,**self.backend.compute_metrics)
-                self.leg_plan_trace.result(request,out,self.last_compute)
+                compute_metrics=dict(operation=request['operation'],elapsed_s=time.monotonic()-compute_started,**self.backend.compute_metrics)
+                self.leg_plan_trace.result(request,out,compute_metrics)
+                # Detailed IK targets/seeds stay in the asynchronous disk trace,
+                # never in periodically published ROS health/status messages.
+                ik_calls=compute_metrics.pop('ik_calls',[])
+                compute_metrics['ik_summary']=dict(calls=len(ik_calls),cache_hits=sum(bool(c.get('cache_hit')) for c in ik_calls),elapsed_s=sum(c.get('elapsed_s',0.) for c in ik_calls),attempts=sum(c.get('attempt_count',0) for c in ik_calls))
+                self.last_compute=compute_metrics
                 out['compute_metrics']=dict(self.last_compute)
                 out['observed_ns']=time.monotonic_ns()
                 if getattr(self,'controlled_stop',False) and request['operation']!='home':self.busy=False
