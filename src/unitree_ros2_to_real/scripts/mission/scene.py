@@ -245,7 +245,7 @@ class WorldGraspAnchor:
         if (self.frame!='map' or self.navigation_session_id!=body.navigation_session_id
                 or self.tf_revision!=body.tf_revision or self.goal_revision!=goal_revision):
             raise ValueError('WORLD_ANCHOR_EPOCH_CHANGED')
-        if not 0<=(now_ns-self.capture_ns)/1e9<=max_age_s:raise ValueError('WORLD_ANCHOR_STALE')
+        if now_ns<self.capture_ns or (max_age_s is not None and (now_ns-self.capture_ns)/1e9>max_age_s):raise ValueError('WORLD_ANCHOR_STALE')
         if not 0<=(now_ns-body.mono_ns)/1e9<=body_max_age_s:raise ValueError('WORLD_ANCHOR_TF_STALE')
         rigid(self.map_grasp)
         if not np.isfinite(self.confidence) or not 0<=self.confidence<=1:raise ValueError('WORLD_ANCHOR_CONFIDENCE')

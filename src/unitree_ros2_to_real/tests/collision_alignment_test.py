@@ -120,6 +120,11 @@ class Alignment(unittest.TestCase):
   self.assertTrue(c.check(path,scene),c.last_failure)
   self.assertGreater(c.last_stats.get('rigid_pair_reused',0),0)
   self.assertIsNone(c._clear_cache)
+  self.assertIsNone(c.check_timeout_s)
+  c.cancel_reason='OPERATOR_CANCEL'
+  with self.assertRaisesRegex(RuntimeError,'COLLISION_CANCELLED'):
+   c.check([HOME,HOME],scene)
+  c.cancel_reason=''
   c.check_timeout_s=1e-12
   with self.assertRaisesRegex(CollisionComputeTimeout,'COLLISION_COMPUTE_TIMEOUT'):
    c.check([HOME,HOME],scene)

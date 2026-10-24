@@ -501,6 +501,7 @@ class Planning:
     def execute(self, request, context):
         from utils.transforms import mat4_to_pose6d,pose6d_to_mat4
         op=request['operation'];owner=request['owner']
+        self.observation_verified={}
         if hasattr(getattr(self,'ik',None),'begin_operation'):
             self.compute_metrics['ik_calls']=[]
             self.ik.begin_operation(self.compute_metrics['ik_calls'],self.collision.check_deadline)
@@ -521,6 +522,7 @@ class Planning:
                 scene_body_ns=sample['body'].mono_ns,
                 scene_body_age_at_accept_s=(planning_reference_ns-sample['body'].mono_ns)/1e9)
         trace=getattr(self,'plan_trace',None)
+        progress=getattr(self,'short_journal',None)
         if trace is not None:trace.begin(request,sample,reference_ns=planning_reference_ns)
         if sample['owner_session_id']!=request['owner_session_id'] or sample['body'].navigation_session_id!=request['navigation_session_id']:
             raise ValueError('PLANNING_SESSION_CHANGED')
@@ -564,17 +566,33 @@ class Planning:
             target=ik.joints if ik.success else start[:6].copy()
             self.compute_metrics['refine_prepare_elapsed_s']=(time.monotonic_ns()-refine_started_ns)/1e9
         elif op in ('grasp_plan','observe_grasp'):
-            with planning_stage(self.compute_metrics,'detection',trace,request):
+            with planning_stage(self.compute_metrics,'detection',trace,request,progress=progress):
                 detection=self.detect(context,self.cfg['refinement']['fresh_frames'])
             if detection is None:
                 if op=='observe_grasp':return dict(observation=dict(found=False,graspnet_called=False))
                 raise ValueError('OBJECT_LOST_AFTER_REFINEMENT')
             color,depth,d,at,anchor=detection
+            # Published independently of profiling: detection has accepted fresh,
+            # geometrically consistent RGB-D for this particular request.
+            self.observation_verified=dict(
+                {key:request[key] for key in ('id','operation','session_id',
+                 'navigation_session_id','owner_session_id','goal_revision')},
+                verified_ns=time.monotonic_ns())
             opts=self.grasp['graspnet'];robot=self.grasp['robot']['rars01']
-            with planning_stage(self.compute_metrics,'graspnet',trace,request):
-                result=self.worker.infer(color,depth,self.camera.K,num_point=opts['num_point'],min_depth=opts['min_depth'],max_depth=opts['max_depth'],collision_thresh=opts['collision_thresh'],voxel_size=.01,bbox_xyxy=d.bbox_xyxy,target_margin_px=opts['target_margin_px'],target_expand_ratio=opts['target_expand_ratio'],max_grasp_width_m=robot['max_grasp_width_m'],max_grasp_depth_m=robot['max_grasp_depth_m'],timeout_s=opts['worker_timeout_s'],include_diagnostics=self.cfg['compute'].get('grasp_full_diagnostics',True))
+            with planning_stage(self.compute_metrics,'graspnet',trace,request,progress=progress):
+                result=self.worker.infer(color,depth,self.camera.K,num_point=opts['num_point'],min_depth=opts['min_depth'],max_depth=opts['max_depth'],collision_thresh=opts['collision_thresh'],voxel_size=.01,bbox_xyxy=d.bbox_xyxy,target_margin_px=opts['target_margin_px'],target_expand_ratio=opts['target_expand_ratio'],max_grasp_width_m=robot['max_grasp_width_m'],max_grasp_depth_m=robot['max_grasp_depth_m'],timeout_s=opts['worker_timeout_s'],include_diagnostics=(self.cfg['compute'].get('grasp_full_diagnostics',True) or self.cfg['compute'].get('grasp_debug_enabled',False)))
+            debug=getattr(self,'grasp_debug',None)
+            if debug is not None:
+                debug.submit(color,depth,self.camera.K,result,dict(request_id=request['id'],
+                    capture_mono_ns=at['capture_mono_ns'],min_depth=opts['min_depth'],max_depth=opts['max_depth']))
+                self.compute_metrics['grasp_debug']=dict(path=str(debug.path),error=debug.error,dropped=debug.dropped)
             self.collision.check_deadline()
             self.compute_metrics['graspnet_worker_elapsed_s']=result.get('elapsed_s')
+            filter_counts=dict(result.get('filter_counts',result.get('counts',{})))
+            self.compute_metrics['grasp_filter_counts']=filter_counts
+            self.compute_metrics['grasp_filter_parameters']=dict(result.get('filter_parameters',{}))
+            if trace is not None:
+                trace.grasps(request,result['grasps'],filter_counts,result.get('filter_parameters',{}))
             if op=='observe_grasp':
                 return dict(observation=dict(found=True,confidence=float(d.conf),graspnet_called=True,grasp_count=len(result['grasps']),capture_mono_ns=at['capture_mono_ns'],capture_ros_ns=at['capture_ros_ns'],frame_age_s=at['frame_age_s'],scene_snapshot=at['scene_snapshot']))
             # Inference may take seconds; rebase the RGB-D anchored transform at
@@ -608,7 +626,7 @@ class Planning:
                 # validate_result separately checks live admission after planning.
                 options=dict(reference_ns=planning_reference_ns)
                 if open_reference:options['gripper_reference']=reference_gripper
-                with planning_stage(self.compute_metrics,'collision_'+name,trace,request,
+                with planning_stage(self.compute_metrics,'collision_'+name,trace,request,progress=progress,
                                     candidate_cost=float(candidate_cost),input_points=len(points)) as stage:
                     try:
                         return self.checked(points,current,has_payload,kind,**options)
@@ -644,8 +662,16 @@ class Planning:
             self.compute_metrics['grasp_rejections']=rejections
             self.compute_metrics['ik_transform_audit']=dict(camera_to_current_arm=cam_to_arm.tolist(), current_odom_arm=odom_now.tolist(), capture_odom_arm=at['odom_arm'].tolist(), capture_arm_camera=at['arm_camera'].tolist(), tcp_frame='End_link', units='m_rad')
             self.compute_metrics['candidate_validation']={}
-            with planning_stage(self.compute_metrics,'selection_including_collision',trace,request):
-                candidate=_select_executable_grasp(self.ik,GeometryOnly(),GraspGroup(result['grasps']),cam_to_arm,g['pregrasp_offset_m'],g.get('retreat_offset_m',g['pregrasp_offset_m']),g['insertion_depth_m'],robot['max_grasp_depth_m'],g['min_base_z_m'],g['min_jaw_z_m'],'rars01',True,True,np.array([g['position_compensation_base_m'][axis] for axis in 'xyz']),g['ik_candidate_limit'],g['cartesian_ik'],g['candidate_selection'],path_validator=validate,rejection_diagnostics=rejections,local_height_filters_enabled=self.cfg.get('local_height_filters_enabled',True),cancel_check=self.collision.check_deadline,selection_metrics=self.compute_metrics['candidate_validation'])
+            audit={} if trace is not None else None
+            if audit is not None:self.compute_metrics['grasp_candidate_audit']=audit
+            try:
+                with planning_stage(self.compute_metrics,'selection_including_collision',trace,request,progress=progress):
+                    candidate=_select_executable_grasp(self.ik,GeometryOnly(),GraspGroup(result['grasps']),cam_to_arm,g['pregrasp_offset_m'],g.get('retreat_offset_m',g['pregrasp_offset_m']),g['insertion_depth_m'],robot['max_grasp_depth_m'],g['min_base_z_m'],g['min_jaw_z_m'],'rars01',True,True,np.array([g['position_compensation_base_m'][axis] for axis in 'xyz']),g['ik_candidate_limit'],g['cartesian_ik'],g['candidate_selection'],path_validator=validate,rejection_diagnostics=rejections,local_height_filters_enabled=self.cfg.get('local_height_filters_enabled',True),cancel_check=self.collision.check_deadline,selection_metrics=self.compute_metrics['candidate_validation'],candidate_diagnostics=audit,verbose=not self.cfg['execution'].get('short_journal_enabled',False))
+            finally:
+                filter_counts.update(self.compute_metrics['candidate_validation'])
+                filter_counts.update({key:audit[key] for key in ('input_count','after_nms',
+                    'candidate_limit','after_candidate_limit','ik_feasible','rejected_depth',
+                    'rejected_base_height','rejected_jaw_height','rejected_ik','selected') if audit is not None and key in audit})
             if candidate is None:
                 if rejected_paths:raise ValueError('NO_COLLISION_FREE_CANDIDATE: '+rejected_paths[-1])
                 if any(item['reason'] in ('DEPTH_LIMIT','BASE_HEIGHT_LIMIT','JAW_HEIGHT_LIMIT') for item in rejections):
@@ -751,6 +777,7 @@ class Planning:
         if getattr(self,'_closed',False):return
         self._closed=True
         if getattr(self,'detection_debug',None) is not None:self.detection_debug.close()
+        if getattr(self,'grasp_debug',None) is not None:self.grasp_debug.close()
         errors=[]
         try:
             if getattr(self,'camera',None) is not None:self.camera.close()

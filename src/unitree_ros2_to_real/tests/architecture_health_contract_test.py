@@ -21,6 +21,49 @@ class HeartbeatContracts(unittest.TestCase):
     def setUp(self):
         self.cfg = load(CONFIG, ROOT)
 
+    def test_perception_timer_publishes_health_with_disabled_and_enabled_timeout(self):
+        # Execute the real timer body without starting ROS, camera or motors.
+        import ast,json,queue,threading
+        from types import SimpleNamespace as NS
+        from unittest.mock import Mock
+        tree=ast.parse((PACKAGE/'scripts/grasp_perception.py').read_text())
+        cls=next(n for n in tree.body if isinstance(n,ast.ClassDef) and n.name=='Perception')
+        method=next(n for n in cls.body if isinstance(n,ast.FunctionDef) and n.name=='tick')
+        scope=dict(time=NS(monotonic=lambda:10000.,monotonic_ns=lambda:10000000000000),
+            dispatch_pending=lambda *args:None,report_scene=lambda *args:None,
+            CONTROLLED_HOME_PHASES=(),String=NS,json=json,queue=queue,verified=lambda checks:True)
+        exec(compile(ast.Module(body=[method],type_ignores=[]),'grasp_perception.tick','exec'),scope)
+        for timeout,busy,camera_ok,scene_ok,expected in (
+            (None,True,True,True,True),(None,False,True,True,True),
+            (None,True,False,True,False),(None,True,True,False,False),
+            (300.,True,True,True,False),(20000.,True,True,True,True)):
+            with self.subTest(timeout=timeout,busy=busy,camera_ok=camera_ok,scene_ok=scene_ok):
+                snapshot=Mock(side_effect=None if scene_ok else ValueError('SCENE_STALE'))
+                node=NS(cfg={'execution':{'state_timeout_s':timeout}},busy=busy,started=0.,reason='READY',
+                    owner_subscription=None,owner=None,native_leg_input=None,odometry_subscription=None,odom=None,
+                    mission_status_subscription=None,mission_status=None,navigation_session='nav',lock=threading.Lock(),
+                    body_source=NS(listener=NS(tf_sub=None,callback=None),select=lambda _:None,diagnostics={}),
+                    scene_buffer=NS(snapshot=snapshot,diagnostics=lambda _:{}),
+                    backend=NS(readiness=lambda:dict(ready=camera_ok,reason='READY' if camera_ok else 'CAMERA_FRAME_STALE'),
+                        camera_mode='active',startup_checks={},compute_metrics={},collision=NS()),
+                    health=Mock(),last_compute={},startup_checks={},leg_reader=NS(status=lambda:{}),completed=queue.Queue())
+                scope['tick'](node)
+                row=json.loads(node.health.publish.call_args.args[0].data)
+                self.assertEqual(row['ready'],expected)
+                self.assertEqual(row['busy'],busy)
+                self.assertIn('last_tick_duration_s',vars(node))
+
+    def test_timing_profile_disables_bulk_disk_recording_without_changing_control(self):
+        self.assertFalse(self.cfg['execution']['diagnostic_recording_enabled'])
+        self.assertFalse(self.cfg['gripper_observation']['recording_enabled'])
+        self.assertTrue(self.cfg['gripper_observation']['enabled'])
+        deployment=yaml.safe_load(Path(self.cfg['paths']['deployment']).read_text())['real_deployment']['r3_commissioning']
+        self.assertFalse(deployment['control_latency']['enabled'])
+        self.assertFalse(deployment['motion_diagnostics']['enabled'])
+        self.assertFalse(deployment['guardian']['status_recording_enabled'])
+        self.assertEqual(deployment['guardian']['priority'],20)
+        self.assertEqual(deployment['guardian']['status_source_timeout_s'],.25)
+
     def test_source_specific_admission_and_later_freshness_share_one_clock(self):
         for name, ttl in [('nav', .60), ('perception', 1.00), ('r3', .50),
                           ('owner', .25), ('base', 1.00), ('scene', 1.00)]:
@@ -73,7 +116,7 @@ class HeartbeatContracts(unittest.TestCase):
         for name in ('r3','owner','nav','perception','compute'):
             self.assertEqual(source_ttl(cfg,name),.25)
         self.assertEqual(source_ttl(cfg,'scene'),1.00)
-        self.assertEqual(cfg['execution']['camera_max_age_s'],1.00)
+        self.assertEqual(cfg['execution']['camera_max_age_s'],2.00)
 
     def test_bad_ttl_is_rejected_and_launch_direct_import_still_works(self):
         spec=importlib.util.spec_from_file_location('standalone_config',PACKAGE/'scripts/mission/config.py')

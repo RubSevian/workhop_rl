@@ -76,6 +76,10 @@ def report_scene(node,reason):
     if (reason!=getattr(node,'_logged_scene_reason',None)
             and now-getattr(node,'_scene_log_time',float('-inf'))>=node.cfg['execution']['diagnostic_log_interval_s']):
         node._logged_scene_reason=reason;node._scene_log_time=now
+        if node.cfg['execution'].get('short_journal_enabled',False):
+            from .terminal_status import reason_text
+            node.get_logger().info('[ДАННЫЕ] '+reason_text(reason)+' ['+reason+']')
+            return
         node.get_logger().info('Scene readiness '+json.dumps(dict(reason=reason,
             tf_pair=node.body_source.diagnostics,streams=node.scene_buffer.diagnostics(time.monotonic_ns()))))
 

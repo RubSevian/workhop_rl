@@ -290,7 +290,11 @@ class PlanningContracts(unittest.TestCase):
         at=copy.deepcopy(sample);at.update(capture_mono_ns=sample['body'].mono_ns,
                     capture_ros_ns=sample['body'].ros_ns,odom_arm=np.eye(4),arm_camera=np.eye(4))
         p.detect=lambda *a:(None,None,NS(conf=.9,bbox_xyxy=[0,0,1,1]),at,np.array([.1,.2,.3]))
-        p.worker=NS(infer=lambda *a,**k:dict(grasps=[1],elapsed_s=.1));p.camera=NS(K=np.eye(3))
+        def infer(*a,**k):
+            self.assertEqual(p.observation_verified['id'],12)
+            self.assertEqual(p.observation_verified['session_id'],'test')
+            return dict(grasps=[1],elapsed_s=.1)
+        p.worker=NS(infer=infer);p.camera=NS(K=np.eye(3))
         p.grasp['graspnet']=dict(num_point=1,min_depth=.1,max_depth=2.,collision_thresh=.01,
                                 voxel_size=.01,target_margin_px=0,target_expand_ratio=1.,worker_timeout_s=1.)
         p.grasp['robot']['rars01'].update(max_grasp_width_m=.1,max_grasp_depth_m=.1)
@@ -318,9 +322,12 @@ class PlanningContracts(unittest.TestCase):
         selection._select_executable_grasp=select
         api=ModuleType('graspnetAPI');api.GraspGroup=lambda value:value
         utils=ModuleType('utils.graspnet_utils')
-        request=dict(operation='grasp_plan',owner={},owner_session_id='arm',navigation_session_id='nav',goal_revision=1)
+        request=dict(id=12,session_id='test',operation='grasp_plan',owner={},owner_session_id='arm',navigation_session_id='nav',goal_revision=1)
         with patch.dict(sys.modules,{'graspnetAPI':api,'utils.graspnet_utils':utils,'rars01_graspnet.real_grasp_selection':selection}),patch('mission.planning.time.monotonic_ns',return_value=sample['body'].mono_ns):
             first=p.execute(request,context);second=p.execute(request,context)
+        self.assertEqual(p.observation_verified['id'],12)
+        self.assertEqual(p.observation_verified['session_id'],'test')
+        self.assertEqual(p.observation_verified['verified_ns'],sample['body'].mono_ns)
         self.assertEqual(len(passes),20)
         self.assertEqual(sum(reference is not None for _,_,reference in passes),8)
         self.assertTrue(all(reference['opening_width_m']==.1 for _,_,reference in passes if reference is not None))
@@ -331,6 +338,10 @@ class PlanningContracts(unittest.TestCase):
         self.assertNotEqual(passes[0][0]['legs'],passes[10][0]['legs'])
         self.assertEqual(len(acquisitions),2)
         self.assertEqual(len(reads),6) # initial, one attempt snapshot, final live admission per attempt
+        p.detect=lambda *a:None
+        with self.assertRaisesRegex(ValueError,'OBJECT_LOST_AFTER_REFINEMENT'):
+            p.execute(request,context)
+        self.assertEqual(p.observation_verified,{})
         self.assertEqual(set(first['grasp_plan']['approved_segments']),{'pregrasp','approach','retreat','close'})
         self.assertNotEqual(first['grasp_plan']['planning_scene_snapshot']['legs'],second['grasp_plan']['planning_scene_snapshot']['legs'])
 

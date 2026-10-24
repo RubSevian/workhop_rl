@@ -119,7 +119,7 @@ class MonitorTests(unittest.TestCase):
         parsed=json.loads(journal.getvalue(),parse_constant=lambda x:self.fail('nonstandard JSON '+x))
         self.assertEqual(parsed['raw'],raw);self.assertEqual(e['evidence']['streams']['arm']['age_s'],'inf')
 
-    def test_general_launch_monitor_default_opt_out_and_preflight(self):
+    def test_general_launch_monitor_default_off_explicit_opt_in_and_preflight(self):
         from launch import LaunchContext
         from launch.actions import RegisterEventHandler
         from launch_ros.actions import Node
@@ -135,7 +135,9 @@ class MonitorTests(unittest.TestCase):
             with patch.object(module,'get_package_prefix',return_value=str(prefix)),patch.object(module,'get_package_share_directory',return_value=str(SCRIPTS.parent)):
                 actions=module._launch(c)
                 is_monitor=lambda action:isinstance(action,Node) and 'architecture_monitor.py' in str(action.node_executable)
-                self.assertEqual(sum(map(is_monitor,actions)),1);self.assertTrue(is_monitor(actions[0]))
+                self.assertFalse(any(map(is_monitor,actions)))
+                c.launch_configurations['architecture_monitor']='true'
+                self.assertEqual(sum(map(is_monitor,module._launch(c))),1)
                 c.launch_configurations['architecture_monitor']='false';self.assertFalse(any(map(is_monitor,module._launch(c))))
                 c.launch_configurations.update(architecture_monitor='true',physical='true',test_mode='ready_observe')
                 actions=module._launch(c);self.assertTrue(is_monitor(actions[0]));self.assertEqual(sum(map(is_monitor,actions)),1)

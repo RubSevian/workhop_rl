@@ -121,6 +121,22 @@ int main(){
   assert(stub.state()=="SUCCEEDED"&&stub.holding()&&!stub.HoldConfirmed(f));
   if(final_grip==0)assert(stub.command().torque[6]==0);
  }
+ // Closing publishes a final non-grasp status immediately at either zero-band edge.
+ {
+  auto c=cfg;c.close_duration_s=8.;c.assessment.enabled=true;
+  c.assessment.negative_tolerance=.025;c.assessment.confirmation_duration_s=2.;
+  for(float q:{-.025F,0.F,.025F}){
+   FreshStream empty(c);auto f=feedback;f.joints.position[6]=.8;
+   assert(empty.Start(1,"close",std::vector<std::array<float,7>>(2,f.joints.position),at(200),f));
+   f.joints.position[6]=q;empty.Tick(at(200.01),f,true);
+   assert(empty.state()=="SUCCEEDED");assert(empty.assessment().state()=="NOT_GRASPED");
+  }
+  FreshStream contact(c);auto f=feedback;f.joints.position[6]=.7;
+  assert(contact.Start(1,"close",std::vector<std::array<float,7>>(2,f.joints.position),at(210),f));
+  for(int n=0;n<200;++n)contact.Tick(at(210+n*.01),f,true);
+  assert(contact.busy());contact.Tick(at(212.01),f,true);
+  assert(contact.state()=="SUCCEEDED");assert(contact.assessment().state()=="GRASPED");
+ }
  // Waiting for the next plan preserves the completed trajectory target.
  {
   FreshStream waiting(cfg);AutoHomeStatus f=feedback;f.joints.position.fill(0);f.joints.velocity.fill(0);

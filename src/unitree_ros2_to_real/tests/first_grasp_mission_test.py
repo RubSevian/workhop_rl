@@ -95,6 +95,35 @@ class Fixture:
         raise AssertionError(self.m.status(self.now))
 
 class Integration(unittest.TestCase):
+    def test_disabled_deadlines_allow_long_healthy_wait_but_cancel_still_works(self):
+        for phase in ('NAVIGATING','ARM_SEARCH','PLAN_GRASP'):
+            with self.subTest(phase=phase):
+                f,request=self.observation_fixture()
+                f.m.transition(phase,f.now)
+                f.m.pending=dict(id=999,operation='grasp_plan',kind='compute',at=f.now)
+                f.nav['goal']['state']='ACTIVE'
+                f.now+=10000.;f.tick(False)
+                self.assertEqual(f.m.state,phase)
+                f.m.cancel(f.now,'OPERATOR_CANCEL')
+                self.assertEqual(f.m.state,'CANCELLED')
+                self.assertIsNone(f.m.pending)
+
+    def test_failed_close_continues_retreat_home_without_claiming_grasp(self):
+        for trial in (False,True):
+            f=Fixture();f.m.cfg['operator_trial']=trial
+            f.owner['grasp_assessment']='NOT_GRASPED';f.feed()
+            f.m.done_motion('close',f.now)
+            self.assertEqual(f.m.reason,'TARGET_NOT_GRASPED_CONTINUING')
+            self.assertEqual(f.m.state,'WAIT_RETREAT_APPROVAL' if trial else 'RETREAT')
+            self.assertEqual(f.m.pending['operation'],'retreat')
+            f.m.done_motion('retreat',f.now)
+            self.assertEqual(f.m.pending['operation'],'home')
+            f.m.done_motion('home',f.now)
+            self.assertEqual(f.m.state,'TARGET_NOT_GRASPED')
+        f=Fixture();f.owner.update(grasp_assessment='UNKNOWN',grasp_assessment_reason='FEEDBACK_INVALID_OR_STALE');f.feed()
+        f.m.done_motion('close',f.now)
+        self.assertEqual(f.m.state,'BLOCKED')
+
     def observation_fixture(self):
         f=Fixture();f.start()
         for _ in range(400):
@@ -173,6 +202,54 @@ class Integration(unittest.TestCase):
         f.now=since+31.;f.tick(False)
         self.assertEqual(f.m.state,'BLOCKED')
         self.assertTrue(f.m.reason.startswith('OBSERVATION_RECOVERY_TIMEOUT:'))
+
+    def grasp_retry_fixture(self):
+        f,detect=self.observation_fixture()
+        f.m.result(f.compute(detect),f.now)
+        request=next(data for kind,data in f.m.drain() if kind=='compute')
+        failed=f.compute(request);failed.update(ok=False,reason='RGBD_STALE_OR_REPEATED')
+        f.m.result(failed,f.now)
+        for _ in range(30):
+            for kind,retry in f.tick(False):
+                if kind=='compute':
+                    marker={key:retry[key] for key in ('id','operation','session_id',
+                        'navigation_session_id','owner_session_id','goal_revision')}
+                    marker['verified_ns']=int(f.now*1e9)
+                    return f,retry,marker
+        self.fail('No retry')
+
+    def test_verified_retry_ends_recovery_but_keeps_planning_deadline(self):
+        f,retry,marker=self.grasp_retry_fixture();since=f.m.recovery_since
+        f.m.cfg['execution']['state_timeout_s']=300.
+        entered=f.m.entered;commands=f.commands
+        f.perception['observation_verified']=marker;f.tick(False)
+        self.assertIsNone(f.m.recovery_since);self.assertFalse(f.m.recovery_retry_active)
+        f.now=since+31.;f.tick(False)
+        self.assertEqual(f.m.state,'PLAN_GRASP');self.assertEqual(f.m.pending['id'],retry['id'])
+        self.assertEqual(f.commands,commands);self.assertEqual(f.m.entered,entered)
+        # The old milestone cannot clear a later live-feedback outage.
+        f.perception.update(ready=False,reason='SCENE_SNAPSHOT_STALE:live_arm')
+        f.tick(False);new_since=f.m.recovery_since
+        f.tick(False);self.assertEqual(f.m.recovery_since,new_since)
+        f.perception.update(ready=True,reason='READY');f.tick(False)
+        f.now=entered+f.m.cfg['execution']['state_timeout_s']+.1;f.tick(False)
+        self.assertEqual(f.m.state,'BLOCKED');self.assertEqual(f.m.reason,'PHASE_TIMEOUT')
+
+    def test_unverified_or_late_retry_milestone_cannot_clear_deadline(self):
+        for invalid in ('id','session_id','navigation_session_id','owner_session_id',
+                        'goal_revision','operation','before_request','future','late','stale_health','stale_scene'):
+            with self.subTest(invalid=invalid):
+                f,retry,marker=self.grasp_retry_fixture();since=f.m.recovery_since
+                if invalid=='before_request':marker['verified_ns']=int((retry['at']-.1)*1e9)
+                elif invalid=='future':marker['verified_ns']=int((f.now+10)*1e9)
+                elif invalid=='late':f.now=since+31.;marker['verified_ns']=int(f.now*1e9)
+                elif invalid not in ('stale_health','stale_scene'):marker[invalid]='wrong'
+                f.perception['observation_verified']=marker;f.feed()
+                if invalid=='stale_health':f.m.received['perception']=f.now-2.
+                if invalid=='stale_scene':f.m.inputs['scene']['live_feedback_ns']=int((f.now-.4)*1e9)
+                f.m.wait_for_observation(f.now)
+                self.assertEqual(f.m.recovery_since,since)
+                if invalid=='late':self.assertEqual(f.m.state,'BLOCKED')
 
     def test_ready_status_cannot_clear_recovery_with_stale_measurements(self):
         f,request=self.observation_fixture()
@@ -276,6 +353,47 @@ class Integration(unittest.TestCase):
         self.assertEqual(a['streams']['owner']['publishers'],2)
         d.callback('nav',1.6,1.61,'accepted',{'observed_ns':1600000000},1)
         self.assertEqual(r['callbacks'],2) # frozen report is not a live view
+
+    def test_immediately_succeeded_goal_still_waits_for_zero_and_settle(self):
+        f=Fixture();f.tick()
+        f.nav['goal']=dict(revision=1,stamp_ns=int((f.now+.01)*1e9),state='SUCCEEDED')
+        self.assertEqual(f.tick(False),[]);self.assertEqual(f.m.state,'NAVIGATING')
+        self.assertEqual(f.tick(False),[]);self.assertEqual(f.m.state,'BASE_SETTLE')
+        f.r3['motion_command']=[.1,0,0]
+        self.assertEqual(f.tick(False),[])
+        self.assertEqual(f.m.stability_reason,'WAITING_FOR_RL_ZERO')
+        self.assertIsNone(f.m.stable_since)
+        f.r3['motion_command']=[0,0,0];f.tick(False)
+        since=f.m.stable_since;self.assertIsNotNone(since)
+        f.now=since+f.m.cfg['settle']['min_stable_s']-.1
+        self.assertEqual(f.tick(False),[]);self.assertEqual(f.m.state,'BASE_SETTLE')
+        f.now=since+f.m.cfg['settle']['min_stable_s']
+        effects=f.tick(False)
+        self.assertEqual(f.m.state,'ARM_SCAN_POSE')
+        self.assertEqual([(kind,data['operation']) for kind,data in effects],[('compute','scan_pose')])
+        self.assertEqual(f.commands,0)
+
+    def test_succeeded_goal_does_not_bypass_identity_or_failure_guards(self):
+        for case in ('old_revision','old_stamp','wrong_session','cancelled','failed','localization_lost'):
+            with self.subTest(case=case):
+                f=Fixture();f.tick()
+                f.nav['goal']=dict(revision=1,stamp_ns=int((f.now+.01)*1e9),state='SUCCEEDED')
+                if case=='old_revision':f.nav['goal']['revision']=f.m.last_revision
+                elif case=='old_stamp':f.nav['goal']['stamp_ns']=f.m.armed_ros_ns
+                elif case=='wrong_session':f.nav['session_id']='another-navigation'
+                else:f.nav['goal']['state']=case.upper()
+                effects=f.tick(False)
+                self.assertEqual(f.m.state,'CANCELLED' if case=='wrong_session' else 'WAIT_GOAL')
+                self.assertFalse(any(kind in ('compute','trajectory') for kind,_ in effects))
+
+    def test_succeeded_goal_from_before_localization_recovery_is_not_reused(self):
+        f=Fixture();f.tick();f.nav['navigation_ready']=False;f.tick(False)
+        f.nav['goal']=dict(revision=1,stamp_ns=int(f.now*1e9),state='SUCCEEDED')
+        f.nav['navigation_ready']=True;f.tick(False)
+        self.assertEqual(f.m.reason,'RECOVERED_NEW_GOAL_REQUIRED')
+        self.assertEqual(f.tick(False),[]);self.assertEqual(f.m.state,'WAIT_GOAL')
+        f.nav['goal']=dict(revision=2,stamp_ns=int((f.now+.01)*1e9),state='SUCCEEDED')
+        f.tick(False);self.assertEqual(f.m.state,'NAVIGATING')
 
     def test_wait_goal_nav_stale_recovers_requires_new_goal(self):
         f=Fixture();f.tick();f.feed();f.m.received['nav']=f.now-.601
@@ -489,10 +607,11 @@ class Integration(unittest.TestCase):
         q=np.asarray(points)[:,0]
         self.assertLessEqual(np.max(np.abs(np.diff(q)))/.01,search['speed_rad_s'])
         self.assertTrue(np.all(np.diff(q)<=0));self.assertAlmostEqual(q[-1],angles[2])
-        self.assertGreater(search['timeout_s'],duration*(len(angles)-1)+search['settle_s']*len(angles))
+        self.assertIsNone(search['timeout_s'])
         _,entry_duration=joint_motion_samples([0.],[angles[1]],.01,.01,[search['speed_rad_s']])
         self.assertLessEqual(entry_duration,CFG['execution']['max_plan_duration_s'])
-        self.assertGreater(CFG['execution']['state_timeout_s'],entry_duration+CFG['collision']['check_timeout_s'])
+        self.assertIsNone(CFG['execution']['state_timeout_s'])
+        self.assertIsNone(CFG['collision']['check_timeout_s'])
         raw=yaml.safe_load((ROOT/'repos/rars01_graspnet/config/jetson_orin_nano.yaml').read_text())['go2_mission']
         with tempfile.TemporaryDirectory(prefix='wide-search-config-') as directory:
             path=Path(directory)/'mission.yaml'

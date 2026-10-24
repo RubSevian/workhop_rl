@@ -145,7 +145,7 @@ def main():
     rclpy.init(args=[], signal_handler_options=SignalHandlerOptions.NO)
     node = Node('r3_rt_guardian', namespace='/diagnostics', enable_rosout=False, start_parameter_services=False)
     status = None;status_ns = 0;stable = 0;previous_sent = None;status_error = None
-    status_log = (out / 'status.jsonl').open('w')
+    status_log = (out / 'status.jsonl').open('w') if config.get('status_recording_enabled',True) else None
     def receive(message, info):
         nonlocal status, status_ns, stable, previous_sent, status_error
         try:
@@ -158,7 +158,8 @@ def main():
                 raise RuntimeError('Invalid packet counter')
             stable = stable + 1 if sent == previous_sent else 0;previous_sent = sent
             status = value;status_ns = time.monotonic_ns()
-            status_log.write(json.dumps(dict(mono_ns=status_ns, status=value)) + '\n');status_log.flush()
+            if status_log is not None:
+                status_log.write(json.dumps(dict(mono_ns=status_ns, status=value)) + '\n');status_log.flush()
         except Exception as exc:
             status_error = str(exc)
     status_topic = '/timing/probe_status' if compute_probe else '/go2/locomotion_status'
@@ -321,7 +322,9 @@ def main():
                       own_actuator_commands=0, independent_physical_stop_confirmed=False)
         (out / 'result.json').write_text(json.dumps(result, indent=2)+'\n')
         event(result=result);print('R3 RT result: '+json.dumps(result), flush=True)
-        tail.close();log.close();events.close();status_log.close();os.close(pfd)
+        tail.close();log.close();events.close()
+        if status_log is not None:status_log.close()
+        os.close(pfd)
         node.destroy_node();rclpy.try_shutdown();os.sched_setaffinity(0, affinity)
     return 0 if failure is None and proof and proc.returncode == 0 else 1
 

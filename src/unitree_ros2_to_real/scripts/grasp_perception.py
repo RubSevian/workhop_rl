@@ -32,6 +32,7 @@ from mission.arm_fast_state import to_mapping
 from mission.leg_state_reader import LegStateReader
 from mission.ros_scene import ROSBodySource, report_scene
 from mission.startup import MARKER,verified
+from mission.short_journal import make_short_journal
 
 class Perception(Node):
     def __init__(self):
@@ -44,7 +45,9 @@ class Perception(Node):
         if mode:self.cfg['test_mode']=mode
         apply_operator_trial(self.cfg,self.declare_parameter('operator_trial',False).value)
         self.body_source=ROSBodySource(self,self.cfg);self.scene_buffer=SceneBuffer(self.cfg)
-        self.leg_plan_trace=LegPlanTrace(Path(self.get_parameter('workspace').value)/'runtime/leg_plan_trace')
+        self.leg_plan_trace=(LegPlanTrace(Path(self.get_parameter('workspace').value)/'runtime/leg_plan_trace')
+                             if self.cfg['execution'].get('diagnostic_recording_enabled',True) else None)
+        self.short_journal=make_short_journal(self.cfg,self.get_parameter('workspace').value,'perception',time.monotonic_ns())
         self.trace_owner={}
         self.arm_state_transport=self.declare_parameter('arm_state_transport','yaml').value
         if self.arm_state_transport not in ('yaml','typed'):raise ValueError('ARM_STATE_TRANSPORT')
@@ -219,6 +222,9 @@ class Perception(Node):
             self.request_session=d['session_id'];self.last_request=d['id'];self.busy=True;self.started=time.monotonic()
             self.compute_cancel.begin(d)
             self.jobs.put_nowait(d)
+            journal=getattr(self,'short_journal',None)
+            if journal is not None:
+                journal.put('compute_started',request_id=d['id'],mission_session_id=d['session_id'],operation=d['operation'])
         except (ValueError,KeyError,TypeError,queue.Full):return
 
     def work(self):
@@ -232,10 +238,15 @@ class Perception(Node):
                 self.get_logger().info(self.reason)
             self.backend=Planning(self.cfg,progress=progress,startup_checks=self.startup_checks)
             self.backend.plan_trace=getattr(self,'leg_plan_trace',None)
+            self.backend.short_journal=getattr(self,'short_journal',None)
             self.backend.collision.cancel_check=self.compute_cancel.check
             if self.cfg['execution'].get('detection_debug_enabled',False):
                 from mission.detection_debug import DetectionDebug
-                self.backend.detection_debug=DetectionDebug(Path(self.get_parameter('workspace').value)/'runtime/detection_debug')
+                self.backend.detection_debug=DetectionDebug(Path(self.get_parameter('workspace').value)/'runtime/detection_debug',
+                    archive=self.cfg['execution'].get('diagnostic_recording_enabled',True))
+            if self.cfg['compute'].get('grasp_debug_enabled',False):
+                from mission.grasp_debug import GraspDebug
+                self.backend.grasp_debug=GraspDebug(Path(self.get_parameter('workspace').value)/'runtime/grasp_debug')
             if self.stop_event.is_set():return
             if not verified(self.backend.startup_checks):raise RuntimeError('PRELOAD_CHECKS_INCOMPLETE')
             self.reason='READY'
@@ -251,6 +262,7 @@ class Perception(Node):
                 if getattr(self,'controlled_stop',False) and (request['operation']!='home' or self.r3_phase not in CONTROLLED_HOME_PHASES):
                     self.busy=False;continue
                 compute_started=time.monotonic();self.backend.compute_metrics={}
+                self.backend.observation_verified={}
                 self.backend.collision.last_stats={}
                 self.backend.collision.cancel_reason=''
                 if getattr(self,'controlled_stop',False) and request['operation']!='home':
@@ -259,7 +271,7 @@ class Perception(Node):
                 # candidate loop/rebuild. This does not change candidate cost.
                 try:
                     budget={'detect':self.cfg['search']['timeout_s']}.get(request['operation'],self.cfg['execution']['state_timeout_s'])
-                    self.backend.collision.work_deadline_ns=request['observed_ns']+int(budget*1e9)
+                    self.backend.collision.work_deadline_ns=None if budget is None else request['observed_ns']+int(budget*1e9)
                     self.backend.collision.check_deadline()
                     result=self.backend.execute(request,self.sample_context)
                     validation_started_ns=time.monotonic_ns()
@@ -271,7 +283,11 @@ class Perception(Node):
                     out.update(ok=False,reason=str(e) or type(e).__name__)
                     if request['operation']=='grasp_plan':
                         diagnostics={key:self.backend.compute_metrics.get(key,[]) for key in ('grasp_rejections','collision_rejections')}
-                        self.get_logger().warning('GRASP_PLAN_REJECTED '+json.dumps(dict(reason=out['reason'],**diagnostics),ensure_ascii=False))
+                        if self.cfg['execution'].get('short_journal_enabled',False):
+                            from mission.terminal_status import reason_text
+                            self.get_logger().warning('[РАСЧЁТ] '+reason_text(out['reason'])+' ['+out['reason']+']')
+                        else:
+                            self.get_logger().warning('GRASP_PLAN_REJECTED '+json.dumps(dict(reason=out['reason'],**diagnostics),ensure_ascii=False))
                 finally:
                     self.backend.compute_metrics['collision_profile']=dict(getattr(self.backend.collision,'last_stats',{}))
                     self.backend.collision.work_deadline_ns=None
@@ -280,10 +296,13 @@ class Perception(Node):
                 if debug is not None:self.backend.compute_metrics['detection_debug']=dict(directory=str(debug.directory),error=debug.error,dropped=debug.dropped)
                 compute_metrics=dict(operation=request['operation'],elapsed_s=time.monotonic()-compute_started,**self.backend.compute_metrics)
                 compute_metrics['ik_summary']=ik_summary(compute_metrics.get('ik_calls',[]))
-                self.leg_plan_trace.result(request,out,compute_metrics)
+                if self.leg_plan_trace is not None:self.leg_plan_trace.result(request,out,compute_metrics)
+                journal=getattr(self,'short_journal',None)
+                if journal is not None:journal.compute(request,out,compute_metrics)
                 # Detailed IK targets/seeds stay in the asynchronous disk trace,
                 # never in periodically published ROS health/status messages.
                 ik_calls=compute_metrics.pop('ik_calls',[])
+                compute_metrics.pop('grasp_candidate_audit',None)
                 compute_metrics['ik_summary']=ik_summary(ik_calls)
                 self.last_compute=compute_metrics
                 out['compute_metrics']=dict(self.last_compute)
@@ -323,6 +342,8 @@ class Perception(Node):
                 except queue.Empty:break
         trace=getattr(self,'leg_plan_trace',None)
         if trace is not None:trace.close()
+        journal=getattr(self,'short_journal',None)
+        if journal is not None:journal.close()
         return super().destroy_node()
 
     def tick(self):
@@ -359,7 +380,8 @@ class Perception(Node):
                and not self.scene_error
                and (not getattr(self,'controlled_stop',False) or self.r3_phase in CONTROLLED_HOME_PHASES)
                and runtime_readiness['ready']
-               and (not self.busy or now-self.started<self.cfg['execution']['state_timeout_s']))
+               and (not self.busy or self.cfg['execution']['state_timeout_s'] is None
+                    or now-self.started<self.cfg['execution']['state_timeout_s']))
         reason=(self.scene_error or self.reason) if self.backend is not None else self.reason
         if self.backend is not None and not runtime_readiness['ready']:
             reason=runtime_readiness['reason']
@@ -376,7 +398,9 @@ class Perception(Node):
             inference_nice=getattr(self,'inference_nice',None),
             preload_ready=self.backend is not None and verified(self.backend.startup_checks),
             camera_mode=camera_mode,runtime_readiness=runtime_readiness,
+            observation_verified=dict(getattr(self.backend,'observation_verified',{})),
             planning_progress=dict(self.backend.compute_metrics.get('active_stage') or {}) if self.backend else {},
+            short_journal=self.short_journal.status() if getattr(self,'short_journal',None) else None,
             collision_progress=dict(getattr(self.backend.collision,'last_stats',{})) if self.backend else {},
             leg_plan_trace=dict(path=str(trace.path),error=trace.error,dropped=trace.dropped) if trace else None,
             lowstate_decode=(self.native_leg_input.status() if getattr(self,'native_leg_input',None) else self.leg_reader.status()),tf_pair=dict(self.body_source.diagnostics),streams=self.scene_buffer.diagnostics(time.monotonic_ns())))))

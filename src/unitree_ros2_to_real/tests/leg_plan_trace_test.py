@@ -58,6 +58,23 @@ class Tests(unittest.TestCase):
             self.assertEqual(row['operation_id'],7)
             self.assertEqual(trace.error,'')
 
+    def test_original_candidates_written_off_callback_and_audit_survives_status_removal(self):
+        import numpy as np
+        with tempfile.TemporaryDirectory() as root:
+            trace=LegPlanTrace(root);request=dict(id=10,operation='grasp_plan',session_id='session')
+            candidates=np.arange(34,dtype=float).reshape(2,17)
+            trace.grasps(request,candidates,dict(after_depth=2),dict(max_grasp_width_m=.1))
+            candidates[:]=99
+            metrics=dict(grasp_candidate_audit=dict(after_nms=1,orientations=[dict(candidate='rank=1 flip=0')]))
+            trace.result(request,dict(ok=False,reason='IK_FAIL'),metrics)
+            metrics.pop('grasp_candidate_audit')
+            trace.close()
+            rows=[json.loads(line) for line in trace.path.read_text().splitlines()]
+            self.assertEqual(trace.error,'');self.assertEqual(rows[0]['record_type'],'grasp_candidates')
+            self.assertEqual(rows[0]['grasps'][0],list(range(17)))
+            self.assertEqual(rows[0]['filter_counts']['after_depth'],2)
+            self.assertEqual(rows[1]['metrics']['grasp_candidate_audit']['after_nms'],1)
+
     def test_file_error_is_diagnostic_only(self):
         with tempfile.TemporaryDirectory() as root:
             blocker=Path(root)/'file';blocker.write_text('not a directory')

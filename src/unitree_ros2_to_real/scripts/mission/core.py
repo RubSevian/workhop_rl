@@ -40,6 +40,7 @@ class Mission:
         self.stability_reason='';self.stability_restarts=0
         self.result_after_home = 'MISSION_COMPLETED_UNVERIFIED'
         self.grasp_plan = None
+        self.close_outcome='MISSION_COMPLETED_UNVERIFIED'
         self.object_anchor=None;self.q_search=None;self.grasp_attempt=0
         self.attempt_segments=[];self.last_grasp_error=''
         self.last_now = 0.
@@ -129,7 +130,10 @@ class Mission:
             return self.drain()
         self.reason='' if vision_ok else 'PERCEPTION_STATUS_UNAVAILABLE' if not self.fresh('perception',now) else 'PERCEPTION_NOT_READY'
         goal=nav['goal']
-        if goal['revision']>self.last_revision and goal.get('stamp_ns',0)>self.armed_ros_ns and goal['state'] in ('REQUESTED','ACTIVE'):
+        # A nearby goal may complete before the first status reaches us.
+        # Accept its new identity, then use the normal NAVIGATING -> BASE_SETTLE
+        # path so post-goal zero acknowledgement and settling still apply.
+        if goal['revision']>self.last_revision and goal.get('stamp_ns',0)>self.armed_ros_ns and goal['state'] in ('REQUESTED','ACTIVE','SUCCEEDED'):
             self.started=now;self.revision,self.goal_stamp=goal['revision'],goal['stamp_ns']
             self.transition('NAVIGATING',now)
         return self.drain()
@@ -187,6 +191,30 @@ class Mission:
     def clear_recovery(self):
         self.recovery_since=None;self.recovery_reason='';self.retry_operation=None;self.recovery_retry_active=False
 
+    def verified_retry_observation(self, now):
+        """Accept only the current retry's milestone before its recovery deadline.
+
+        This ends observation recovery, never refreshes scene/authority leases
+        or changes the original planning phase deadline.
+        """
+        p=self.pending
+        if (not self.recovery_retry_active or self.recovery_since is None
+                or self.retry_operation or not p or p['kind']!='compute'
+                or p['operation'] not in ('grasp_plan','observe_grasp')
+                or not self.fresh('perception',now)):
+            return False
+        marker=self.inputs['perception'].get('observation_verified')
+        if not isinstance(marker,dict):return False
+        expected=dict(id=p['id'],operation=p['operation'],session_id=self.session,
+            navigation_session_id=self.nav_session,owner_session_id=self.owner_session,
+            goal_revision=self.revision)
+        if any(marker.get(key)!=value for key,value in expected.items()):return False
+        stamp=marker.get('verified_ns')
+        deadline=self.recovery_since+self.cfg['execution'].get('observation_recovery_timeout_s',30.)
+        return (isinstance(stamp,int) and not isinstance(stamp,bool)
+                and int(max(p['at'],self.recovery_since)*1e9)<=stamp<=int(now*1e9)
+                and now<deadline)
+
     def wait_for_observation(self, now):
         """Wait only at rest, never renew a scene lease or resume a trajectory."""
         if self.state in ('WAIT_GOAL','NAVIGATING'):return False
@@ -213,10 +241,12 @@ class Mission:
             self.defer_observation(reason,now)
         if self.retry_operation and not stationary:
             self.cancel(now,'OBSERVATION_RETRY_NOT_STATIONARY',True);return True
+        if not reason and stationary and self.verified_retry_observation(now):
+            self.clear_recovery()
         if self.recovery_since is not None:
             if now-self.recovery_since>=self.cfg['execution'].get('observation_recovery_timeout_s',30.):
                 self.cancel(now,'OBSERVATION_RECOVERY_TIMEOUT:'+self.recovery_reason,True);return True
-            if now-self.entered>self.cfg['execution']['state_timeout_s'] and self.state in ARM_PHASES:
+            if (self.cfg['execution']['state_timeout_s'] is not None and now-self.entered>self.cfg['execution']['state_timeout_s']) and self.state in ARM_PHASES:
                 self.cancel(now,'PHASE_TIMEOUT',True);return True
             if reason:
                 return True
@@ -260,11 +290,11 @@ class Mission:
             self.request('close', now)
         elif operation == 'close':
             assessment=self.inputs['owner'].get('grasp_assessment','UNKNOWN')
-            if assessment=='GRASPED':
+            if assessment in ('GRASPED','NOT_GRASPED'):
+                self.close_outcome='GRASP_PRESUMED_SUCCESS' if assessment=='GRASPED' else 'TARGET_NOT_GRASPED'
                 self.transition('WAIT_RETREAT_APPROVAL' if self.cfg.get('operator_trial') else 'RETREAT',now,
-                    'OPERATOR_RETREAT_APPROVAL_REQUIRED' if self.cfg.get('operator_trial') else '')
+                    'TARGET_NOT_GRASPED_CONTINUING' if assessment=='NOT_GRASPED' else ('OPERATOR_RETREAT_APPROVAL_REQUIRED' if self.cfg.get('operator_trial') else ''))
                 self.request('retreat',now)
-            elif assessment=='NOT_GRASPED':self.failed_grasp_attempt('TORQUE_WIDTH_NOT_SATISFIED',now)
             else:self.cancel(now,'GRASP_ASSESSMENT_UNKNOWN:'+self.inputs['owner'].get('grasp_assessment_reason','NO_VALID_ASSESSMENT'),True)
         elif operation=='retry_open':
             self.request('reverse_search',now)
@@ -275,7 +305,7 @@ class Mission:
                 self.transition('PLAN_GRASP',now,'RETRY_AT_Q_SEARCH');self.request('grasp_plan',now)
             else:self.cancel(now,'Q_SEARCH_NOT_REACHED',True)
         elif operation == 'retreat':
-            self.go_home('GRASP_PRESUMED_SUCCESS', now)
+            self.go_home(self.close_outcome, now)
         elif operation == 'home':
             owner = self.inputs['owner']
             if not owner.get('arm_home_ready'):
@@ -423,7 +453,7 @@ class Mission:
             self.cancel(now, 'SESSION_CHANGED')
         elif not nav.get('navigation_ready') or not owner.get('feedback_ready') or not owner.get('target_valid'):
             self.cancel(now, 'TF_ODOM_ARM_OR_PERCEPTION_INVALID', True)
-        elif self.state!='WAIT_GOAL' and now-self.started > self.cfg['execution']['mission_timeout_s']:
+        elif self.state!='WAIT_GOAL' and (self.cfg['execution']['mission_timeout_s'] is not None and now-self.started > self.cfg['execution']['mission_timeout_s']):
             self.cancel(now, 'MISSION_TIMEOUT', True)
         elif self.state!='WAIT_GOAL' and (nav['goal']['revision'] != self.revision or nav['goal'].get('stamp_ns')!=self.goal_stamp):
             self.cancel(now, 'GOAL_REPLACED')
@@ -438,7 +468,7 @@ class Mission:
                 self.transition('BASE_SETTLE', now)
             elif goal_state not in ('REQUESTED','ACTIVE'):
                 self.cancel(now, 'NAV_' + goal_state)
-            elif now-self.entered > self.cfg['execution']['navigation_timeout_s']:
+            elif (self.cfg['execution']['navigation_timeout_s'] is not None and now-self.entered > self.cfg['execution']['navigation_timeout_s']):
                 self.cancel(now, 'NAV_TIMEOUT', True)
         elif self.state in ARM_PHASES:
             command = r3.get('motion_command', [])
@@ -508,7 +538,7 @@ class Mission:
                             self.done_motion(p['operation'], now)
                         elif owner.get('mission_state') in ('FAILED','CANCELLED'):
                             self.cancel(now, owner.get('mission_error','OWNER_REJECTED'), True)
-                    elif now-p['at'] > self.cfg['execution']['state_timeout_s']:
+                    elif (self.cfg['execution']['state_timeout_s'] is not None and now-p['at'] > self.cfg['execution']['state_timeout_s']):
                         self.cancel(now, 'OWNER_PLAN_NOT_ACCEPTED:'+owner.get('mission_blocker',''), True)
                 elif not self.pending and now >= self.detect_at:
                     if self.state == 'ARM_SEARCH':
@@ -516,7 +546,7 @@ class Mission:
                     elif self.state == 'PLAN_GRASP':
                         self.request('grasp_plan', now)
             timeout={'ARM_SEARCH':self.cfg['search']['timeout_s'],'VIEW_REFINEMENT':self.cfg['execution']['state_timeout_s']}.get(self.state,self.cfg['execution']['state_timeout_s'])
-            if self.state not in TERMINAL and now-self.entered > timeout:
+            if self.state not in TERMINAL and timeout is not None and now-self.entered > timeout:
                 self.cancel(now, 'PHASE_TIMEOUT', True)
         return self.drain()
 

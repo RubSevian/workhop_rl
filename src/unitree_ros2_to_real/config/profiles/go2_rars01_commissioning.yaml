@@ -202,20 +202,21 @@ real_deployment:
       launch_sigkill_timeout_s: 86400
     # Scheduling/lock trace: bounded queue, asynchronous disk writer.
     control_latency:
-      enabled: true
+      enabled: false
       duration_s: 540.0
       path: /home/ruben/go2_diploma/sim2real/runtime/control_latency
       queue_capacity: 8192
       flush_ms: 250
       writer_idle_ms: 5
     motion_diagnostics:
-      enabled: true
+      enabled: false
       duration_s: 540.0
       path: /home/ruben/go2_diploma/sim2real/runtime/manual_rl_nav_motion
       queue_capacity: 256
       writer_idle_ms: 20
       max_duration_s: 600.0
     guardian:
+      status_recording_enabled: false # Без непрерывной копии статусов; проверки и рабочее состояние сохраняются.
       log_root: /home/ruben/go2_diploma/sim2real/runtime/r3_rt
       priority: 20
       status_source_timeout_s: 0.25

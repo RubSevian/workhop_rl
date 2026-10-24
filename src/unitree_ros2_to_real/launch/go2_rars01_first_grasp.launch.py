@@ -28,7 +28,7 @@ def _launch(context):
     failures=module.blockers(cfg)
     if physical and (not cfg['physical_enabled'] or failures):
         raise RuntimeError('PHYSICAL_NOT_READY: '+', '.join(failures+([] if cfg['physical_enabled'] else ['mission_physical_disabled'])))
-    monitor_enabled=LaunchConfiguration('architecture_monitor',default='true').perform(context)
+    monitor_enabled=LaunchConfiguration('architecture_monitor',default='false').perform(context)
     if monitor_enabled not in ('true','false'):raise ValueError('architecture_monitor must be true/false')
     monitor_path=LaunchConfiguration('monitor_jsonl',default='').perform(context)
     if not monitor_path:monitor_path=str(Path(get('workspace'))/'runtime/architecture_monitor'/('snapshots_'+str(time.time_ns())+'.jsonl'))
@@ -94,7 +94,7 @@ def generate_launch_description():
         DeclareLaunchArgument('test_mode',default_value='',description='full or ready_observe diagnostic; empty uses YAML'),
         DeclareLaunchArgument('operator_trial',default_value='false',description='Explicit full commissioning: owner holds before every RETREAT until one-shot operator approval; no qualification flags changed'),
         DeclareLaunchArgument('controlled_stop_lie_down_trial',default_value='',description='Existing R3 commissioning descent override; empty uses profile, never validation'),
-        DeclareLaunchArgument('architecture_monitor',default_value='true',description='Read-only transition events and complete received-status journal'),
+        DeclareLaunchArgument('architecture_monitor',default_value='false',description='Read-only transition events and complete received-status journal; disabled for timing tests'),
         DeclareLaunchArgument('monitor_jsonl',default_value='',description='Snapshot JSONL path; empty creates a session file under workspace/runtime/architecture_monitor'),
         DeclareLaunchArgument('start_arm_owner',default_value='true'),
         DeclareLaunchArgument('network_interface',default_value='enP8p1s0'),

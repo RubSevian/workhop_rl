@@ -89,14 +89,16 @@ def load(path, workspace):
             if group == 'refinement' and key == 'enabled':
                 if type(value) is not bool:raise ValueError('invalid refinement.enabled')
                 continue
-            if group == 'execution' and key == 'detection_debug_enabled':
-                if type(value) is not bool:raise ValueError('invalid execution.detection_debug_enabled')
+            if group == 'execution' and key in ('detection_debug_enabled','diagnostic_recording_enabled','short_journal_enabled'):
+                if type(value) is not bool:raise ValueError('invalid execution.'+key)
                 continue
             if group == 'execution' and key == 'arm_state_transport':
                 if value not in ('yaml','typed'):
                     raise ValueError('invalid execution.arm_state_transport')
                 continue
             if group == 'search' and key == 'mode':
+                continue
+            if value is None and (group,key) in {('search','timeout_s'),('execution','state_timeout_s'),('execution','mission_timeout_s'),('execution','navigation_timeout_s')}:
                 continue
             if type(value) not in (int, float) or not math.isfinite(value):
                 raise ValueError(f'invalid {group}.{key}')
@@ -108,6 +110,8 @@ def load(path, workspace):
         raise ValueError('compute.cpu_threads must be a positive integer')
     if type(cfg['compute'].get('grasp_full_diagnostics',True)) is not bool:
         raise ValueError('compute.grasp_full_diagnostics must be boolean')
+    if type(cfg['compute'].get('grasp_debug_enabled',False)) is not bool:
+        raise ValueError('compute.grasp_debug_enabled must be boolean')
     startup=cfg['startup']
     if type(startup['camera_probe_frames']) is not int or startup['camera_probe_frames']<1:
         raise ValueError('startup.camera_probe_frames must be positive integer')
@@ -164,9 +168,15 @@ def load(path, workspace):
         raise ValueError('collision.retreat_physical_clearance_validated must be boolean')
     if not isinstance(cfg['collision'].get('retreat_physical_clearance_evidence',''),str):
         raise ValueError('collision.retreat_physical_clearance_evidence must be string')
+    for section,key in (('execution','state_timeout_s'),('execution','mission_timeout_s'),
+                        ('execution','navigation_timeout_s'),('search','timeout_s'),('collision','check_timeout_s')):
+        value=cfg[section][key]
+        if value is not None and (type(value) not in (int,float) or not math.isfinite(value) or value<=0):
+            raise ValueError('invalid optional timeout '+section+'.'+key)
+    state_timeout=cfg['execution']['state_timeout_s']
     recovery=cfg['execution'].get('observation_recovery_timeout_s',30.)
     retry=cfg['execution'].get('observation_retry_delay_s',.25)
-    if not 0<retry<recovery<=cfg['execution']['state_timeout_s']:
+    if not 0<retry<recovery or (state_timeout is not None and recovery>state_timeout):
         raise ValueError('observation recovery must be bounded by state_timeout_s')
     candidates=cfg['execution'].get('camera_admission_candidates',1)
     if type(candidates) is not int or not 1<=candidates<=8:
@@ -205,11 +215,11 @@ def load(path, workspace):
             v=a.get(key)
             if type(v) not in (int,float) or not math.isfinite(v) or v<=0:raise ValueError('invalid grasp_assessment.'+key)
     duration=verification.get('close_duration_s')
-    if type(duration) not in (int,float) or not math.isfinite(duration) or duration<=0 or duration>=cfg['execution']['state_timeout_s']:
+    if type(duration) not in (int,float) or not math.isfinite(duration) or duration<=0 or (state_timeout is not None and duration>=state_timeout):
         raise ValueError('invalid grasp_verification.close_duration_s')
     if type(cfg['collision'].get('broadphase_enabled',True)) is not bool:
         raise ValueError('collision.broadphase_enabled must be a boolean')
-    for key,default in (('broadphase_padding_m',1e-9),('check_timeout_s',20.)):
+    for key,default in (('broadphase_padding_m',1e-9),):
         value=cfg['collision'].get(key,default)
         if type(value) not in (int,float) or not math.isfinite(value) or value<=0:
             raise ValueError('invalid collision.'+key)
@@ -219,7 +229,7 @@ def load(path, workspace):
         raise ValueError('conflicting self-collision pair rules')
     if (not math.isfinite(cfg['collision']['sample_max_joint_step_rad'])
             or cfg['collision']['sample_max_joint_step_rad']<=0
-            or cfg['execution']['max_plan_duration_s']>cfg['execution']['state_timeout_s']):
+            or (state_timeout is not None and cfg['execution']['max_plan_duration_s']>state_timeout)):
         raise ValueError('invalid collision sampling/owner duration cap')
     return cfg
 

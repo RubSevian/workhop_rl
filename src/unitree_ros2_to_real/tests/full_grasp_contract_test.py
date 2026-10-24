@@ -15,7 +15,7 @@ from mission.config import blockers,load
 class FullGraspContracts(unittest.TestCase):
     def test_full_preflight_retains_clearance_without_claiming_hardware_cap(self):
         self.assertEqual(CFG['test_mode'],'full')
-        self.assertEqual(CFG['grasp_assessment'],dict(contact_torque_nm=1.5,min_grasp_width_m=.05,confirmation_duration_s=.5))
+        self.assertEqual(CFG['grasp_assessment'],dict(contact_torque_nm=1.5,min_grasp_width_m=.05,confirmation_duration_s=2.))
         self.assertEqual(CFG['gripper_torque_control']['contact_torque_nm'],2.2)
         self.assertNotIn('full_grasp_motor_torque_cap_unqualified',blockers(CFG))
         self.assertFalse(CFG['grasp_verification']['motor_torque_cap_validated'])
@@ -27,7 +27,7 @@ class FullGraspContracts(unittest.TestCase):
         import yaml
         root=Path(__file__).resolve().parents[5]
         control=CFG['gripper_torque_control']
-        self.assertEqual((control['kp'],control['kd'],control['close_speed_rad_s']),(20.,1.,.15))
+        self.assertEqual((control['kp'],control['kd'],control['close_speed_rad_s']),(20.,1.,.25))
         self.assertGreaterEqual(CFG['grasp_verification']['close_duration_s'],1./control['close_speed_rad_s']+CFG['grasp_assessment']['confirmation_duration_s'])
         original=yaml.safe_load((root/'repos/rars01_graspnet/config/jetson_orin_nano.yaml').read_text())
         for key in ('kp','kd','close_speed_rad_s','contact_torque_nm','hold_gain_rad_s_per_nm','hold_deadband_nm','max_target_lead_rad'):
@@ -74,7 +74,7 @@ class FullGraspContracts(unittest.TestCase):
             with self.assertRaisesRegex(ValueError,'ASSESSMENT_UNKNOWN'):
                 release_for_retry(segment,current,CFG,open_angle=1.,rate=100.,velocity=2.,assessment=state)
 
-    def test_two_failed_closes_open_before_saved_reverse_then_home(self):
+    def test_failed_close_continues_retreat_home_without_retry(self):
         class FailedCloses(Fixture):
             def effect(self,kind,data):
                 super().effect(kind,data)
@@ -89,9 +89,9 @@ class FullGraspContracts(unittest.TestCase):
                 return super().compute(data)
         f=FailedCloses();self.assertEqual(f.run(),'TARGET_NOT_GRASPED')
         operations=[d['operation'] for kind,d in f.effects if kind=='compute']
-        self.assertEqual(operations.count('close'),2);self.assertEqual(operations.count('grasp_plan'),2)
-        self.assertEqual(operations.count('retry_open'),1)
-        self.assertLess(operations.index('retry_open'),operations.index('reverse_search'))
+        self.assertEqual(operations.count('close'),1);self.assertEqual(operations.count('grasp_plan'),1)
+        self.assertNotIn('retry_open',operations);self.assertNotIn('reverse_search',operations)
+        self.assertEqual(operations[-2: ],['retreat','home'])
         self.assertEqual(operations[-1],'home')
 
     def test_unknown_never_releases_or_retries(self):

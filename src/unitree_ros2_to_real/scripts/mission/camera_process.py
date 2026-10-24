@@ -31,14 +31,21 @@ def _camera_child(pipe, grasp, stop_timeout, mode, factory, parent_pid):
         from .planning import CameraPump
         pump = CameraPump(source, stop_timeout, mode)
         pipe.send(('ready', pump.K))
+        frame_wait_s=frame_send_s=max_frame_wait_s=max_frame_send_s=0.
         while True:
             if pipe.poll(.02):
                 command = pipe.recv()
                 if command == 'close':break
                 if command == 'frame':
                     try:
+                        started=time.monotonic_ns()
                         color, depth = pump.get_frame()
+                        frame_wait_s=(time.monotonic_ns()-started)/1e9
+                        max_frame_wait_s=max(max_frame_wait_s,frame_wait_s)
+                        started=time.monotonic_ns()
                         pipe.send(('frame', (color, depth, pump.last_frame_timing)))
+                        frame_send_s=(time.monotonic_ns()-started)/1e9
+                        max_frame_send_s=max(max_frame_send_s,frame_send_s)
                     except Exception as error:pipe.send(('frame_error', str(error)))
             with pump.condition:
                 timing = (pump.raw_timing if mode == 'latest_raw' else
@@ -47,7 +54,9 @@ def _camera_child(pipe, grasp, stop_timeout, mode, factory, parent_pid):
                 health = (dict(timing) if timing else None, valid, pump.error)
             pipe.send(('acquisition',dict(sent_mono_ns=time.monotonic_ns(),
                 acquire_started_ns=pump.acquire_started_ns,acquire_completed_ns=pump.acquire_completed_ns,
-                acquire_wall_s=pump.acquire_wall_s,max_acquire_wall_s=pump.max_acquire_wall_s,raw_frames=pump.raw_frames)))
+                acquire_wall_s=pump.acquire_wall_s,max_acquire_wall_s=pump.max_acquire_wall_s,raw_frames=pump.raw_frames,
+                frame_wait_s=frame_wait_s,max_frame_wait_s=max_frame_wait_s,
+                frame_send_s=frame_send_s,max_frame_send_s=max_frame_send_s)))
             pipe.send(('health', health))
     except (EOFError, BrokenPipeError):pass
     except BaseException as error:
@@ -86,10 +95,20 @@ class CameraProcess:
         try:
             while True:
                 kind, value=self.pipe.recv()
+                received_ns=time.monotonic_ns()
                 with self.condition:
+                    self.receiver_lock_wait_s=(time.monotonic_ns()-received_ns)/1e9
+                    self.max_receiver_lock_wait_s=max(getattr(self,'max_receiver_lock_wait_s',0.),self.receiver_lock_wait_s)
                     if kind=='ready':self.K=value
-                    elif kind=='acquisition':self.acquisition=value
-                    elif kind=='health':self.health=value;self.health_received_ns=time.monotonic_ns()
+                    elif kind=='acquisition':
+                        self.acquisition=value
+                        self.acquisition_transport_s=max(0.,(received_ns-value['sent_mono_ns'])/1e9)
+                        self.max_acquisition_transport_s=max(getattr(self,'max_acquisition_transport_s',0.),self.acquisition_transport_s)
+                    elif kind=='health':
+                        previous=getattr(self,'health_received_ns',None)
+                        self.health_receive_gap_s=(received_ns-previous)/1e9 if previous else 0.
+                        self.max_health_receive_gap_s=max(getattr(self,'max_health_receive_gap_s',0.),self.health_receive_gap_s)
+                        self.health=value;self.health_received_ns=received_ns
                     elif kind=='error':self.error=value
                     elif kind=='frame':self.frame=value;self.pending=False
                     elif kind=='frame_error':self.frame_error=value;self.pending=False
@@ -117,6 +136,10 @@ class CameraProcess:
             received=getattr(self,'health_received_ns',None)
             return dict(ready=reason=='READY',reason=reason,process_alive=alive,
                 acquisition=dict(getattr(self,'acquisition',{})),
+                ipc_timing={name:getattr(self,name,None) for name in (
+                    'acquisition_transport_s','max_acquisition_transport_s',
+                    'health_receive_gap_s','max_health_receive_gap_s',
+                    'receiver_lock_wait_s','max_receiver_lock_wait_s')},
                 error=self.error or error,decode_valid=bool(valid),ttl_s=ttl,
                 observed_wall_ns=now,source_timestamps=dict(timing or {}),
                 color_age_s=ages['color_system_ns'],depth_age_s=ages['depth_system_ns'],

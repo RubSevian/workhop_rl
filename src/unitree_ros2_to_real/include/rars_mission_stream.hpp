@@ -132,13 +132,14 @@ class MissionStream {
   if(gripper_.active())ApplyGripper();
   if(kind_=="close"){
    const double sign=cfg_.open>cfg_.closed?1:-1;
-   const bool at_stop=sign*(status.joints.position[6]-cfg_.closed)<cfg_.hard_stop;
+   const bool at_stop=sign*(GripperClosedZero(status.joints.position[6],cfg_.assessment.negative_tolerance)-cfg_.closed)<cfg_.hard_stop;
    // Contact switches to regulation immediately, but leaves the confirmation
    // interval available before reporting a completed close to Mission.
    if(at_stop){gripper_.CaptureClosedStop();ApplyGripper();}
    if(gripper_.contact())holding_=true;
    if(at_stop||elapsed>=cfg_.close_duration_s||(holding_&&cfg_.assessment.enabled&&assessment_.state()=="GRASPED")){
     holding_=true;busy_=false;state_="SUCCEEDED";
+    ObserveAssessment(now,status); // Publish final assessment with command completion.
    }
   }else if(index==points_.size()-1){
    bool reached=true;for(size_t j=0;j<((holding_||kind_=="home")?6u:7u);++j)reached=reached&&std::abs(status.joints.position[j]-held_.q[j])<=cfg_.reached_tolerance&&std::abs(status.joints.velocity[j])<=cfg_.settled_velocity;

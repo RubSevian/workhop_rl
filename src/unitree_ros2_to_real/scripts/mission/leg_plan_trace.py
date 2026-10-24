@@ -7,6 +7,12 @@ import threading
 import time
 
 
+def diagnostic_json(value):
+    """Numpy payloads are converted on the writer thread, never ROS callbacks."""
+    if hasattr(value,'tolist'):return value.tolist()
+    raise TypeError('Unsupported diagnostic value: '+type(value).__name__)
+
+
 class LegPlanTrace:
     def __init__(self, directory):
         self.path=Path(directory)/('legs_'+str(time.time_ns())+'.jsonl')
@@ -53,8 +59,18 @@ class LegPlanTrace:
                 while True:
                     row=self.queue.get()
                     if row is None:break
-                    output.write(json.dumps(row,allow_nan=False)+'\n')
+                    output.write(json.dumps(row,allow_nan=False,default=diagnostic_json)+'\n')
         except Exception as error:self.error=str(error)
+
+    def grasps(self, request, grasps, counts, parameters):
+        with self.lock:
+            if self.closed:return
+            self._enqueue(dict(record_type='grasp_candidates',operation_id=request['id'],
+                operation=request['operation'],mission_session_id=request.get('session_id'),
+                frame='capture_camera_optical',units='m_rad',
+                array_layout='score,width,height,depth,R_row_major[9],translation[3],object_id',
+                stage='after_worker_filters_before_nms',grasps=grasps.copy(),
+                filter_counts=dict(counts),filter_parameters=dict(parameters)))
 
     def stage(self, request, stage):
         with self.lock:

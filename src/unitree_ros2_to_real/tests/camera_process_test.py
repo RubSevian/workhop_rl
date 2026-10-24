@@ -44,6 +44,13 @@ class Tests(unittest.TestCase):
         self.assertGreater(d['color_age_s'],.6);self.assertLess(d['depth_age_s'],.6)
         c.health=({'color_system_ns':time.time_ns()+10_000_000_000,'depth_system_ns':stamp},True,'')
         self.assertEqual(c.diagnostics(.6)['reason'],'CAMERA_TIMESTAMP_FUTURE')
+        stamp=time.time_ns()-1_500_000_000
+        c.health=({'color_system_ns':stamp,'depth_system_ns':stamp},True,'')
+        self.assertTrue(c.diagnostics(2.)['ready'])
+        self.assertEqual(c.diagnostics(2.)['source_timestamps']['color_system_ns'],stamp)
+        stamp=time.time_ns()-2_100_000_000
+        c.health=({'color_system_ns':stamp,'depth_system_ns':stamp},True,'')
+        self.assertEqual(c.diagnostics(2.)['reason'],'CAMERA_FRAME_STALE')
         c.health=(None,False,'');self.assertEqual(c.diagnostics(.6)['reason'],'CAMERA_DECODE_INVALID')
         c.health=(None,True,'SDK error');self.assertEqual(c.diagnostics(.6)['reason'],'CAMERA_ACQUISITION_ERROR')
         c.health=None;self.assertEqual(c.diagnostics(.6)['reason'],'CAMERA_HEALTH_MISSING')
@@ -93,6 +100,12 @@ class Tests(unittest.TestCase):
             time.sleep(.04);camera.get_frame()
             self.assertGreater(camera.last_frame_timing['color_system_ns'],first)
             time.sleep(.04);self.assertTrue(camera.fresh(.5))
+            diagnostics=camera.diagnostics(.5)
+            self.assertGreater(diagnostics['acquisition']['max_frame_wait_s'],0.)
+            self.assertGreater(diagnostics['acquisition']['max_frame_send_s'],0.)
+            self.assertGreaterEqual(diagnostics['ipc_timing']['acquisition_transport_s'],0.)
+            self.assertGreater(diagnostics['ipc_timing']['max_health_receive_gap_s'],0.)
+
         finally:camera.close()
 
     def test_child_exit_invalidates_health(self):

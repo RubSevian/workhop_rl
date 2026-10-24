@@ -29,6 +29,17 @@ int main(int argc,char** argv){
  }
  assert(GripperInnerWidth(.7,cfg())>=.05);
  GraspAssessment a(cfg());feed(a,10,49);assert(a.state()=="UNKNOWN");feed(a,10.5,0);assert(a.state()=="GRASPED");
+ // Two seconds must be real continuous feedback; closed-zero is never an object.
+ {
+  auto c=cfg();c.confirmation_duration_s=2.;c.negative_tolerance=.025;
+  GraspAssessment a(c);feed(a,200,199);assert(a.state()=="UNKNOWN");
+  feed(a,202,0);assert(a.state()=="GRASPED");
+  for(float q:{-.025F,0.F,.025F}){
+   GraspAssessment empty(c);feed(empty,210,210,2.2F,q);
+   empty.Observe(t(212.11),sample(212.11,2.2F,q,300000),true,true,.1);
+   assert(empty.state()=="NOT_GRASPED");
+  }
+ }
  // Strict absolute measured-torque boundary; commanded tau never substitutes.
  for(float torque:{1.5F,1.49F,-1.5F}){GraspAssessment x(cfg());feed(x,20,60,torque);x.Observe(t(20.61),sample(20.61,torque,.7,30000),true,true,.1);assert(x.state()=="NOT_GRASPED");}
  // Inclusive width boundary uses the exact computed width, with no new tolerance.

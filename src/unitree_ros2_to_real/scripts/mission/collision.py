@@ -111,9 +111,9 @@ class Collision:
         if not np.isfinite(self.margin) or self.margin<=0:raise ValueError('COLLISION_MARGIN_INVALID')
         self.broadphase_enabled=cfg['collision'].get('broadphase_enabled',True)
         self.broadphase_padding=float(cfg['collision'].get('broadphase_padding_m',1e-9))
-        self.check_timeout_s=float(cfg['collision'].get('check_timeout_s',20.))
+        self.check_timeout_s=cfg['collision'].get('check_timeout_s',20.)
         if (type(self.broadphase_enabled) is not bool or not np.isfinite(self.broadphase_padding)
-                or self.broadphase_padding<=0 or not np.isfinite(self.check_timeout_s) or self.check_timeout_s<=0):
+                or self.broadphase_padding<=0 or (self.check_timeout_s is not None and (not np.isfinite(self.check_timeout_s) or self.check_timeout_s<=0))):
             raise ValueError('COLLISION_COMPUTE_SETTINGS_INVALID')
         self._corners_cache={};self._pair_relations={};self._solid_cache={}
         self._local_corners=np.stack([self.local_corners(g.geometry) for g in self.geom.geometryObjects])
@@ -394,7 +394,7 @@ class Collision:
         payload=bool(payload and self.payload_enabled)
         self.last_failure={}
         started=time.monotonic_ns()
-        self._check_deadline_ns=started+int(self.check_timeout_s*1e9)
+        self._check_deadline_ns=None if self.check_timeout_s is None else started+int(self.check_timeout_s*1e9)
         self._profiling=True
         cpu_started=time.thread_time_ns()
         self.last_stats=dict(started_ns=started,timeout_s=self.check_timeout_s,samples=0,duplicate_samples=0,narrowphase_queries=0,broadphase_skipped=0)

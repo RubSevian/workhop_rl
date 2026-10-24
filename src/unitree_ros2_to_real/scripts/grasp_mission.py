@@ -25,6 +25,7 @@ from mission.ros_scene import ROSBodySource, report_scene
 from mission.config import apply_operator_trial, load, blockers, physical_retreat_qualified
 from mission.core import Mission, TERMINAL, ARM_PHASES
 from mission.health_contract import source_ttl,CONTROLLED_HOME_PHASES
+from mission.short_journal import make_short_journal
 
 class Coordinator(Node):
     def __init__(self):
@@ -43,6 +44,7 @@ class Coordinator(Node):
         self.blockers=blockers(self.cfg)
         if not self.cfg['physical_enabled']:self.blockers.append('mission_physical_disabled')
         self.engine=Mission(self.cfg,uuid.uuid4().hex)
+        self.short_journal=make_short_journal(self.cfg,self.get_parameter('workspace').value,'mission',self.engine.session)
         self.grip_observer=None;self.grip_log=None;self.grip_error=''
         # Diagnostics are isolated: setup or recording failure never changes readiness.
         try:
@@ -52,7 +54,7 @@ class Coordinator(Node):
                 sdk=yaml.safe_load(Path(self.cfg['paths']['sdk_config']).read_text())
                 self.grip_observer=GripperObservation(observation,sdk['robot']['gripper']['rars01'],
                     sdk['robot']['motion']['motion_feedback']['max_feedback_age_s'])
-                if self.physical and self.cfg['physical_enabled']:
+                if self.physical and self.cfg['physical_enabled'] and observation.get('recording_enabled',True):
                     directory=Path(self.get_parameter('workspace').value)/observation['directory']
                     self.grip_log=ObservationLog(directory/(self.engine.session+'.jsonl'),observation)
         except Exception as error:self.grip_error=str(error)
@@ -162,6 +164,9 @@ class Coordinator(Node):
         except Exception as error:self.grip_error=str(error)
 
     def destroy_node(self):
+        journal=getattr(self,'short_journal',None)
+        if journal is not None:
+            journal.transition(self.engine,time.monotonic());journal.close()
         if self.grip_log is not None:self.grip_log.close()
         return super().destroy_node()
 
@@ -238,6 +243,8 @@ class Coordinator(Node):
         self.refresh_scene()
         now=time.monotonic();e=self.engine
         effects=e.step(now,self.get_clock().now().nanoseconds) if self.physical and not self.blockers else e.drain()
+        journal=getattr(self,'short_journal',None)
+        if journal is not None:journal.transition(e,now)
         if e.stale_input_diagnostic is not None and not self.stale_fault_reported:
             detail=e.stale_input_diagnostic
             detail['callbacks']=self.input_diagnostics.snapshot(now)
@@ -285,6 +292,7 @@ class Coordinator(Node):
                 elif kind=='trajectory':self.trajectory_pub.publish(String(data=json.dumps(data,allow_nan=False)))
             else:e.cancel(now,'MISSION_HEALTH_INVALID',True)
         status=e.status(now)
+        if journal is not None:status['short_journal']=journal.status()
         status['gripper_observation']=self.grip_observer.status(time.monotonic_ns()) if self.grip_observer else {'state':'DISABLED'}
         status['gripper_observation']['error']=self.grip_error
         if self.grip_log is not None:
