@@ -56,6 +56,12 @@ class LegPlanTrace:
                     output.write(json.dumps(row,allow_nan=False)+'\n')
         except Exception as error:self.error=str(error)
 
+    def stage(self, request, stage):
+        with self.lock:
+            if self.closed:return
+            self._enqueue(dict(record_type='planning_stage',operation_id=request['id'],
+                operation=request['operation'],mission_session_id=request.get('session_id'),stage=stage))
+
     def result(self, request, result, metrics):
         with self.lock:
             if self.closed:return

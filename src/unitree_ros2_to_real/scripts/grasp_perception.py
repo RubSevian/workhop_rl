@@ -21,6 +21,7 @@ from nav_msgs.msg import Odometry
 from unitree_go.msg import LowState
 from mission.config import apply_operator_trial,load,blockers
 from mission.collision import measured_gripper_width
+from mission.planning_metrics import ik_summary
 from mission.health_contract import source_ttl,CONTROLLED_HOME_PHASES
 from mission.scene import SceneBuffer
 from mission.status_codec import decode_status
@@ -278,11 +279,12 @@ class Perception(Node):
                 debug=getattr(self.backend,'detection_debug',None)
                 if debug is not None:self.backend.compute_metrics['detection_debug']=dict(directory=str(debug.directory),error=debug.error,dropped=debug.dropped)
                 compute_metrics=dict(operation=request['operation'],elapsed_s=time.monotonic()-compute_started,**self.backend.compute_metrics)
+                compute_metrics['ik_summary']=ik_summary(compute_metrics.get('ik_calls',[]))
                 self.leg_plan_trace.result(request,out,compute_metrics)
                 # Detailed IK targets/seeds stay in the asynchronous disk trace,
                 # never in periodically published ROS health/status messages.
                 ik_calls=compute_metrics.pop('ik_calls',[])
-                compute_metrics['ik_summary']=dict(calls=len(ik_calls),cache_hits=sum(bool(c.get('cache_hit')) for c in ik_calls),elapsed_s=sum(c.get('elapsed_s',0.) for c in ik_calls),attempts=sum(c.get('attempt_count',0) for c in ik_calls))
+                compute_metrics['ik_summary']=ik_summary(ik_calls)
                 self.last_compute=compute_metrics
                 out['compute_metrics']=dict(self.last_compute)
                 out['observed_ns']=time.monotonic_ns()
@@ -374,6 +376,7 @@ class Perception(Node):
             inference_nice=getattr(self,'inference_nice',None),
             preload_ready=self.backend is not None and verified(self.backend.startup_checks),
             camera_mode=camera_mode,runtime_readiness=runtime_readiness,
+            planning_progress=dict(self.backend.compute_metrics.get('active_stage') or {}) if self.backend else {},
             collision_progress=dict(getattr(self.backend.collision,'last_stats',{})) if self.backend else {},
             leg_plan_trace=dict(path=str(trace.path),error=trace.error,dropped=trace.dropped) if trace else None,
             lowstate_decode=(self.native_leg_input.status() if getattr(self,'native_leg_input',None) else self.leg_reader.status()),tf_pair=dict(self.body_source.diagnostics),streams=self.scene_buffer.diagnostics(time.monotonic_ns())))))
