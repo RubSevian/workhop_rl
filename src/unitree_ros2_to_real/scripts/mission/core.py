@@ -39,6 +39,7 @@ class Mission:
         self.scene_anchor=None;self.goal_reached=None;self.window_pose=None
         self.stability_reason='';self.stability_restarts=0
         self.result_after_home = 'MISSION_COMPLETED_UNVERIFIED'
+        self.home_from_scan=False
         self.grasp_plan = None
         self.close_outcome='MISSION_COMPLETED_UNVERIFIED'
         self.object_anchor=None;self.q_search=None;self.grasp_attempt=0
@@ -161,6 +162,7 @@ class Mission:
         self.effects.append(('compute', dict(self.pending, session_id=self.session,
             navigation_session_id=self.nav_session, goal_revision=self.revision,
             owner_session_id=self.owner_session, owner=copy.deepcopy(self.inputs['owner']),
+            home_from_scan=self.home_from_scan if operation=='home' else False,
             grasp_plan=self.grasp_plan, object_anchor=self.object_anchor,q_search=self.q_search,
             grasp_attempt=self.grasp_attempt,reverse_segment=copy.deepcopy(self.attempt_segments[-1]) if operation in ('reverse_search','retry_open') and self.attempt_segments else None,
             scan_index=self.scan_index)))
@@ -305,7 +307,10 @@ class Mission:
                 self.transition('PLAN_GRASP',now,'RETRY_AT_Q_SEARCH');self.request('grasp_plan',now)
             else:self.cancel(now,'Q_SEARCH_NOT_REACHED',True)
         elif operation == 'retreat':
-            self.go_home(self.close_outcome, now)
+            scan=(self.grasp_plan or {}).get('scan_q',[])
+            if len(scan)!=6 or max(abs(a-b) for a,b in zip(self.inputs['owner']['q'][:6],scan))>self.cfg['execution']['start_tolerance_rad']:
+                self.cancel(now,'SCAN_RETURN_UNCONFIRMED',True);return
+            self.go_home(self.close_outcome, now,from_scan=True)
         elif operation == 'home':
             owner = self.inputs['owner']
             if not owner.get('arm_home_ready'):
@@ -313,7 +318,8 @@ class Mission:
                 return
             self.transition(self.result_after_home, now)
 
-    def go_home(self, result, now):
+    def go_home(self, result, now,from_scan=False):
+        self.home_from_scan=from_scan
         self.result_after_home = result
         self.transition('RETURN_HOME', now, result)
         self.request('home', now)

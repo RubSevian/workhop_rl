@@ -69,13 +69,14 @@ class Fixture:
         if op=='detect':out['found']=self.branch!='not_found'
         elif op=='grasp_plan':
             if self.branch=='ik_fail':out.update(ok=False,reason='IK_FAIL')
-            else:out['grasp_plan']={'fixture':'synthetic-IK'}
+            else:out['grasp_plan']={'fixture':'synthetic-IK','scan_q':data['owner']['q'][:6]}
         else:
             start=data['owner']['q'];end=start.copy()
             if op=='home':end[:6]=[0.]*6
             elif op=='scan_pose':end[:6]=[0.,.2,.2,.1,0,0];end[6]=.8
             elif op=='refine':end[1]+=.01;end[2]+=.01
             elif op in ('scan_step','scan_return'):end[0]=0. if op=='scan_return' else search_angles(CFG['search'])[data['scan_index']]
+            elif op=='retreat':end[:6]=data['grasp_plan']['scan_q']
             elif op!='close':end[1]+=.01
             sys.path.insert(0,str(ROOT/'repos/rars01_graspnet'))
             from rars01_graspnet.real_grasp_trajectory import joint_motion_samples
@@ -108,6 +109,17 @@ class Integration(unittest.TestCase):
                 self.assertEqual(f.m.state,'CANCELLED')
                 self.assertIsNone(f.m.pending)
 
+    def test_home_requires_confirmed_return_to_saved_scan_pose(self):
+        for error in (0.,.1):
+            f=Fixture();f.feed();f.m.close_outcome='GRASP_PRESUMED_SUCCESS'
+            f.m.grasp_plan={'scan_q':[error,0,0,0,0,0]}
+            f.m.done_motion('retreat',f.now)
+            if error:
+                self.assertEqual(f.m.state,'BLOCKED');self.assertEqual(f.m.reason,'SCAN_RETURN_UNCONFIRMED')
+            else:
+                self.assertEqual(f.m.state,'RETURN_HOME')
+                self.assertTrue(f.m.effects[-1][1]['home_from_scan'])
+
     def test_failed_close_continues_retreat_home_without_claiming_grasp(self):
         for trial in (False,True):
             f=Fixture();f.m.cfg['operator_trial']=trial
@@ -116,6 +128,7 @@ class Integration(unittest.TestCase):
             self.assertEqual(f.m.reason,'TARGET_NOT_GRASPED_CONTINUING')
             self.assertEqual(f.m.state,'WAIT_RETREAT_APPROVAL' if trial else 'RETREAT')
             self.assertEqual(f.m.pending['operation'],'retreat')
+            f.m.grasp_plan={'scan_q':f.owner['q'][:6]}
             f.m.done_motion('retreat',f.now)
             self.assertEqual(f.m.pending['operation'],'home')
             f.m.done_motion('home',f.now)
@@ -496,9 +509,9 @@ class Integration(unittest.TestCase):
     def test_search_speed_does_not_limit_grasp_motion(self):
         from mission.planning import Planning
         planner=Planning.__new__(Planning);planner.cfg=copy.deepcopy(CFG)
-        planner.cfg['search']['speed_rad_s']=.01;planner.cfg['execution']['arm_speed_rad_s']=.1
+        planner.cfg['search']['speed_rad_s']=.01
         planner.grasp={'robot':{'rars01':{'position_velocity_limits_rad_s':[1.]*7,'command_rate_hz':100}}}
-        start=np.zeros(7);target=np.array([.01,0,0,0,0,0])
+        start=np.zeros(7);target=np.array([.1,0,0,0,0,0])
         regular=planner.samples(start,[target],.1)
         scanning=planner.samples(start,[target],.1,search=True)
         self.assertGreater(len(scanning),len(regular)*5)

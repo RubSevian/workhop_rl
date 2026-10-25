@@ -25,26 +25,47 @@ class PlanningContracts(unittest.TestCase):
         self.assertGreater(speed.max(),.1)
         self.assertLessEqual(speed.max(),.8+1e-6)
         np.testing.assert_allclose(points[-1,:6],target)
-        slow=p.samples(start,[target],3.)
-        self.assertLessEqual((np.abs(np.diff(slow[:,:6],axis=0))*100.).max(),.08+1e-6)
+        regular=p.samples(start,[target],3.)
+        np.testing.assert_array_equal(regular,points)
         # A restrictive motor limit stretches the duration instead of being bypassed.
         p.grasp['robot']['rars01']['position_velocity_limits_rad_s']=[.05]*7
         limited=p.samples(start,[target],1.5,object_motion=True)
         self.assertGreater((len(limited)-1)/100.,3.)
         self.assertLessEqual((np.abs(np.diff(limited[:,:6],axis=0))*100.).max(),.04+1e-6)
 
-    def test_scan_pose_uses_motor_limits_while_search_and_home_stay_capped(self):
+    def test_only_search_joint_one_is_capped_other_motion_uses_motor_limits(self):
         p,_=self.setup_planner()
         p._command_joint_bounds=np.array([[-3.,3.]]*6)
         p.cfg['search']['speed_rad_s']=.2
-        p.cfg['execution']['arm_speed_rad_s']=.1
         start=np.zeros(7);target=np.array([.5,0,0,0,0,0])
         peak=lambda points:np.abs(np.diff(points[:,:6],axis=0)).max()*100.
         self.assertGreater(peak(p.samples(start,[target],3.,scan_pose=True)),.2)
         self.assertLessEqual(peak(p.samples(start,[target],3.,search=True)),.2+1e-6)
-        self.assertLessEqual(peak(p.samples(start,[target],3.)),.1+1e-6)
+        self.assertGreater(peak(p.samples(start,[target],3.)),.2)
+        other_joint=np.array([0,.5,0,0,0,0])
+        self.assertGreater(peak(p.samples(start,[other_joint],3.,search=True)),.2)
         p.grasp['robot']['rars01']['position_velocity_limits_rad_s']=[.05]*7
         self.assertLessEqual(peak(p.samples(start,[target],3.,scan_pose=True)),.05+1e-6)
+
+    def test_position_moves_have_three_second_floor(self):
+        p,_=self.setup_planner();p.grasp['robot']['ready_pose']={'duration':1.}
+        for options in ({},{'search':True},{'scan_pose':True},{'object_motion':True}):
+            points=p.samples(np.zeros(7),[np.array([.01,0,0,0,0,0])],.1,**options)
+            self.assertGreaterEqual((len(points)-1)/100.,3.)
+
+    def test_home_from_scan_preserves_hold_and_skips_geometry(self):
+        p,sample=self.setup_planner();p.grasp['robot']['ready_pose']={'duration':3.};p.compute_metrics={}
+        sample['q7']=[.1,.2,0,0,0,0,.4];sample['q']=sample['q7'][:6]
+        request=dict(operation='home',owner_session_id='arm',navigation_session_id='nav',owner=dict(gripper_command_active=True,gripper_hold_target=.35),
+            home_from_scan=True,grasp_plan=dict(scan_q=sample['q'][:]))
+        result=p.execute(request,lambda *a:sample)['trajectory']
+        self.assertFalse(result['collision_checked'])
+        self.assertEqual(result['collision_policy'],'scan_to_home_unchecked')
+        np.testing.assert_array_equal(result['points'][-1][:6],np.zeros(6))
+        self.assertTrue(all(point[6]==.35 for point in result['points']))
+        self.assertGreaterEqual((len(result['points'])-1)/100.,3.)
+        request['grasp_plan']['scan_q'][0]+=.1
+        with self.assertRaisesRegex(ValueError,'SCAN_RETURN_UNCONFIRMED'):p.execute(request,lambda *a:sample)
 
     def test_closed_zero_does_not_rewrite_positive_command_or_feedback(self):
         from mission.gripper_measurement import gripper_start_error
@@ -308,7 +329,7 @@ class PlanningContracts(unittest.TestCase):
             return value
         def checked(points,scene,payload,kind='move',**options):
             passes.append((copy.deepcopy(scene),options['reference_ns'],copy.deepcopy(options.get('gripper_reference'))))
-            return dict(points=np.asarray(points).tolist(),scene_snapshot=copy.deepcopy(scene['scene_snapshot']),
+            return dict(points=np.asarray(points).tolist(),collision_points=np.asarray(points).tolist(),scene_snapshot=copy.deepcopy(scene['scene_snapshot']),
                         collision_context=p.collision_scene(scene),collision_checked=True,payload_checked=False,kind=kind)
         p.checked=checked
         p.collision.validated_scene=lambda scene,payload,**k:acquisitions.append(copy.deepcopy(scene))
@@ -329,7 +350,7 @@ class PlanningContracts(unittest.TestCase):
         self.assertEqual(p.observation_verified['session_id'],'test')
         self.assertEqual(p.observation_verified['verified_ns'],sample['body'].mono_ns)
         self.assertEqual(len(passes),20)
-        self.assertEqual(sum(reference is not None for _,_,reference in passes),8)
+        self.assertEqual(sum(reference is not None for _,_,reference in passes),12)
         self.assertTrue(all(reference['opening_width_m']==.1 for _,_,reference in passes if reference is not None))
         for begin in (0,10):
             for scene,reference,_ in passes[begin:begin+10]:
@@ -343,6 +364,11 @@ class PlanningContracts(unittest.TestCase):
             p.execute(request,context)
         self.assertEqual(p.observation_verified,{})
         self.assertEqual(set(first['grasp_plan']['approved_segments']),{'pregrasp','approach','retreat','close'})
+        retreat=first['grasp_plan']['approved_segments']['retreat']
+        self.assertTrue(retreat['returns_to_scan'])
+        np.testing.assert_array_equal(retreat['points'][-1][:6],first['grasp_plan']['scan_q'])
+        self.assertEqual(len(retreat['points']),len(retreat['collision_points']))
+        self.assertNotIn('collision_home',[row['stage'] for row in p.compute_metrics.get('planning_stages',[])])
         self.assertNotEqual(first['grasp_plan']['planning_scene_snapshot']['legs'],second['grasp_plan']['planning_scene_snapshot']['legs'])
 
 

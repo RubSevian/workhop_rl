@@ -417,13 +417,12 @@ class Planning:
         closed=self.grasp['robot'].get('gripper',{}).get('rars01',{}).get('closed_position_rad',0.)
         if start[6]<closed and closed_zero(start[6]-closed,self.cfg['collision'].get('gripper_closed_measurement_tolerance_rad',0.))==0.:
             start[6]=closed
-        velocity=np.asarray(self.grasp['robot']['rars01']['position_velocity_limits_rad_s'][:6])
+        velocity=np.array(self.grasp['robot']['rars01']['position_velocity_limits_rad_s'][:6],dtype=float,copy=True)
         if search:
-            velocity=np.minimum(velocity,self.cfg['search']['speed_rad_s'])
-        elif not (object_motion or scan_pose):
-            velocity=np.minimum(velocity,self.cfg['execution']['arm_speed_rad_s'])
+            velocity[0]=min(velocity[0],self.cfg['search']['speed_rad_s'])
         if object_motion:
             duration=self.grasp['robot']['ready_pose']['duration']
+        duration=max(3.0,float(duration))
         points,_=waypoint_motion_samples(start[:6],targets,duration,1/self.grasp['robot']['rars01']['command_rate_hz'],velocity)
         p=np.vstack([start[:6],*points]);grip=np.full(len(p),start[6])
         if gripper_end is not None:
@@ -653,8 +652,15 @@ class Planning:
                     closed=self.grasp['robot']['gripper']['rars01']['closed_position_rad']
                     approved['close']=check_candidate_path(self.samples(closure_start,[candidate.grasp_joints],motion['grasp_duration_s'],closed),False,'close')
                     approved['close']['points']=[closure_start.tolist(),closure_start.tolist()]
-                    name='home'
-                    check_candidate_path(self.samples(np.r_[candidate.retreat_joints,start[6]],[np.zeros(6)],motion['retreat_duration_s']),True,'home')
+                    name='return_scan'
+                    scan_return=check_candidate_path(self.samples(np.r_[candidate.retreat_joints,start[6]],
+                        [start[:6]],motion['retreat_duration_s']),True,open_reference=True)
+                    # One approved retreat command: withdraw, then return to the
+                    # measured scan pose. Completion confirms the final scan pose.
+                    approved['retreat']['points']+=scan_return['points'][1:]
+                    approved['retreat']['collision_points']+=scan_return['collision_points'][1:]
+                    approved['retreat']['returns_to_scan']=True
+                    approved['retreat']['scan_q']=start[:6].tolist()
                     approved_candidates[id(candidate)]=approved
                     return True
                 except CandidatePathRejected as error:
@@ -703,7 +709,7 @@ class Planning:
             world.validate(final_scene['body'],time.monotonic_ns(),self.cfg['execution']['mission_timeout_s'],request['goal_revision'],self.cfg['limits']['sensor_age_s'])
             object_anchor=WorldObjectAnchor(np.asarray(anchor).tolist(),at['capture_mono_ns'],at['capture_ros_ns'],
                 at['body'].navigation_session_id,at['body'].tf_revision,request['goal_revision'],request['owner_session_id'],float(d.conf))
-            return dict(object_anchor=object_anchor.data(),grasp_plan=dict(approved_segments=approved_candidates[id(candidate)],planning_scene_snapshot=copy.deepcopy(current['scene_snapshot']),pregrasp=candidate.pregrasp_joints.tolist(),approach=[q.tolist() for q in candidate.approach_joint_waypoints],retreat=[q.tolist() for q in candidate.retreat_joint_waypoints],cost=candidate.cost,object_map=anchor.tolist(),camera_to_arm=cam_to_arm.tolist(),poses_map=poses_map,world_grasp_anchor=world.data(),pose_kind='End_link_TCP'))
+            return dict(object_anchor=object_anchor.data(),grasp_plan=dict(approved_segments=approved_candidates[id(candidate)],planning_scene_snapshot=copy.deepcopy(current['scene_snapshot']),scan_q=start[:6].tolist(),pregrasp=candidate.pregrasp_joints.tolist(),approach=[q.tolist() for q in candidate.approach_joint_waypoints],retreat=[q.tolist() for q in candidate.retreat_joint_waypoints],cost=candidate.cost,object_map=anchor.tolist(),camera_to_arm=cam_to_arm.tolist(),poses_map=poses_map,world_grasp_anchor=world.data(),pose_kind='End_link_TCP'))
         elif op=='retry_open':
             from .approved_motion import release_for_retry
             trajectory=release_for_retry(request['reverse_segment'],sample,self.cfg,
@@ -753,7 +759,12 @@ class Planning:
             if trace is not None:
                 trace.begin(request,sample,plan_scene=trajectory.get('approval_scene_snapshot',trajectory['scene_snapshot']))
             return dict(trajectory=trajectory)
-        elif op=='home':target=np.zeros(6)
+        elif op=='home':
+            target=np.zeros(6)
+            if request.get('home_from_scan'):
+                scan=np.asarray(request.get('grasp_plan',{}).get('scan_q',[]),dtype=float)
+                if scan.shape!=(6,) or not np.isfinite(scan).all() or np.max(np.abs(start[:6]-scan))>self.cfg['execution']['start_tolerance_rad']:
+                    raise ValueError('SCAN_RETURN_UNCONFIRMED')
         elif op=='close':
             # Check the entire jaw sweep; contact changes command mode only in
             # the serial owner, where a bounded closing command finishes without object verification.
@@ -768,6 +779,11 @@ class Planning:
             raise ValueError('APPROVED_SEGMENTS_REQUIRED')
         preparation_started_ns=time.monotonic_ns()
         points=self.samples(start,[target],self.grasp['robot']['ready_pose']['duration'],grip,search=op in ('scan_step','scan_return'),scan_pose=op=='scan_pose')
+        if op=='home' and request.get('home_from_scan'):
+            return dict(trajectory=dict(kind='home',operation='home',points=points.tolist(),
+                collision_checked=False,collision_policy='scan_to_home_unchecked',
+                payload_checked=bool(payload and self.cfg['collision'].get('payload_enabled',True)),
+                collision_context=self.collision_scene(sample),scene_snapshot=copy.deepcopy(sample['scene_snapshot'])))
         if op in ('scan_pose','scan_step','scan_return'):
             # Operator-approved preset search policy, NOT collision approval.
             # Freshness, epochs, start tolerance and owner limits still apply.

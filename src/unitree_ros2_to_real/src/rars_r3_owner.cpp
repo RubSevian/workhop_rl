@@ -196,9 +196,9 @@ class ArmOwner final:public rclcpp::Node {
    const auto joint_text=joint.str();if(!std::regex_search(joint_text,limit,std::regex("<limit[^>]*>")))throw std::runtime_error("URDF limit missing");
    const auto text=limit.str();
    if(!std::regex_search(text,lo,std::regex("lower=\"([^\"]+)\""))||!std::regex_search(text,hi,std::regex("upper=\"([^\"]+)\"")))throw std::runtime_error("URDF bounds missing");
-   c.lower[j]=std::stod(lo[1]);c.upper[j]=std::stod(hi[1]);c.velocity[j]=std::min(double(sdk_config.position_velocity_limits[j]),y["execution"]["arm_speed_rad_s"].as<double>());
+   c.lower[j]=std::stod(lo[1]);c.upper[j]=std::stod(hi[1]);c.velocity[j]=double(sdk_config.position_velocity_limits[j]);
    (*c.motor_velocity)[j]=double(sdk_config.position_velocity_limits[j]);
-   (*c.search_velocity)[j]=std::min(double(sdk_config.position_velocity_limits[j]),y["search"]["speed_rad_s"].as<double>());
+   (*c.search_velocity)[j]=j==0?std::min(double(sdk_config.position_velocity_limits[j]),y["search"]["speed_rad_s"].as<double>()):double(sdk_config.position_velocity_limits[j]);
   }
   mission_=std::make_unique<MissionStream>(c);
   home_->SetMissionProvider([this](ArmTime now,const AutoHomeStatus& status)->std::optional<AutoHomeController::Command>{
@@ -269,6 +269,7 @@ class ArmOwner final:public rclcpp::Node {
    const auto operation=v["operation"]?v["operation"].as<std::string>():"";
    const auto policy=v["collision_policy"]?v["collision_policy"].as<std::string>():"";
    const bool collision_admitted=v["collision_checked"].as<bool>()||
+    UncheckedScanHomeAllowed(policy,operation,health_phase_,v["kind"].as<std::string>(),scan_return_admitted_,mission_->state())||
     UncheckedSearchPlanAllowed(policy,operation,health_phase_,v["kind"].as<std::string>(),mission_->holding(),result.points);
    if(!Authority(now,is_home)||count_publishers("/rars01/mission/trajectory")!=1||
       v["session_id"].as<std::string>()!=mission_session_||v["owner_session_id"].as<std::string>()!=owner_session_||
@@ -306,6 +307,7 @@ class ArmOwner final:public rclcpp::Node {
    const bool motor_limits=MotorLimitPlanAllowed(operation,health_phase_,kind);
    mission_->ObserveAssessment(now,home_->status());
    if(!mission_->Start(v["id"].as<uint64_t>(),v["kind"].as<std::string>(),result.points,now,home_->status(),search,motor_limits))throw std::runtime_error("trajectory bounds/start/hold rejected");
+   scan_return_admitted_=operation=="retreat"&&v["returns_to_scan"]&&v["returns_to_scan"].as<bool>();
    if(ready_observe_&&kind=="move")ready_move_seen_=true;
    if(approved_trial){trial_state_="EXECUTING";trial_service_.reset();}
    mission_blocker_.clear();active_home_=is_home;if(is_home)home_requested_=false;
@@ -324,6 +326,15 @@ class ArmOwner final:public rclcpp::Node {
   try{home_->Tick(ArmClock::now(),connect_,true);}catch(const std::exception& e){home_->Fault(std::string("owner_exception: ")+e.what());}
   const auto& s=home_->status();
   if(mission_)mission_->ObserveAssessment(ArmClock::now(),s);
+  if(mission_&&mission_->timeout_snapshot()&&mission_->timeout_snapshot()->plan_id!=logged_timeout_id_){
+   const auto& d=*mission_->timeout_snapshot();logged_timeout_id_=d.plan_id;
+   RCLCPP_WARN(get_logger(),"TRAJECTORY_FEEDBACK_TIMEOUT plan=%llu elapsed_s=%.3f sample=%zu/%zu position_limit_rad=%.6f velocity_limit_rad_s=%.6f settled_s=%.3f required_settle_s=%.3f",
+    static_cast<unsigned long long>(d.plan_id),d.elapsed_s,d.sample_index+1,d.sample_count,d.position_tolerance,d.velocity_tolerance,d.settled_s,d.required_settle_s);
+   for(size_t j=0;j<7;++j)RCLCPP_WARN(get_logger(),
+    "  motor=%zu checked=%s target_rad=%.6f final_rad=%.6f actual_rad=%.6f error_rad=%.6f velocity_rad_s=%.6f position_ok=%s velocity_ok=%s",
+    j+1,j<d.checked_joints?"yes":"no",d.target[j],d.final_target[j],d.measured[j],d.measured[j]-d.target[j],d.velocity[j],
+    std::abs(d.measured[j]-d.target[j])<=d.position_tolerance?"yes":"no",std::abs(d.velocity[j])<=d.velocity_tolerance?"yes":"no");
+  }
   if(trial_state_=="EXECUTING"&&mission_&&mission_->id()==trial_plan_id_&&!mission_->busy())trial_state_=mission_->state();
   if(s.state!=last_state_){RCLCPP_INFO(get_logger(),"arm state=%s error=%s",AutoHomeStateName(s.state),s.last_error.c_str());last_state_=s.state;}
   // Optional typed snapshot; legacy100Hz YAML remains for native R3/readers.
@@ -491,6 +502,8 @@ class ArmOwner final:public rclcpp::Node {
  std::unique_ptr<rars_arm::RarsArm> sdk_;std::unique_ptr<SdkHomeTransport> transport_;
  std::unique_ptr<AutoHomeController> home_;
  rclcpp::Service<std_srvs::srv::Trigger>::SharedPtr return_home_,emergency_,planned_disable_;
+ uint64_t logged_timeout_id_=0;
+ bool scan_return_admitted_=false;
  rclcpp::Publisher<rars01_state_interfaces::msg::ArmFastState>::SharedPtr fast_state_;
  rclcpp::Publisher<std_msgs::msg::String>::SharedPtr state_;rclcpp::TimerBase::SharedPtr timer_;
 };

@@ -17,6 +17,12 @@ class FreshStream : public MissionStream {
  private:uint64_t frames_=0;
 };
 int main(){
+ assert(UncheckedScanHomeAllowed("scan_to_home_unchecked","home","RETURN_HOME","home",true,"SUCCEEDED"));
+ assert(!UncheckedScanHomeAllowed("scan_to_home_unchecked","home","RETURN_HOME","home",false,"SUCCEEDED"));
+ assert(!UncheckedScanHomeAllowed("scan_to_home_unchecked","home","RETURN_HOME","home",true,"EXECUTING"));
+ assert(!UncheckedScanHomeAllowed("scan_to_home_unchecked","home","RETREAT","home",true,"SUCCEEDED"));
+ assert(!UncheckedScanHomeAllowed("scan_to_home_unchecked","home","RETURN_HOME","move",true,"SUCCEEDED"));
+
  for(const auto* phase:{"ARM_RETURN_HOME","ARM_HOME_BLOCKED","ARM_HOME_SETTLE"})assert(ControlledStopHomePhaseAllowed(phase));
  for(const auto* phase:{"CANCEL_TASKS","PD_CAPTURE","PD_HOLD_CONFIRMED","ARM_DISABLE","LIE_DOWN","EMERGENCY_FAULT",""})assert(!ControlledStopHomePhaseAllowed(phase));
  assert(ReadyObservePlanAllowed(true,false,"move"));
@@ -248,6 +254,31 @@ int main(){
   c.motor_velocity=std::array<double,6>{};bool invalid=false;
   try{MissionStream bad(c);}catch(const std::invalid_argument&){invalid=true;}
   assert(invalid);
+ }
+ // Completion tolerance and timeout diagnostics must use pre-cancel targets.
+ {
+  MissionStreamConfig c=cfg;c.reached_tolerance=.025;c.settle_s=.2;c.completion_timeout_s=.5;
+  AutoHomeStatus f=feedback;f.joints.position.fill(0);f.joints.velocity.fill(0);
+  std::vector<std::array<float,7>> path(2,f.joints.position);
+  FreshStream ok(c);assert(ok.Start(1,"move",path,at(100),f));
+  f.joints.position[0]=.024F;
+  ok.Tick(at(100),f,true);ok.Tick(at(100.02),f,true);ok.Tick(at(100.23),f,true);
+  assert(ok.state()=="SUCCEEDED");assert(!ok.timeout_snapshot());
+  for(bool velocity_only:{false,true}){
+   f.joints.position.fill(0);f.joints.velocity.fill(0);
+   FreshStream failed(c);assert(failed.Start(1,"move",path,at(200),f));
+   if(velocity_only)f.joints.velocity[6]=.1F;else f.joints.position[6]=.026F;
+   failed.Tick(at(200),f,true);failed.Tick(at(200.02),f,true);failed.Tick(at(200.6),f,true);
+   assert(failed.state()=="FAILED");assert(failed.error()=="trajectory_feedback_timeout");
+   const auto& d=*failed.timeout_snapshot();
+   assert(d.checked_joints==7&&d.sample_index==1&&d.sample_count==2);
+   assert(d.target[6]==0&&d.final_target[6]==0);
+   assert(d.measured[6]==f.joints.position[6]&&d.velocity[6]==f.joints.velocity[6]);
+   assert(failed.command().q[6]==f.joints.position[6]);
+   failed.Cancel(f,"later_cancel");assert(failed.timeout_snapshot()->target[6]==0);
+   std::vector<std::array<float,7>> next(2,f.joints.position);
+   assert(failed.Start(2,"move",next,at(201),f));assert(!failed.timeout_snapshot());
+  }
  }
  std::cout<<"PASS bounded close stub, unknown object, retained command, empty/lost/open HOME6, legacy HOME7, cancel and limits\n";
 }

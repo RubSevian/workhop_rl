@@ -39,6 +39,11 @@ inline bool UncheckedSearchPlanAllowed(const std::string& policy,const std::stri
   if(!std::isfinite(q[j])||std::abs(q[j]-points.front()[j])>1e-6F)return false;
  return true;
 }
+inline bool UncheckedScanHomeAllowed(const std::string& policy,const std::string& operation,
+ const std::string& phase,const std::string& kind,bool returned_to_scan,const std::string& previous_state){
+ return policy=="scan_to_home_unchecked"&&operation=="home"&&kind=="home"&&
+        phase=="RETURN_HOME"&&returned_to_scan&&previous_state=="SUCCEEDED";
+}
 inline bool ControlledStopHomePhaseAllowed(const std::string& phase){
  return phase=="ARM_RETURN_HOME"||phase=="ARM_HOME_BLOCKED"||phase=="ARM_HOME_SETTLE";
 }
@@ -54,13 +59,19 @@ struct MissionStreamConfig {
  std::array<double,6> lower{},upper{},velocity{};
  std::optional<std::array<double,6>> search_velocity, motor_velocity;
  rars_arm::RarsArm::MotorValues kp{},kd{};
- double gripper_velocity=2,rate=100, start_tolerance=.025, reached_tolerance=.02, settled_velocity=.035;
+ double gripper_velocity=2,rate=100, start_tolerance=.025, reached_tolerance=.025, settled_velocity=.035;
  double settle_s=.2, completion_timeout_s=5.5, max_duration_s=60;
  double closed=0,open=1;
  MeasuredGripperConfig gripper_control;
  double move_kp=20,move_kd=1;
  double close_duration_s=8.,hard_stop=.01;
  GraspAssessmentConfig assessment;double feedback_ttl_s=.1;
+};
+struct MotionTimeoutSnapshot {
+ uint64_t plan_id=0;
+ std::array<float,7> target{},final_target{},measured{},velocity{};
+ size_t sample_index=0,sample_count=0,checked_joints=0;
+ double elapsed_s=0,position_tolerance=0,velocity_tolerance=0,settled_s=0,required_settle_s=0;
 };
 class MissionStream {
  public:
@@ -100,7 +111,7 @@ class MissionStream {
   if(release){holding_=false;gripper_.Stop();}
   if(kind=="close"){assessment_.Begin(now);gripper_.Begin(now,status);}
   Capture(status);last_id_=id;kind_=kind;points_=points;started_=now;settled_.reset();
-  next_index_=0;busy_=true;state_="EXECUTING";error_.clear();return true;
+  timeout_snapshot_.reset();next_index_=0;busy_=true;state_="EXECUTING";error_.clear();return true;
  }
  void Cancel(const AutoHomeStatus& status,const std::string& reason){
   if(status.feedback_ready)Capture(status);
@@ -147,7 +158,13 @@ class MissionStream {
     if(std::chrono::duration<double>(now-*settled_).count()>=cfg_.settle_s){busy_=false;state_="SUCCEEDED";}
    }else settled_.reset();
   }
-  if(busy_&&elapsed>(kind_=="close"?cfg_.close_duration_s:points_.size()/cfg_.rate)+cfg_.completion_timeout_s){Cancel(status,"trajectory_feedback_timeout");state_="FAILED";}
+  if(busy_&&elapsed>(kind_=="close"?cfg_.close_duration_s:points_.size()/cfg_.rate)+cfg_.completion_timeout_s){
+   // Preserve the commanded target before Cancel captures measured angles.
+   timeout_snapshot_=MotionTimeoutSnapshot{last_id_,held_.q,points_.back(),status.joints.position,status.joints.velocity,
+    index,points_.size(),(holding_||kind_=="home")?6u:7u,elapsed,cfg_.reached_tolerance,cfg_.settled_velocity,
+    settled_?std::chrono::duration<double>(now-*settled_).count():0.,cfg_.settle_s};
+   Cancel(status,"trajectory_feedback_timeout");state_="FAILED";
+  }
   return held_;
  }
  bool home6(const AutoHomeStatus& status,double tolerance)const{
@@ -175,6 +192,7 @@ class MissionStream {
  bool busy()const{return busy_;}bool holding()const{return holding_;}
  uint64_t id()const{return last_id_;}const std::string& state()const{return state_;}
  const std::string& error()const{return error_;}
+ const std::optional<MotionTimeoutSnapshot>& timeout_snapshot()const{return timeout_snapshot_;}
  const AutoHomeController::Command& command()const{return held_;}
  private:
  void Capture(const AutoHomeStatus& s){
@@ -185,6 +203,7 @@ class MissionStream {
  void ApplyGripper(){held_.q[6]=gripper_.target();held_.kp[6]=cfg_.gripper_control.kp;held_.kd[6]=cfg_.gripper_control.kd;held_.torque[6]=0;}
  MissionStreamConfig cfg_;GraspAssessment assessment_;MeasuredGripperControl gripper_;AutoHomeController::Command held_;
  std::vector<std::array<float,7>> points_;
+ std::optional<MotionTimeoutSnapshot> timeout_snapshot_;
  ArmTime started_{};std::optional<ArmTime> settled_;
  bool initialized_=false,busy_=false,holding_=false;uint64_t last_id_=0;
  size_t next_index_=0;
