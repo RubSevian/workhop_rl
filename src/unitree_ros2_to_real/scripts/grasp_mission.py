@@ -220,6 +220,7 @@ class Coordinator(Node):
         if not self.physical or self.blockers:return
         if self.count_publishers('/rars01/mission/computed')!=1:return
         try:
+            decode_started=time.monotonic()
             data=json.loads(msg.data)
             if self.stop_home and all(data.get(k)==self.stop_home.get(k) for k in ('id','session_id','navigation_session_id','owner_session_id','goal_revision')):
                 pending=self.stop_home;self.stop_home=None
@@ -229,7 +230,17 @@ class Coordinator(Node):
                     trajectory=dict(data['trajectory'],**{k:pending[k] for k in ('id','session_id','navigation_session_id','owner_session_id','goal_revision')},observed_ns=time.monotonic_ns())
                     self.trajectory_pub.publish(String(data=json.dumps(trajectory,allow_nan=False)))
                 else:self.get_logger().error('Controlled-stop HOME blocked: '+data.get('reason','authority revoked'))
-            else:self.engine.result(data,time.monotonic())
+            else:
+                decode_finished=time.monotonic()
+                self.engine.result(data,decode_finished)
+                diagnostic=dict(self.engine.last_result_diagnostic or {})
+                diagnostic.update(result_bytes=len(msg.data.encode('utf-8')),
+                                  decode_s=decode_finished-decode_started)
+                journal=getattr(self,'short_journal',None)
+                if journal is not None:journal.put('compute_result_admission',**diagnostic)
+                text='COMPUTE_RESULT_ADMISSION '+json.dumps(diagnostic,ensure_ascii=False,allow_nan=False)
+                if diagnostic.get('accepted'):self.get_logger().info(text)
+                else:self.get_logger().warning(text)
         except (ValueError,TypeError,KeyError):self.engine.cancel(time.monotonic(),'INVALID_COMPUTE_RESULT',True)
 
     def tick(self):

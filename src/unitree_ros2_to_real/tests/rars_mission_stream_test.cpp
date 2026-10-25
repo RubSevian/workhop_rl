@@ -17,6 +17,16 @@ class FreshStream : public MissionStream {
  private:uint64_t frames_=0;
 };
 int main(){
+ assert(PresetSearchPlanAllowed("refine","VIEW_REFINEMENT"));
+ assert(!PresetSearchPlanAllowed("refine","GRASP"));
+ {
+  std::vector<std::array<float,7>> points(2,std::array<float,7>{});points[1][0]=.3F;
+  assert(UncheckedSearchPlanAllowed("preset_search_unchecked","refine","VIEW_REFINEMENT","move",false,points));
+  assert(!UncheckedSearchPlanAllowed("preset_search_unchecked","refine","VIEW_REFINEMENT","move",true,points));
+  points[1][1]=.01F;
+  assert(!UncheckedSearchPlanAllowed("preset_search_unchecked","refine","VIEW_REFINEMENT","move",false,points));
+ }
+
  assert(UncheckedScanHomeAllowed("scan_to_home_unchecked","home","RETURN_HOME","home",true,"SUCCEEDED"));
  assert(!UncheckedScanHomeAllowed("scan_to_home_unchecked","home","RETURN_HOME","home",false,"SUCCEEDED"));
  assert(!UncheckedScanHomeAllowed("scan_to_home_unchecked","home","RETURN_HOME","home",true,"EXECUTING"));

@@ -138,7 +138,7 @@ class Integration(unittest.TestCase):
         self.assertEqual(f.m.state,'BLOCKED')
 
     def observation_fixture(self):
-        f=Fixture();f.start()
+        f=Fixture();f.m.cfg["refinement"]["enabled"]=False;f.start()
         for _ in range(400):
             effects=f.tick(False)
             for kind,data in effects:
@@ -547,42 +547,21 @@ class Integration(unittest.TestCase):
         f.m.scan_index=CFG['search']['max_attempts']-1;f.m.next_search(f.now)
         self.assertEqual(f.m.state,'RETURN_HOME');self.assertEqual(f.m.result_after_home,'OBJECT_NOT_FOUND')
 
-    def test_refinement_accepts_zero_or_one_joint_change(self):
-        from mission.planning import Planning
-        from types import SimpleNamespace
-        planner=Planning.__new__(Planning);planner.cfg=copy.deepcopy(CFG)
-        planner.grasp={'robot':{'motion':{},'ready_pose':{'duration':1.}}}
-        planner.last_detection=(None,None,None,None,np.array([0.,0.,1.]))
-        planner.eye=SimpleNamespace(chain=lambda *args:(np.eye(4),np.eye(4)))
-        planner.fk=SimpleNamespace(forward=lambda q:np.eye(4))
-        planner.samples=lambda start,targets,*args,**kwargs:np.vstack([start,np.r_[targets[0],start[6]]])
-        planner.checked=lambda points,*args,**kwargs:{'points':points}
-        planner.compute_metrics={}
-        planner.collision=SimpleNamespace(validated_scene=lambda *args,**kwargs:None)
-        planner.collision_scene=lambda sample:{}
-        sample=dict(q7=[0.]*7,q=[0.]*6,legs=[0.]*12,owner_session_id='arm',
-                    body=SimpleNamespace(navigation_session_id='nav',mono_ns=1),capture_ns=1,
-                    feedback_ns=1,odom_mono_ns=1,odom_vehicle=np.eye(4))
-        request=dict(operation='refine',owner={},owner_session_id='arm',navigation_session_id='nav')
-        for target in (np.zeros(6),np.array([.01,0,0,0,0,0]),np.array([.01,.01,0,0,0,0])):
-            with self.subTest(target=target.tolist()):
-                planner.ik=SimpleNamespace(solve=lambda *args,**kwargs:SimpleNamespace(success=True,joints=target))
-                result=planner.execute(request,lambda *args:sample)
-                np.testing.assert_allclose(result['trajectory']['points'][-1][:6],target)
-        from mission.planning import CandidatePathRejected
-        checked=planner.checked
-        def reject_motion(points,*args,**kwargs):
-            if not np.array_equal(points[0],points[-1]):raise CandidatePathRejected('COLLISION:arm:leg')
-            return checked(points,*args,**kwargs)
-        planner.checked=reject_motion
-        planner.ik=SimpleNamespace(solve=lambda *args,**kwargs:SimpleNamespace(success=True,joints=np.array([.01,0,0,0,0,0])))
-        result=planner.execute(request,lambda *args:sample)
-        np.testing.assert_array_equal(result['trajectory']['points'],np.zeros((2,7)))
-        planner.checked=checked
-        for success,target in ((False,np.zeros(6)),(True,np.array([.11,0,0,0,0,0]))):
-            planner.ik=SimpleNamespace(solve=lambda *args,**kwargs:SimpleNamespace(success=success,joints=target))
-            result=planner.execute(request,lambda *args:sample)
-            np.testing.assert_allclose(result['trajectory']['points'][-1][:6],target if success else np.zeros(6))
+    def test_refinement_yaw_limits_and_camera_axis_sign(self):
+        from mission.refinement import select_scan_yaw
+        for sign in (-1,1):
+            def camera(q):return [np.sin(.3-sign*q),.4,np.cos(.3-sign*q)]
+            q,info=select_scan_yaw(0,camera,-2.5,2.5,.5,.02)
+            self.assertAlmostEqual(q,sign*.3,places=6)
+            self.assertTrue(info['centered'])
+            self.assertLess(info['after_rad'],info['before_rad'])
+        q,info=select_scan_yaw(0,lambda q:[1-q,0,1],-.2,.2,.5,.02)
+        self.assertAlmostEqual(q,.2)
+        self.assertFalse(info['centered'])
+        q,info=select_scan_yaw(0,lambda q:[0,0,1],-2,2,.5,.02)
+        self.assertEqual(q,0)
+        with self.assertRaisesRegex(ValueError,'BEHIND_CAMERA'):
+            select_scan_yaw(0,lambda q:[0,0,-1],-2,2,.5,.02)
 
     def test_zero_first_sweep_return_zero_then_home(self):
         f=Fixture('not_found');self.assertEqual(f.run(),'OBJECT_NOT_FOUND')

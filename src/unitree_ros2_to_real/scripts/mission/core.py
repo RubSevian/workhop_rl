@@ -33,6 +33,7 @@ class Mission:
         self.armed_ros_ns = 0
         self.request_id = 0
         self.pending = None
+        self.last_result_diagnostic = None
         self.scan_index, self.detect_at = 0, 0.
         self.stable_since, self.base_anchor = None, None
         self.leg_anchor = None
@@ -336,23 +337,40 @@ class Mission:
 
     def result(self, result, now):
         p = self.pending
+        stamp=result.get('observed_ns')
+        age=now-stamp/1e9 if type(stamp) is int else None
+        diagnostic=dict(request_id=result.get('id'),pending_id=p.get('id') if p else None,
+            operation=p.get('operation') if p else None,result_age_s=age,
+            heartbeat_ttl_s=self.cfg['execution']['heartbeat_ttl_s'],accepted=False,
+            reason='REQUEST_IDENTITY_MISMATCH',action='IGNORE_UNRELATED_RESULT')
+        self.last_result_diagnostic=diagnostic
         if (not p or p['kind'] != 'compute' or result.get('id') != p['id']
                 or result.get('session_id') != self.session
                 or result.get('navigation_session_id') != self.nav_session
                 or result.get('goal_revision') != self.revision
                 or result.get('owner_session_id') != self.owner_session):
             return False
-        age = now-result.get('observed_ns', 0)/1e9
-        # Trajectory transport/decoding is not a heartbeat. Its request identity
-        # above and the owner's live admission checks determine applicability.
-        if result.get('observed_ns',0)<=0 or not age>=0:
+        if age is None or stamp<=0 or not math.isfinite(age) or age<0:
+            diagnostic.update(reason='INVALID_COMPUTE_TIMESTAMP',action='BLOCK')
+            self.cancel(now,'INVALID_COMPUTE_TIMESTAMP',True)
             return False
-        if 'trajectory' not in result and age>self.cfg['execution']['heartbeat_ttl_s']:
+        # Successful grasp_plan carries all checked segments, often much larger
+        # than a single trajectory. Delivery/JSON decoding is not heartbeat TTL.
+        # PREGRASP still performs live scene/start checks before owner admission.
+        transport_plan=('trajectory' in result or
+            (p['operation']=='grasp_plan' and result.get('ok') is True
+             and isinstance(result.get('grasp_plan'),dict)))
+        if not transport_plan and age>self.cfg['execution']['heartbeat_ttl_s']:
+            diagnostic.update(reason='COMPUTE_RESULT_STALE',action='BLOCK')
+            self.cancel(now,'COMPUTE_RESULT_STALE',True)
             return False
+        diagnostic.update(reason='MATCHED_REQUEST',action='PROCESS_RESULT')
         if (self.recovery_since is not None
                 and now-self.recovery_since>=self.cfg['execution'].get('observation_recovery_timeout_s',30.)):
+            diagnostic.update(reason='OBSERVATION_RECOVERY_TIMEOUT',action='BLOCK')
             self.cancel(now,'OBSERVATION_RECOVERY_TIMEOUT:'+self.recovery_reason,True)
             return False
+        diagnostic['accepted']=True
         self.last_compute_metrics=result.get('compute_metrics',{})
         operation = p['operation']
         self.pending = None

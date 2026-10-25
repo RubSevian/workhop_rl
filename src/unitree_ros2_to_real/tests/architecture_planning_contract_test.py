@@ -163,49 +163,29 @@ class PlanningContracts(unittest.TestCase):
                 p.execute(request,lambda *a:copy.deepcopy(sample))
         self.assertEqual(result['trajectory']['approval_collision_context']['legs'],sample['legs'])
 
-    def test_refine_frozen_scene_and_live_admission_including_collision_fallback(self):
-        from mission.scene import validate_scene_data
-        for reject_move in (False, True):
-            with self.subTest(reject_move=reject_move):
-                p,sample=self.setup_planner();p.compute_metrics={}
-                original=copy.deepcopy(sample['scene_snapshot'])
-                acquired=sample['body'].mono_ns;clock=[acquired];passes=[]
-                p.grasp['robot']['ready_pose']={'duration':1.}
-                p.last_detection=(None,None,None,None,np.array([.1,.2,.3]))
-                p.eye=NS(chain=lambda *a:(np.eye(4),np.eye(4)))
-                p.fk=NS(forward=lambda *a:np.eye(4))
-                def solve(*a,**k):
-                    clock[0]+=2_000_000_000
-                    return NS(success=True,joints=np.ones(6)*.01)
-                p.ik=NS(solve=solve)
-                p.samples=lambda start,targets,*a,**k:np.vstack([start,np.r_[targets[0],start[6]]])
-                def validate(scene,payload,reference_ns=None):
-                    validate_scene_data(scene['scene_snapshot'],p.cfg,
-                        clock[0] if reference_ns is None else reference_ns,'nav','arm')
-                def check(points,scene,payload,**options):
-                    validate(scene,payload,**options)
-                    passes.append((np.asarray(points).copy(),options['reference_ns']))
-                    return not (reject_move and len(passes)==1)
-                p.collision=NS(validated_scene=validate,check=check,
-                               last_reason='COLLISION:test',last_failure='COLLISION:test')
-                request=dict(operation='refine',owner={},owner_session_id='arm',navigation_session_id='nav')
-                with patch('mission.planning.time.monotonic_ns',side_effect=lambda:clock[0]):
-                    result=p.execute(request,lambda *a:copy.deepcopy(sample))
-                    self.assertEqual(len(passes),2 if reject_move else 1)
-                    self.assertTrue(all(ref==acquired for _,ref in passes))
-                    self.assertTrue(result['trajectory']['collision_checked'])
-                    self.assertEqual(p.compute_metrics['refine_prepare_elapsed_s'],2.)
-                    if reject_move:np.testing.assert_array_equal(passes[-1][0][0],passes[-1][0][1])
-                    with self.assertRaisesRegex(ValueError,'SCENE_SNAPSHOT_STALE:body'):
-                        p.validate_result(result,lambda *a:copy.deepcopy(sample))
-                    fresh=copy.deepcopy(sample)
-                    fresh['scene_snapshot']['body']['mono_ns']=clock[0]
-                    for key in ('feedback_ns','legs_ns','live_feedback_ns','live_legs_ns'):
-                        fresh['scene_snapshot'][key]=clock[0]
-                    p.validate_result(result,lambda *a:fresh)
-                    with self.assertRaisesRegex(ValueError,'SCENE_SNAPSHOT_STALE:body'):
-                        p.execute(request,lambda *a:copy.deepcopy(sample))
-                self.assertEqual(sample['scene_snapshot'],original)
+    def test_refine_only_joint_one_without_collision_or_ik(self):
+        p,sample=self.setup_planner();p.compute_metrics={}
+        p.scan_joints=np.asarray(sample['q7'][:6]).copy();p.angles=[-2.5,2.5]
+        p.grasp['robot']['ready_pose']={'duration':3.}
+        p.last_detection=(None,None,None,None,np.array([.2,0.,1.]))
+        def chain(capture,feedback,q,*args):
+            pose=np.eye(4);a=q[0]-sample['q7'][0]
+            pose[:3,:3]=[[np.cos(a),0,np.sin(a)],[0,1,0],[-np.sin(a),0,np.cos(a)]]
+            return pose,np.eye(4)
+        p.eye=NS(chain=chain)
+        p.ik=NS(joint_limits=lambda:(-np.ones(6)*3,np.ones(6)*3))
+        p.samples=lambda start,targets,*a,**k:np.vstack([start,np.r_[targets[0],start[6]]])
+        p.collision=NS(validated_scene=lambda *a,**k:None)
+        request=dict(operation='refine',owner={},owner_session_id='arm',navigation_session_id='nav')
+        result=p.execute(request,lambda *a:copy.deepcopy(sample))['trajectory']
+        self.assertFalse(result['collision_checked'])
+        self.assertEqual(result['preset_operation'],'refine')
+        points=np.array(result['points'])
+        np.testing.assert_array_equal(points[0,1:],points[-1,1:])
+        self.assertLess(p.compute_metrics['refinement']['after_rad'],.02)
+        p.scan_joints[2]+=.1
+        with self.assertRaisesRegex(ValueError,'REFINE_SCAN_POSE_CHANGED'):
+            p.execute(request,lambda *a:copy.deepcopy(sample))
 
     def test_search_sweep_moves_only_first_joint_without_collision(self):
         p,sample=self.setup_planner();p.compute_metrics={}

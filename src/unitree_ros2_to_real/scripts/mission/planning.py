@@ -555,17 +555,22 @@ class Planning:
         elif op=='refine':
             refine_started_ns=time.monotonic_ns()
             if self.last_detection is None:raise ValueError('NO_STABLE_OBJECT')
-            # Recompute the fixed odom object in current arm coordinates.
-            _,_,_,old,anchor=self.last_detection
-            arm_camera,odom_arm=self.eye.chain(sample['capture_ns'],sample['feedback_ns'],sample['q'],sample['odom_mono_ns'],sample['odom_vehicle'])
-            point_camera=np.linalg.inv(odom_arm@arm_camera)@np.r_[anchor,1.]
-            delta_camera=np.array([point_camera[0],point_camera[1],0.])*self.cfg['refinement']['gain']
-            bound=self.cfg['refinement']['max_translation_m'];delta_camera*=min(1.,bound/max(np.linalg.norm(delta_camera),1e-12))
-            pose=self.fk.forward(start[:6]);pose[:3,3]+=arm_camera[:3,:3]@delta_camera
-            ik=self.ik.solve(*mat4_to_pose6d(pose),reference_joints=start[:6])
-            # Recentring is optional: an unavailable IK must not reject a
-            # visible target. Fresh detection still precedes GraspNet.
-            target=ik.joints if ik.success else start[:6].copy()
+            if self.scan_joints is None or payload:raise ValueError('REFINE_REQUIRES_EMPTY_SCAN_POSE')
+            if np.max(np.abs(start[1:6]-self.scan_joints[1:6]))>self.cfg['execution']['start_tolerance_rad']:
+                raise ValueError('REFINE_SCAN_POSE_CHANGED')
+            anchor=np.asarray(self.last_detection[4],dtype=float)
+            from .refinement import select_scan_yaw
+            lower,upper=self.ik.joint_limits()
+            def camera_point(yaw):
+                q=start[:6].copy();q[0]=yaw
+                arm_camera,odom_arm=self.eye.chain(sample['capture_ns'],sample['feedback_ns'],q,sample['odom_mono_ns'],sample['odom_vehicle'])
+                return (np.linalg.inv(odom_arm@arm_camera)@np.r_[anchor,1.])[:3]
+            target=start[:6].copy()
+            target[0],detail=select_scan_yaw(start[0],camera_point,
+                max(lower[0],min(self.angles)),min(upper[0],max(self.angles)),
+                self.cfg['refinement'].get('max_yaw_rad',.5),
+                self.cfg['refinement'].get('horizontal_tolerance_rad',.02))
+            self.compute_metrics['refinement']=detail
             self.compute_metrics['refine_prepare_elapsed_s']=(time.monotonic_ns()-refine_started_ns)/1e9
         elif op in ('grasp_plan','observe_grasp'):
             with planning_stage(self.compute_metrics,'detection',trace,request,progress=progress):
@@ -686,7 +691,7 @@ class Planning:
             selection_status='INTERRUPTED_OR_ERROR'
             try:
                 with planning_stage(self.compute_metrics,'selection_including_collision',trace,request,progress=progress):
-                    candidate=_select_executable_grasp(self.ik,GeometryOnly(),GraspGroup(result['grasps']),cam_to_arm,g['pregrasp_offset_m'],g.get('retreat_offset_m',g['pregrasp_offset_m']),g['insertion_depth_m'],robot['max_grasp_depth_m'],g['min_base_z_m'],g['min_jaw_z_m'],'rars01',True,True,np.array([g['position_compensation_base_m'][axis] for axis in 'xyz']),g['ik_candidate_limit'],g['cartesian_ik'],g['candidate_selection'],path_validator=validate,rejection_diagnostics=rejections,local_height_filters_enabled=self.cfg.get('local_height_filters_enabled',True),cancel_check=self.collision.check_deadline,selection_metrics=self.compute_metrics['candidate_validation'],candidate_diagnostics=audit,verbose=not self.cfg['execution'].get('short_journal_enabled',False))
+                    candidate=_select_executable_grasp(self.ik,GeometryOnly(),GraspGroup(result['grasps']),cam_to_arm,g['pregrasp_offset_m'],g.get('retreat_offset_m',g['pregrasp_offset_m']),g['insertion_depth_m'],robot['max_grasp_depth_m'],g['min_base_z_m'],g['min_jaw_z_m'],'rars01',True,True,np.array([g['position_compensation_base_m'][axis] for axis in 'xyz']),g['ik_candidate_limit'],g['cartesian_ik'],g['candidate_selection'],max_grasp_width_m=robot['max_grasp_width_m'],path_validator=validate,rejection_diagnostics=rejections,local_height_filters_enabled=self.cfg.get('local_height_filters_enabled',True),cancel_check=self.collision.check_deadline,selection_metrics=self.compute_metrics['candidate_validation'],candidate_diagnostics=audit,verbose=not self.cfg['execution'].get('short_journal_enabled',False))
                 selection_status='SELECTED_COLLISION_CHECKED' if candidate is not None else 'NO_EXECUTABLE_CANDIDATE'
             finally:
                 publish_arm(selection_status)
@@ -778,13 +783,13 @@ class Planning:
         else:
             raise ValueError('APPROVED_SEGMENTS_REQUIRED')
         preparation_started_ns=time.monotonic_ns()
-        points=self.samples(start,[target],self.grasp['robot']['ready_pose']['duration'],grip,search=op in ('scan_step','scan_return'),scan_pose=op=='scan_pose')
+        points=self.samples(start,[target],self.grasp['robot']['ready_pose']['duration'],grip,search=op in ('scan_step','scan_return','refine'),scan_pose=op=='scan_pose')
         if op=='home' and request.get('home_from_scan'):
             return dict(trajectory=dict(kind='home',operation='home',points=points.tolist(),
                 collision_checked=False,collision_policy='scan_to_home_unchecked',
                 payload_checked=bool(payload and self.cfg['collision'].get('payload_enabled',True)),
                 collision_context=self.collision_scene(sample),scene_snapshot=copy.deepcopy(sample['scene_snapshot'])))
-        if op in ('scan_pose','scan_step','scan_return'):
+        if op in ('scan_pose','scan_step','scan_return','refine'):
             # Operator-approved preset search policy, NOT collision approval.
             # Freshness, epochs, start tolerance and owner limits still apply.
             self.compute_metrics.update(collision_policy='preset_search_unchecked',
@@ -793,16 +798,10 @@ class Planning:
                 collision_policy='preset_search_unchecked',operation=op,
                 payload_checked=bool(payload and self.cfg['collision'].get('payload_enabled',True)),
                 collision_context=self.collision_scene(sample),scene_snapshot=copy.deepcopy(sample['scene_snapshot']))
-            if op in ('scan_step','scan_return'):trajectory['preset_operation']=op
+            if op in ('scan_step','scan_return','refine'):trajectory['preset_operation']=op
             return dict(trajectory=trajectory)
-        try:
-            trajectory=self.checked(points,sample,payload,'home' if op=='home' else 'move',
-                **({} if planning_reference_ns is None else dict(reference_ns=planning_reference_ns)))
-        except CandidatePathRejected:
-            if op!='refine':raise
-            # Do not move along a colliding recenter path. Keep the current
-            # collision-checked pose and obtain fresh images for grasp planning.
-            trajectory=self.checked(np.vstack([start,start]),sample,payload,reference_ns=planning_reference_ns)
+        trajectory=self.checked(points,sample,payload,'home' if op=='home' else 'move',
+            **({} if planning_reference_ns is None else dict(reference_ns=planning_reference_ns)))
         return dict(trajectory=trajectory)
 
     def close(self):

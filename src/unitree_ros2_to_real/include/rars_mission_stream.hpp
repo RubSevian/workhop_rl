@@ -16,7 +16,7 @@ inline bool ReadyObservePlanAllowed(bool enabled,bool initial_move_seen,const st
  return !enabled||kind=="home"||(kind=="move"&&!initial_move_seen);
 }
 inline bool PresetSearchPlanAllowed(const std::string& operation,const std::string& phase){
- return (operation=="scan_step"&&phase=="ARM_SEARCH")||(operation=="scan_return"&&phase=="RETURN_HOME");
+ return (operation=="refine"&&phase=="VIEW_REFINEMENT")||(operation=="scan_step"&&phase=="ARM_SEARCH")||(operation=="scan_return"&&phase=="RETURN_HOME");
 }
 // SDK velocity limits apply only to the agreed operations in their live phases.
 inline bool MotorLimitPlanAllowed(const std::string& operation,const std::string& phase,const std::string& kind){
