@@ -37,9 +37,10 @@ int main(){
   assert(!m.CompletedHomeHoldAllowed("GRASP_PRESUMED_SUCCESS"));
   for(int n=0;n<=30;++n)m.Tick(t(11+n*.01),sample(11+n*.01,.7F,2.2F,n+101),true);
   assert(m.CompletedHomeHoldAllowed("GRASP_PRESUMED_SUCCESS"));
-  for(const auto* phase:{"BLOCKED","CANCELLED","TARGET_NOT_GRASPED","IDLE"})assert(!m.CompletedHomeHoldAllowed(phase));
+  for(const auto* phase:{"BLOCKED","CANCELLED","IDLE"})assert(!m.CompletedHomeHoldAllowed(phase));
+  assert(m.CompletedHomeHoldAllowed("TARGET_NOT_GRASPED"));
   for(int n=31;n<=130;++n){
-   const auto cmd=m.Tick(t(11+n*.01),sample(11+n*.01,.7F,2.2F,n+101),m.CompletedHomeHoldAllowed("GRASP_PRESUMED_SUCCESS"));
+   const auto cmd=m.Tick(t(11+n*.01),sample(11+n*.01,.7F,2.2F,n+101),m.CompletedHomeHoldAllowed("TARGET_NOT_GRASPED"));
    assert(m.holding()&&m.CompletedHomeHoldAllowed("GRASP_PRESUMED_SUCCESS"));
    assert(cmd.kp[6]==cfg.gripper_control.kp&&cmd.torque[6]==0);
   }

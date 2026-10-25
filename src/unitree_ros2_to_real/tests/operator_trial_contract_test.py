@@ -59,9 +59,11 @@ class TrialTests(unittest.TestCase):
                 elif failure=='nav_epoch':f.nav['session_id']='new-nav'
                 elif failure=='feedback':f.owner['feedback_ready']=False
                 elif failure=='scene':f.tf_revision='new-tf'
-                elif failure=='timeout':f.m.entered=f.now-f.m.cfg['execution']['state_timeout_s']-1
+                elif failure=='timeout':
+                    f.m.cfg['execution']['state_timeout_s']=5.
+                    f.m.entered=f.now-6.
                 elif failure=='assessment':
-                    # The owner independently requires GRASPED to approve; a mere
+                    # The owner independently requires valid assessment to approve; a mere
                     # pending plan never grants motion on UNKNOWN feedback.
                     owner=dict(operator_trial=True,owner_session_id='a',feedback_ready=True,target_valid=True,grasp_assessment='UNKNOWN',retreat_trial=dict(state='WAITING_OPERATOR',approval_service='/rars01/mission/approve_retreat/ta',plan_id=1,mission_session_id='m',goal_revision=1))
                     with self.assertRaises(ValueError):helper.approval_identity(owner,dict(operator_trial=True,state='WAIT_RETREAT_APPROVAL',session_id='m',goal_revision=1),dict(state='ACTIVE',phase='RL_ZERO'))
@@ -69,11 +71,12 @@ class TrialTests(unittest.TestCase):
                 f.tick();self.assertIn(f.m.state,TERMINAL);self.assertNotEqual(f.m.state,'GRASP_PRESUMED_SUCCESS')
 
     def test_cli_requires_exact_waiting_identity_not_early_stale_or_foreign_ticket(self):
-        owner=dict(operator_trial=True,owner_session_id='owner',feedback_ready=True,target_valid=True,grasp_assessment='GRASPED',retreat_trial=dict(state='WAITING_OPERATOR',approval_service='/rars01/mission/approve_retreat/t123',plan_id=1,mission_session_id='mission',goal_revision=2))
+        owner=dict(operator_trial=True,owner_session_id='owner',feedback_ready=True,target_valid=True,grasp_assessment='GRASPED',gripper_command_active=True,retreat_trial=dict(state='WAITING_OPERATOR',approval_service='/rars01/mission/approve_retreat/t123',plan_id=1,mission_session_id='mission',goal_revision=2))
         mission=dict(operator_trial=True,state='WAIT_RETREAT_APPROVAL',session_id='mission',goal_revision=2)
         r3=dict(state='ACTIVE',phase='RL_ZERO',fault_latched=False)
         identity=helper.approval_identity(owner,mission,r3);self.assertEqual(identity[3],1)
-        for target,key,value in [('owner','feedback_ready',False),('owner','grasp_assessment','UNKNOWN'),('mission','session_id','foreign'),('mission','goal_revision',3),('mission','state','RETREAT'),('r3','phase','RL_ACTIVE'),('r3','fault_latched',True)]:
+        self.assertEqual(helper.approval_identity(dict(owner,grasp_assessment='NOT_GRASPED'),mission,r3),identity)
+        for target,key,value in [('owner','gripper_command_active',False),('owner','feedback_ready',False),('owner','grasp_assessment','UNKNOWN'),('mission','session_id','foreign'),('mission','goal_revision',3),('mission','state','RETREAT'),('r3','phase','RL_ACTIVE'),('r3','fault_latched',True)]:
             args=dict(owner=copy.deepcopy(owner),mission=copy.deepcopy(mission),r3=copy.deepcopy(r3));args[target][key]=value
             with self.assertRaises(ValueError):helper.approval_identity(**args)
 
@@ -90,7 +93,7 @@ class TrialTests(unittest.TestCase):
         spec=importlib.util.spec_from_file_location('trial_launch',SCRIPTS.parent/'launch/go2_rars01_first_grasp.launch.py');module=importlib.util.module_from_spec(spec);spec.loader.exec_module(module)
         with tempfile.TemporaryDirectory() as tmp:
             launch.logging.launch_config.log_dir=tmp;p=Path(tmp);lib=p/'lib/unitree_legged_real';lib.mkdir(parents=True);(lib/'mission').symlink_to(SCRIPTS/'mission',target_is_directory=True)
-            c=LaunchContext();c.launch_configurations.update(workspace=str(ROOT),mission_config_path=str(ROOT/'repos/rars01_graspnet/config/jetson_orin_nano.yaml'),physical='true',test_mode='full',operator_trial='false',start_arm_owner='true',network_interface='',controlled_stop_lie_down_trial='true')
+            c=LaunchContext();c.launch_configurations.update(workspace=str(ROOT),mission_config_path=str(ROOT/'repos/rars01_graspnet/config/jetson_orin_nano.yaml'),physical='true',test_mode='full',operator_trial='false',start_arm_owner='true',network_interface='',controlled_stop_lie_down_trial='true',architecture_monitor='true')
             with patch.object(module,'get_package_prefix',return_value=str(p)),patch.object(module,'get_package_share_directory',return_value=str(SCRIPTS.parent)):
                 with self.assertRaisesRegex(RuntimeError,'physical_retreat_clearance_unqualified'):module._launch(c)
                 c.launch_configurations['operator_trial']='true';actions=module._launch(c)

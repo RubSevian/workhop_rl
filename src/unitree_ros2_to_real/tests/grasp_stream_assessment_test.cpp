@@ -11,12 +11,20 @@ int main(){
  auto s=status(10.51,.7,-1.7);std::vector<std::array<float,7>> open(101,s.joints.position);for(int n=0;n<=100;++n)open[n][6]=.7F+.3F*n/100;
  assert(!success.Start(2,"release",open,t(10.51),s)); // A confirmed grasp never auto-opens.
  MissionStream failed(config());close(failed,20,1.5F);assert(failed.assessment().state()=="NOT_GRASPED");
- s=status(22.02,.7,1.5);assert(failed.Start(2,"release",open,t(22.02),s));assert(!failed.holding());
- for(int i=0;i<=130;++i){double v=22.02+i*.01;s=status(v,open[std::min(i,100)][6],0);failed.Tick(t(v),s,true);failed.ObserveAssessment(t(v),s);}
+ s=status(22.01,.7,1.5);assert(failed.RetreatReady(t(22.01),s));assert(!failed.HoldConfirmed(s));
+ auto stale=s;assert(!failed.RetreatReady(t(23),stale));
+ s=status(23.01,.7,1.5);assert(failed.RetreatReady(t(23.01),s));
+ s.target_fresh=false;assert(!failed.RetreatReady(t(23.01),s));
+ // Independent stream preserves the release scenario's original time sequence.
+ MissionStream ready(config());close(ready,30,1.8F);
+ assert(ready.RetreatReady(t(32.02),status(32.02,.7,1.8F)));
+ ready.Cancel(status(32.03,.7,1.8F),"test");assert(!ready.RetreatReady(t(32.03),status(32.03,.7,1.8F)));
+ s=status(23.02,.7,1.5);assert(failed.Start(2,"release",open,t(23.02),s));assert(!failed.holding());
+ for(int i=0;i<=130;++i){double v=23.02+i*.01;s=status(v,open[std::min(i,100)][6],0);failed.Tick(t(v),s,true);failed.ObserveAssessment(t(v),s);}
  assert(failed.state()=="SUCCEEDED");std::vector<std::array<float,7>> p(2,s.joints.position);
- assert(failed.Start(3,"close",p,t(23.33),s));assert(failed.assessment().state()=="UNKNOWN");
- for(int i=0;i<=51;++i){double v=23.33+i*.01;s=status(v,1.,1.8);failed.Tick(t(v),s,true);failed.ObserveAssessment(t(v),s);}
+ assert(failed.Start(3,"close",p,t(24.33),s));assert(failed.assessment().state()=="UNKNOWN");
+ for(int i=0;i<=51;++i){double v=24.33+i*.01;s=status(v,1.,1.8);failed.Tick(t(v),s,true);failed.ObserveAssessment(t(v),s);}
  assert(failed.assessment().state()=="GRASPED");
- s.state=AutoHomeState::FAULT_LATCHED;failed.ObserveAssessment(t(23.85),s);assert(failed.assessment().state()=="UNKNOWN");
+ s.state=AutoHomeState::FAULT_LATCHED;failed.ObserveAssessment(t(24.85),s);assert(failed.assessment().state()=="UNKNOWN");
  std::cout<<"PASS stream measured assessment, negative torque, NOT_GRASPED-only release, second close reset, fault invalidation; synthetic only\n";
 }

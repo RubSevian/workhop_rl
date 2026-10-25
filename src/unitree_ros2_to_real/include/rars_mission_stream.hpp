@@ -175,6 +175,12 @@ class MissionStream {
  }
  // holding() means a gripper command is retained; it is NOT object evidence.
  bool HoldConfirmed(const AutoHomeStatus& status)const{return cfg_.assessment.enabled&&status.feedback_ready&&assessment_.state()=="GRASPED";}
+ // Refresh before admission: unconfirmed contact is informational, invalid feedback is not.
+ bool RetreatReady(ArmTime now,const AutoHomeStatus& status){
+  ObserveAssessment(now,status);
+  return cfg_.assessment.enabled&&!busy_&&holding_&&gripper_.active()&&status.target_fresh&&
+         (assessment_.state()=="GRASPED"||assessment_.state()=="NOT_GRASPED");
+ }
  void ObserveAssessment(ArmTime now,const AutoHomeStatus& status){
   if((kind_=="close"&&(state_=="EXECUTING"||state_=="SUCCEEDED"))||(holding_&&kind_!="release"))assessment_.Observe(now,status,true,holding_,cfg_.feedback_ttl_s);
   else if(kind_!="release")assessment_.Reset();
@@ -185,7 +191,7 @@ class MissionStream {
  // Terminal success may retain an already active hold after a completed HOME.
  // This grants no new trajectory authority and cannot restart a stopped regulator.
  bool CompletedHomeHoldAllowed(const std::string& phase)const{
-  return phase=="GRASP_PRESUMED_SUCCESS"&&kind_=="home"&&state_=="SUCCEEDED"&&
+  return (phase=="GRASP_PRESUMED_SUCCESS"||phase=="TARGET_NOT_GRASPED")&&kind_=="home"&&state_=="SUCCEEDED"&&
          !busy_&&holding_&&gripper_.active();
  }
  bool has_command()const{return initialized_;}

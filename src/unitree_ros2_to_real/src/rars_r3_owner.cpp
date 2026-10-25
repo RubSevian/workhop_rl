@@ -279,9 +279,9 @@ class ArmOwner final:public rclcpp::Node {
    const bool is_retreat=operation=="retreat";
    if(operator_trial_&&is_retreat){
     mission_->ObserveAssessment(now,home_->status());
-    if(kind!="move"||mission_->busy()||!mission_->holding()||!mission_->HoldConfirmed(home_->status())||
+    if(kind!="move"||mission_->busy()||!mission_->holding()||!mission_->RetreatReady(now,home_->status())||
        (health_phase_!="WAIT_RETREAT_APPROVAL"&&health_phase_!="GRASP"))
-      throw std::runtime_error("RETREAT_TRIAL_REQUIRES_STATIONARY_CONFIRMED_GRASP");
+      throw std::runtime_error("RETREAT_TRIAL_REQUIRES_STATIONARY_HOLD_AND_VALID_ASSESSMENT");
     if(!approved_trial){
      result.points=SlowRetreat(result.points,max_plan_samples_);
      const auto ticket="t"+owner_session_+"_"+std::to_string(v["id"].as<uint64_t>())+"_"+std::to_string(Ns(now));
@@ -290,7 +290,7 @@ class ArmOwner final:public rclcpp::Node {
      trial_state_="WAITING_OPERATOR";trial_pending_=std::move(result);
      trial_service_=create_service<std_srvs::srv::Trigger>(trial_service_name_,[this,ticket](std_srvs::srv::Trigger::Request::SharedPtr,std_srvs::srv::Trigger::Response::SharedPtr response){
       const auto now=ArmClock::now();mission_->ObserveAssessment(now,home_->status());
-      const bool live=trial_pending_.has_value()&&Authority(now)&&health_phase_=="WAIT_RETREAT_APPROVAL"&&!mission_->busy()&&mission_->holding()&&mission_->HoldConfirmed(home_->status());
+      const bool live=trial_pending_.has_value()&&Authority(now)&&health_phase_=="WAIT_RETREAT_APPROVAL"&&!mission_->busy()&&mission_->holding()&&mission_->RetreatReady(now,home_->status());
       response->success=trial_approval_.Approve(ticket,live);
       if(response->success)trial_state_="APPROVED_PENDING_REVALIDATION";
       response->message=response->success?"one-shot approval accepted; all live/start/limit gates rechecked before motion":"approval rejected: ticket, authority, phase or grasp changed";

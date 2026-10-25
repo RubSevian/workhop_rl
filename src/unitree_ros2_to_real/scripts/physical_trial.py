@@ -27,8 +27,9 @@ def approval_identity(owner,mission,r3):
             or preview.get('goal_revision')!=mission.get('goal_revision')
             or r3.get('state')!='ACTIVE' or r3.get('phase')!='RL_ZERO' or r3.get('fault_latched')
             or not owner.get('feedback_ready') or not owner.get('target_valid')
-            or owner.get('grasp_assessment')!='GRASPED'):
-        raise ValueError('WAITING_OPERATOR_WITH_FRESH_CONFIRMED_GRASP_REQUIRED')
+            or owner.get('gripper_command_active') is not True
+            or owner.get('grasp_assessment') not in ('GRASPED','NOT_GRASPED')):
+        raise ValueError('WAITING_OPERATOR_WITH_FRESH_HOLD_AND_VALID_ASSESSMENT_REQUIRED')
     return (owner['owner_session_id'],preview['mission_session_id'],preview['goal_revision'],preview['plan_id'],preview['approval_service'])
 
 
@@ -117,10 +118,10 @@ def main():
             else:print('Observation window ended; no motion or approval was sent.',flush=True)
         elif args.action=='approve-retreat':
             identity=approval_identity(data['owner'],data['mission'],data['r3'])
-            preview=data['owner']['retreat_trial'];print(json.dumps(safe(dict(trial=preview,owner_session_id=identity[0],grasp_width_m=data['owner'].get('grasp_width_m'))),ensure_ascii=False,indent=2),flush=True)
+            preview=data['owner']['retreat_trial'];print(json.dumps(safe(dict(trial=preview,owner_session_id=identity[0],grasp_width_m=data['owner'].get('grasp_width_m'),grasp_assessment=data['owner'].get('grasp_assessment'))),ensure_ascii=False,indent=2),flush=True)
             save(dict(preview=dict(ticket=list(identity),snapshot=data,time_ns=time.time_ns(),operator_approval_granted=False)))
             expected='RETREAT '+str(preview['plan_id'])
-            print('Approval starts physical RETREAT (25% original sampled velocity), then HOME. It does not qualify clearance.',flush=True)
+            print('Approval starts physical RETREAT (25% original sampled velocity), then the saved scan pose and HOME. NOT_GRASPED means grasp unconfirmed. It does not qualify clearance.',flush=True)
             if input('After inspecting the complete real path and object, type exactly '+expected+': ').strip()!=expected:raise RuntimeError('Operator did not confirm; no request sent')
             collect(time.monotonic_ns())
             if approval_identity(data['owner'],data['mission'],data['r3'])!=identity:raise RuntimeError('TRIAL_IDENTITY_CHANGED: inspect again; no request sent')
