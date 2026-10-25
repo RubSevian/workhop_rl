@@ -295,8 +295,9 @@ class Mission:
             assessment=self.inputs['owner'].get('grasp_assessment','UNKNOWN')
             if assessment in ('GRASPED','NOT_GRASPED'):
                 self.close_outcome='GRASP_PRESUMED_SUCCESS' if assessment=='GRASPED' else 'TARGET_NOT_GRASPED'
-                self.transition('WAIT_RETREAT_APPROVAL' if self.cfg.get('operator_trial') else 'RETREAT',now,
-                    'TARGET_NOT_GRASPED_CONTINUING' if assessment=='NOT_GRASPED' else ('OPERATOR_RETREAT_APPROVAL_REQUIRED' if self.cfg.get('operator_trial') else ''))
+                manual_retreat=self.cfg.get('operator_trial') and not self.cfg['execution'].get('automatic_retreat',False)
+                self.transition('WAIT_RETREAT_APPROVAL' if manual_retreat else 'RETREAT',now,
+                    'TARGET_NOT_GRASPED_CONTINUING' if assessment=='NOT_GRASPED' else ('OPERATOR_RETREAT_APPROVAL_REQUIRED' if manual_retreat else ''))
                 self.request('retreat',now)
             else:self.cancel(now,'GRASP_ASSESSMENT_UNKNOWN:'+self.inputs['owner'].get('grasp_assessment_reason','NO_VALID_ASSESSMENT'),True)
         elif operation=='retry_open':
@@ -584,7 +585,7 @@ class Mission:
         # LegPlanTrace records it once. Never resend thousands of points here.
         pending=None if self.pending is None else {
             key:self.pending[key] for key in ('id','operation','kind','at') if key in self.pending}
-        return dict(operator_trial=bool(self.cfg.get('operator_trial')),retreat_operator_approval_required=self.state=='WAIT_RETREAT_APPROVAL',availability=self.availability,input_rejections=self.input_rejections,wait_goal_stale_since=self.wait_goal_stale_since,stale_input_diagnostic=self.stale_input_diagnostic,observation_recovery=dict(reason=self.recovery_reason,since=self.recovery_since,retry_operation=self.retry_operation,retry_active=self.recovery_retry_active,retries=self.observation_retries),test_mode='ready_observe' if self.ready_observe else 'full',last_observation=self.last_observation,last_compute_metrics=self.last_compute_metrics,grasp_verification='torque_width',grasp_assessment=self.inputs.get('owner',{}).get('grasp_assessment','UNKNOWN'),object_grasped=None,observed_ns=int(now*1e9), session_id=self.session, state=self.state,
+        return dict(automatic_retreat=bool(self.cfg['execution'].get('automatic_retreat',False)),operator_trial=bool(self.cfg.get('operator_trial')),retreat_operator_approval_required=self.state=='WAIT_RETREAT_APPROVAL',availability=self.availability,input_rejections=self.input_rejections,wait_goal_stale_since=self.wait_goal_stale_since,stale_input_diagnostic=self.stale_input_diagnostic,observation_recovery=dict(reason=self.recovery_reason,since=self.recovery_since,retry_operation=self.retry_operation,retry_active=self.recovery_retry_active,retries=self.observation_retries),test_mode='ready_observe' if self.ready_observe else 'full',last_observation=self.last_observation,last_compute_metrics=self.last_compute_metrics,grasp_verification='torque_width',grasp_assessment=self.inputs.get('owner',{}).get('grasp_assessment','UNKNOWN'),object_grasped=None,observed_ns=int(now*1e9), session_id=self.session, state=self.state,
                     reason=self.reason, navigation_session_id=self.nav_session,
                     goal_revision=self.revision, goal_stamp_ns=self.goal_stamp,
                     elapsed_s=max(0.,now-self.started) if self.started else 0.,

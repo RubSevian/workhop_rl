@@ -22,12 +22,14 @@ class GraspDebug:
     def submit(self,color,depth,K,result,metadata):
         if self.closed:return
         try:
-            meta=dict(metadata,counts=result.get('filter_counts',{}),parameters=result.get('filter_parameters',{}))
+            meta=dict(metadata,counts=result.get('filter_counts',{}),parameters=result.get('filter_parameters',{}),target_binding=result.get('target_binding',{}))
             data=dict(color=color.copy(),rgbd_depth_mm=depth.copy(),K=np.asarray(K).copy(),
                 metadata=np.array(json.dumps(meta,default=diagnostic_json)))
             for stage,key in STAGES.items():
                 # Missing stage data is an error, not a misleading empty stage.
-                data[stage]=np.asarray(result[key]).copy().reshape(-1,17)
+                data[stage]=np.asarray(result.get('depth_grasps',result[key]) if stage=='depth' else result[key]).copy().reshape(-1,17)
+            if 'target_mask' in result:data['target_mask']=np.asarray(result['target_mask'],dtype=bool).copy()
+            if 'target_binding' in result:data['target_binding']=np.asarray(result['grasps']).copy().reshape(-1,17)
             self.queue.put_nowait(data)
         except queue.Full:self.dropped+=1
         except Exception as error:self.error=str(error)

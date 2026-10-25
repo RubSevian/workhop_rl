@@ -3,6 +3,26 @@ import math
 import xml.etree.ElementTree as ET
 import yaml
 
+TARGET_BINDING_DEFAULTS=dict(enabled=False,finger_length_m=.08,finger_height_m=.03,voxel_size_m=.003,
+              min_target_voxels=10,min_target_fraction=.5)
+
+
+def validate_target_binding(options):
+    if not isinstance(options,dict):raise ValueError('target_binding must be a mapping')
+    cfg=dict(TARGET_BINDING_DEFAULTS,**options)
+    if type(cfg['enabled']) is not bool:raise ValueError('target_binding.enabled must be boolean')
+    for key in ('finger_length_m','finger_height_m','voxel_size_m'):
+        if type(cfg[key]) not in (int,float) or not math.isfinite(cfg[key]) or not 0<cfg[key]<=.2:
+            raise ValueError('invalid target_binding.'+key)
+    if type(cfg['min_target_voxels']) is not int or cfg['min_target_voxels']<1:
+        raise ValueError('invalid target_binding.min_target_voxels')
+    fraction=cfg['min_target_fraction']
+    if type(fraction) not in (int,float) or not math.isfinite(fraction) or not 0<fraction<=1:
+        raise ValueError('invalid target_binding.min_target_fraction')
+    return cfg
+
+
+
 def environment_checks_enabled(collision):
     enabled = collision.get('environment_enabled', True)
     if type(enabled) is not bool:
@@ -58,6 +78,7 @@ def search_angles(search):
 
 def load(path, workspace):
     cfg = yaml.safe_load(Path(path).read_text())['go2_mission']
+    cfg['target_binding']=validate_target_binding(cfg.get('target_binding',{}))
     if type(cfg.get('local_height_filters_enabled',True)) is not bool:
         raise ValueError('local_height_filters_enabled must be boolean')
     if cfg.get('test_mode','full') not in ('full','ready_observe'):
@@ -92,7 +113,7 @@ def load(path, workspace):
             if group == 'refinement' and key == 'enabled':
                 if type(value) is not bool:raise ValueError('invalid refinement.enabled')
                 continue
-            if group == 'execution' and key in ('detection_debug_enabled','diagnostic_recording_enabled','short_journal_enabled'):
+            if group == 'execution' and key in ('detection_debug_enabled','diagnostic_recording_enabled','short_journal_enabled','automatic_retreat'):
                 if type(value) is not bool:raise ValueError('invalid execution.'+key)
                 continue
             if group == 'execution' and key == 'arm_state_transport':
@@ -239,7 +260,7 @@ def load(path, workspace):
 def blockers(cfg):
     environment = environment_checks_enabled(cfg['collision'])
     result = []
-    if cfg.get('test_mode','full')=='full' and not physical_retreat_qualified(cfg['collision']) and cfg.get('operator_trial') is not True:
+    if cfg.get('test_mode','full')=='full' and not physical_retreat_qualified(cfg['collision']) and cfg.get('operator_trial') is not True and cfg['execution'].get('automatic_retreat') is not True:
         result.append('physical_retreat_clearance_unqualified')
     if cfg['frames']['vehicle_to_mount'] is None:
         result.append('vehicle_to_mount_missing')

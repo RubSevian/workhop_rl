@@ -28,8 +28,13 @@ def draw_snapshot(ax2,ax3,snapshot,stage,max_grasps=80):
     from matplotlib.patches import Rectangle
     from mpl_toolkits.mplot3d.art3d import Line3DCollection
     ax2.clear();ax3.clear()
+    if stage not in snapshot:
+        ax2.set_title('Stage not recorded in this snapshot');return
     color=snapshot['color'];K=snapshot['K'];meta=snapshot['metadata'];grasps=snapshot[stage]
-    ax2.imshow(color[:,:,::-1]);uv,valid=project(grasps[:,13:16],K)
+    ax2.imshow(color[:,:,::-1])
+    if stage=='target_binding' and 'target_mask' in snapshot:
+        overlay=np.zeros((*snapshot['target_mask'].shape,4));overlay[snapshot['target_mask'].astype(bool)]=[0,1,0,.25];ax2.imshow(overlay)
+    uv,valid=project(grasps[:,13:16],K)
     ax2.scatter(uv[valid,0],uv[valid,1],s=10,c='cyan')
     bbox=meta['parameters'].get('bbox_xyxy')
     if bbox is not None:
@@ -75,7 +80,7 @@ def main():
     args=parser.parse_args()
     if args.max_grasps<1:parser.error('--max-grasps must be positive')
     fig=plt.figure(figsize=(14,7));ax2=fig.add_subplot(121);ax3=fig.add_subplot(122,projection='3d')
-    fig.subplots_adjust(bottom=.23);selector=RadioButtons(fig.add_axes([.02,.02,.14,.18]),STAGES)
+    fig.subplots_adjust(bottom=.23);selector=RadioButtons(fig.add_axes([.02,.02,.14,.18]),STAGES+('target_binding',))
     data=None;stamp=None
     def render(_=None):
         if data is not None:

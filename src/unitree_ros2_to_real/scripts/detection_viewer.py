@@ -33,7 +33,7 @@ def main():
     ttk.Label(controls,text='GraspNet stage:').pack(side=tk.LEFT)
     stage=tk.StringVar(value='decoded')
     selector=ttk.Combobox(controls,textvariable=stage,state='readonly',
-        values=('decoded','cloud','bbox','width','depth'),width=12)
+        values=('decoded','cloud','bbox','width','depth','target_binding'),width=12)
     selector.pack(side=tk.LEFT,padx=8)
     ttk.Label(controls,text='Saved calculation; independent of latest YOLO frame').pack(side=tk.LEFT)
     grasp_status=ttk.Label(grasp_tab,text='Waiting for a GraspNet calculation…',wraplength=950)

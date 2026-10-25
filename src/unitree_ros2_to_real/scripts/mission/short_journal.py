@@ -34,6 +34,8 @@ def compute_summary(metrics):
         stages=[{key:stage.get(key) for key in ('stage','status','elapsed_s','thread_cpu_s','reason')}
                 for stage in metrics.get('planning_stages',[])],
         filter_counts=dict(metrics.get('grasp_filter_counts',{})),
+        target_binding=metrics.get('target_binding',{}),
+        graspnet_target_roi=metrics.get('graspnet_target_roi',{}),
         failed_ik_count=len(failed),failed_ik=failed[:64],
         failed_ik_omitted=max(0,len(failed)-64),
         grasp_rejections=metrics.get('grasp_rejections',[])[:64],

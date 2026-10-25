@@ -45,6 +45,20 @@ class DebugTests(unittest.TestCase):
                 self.assertIn(f'{len(data[stage])} candidates',a.get_title())
             plt.close(fig)
 
+    def test_target_binding_preserves_original_depth_and_mask(self):
+        with tempfile.TemporaryDirectory() as directory:
+            writer=GraspDebug(directory);result=self.sample()
+            result['depth_grasps']=result['decoded_grasps'].copy()
+            result['grasps']=result['depth_grasps'][:1].copy()
+            result['target_mask']=np.eye(4,dtype=bool)
+            result['target_binding']={'enabled':True,'mask_source':'segmentation'}
+            writer.submit(np.zeros((4,4,3),np.uint8),np.full((4,4),500),np.eye(3),result,{})
+            writer.close();self.assertEqual(writer.error,'')
+            data=grasp_viewer.load_snapshot(writer.path)
+            self.assertEqual(len(data['depth']),3);self.assertEqual(len(data['target_binding']),1)
+            np.testing.assert_array_equal(data['target_mask'],result['target_mask'])
+            self.assertEqual(data['metadata']['target_binding']['mask_source'],'segmentation')
+
     def test_missing_stages_and_bad_directory_are_diagnostic_only(self):
         with tempfile.TemporaryDirectory() as directory:
             writer=GraspDebug(directory)

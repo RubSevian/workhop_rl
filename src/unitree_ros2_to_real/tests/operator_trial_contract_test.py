@@ -11,7 +11,7 @@ helper=importlib.util.module_from_spec(spec);spec.loader.exec_module(helper)
 
 class TrialFixture(Fixture):
     def __init__(self):
-        super().__init__();apply_operator_trial(self.m.cfg,True);self.retreat=None
+        super().__init__();self.m.cfg["execution"]["automatic_retreat"]=False;apply_operator_trial(self.m.cfg,True);self.retreat=None
     def effect(self,kind,data):
         if kind=='trajectory' and data.get('operation')=='retreat':self.retreat=copy.deepcopy(data);return
         super().effect(kind,data)
@@ -25,7 +25,7 @@ class TrialFixture(Fixture):
 
 class TrialTests(unittest.TestCase):
     def test_default_admission_unchanged_and_trial_not_qualification(self):
-        cfg=copy.deepcopy(CFG);self.assertIn('physical_retreat_clearance_unqualified',blockers(cfg))
+        cfg=copy.deepcopy(CFG);cfg['execution']['automatic_retreat']=False;self.assertIn('physical_retreat_clearance_unqualified',blockers(cfg))
         before=copy.deepcopy(cfg['collision']);apply_operator_trial(cfg,True)
         self.assertNotIn('physical_retreat_clearance_unqualified',blockers(cfg));self.assertEqual(cfg['collision'],before)
         self.assertFalse(cfg['collision']['retreat_physical_clearance_validated'])
@@ -33,6 +33,30 @@ class TrialTests(unittest.TestCase):
         cfg['test_mode']='ready_observe'
         with self.assertRaisesRegex(ValueError,'requires test_mode=full'):apply_operator_trial(cfg,True)
         with self.assertRaisesRegex(ValueError,'boolean'):apply_operator_trial(cfg,'true')
+
+    def test_automatic_cycle_finishes_without_approval_for_both_outcomes(self):
+        class AutomaticFixture(Fixture):
+            def effect(self,kind,data):
+                super().effect(kind,data)
+                if kind=='trajectory' and data['kind']=='close':
+                    self.owner['grasp_assessment']=self.assessment
+        for trial in (False,True):
+            for assessment,terminal in (('GRASPED','GRASP_PRESUMED_SUCCESS'),('NOT_GRASPED','TARGET_NOT_GRASPED')):
+                with self.subTest(trial=trial,assessment=assessment):
+                    f=AutomaticFixture();f.assessment=assessment
+                    f.m.cfg['execution']['automatic_retreat']=True
+                    apply_operator_trial(f.m.cfg,trial)
+                    self.assertNotIn('physical_retreat_clearance_unqualified',blockers(f.m.cfg))
+                    self.assertFalse(f.m.cfg['collision']['retreat_physical_clearance_validated'])
+                    f.start()
+                    for _ in range(2000):
+                        f.tick()
+                        self.assertNotEqual(f.m.state,'WAIT_RETREAT_APPROVAL')
+                        if f.m.state in TERMINAL:break
+                    self.assertEqual(f.m.state,terminal,f.m.reason)
+                    operations=[d['operation'] for k,d in f.effects if k=='trajectory']
+                    self.assertEqual(operations[-3:],['close','retreat','home'])
+                    self.assertTrue(f.owner['gripper_command_active'])
 
     def test_full_flow_waits_without_motion_then_approved_owner_can_finish(self):
         f=TrialFixture();f.waiting();self.assertEqual(f.m.state,'WAIT_RETREAT_APPROVAL')
@@ -95,7 +119,7 @@ class TrialTests(unittest.TestCase):
             launch.logging.launch_config.log_dir=tmp;p=Path(tmp);lib=p/'lib/unitree_legged_real';lib.mkdir(parents=True);(lib/'mission').symlink_to(SCRIPTS/'mission',target_is_directory=True)
             c=LaunchContext();c.launch_configurations.update(workspace=str(ROOT),mission_config_path=str(ROOT/'repos/rars01_graspnet/config/jetson_orin_nano.yaml'),physical='true',test_mode='full',operator_trial='false',start_arm_owner='true',network_interface='',controlled_stop_lie_down_trial='true',architecture_monitor='true')
             with patch.object(module,'get_package_prefix',return_value=str(p)),patch.object(module,'get_package_share_directory',return_value=str(SCRIPTS.parent)):
-                with self.assertRaisesRegex(RuntimeError,'physical_retreat_clearance_unqualified'):module._launch(c)
+                self.assertEqual(len(module._launch(c)),3) # Explicit automatic cycle in working YAML
                 c.launch_configurations['operator_trial']='true';actions=module._launch(c)
                 self.assertEqual(len(actions),3) # monitor + preload release handler + perception
                 # Only action construction; no action execution/hardware.

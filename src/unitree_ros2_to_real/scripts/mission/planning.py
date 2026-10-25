@@ -587,7 +587,21 @@ class Planning:
                 verified_ns=time.monotonic_ns())
             opts=self.grasp['graspnet'];robot=self.grasp['robot']['rars01']
             with planning_stage(self.compute_metrics,'graspnet',trace,request,progress=progress):
-                result=self.worker.infer(color,depth,self.camera.K,num_point=opts['num_point'],min_depth=opts['min_depth'],max_depth=opts['max_depth'],collision_thresh=opts['collision_thresh'],voxel_size=.01,bbox_xyxy=d.bbox_xyxy,target_margin_px=opts['target_margin_px'],target_expand_ratio=opts['target_expand_ratio'],max_grasp_width_m=robot['max_grasp_width_m'],max_grasp_depth_m=robot['max_grasp_depth_m'],timeout_s=opts['worker_timeout_s'],include_diagnostics=(self.cfg['compute'].get('grasp_full_diagnostics',True) or self.cfg['compute'].get('grasp_debug_enabled',False)))
+                result=self.worker.infer(color,depth,self.camera.K,target_mask=d.mask,mask_source=getattr(d,'mask_source','unknown'),target_roi=opts.get('target_roi'),num_point=opts['num_point'],min_depth=opts['min_depth'],max_depth=opts['max_depth'],collision_thresh=opts['collision_thresh'],voxel_size=.01,bbox_xyxy=d.bbox_xyxy,target_margin_px=opts['target_margin_px'],target_expand_ratio=opts['target_expand_ratio'],max_grasp_width_m=robot['max_grasp_width_m'],max_grasp_depth_m=robot['max_grasp_depth_m'],timeout_s=opts['worker_timeout_s'],include_diagnostics=(self.cfg['compute'].get('grasp_full_diagnostics',True) or self.cfg['compute'].get('grasp_debug_enabled',False)))
+            self.compute_metrics['grasp_filter_counts']=dict(result.get('filter_counts',{}))
+            self.compute_metrics['graspnet_target_roi']=result.get('filter_parameters',{}).get('target_roi',{})
+            from .target_binding import filter_target_binding
+            result['depth_grasps']=np.asarray(result['grasps']).copy()
+            with planning_stage(self.compute_metrics,'target_binding',trace,request,progress=progress):
+                result['grasps'],binding=filter_target_binding(result['grasps'],depth,self.camera.K,d.mask,
+                    self.cfg.get('target_binding',{}),mask_source=getattr(d,'mask_source','unknown'),
+                    min_depth=opts['min_depth'],max_depth=opts['max_depth'],cancel_check=self.collision.check_deadline)
+            binding.update(target_class=d.class_name,target_confidence=float(d.conf))
+            result['target_mask']=np.asarray(d.mask,dtype=bool)
+            result['target_binding']=binding
+            result.setdefault('filter_counts',{})['after_target_binding']=len(result['grasps'])
+            result.setdefault('filter_parameters',{})['target_binding']=self.cfg.get('target_binding',{})
+            self.compute_metrics['target_binding']=binding
             debug=getattr(self,'grasp_debug',None)
             if debug is not None:
                 debug.submit(color,depth,self.camera.K,result,dict(request_id=request['id'],
@@ -602,6 +616,8 @@ class Planning:
                 trace.grasps(request,result['grasps'],filter_counts,result.get('filter_parameters',{}))
             if op=='observe_grasp':
                 return dict(observation=dict(found=True,confidence=float(d.conf),graspnet_called=True,grasp_count=len(result['grasps']),capture_mono_ns=at['capture_mono_ns'],capture_ros_ns=at['capture_ros_ns'],frame_age_s=at['frame_age_s'],scene_snapshot=at['scene_snapshot']))
+            if binding['enabled'] and binding['input_count'] and not len(result['grasps']):
+                raise ValueError('NO_TARGET_BOUND_GRASPS')
             # Inference may take seconds; rebase the RGB-D anchored transform at
             # fresh odom/feedback rather than asking for stale 'latest' TF.
             current=copy.deepcopy(context(None,None))

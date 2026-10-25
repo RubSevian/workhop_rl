@@ -92,7 +92,7 @@ def generate_launch_description():
         DeclareLaunchArgument('mission_config_path',default_value=PathJoinSubstitution([LaunchConfiguration('workspace'),'repos/rars01_graspnet/config/jetson_orin_nano.yaml'])),
         DeclareLaunchArgument('physical',default_value='false'),
         DeclareLaunchArgument('test_mode',default_value='',description='full or ready_observe diagnostic; empty uses YAML'),
-        DeclareLaunchArgument('operator_trial',default_value='false',description='Explicit full commissioning: owner holds before every RETREAT until one-shot operator approval; no qualification flags changed'),
+        DeclareLaunchArgument('operator_trial',default_value='false',description='Commissioning retreat speed (25%); manual approval only when execution.automatic_retreat=false; no qualification flags changed'),
         DeclareLaunchArgument('controlled_stop_lie_down_trial',default_value='',description='Existing R3 commissioning descent override; empty uses profile, never validation'),
         DeclareLaunchArgument('architecture_monitor',default_value='false',description='Read-only transition events and complete received-status journal; disabled for timing tests'),
         DeclareLaunchArgument('monitor_jsonl',default_value='',description='Snapshot JSONL path; empty creates a session file under workspace/runtime/architecture_monitor'),

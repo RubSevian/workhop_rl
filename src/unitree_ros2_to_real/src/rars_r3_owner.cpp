@@ -147,13 +147,15 @@ class ArmOwner final:public rclcpp::Node {
   const auto mode=override_mode.empty()?(y["test_mode"]?y["test_mode"].as<std::string>():"full"):override_mode;
   if(mode!="full"&&mode!="ready_observe")throw std::runtime_error("invalid test_mode");
   ready_observe_=mode=="ready_observe";
-  if(operator_trial_)trial_state_="IDLE_UNQUALIFIED";
+  automatic_retreat_=y["execution"]["automatic_retreat"]?y["execution"]["automatic_retreat"].as<bool>():false;
+  if(automatic_retreat_)trial_state_="AUTOMATIC";
+  else if(operator_trial_)trial_state_="IDLE_UNQUALIFIED";
   if(operator_trial_&&ready_observe_)throw std::runtime_error("operator_trial requires full mode");
   const auto clearance=y["collision"]["retreat_physical_clearance_validated"];
   const auto clearance_evidence=y["collision"]["retreat_physical_clearance_evidence"];
   retreat_clearance_qualified_=clearance&&clearance.as<bool>()&&clearance_evidence&&
     clearance_evidence.as<std::string>().find_first_not_of(" \t\r\n")!=std::string::npos;
-  if(!ready_observe_&&!retreat_clearance_qualified_&&!operator_trial_)
+  if(!ready_observe_&&!retreat_clearance_qualified_&&!operator_trial_&&!automatic_retreat_)
    throw std::runtime_error("physical RETREAT clearance unqualified: open-gripper approximation");
   const auto grasp=YAML::LoadFile(absolute("sdk_config"));const auto g=grasp["robot"]["gripper"]["rars01"];
   const auto feedback=grasp["robot"]["motion"]["motion_feedback"];mission_feedback_ttl_=feedback["max_feedback_age_s"].as<double>();
@@ -277,7 +279,14 @@ class ArmOwner final:public rclcpp::Node {
       v["payload_checked"].as<bool>()!=(payload_checks_enabled_&&mission_->holding()))throw std::runtime_error("plan authority/session/collision rejected");
    const auto kind=v["kind"].as<std::string>();
    const bool is_retreat=operation=="retreat";
-   if(operator_trial_&&is_retreat){
+   if(automatic_retreat_&&is_retreat){
+    mission_->ObserveAssessment(now,home_->status());
+    if(!AutomaticRetreatPlanAllowed(automatic_retreat_,operation,health_phase_,kind,
+                                   mission_->RetreatReady(now,home_->status())))
+     throw std::runtime_error("AUTOMATIC_RETREAT_REQUIRES_STATIONARY_HOLD_AND_VALID_ASSESSMENT");
+    // Preserve commissioning speed when the existing trial launch flag is used.
+    if(operator_trial_)result.points=SlowRetreat(result.points,max_plan_samples_);
+   }else if(operator_trial_&&is_retreat){
     mission_->ObserveAssessment(now,home_->status());
     if(kind!="move"||mission_->busy()||!mission_->holding()||!mission_->RetreatReady(now,home_->status())||
        (health_phase_!="WAIT_RETREAT_APPROVAL"&&health_phase_!="GRASP"))
@@ -407,6 +416,7 @@ class ArmOwner final:public rclcpp::Node {
    <<YAML::Key<<"mission_error"<<YAML::Value<<(mission_?mission_->error():mission_blocker_)
    <<YAML::Key<<"mission_blocker"<<YAML::Value<<mission_blocker_
    <<YAML::Key<<"operator_trial"<<YAML::Value<<operator_trial_
+   <<YAML::Key<<"automatic_retreat"<<YAML::Value<<automatic_retreat_
    <<YAML::Key<<"retreat_trial"<<YAML::Value<<YAML::BeginMap
    <<YAML::Key<<"state"<<YAML::Value<<trial_state_
    <<YAML::Key<<"plan_id"<<YAML::Value<<trial_plan_id_
@@ -483,7 +493,7 @@ class ArmOwner final:public rclcpp::Node {
  struct ParsedPlan{YAML::Node header;std::vector<std::array<float,7>> points;std::string error;};
  std::future<ParsedPlan> plan_future_;
  std::optional<ParsedPlan> trial_pending_;RetreatTrialApproval trial_approval_;
- bool operator_trial_=false;uint64_t trial_plan_id_=0;
+ bool operator_trial_=false,automatic_retreat_=false;uint64_t trial_plan_id_=0;
  std::string trial_state_="DISABLED",trial_service_name_;
  rclcpp::Service<std_srvs::srv::Trigger>::SharedPtr trial_service_;
  int64_t plan_cancelled_ns_=0;

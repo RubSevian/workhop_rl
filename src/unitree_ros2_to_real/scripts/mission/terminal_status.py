@@ -29,6 +29,9 @@ OPERATIONS={'scan_pose':'поза поиска','detect':'обнаружение
 
 
 def reason_text(reason):
+    if reason=='NO_TARGET_BOUND_GRASPS':return 'У кандидатов не подтверждена поверхность нужного предмета между губками'
+    if reason=='TARGET_BINDING_SEGMENTATION_REQUIRED':return 'Для привязки захвата нужна маска сегментации; рамка недостаточна'
+    if reason=='CONTROLLED_STOP_PREPARING_GEOMETRY':return 'Остановка распознавания; подготовка расчёта возврата руки'
     reason=str(reason or '')
     descriptions={'PHASE_TIMEOUT':'Истёк общий срок этапа',
         'CAMERA_FRAME_STALE':'Кадры камеры старше разрешённого возраста',
@@ -104,8 +107,15 @@ def terminal_lines(row):
         if 'decoded' in counts:
             lines+=block('[ОТБОР]',
                 'GraspNet: '+str(counts.get('decoded')),
-                'После фильтров: '+str(counts.get('after_depth')),
+                'После геометрических фильтров: '+str(counts.get('after_depth')),
+                'После привязки к предмету: '+str(counts.get('after_target_binding','—')),
                 'После NMS: '+str(counts.get('after_nms','—')),
                 'вариантов после IK: '+str(counts.get('ik_feasible','—')))
+        binding=summary.get('target_binding',{})
+        if binding.get('enabled'):
+            rows=binding.get('candidates',[])
+            lines+=block('[ПРИВЯЗКА К ПРЕДМЕТУ]',
+                'Недостаточно поверхности предмета: '+str(sum(r.get('reason')=='INSUFFICIENT_TARGET' for r in rows)),
+                'Недостаточная доля предмета: '+str(sum(r.get('reason')=='LOW_TARGET_PURITY' for r in rows)))
         return lines
     return []

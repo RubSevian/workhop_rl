@@ -53,6 +53,12 @@ inline bool PhysicalRetreatPlanAllowed(bool qualified,const std::string& operati
                                       const std::string& phase,bool holding,const std::string& kind){
  return qualified||!(operation=="retreat"||phase=="RETREAT"||(holding&&kind=="move"));
 }
+// Explicit automatic-cycle authorization; not physical-clearance qualification.
+// Other authority/collision/start/limit checks remain mandatory at admission.
+inline bool AutomaticRetreatPlanAllowed(bool enabled,const std::string& operation,
+                                       const std::string& phase,const std::string& kind,bool ready){
+ return enabled&&operation=="retreat"&&(phase=="RETREAT"||phase=="GRASP")&&kind=="move"&&ready;
+}
 // No SDK, ROS, inference, IK or collision work in this bounded command sampler.
 // Admission is owned by ArmOwner; every tick rechecks its authority lease.
 struct MissionStreamConfig {

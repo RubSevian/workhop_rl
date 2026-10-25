@@ -179,6 +179,13 @@ int main(){
   assert(long_stream.Start(1,"move",path,at(40),f));
  }
  // Unqualified open-jaw approximation never authorizes physical RETREAT.
+ assert(AutomaticRetreatPlanAllowed(true,"retreat","RETREAT","move",true));
+ assert(AutomaticRetreatPlanAllowed(true,"retreat","GRASP","move",true));
+ assert(!AutomaticRetreatPlanAllowed(false,"retreat","RETREAT","move",true));
+ assert(!AutomaticRetreatPlanAllowed(true,"retreat","RETREAT","move",false));
+ assert(!AutomaticRetreatPlanAllowed(true,"retreat","WAIT_RETREAT_APPROVAL","move",true));
+ assert(!AutomaticRetreatPlanAllowed(true,"approach","RETREAT","move",true));
+ assert(!AutomaticRetreatPlanAllowed(true,"retreat","RETREAT","home",true));
  assert(!PhysicalRetreatPlanAllowed(false,"retreat","GRASP",false,"move"));
  assert(!PhysicalRetreatPlanAllowed(false,"","RETREAT",false,"move"));
  assert(!PhysicalRetreatPlanAllowed(false,"","GRASP",true,"move"));

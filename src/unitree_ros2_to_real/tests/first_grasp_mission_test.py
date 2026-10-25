@@ -122,7 +122,7 @@ class Integration(unittest.TestCase):
 
     def test_failed_close_continues_retreat_home_without_claiming_grasp(self):
         for trial in (False,True):
-            f=Fixture();f.m.cfg['operator_trial']=trial
+            f=Fixture();f.m.cfg['operator_trial']=trial;f.m.cfg['execution']['automatic_retreat']=False
             f.owner['grasp_assessment']='NOT_GRASPED';f.feed()
             f.m.done_motion('close',f.now)
             self.assertEqual(f.m.reason,'TARGET_NOT_GRASPED_CONTINUING')
@@ -454,6 +454,7 @@ class Integration(unittest.TestCase):
         from types import SimpleNamespace
         from unittest.mock import patch
         planner=Planning.__new__(Planning);planner.cfg=copy.deepcopy(CFG)
+        planner.cfg.update(object_class='light blue coffee cup',object_class_aliases=['cup'])
         planner.grasp={'graspnet':{'min_depth':.05,'max_depth':1.}}
         planner.camera=SimpleNamespace(K=np.eye(3));planner.yolo=None;planner.yolo_options={}
         detection=SimpleNamespace(class_name='cup',conf=.9,mask=None)
@@ -475,6 +476,7 @@ class Integration(unittest.TestCase):
         from unittest.mock import patch
         def run(frames,required=2,class_name="cup",confidence=.9):
             planner=Planning.__new__(Planning);planner.cfg=copy.deepcopy(CFG)
+            planner.cfg.update(object_class='light blue coffee cup',object_class_aliases=['cup'])
             planner.cfg['search']['max_center_shift_px']=1.
             planner.grasp={'graspnet':{'min_depth':.05,'max_depth':1.}}
             planner.camera=NS(K=np.eye(3));planner.yolo=None;planner.yolo_options={}
@@ -1061,7 +1063,7 @@ class Integration(unittest.TestCase):
         self.assertFalse(h.valid(300000140,'nav'))
         d.update(observed_ns=160,base_locked=True);h.observe(json.dumps(d),b'a',170,'nav');self.assertTrue(h.base_locked)
         h.graph([b'a',b'b'],180);self.assertFalse(h.valid(190,'nav'));self.assertTrue(h.base_locked)
-        self.assertEqual(set(blockers(CFG)),{'physical_retreat_clearance_unqualified'});self.assertIsInstance(CFG['physical_enabled'],bool)
+        self.assertEqual(blockers(CFG),[]);self.assertIsInstance(CFG['physical_enabled'],bool)
 
     def test_arm_geometry_tolerance_preserves_actual_pose_and_leg_limits(self):
         from mission.collision import validate_geometry_joint

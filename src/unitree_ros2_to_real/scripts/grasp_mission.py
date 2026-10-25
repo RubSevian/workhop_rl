@@ -26,6 +26,7 @@ from mission.config import apply_operator_trial, load, blockers, physical_retrea
 from mission.core import Mission, TERMINAL, ARM_PHASES
 from mission.health_contract import source_ttl,CONTROLLED_HOME_PHASES
 from mission.short_journal import make_short_journal
+from mission.stop_home import HomeDispatch,home_dispatch_blocker
 
 class Coordinator(Node):
     def __init__(self):
@@ -72,6 +73,7 @@ class Coordinator(Node):
                      'owner':'/rars01/commissioning/state','perception':'/rars01/mission/perception_health'}
         if self.arm_state_transport=='typed':self.topics['owner']='/rars01/commissioning/fast_state'
         self.gids={};self.gid_since={};self.base_stamp=0;self.stop_home=None;self.stop_home_attempted=False;self.cancel_future=None;self.owner_cancel_ack=False
+        self.home_dispatch=HomeDispatch();self.stop_home_status=None;self.stop_home_result='';self.cancel_retry_at=0.
         self.status_subscriptions={}
         for name,topic in self.topics.items():
             kind=String
@@ -223,13 +225,16 @@ class Coordinator(Node):
             decode_started=time.monotonic()
             data=json.loads(msg.data)
             if self.stop_home and all(data.get(k)==self.stop_home.get(k) for k in ('id','session_id','navigation_session_id','owner_session_id','goal_revision')):
-                pending=self.stop_home;self.stop_home=None
+                pending=self.stop_home;self.stop_home=None;self.home_dispatch.finished=True
+                self.stop_home_result='PLAN_READY' if data.get('ok') else 'PLAN_FAILED:'+str(data.get('reason','UNKNOWN'))
                 r3=self.engine.inputs.get('r3',{})
                 age=(time.monotonic_ns()-data.get('observed_ns',0))/1e9
                 if data.get('ok') and r3.get('state')=='CONTROLLED_STOP' and r3.get('phase') in CONTROLLED_HOME_PHASES and not r3.get('fault_latched') and self.engine.fresh('r3',time.monotonic()) and data.get('observed_ns',0)>0 and age>=0:
                     trajectory=dict(data['trajectory'],**{k:pending[k] for k in ('id','session_id','navigation_session_id','owner_session_id','goal_revision')},observed_ns=time.monotonic_ns())
                     self.trajectory_pub.publish(String(data=json.dumps(trajectory,allow_nan=False)))
-                else:self.get_logger().error('Controlled-stop HOME blocked: '+data.get('reason','authority revoked'))
+                else:
+                    self.stop_home_result='PLAN_REJECTED:'+data.get('reason','authority revoked')
+                    self.get_logger().error('Controlled-stop HOME blocked: '+data.get('reason','authority revoked'))
             else:
                 decode_finished=time.monotonic()
                 self.engine.result(data,decode_finished)
@@ -264,8 +269,13 @@ class Coordinator(Node):
             detail['session_id']=e.session
             self.get_logger().error('STALE_INPUT_DIAGNOSTIC '+json.dumps(detail,allow_nan=False))
             self.stale_fault_reported=True
-        ready=(self.physical and not self.blockers and e.wait_goal_stale_since is None and e.fresh('perception',now)
-               and e.perception_service_ready(now)
+        r3=e.inputs.get('r3',{})
+        stop_phase=(e.fresh('r3',now) and r3.get('state')=='CONTROLLED_STOP'
+                    and r3.get('phase') in CONTROLLED_HOME_PHASES and not r3.get('fault_latched'))
+        perception_ready=(e.inputs.get('perception',{}).get('home_compute_ready') and e.fresh('nav',now)
+                          if stop_phase else e.wait_goal_stale_since is None and e.perception_service_ready(now))
+        ready=(self.physical and not self.blockers and e.fresh('perception',now)
+               and perception_ready
                and e.fresh('owner',now)
                and e.inputs['owner'].get('mission_capable') is True and e.inputs['owner'].get('feedback_ready') is True
                and e.inputs['owner'].get('target_valid') is True
@@ -284,11 +294,39 @@ class Coordinator(Node):
             except Exception:self.owner_cancel_ack=False
             self.cancel_future=None
         owner=e.inputs.get('owner',{});r3=e.inputs.get('r3',{})
-        if ready and self.owner_cancel_ack and owner.get('home_requested') and r3.get('state')=='CONTROLLED_STOP' and r3.get('phase') in CONTROLLED_HOME_PHASES and not r3.get('fault_latched') and self.stop_home is None and not self.stop_home_attempted and not e.inputs.get('perception',{}).get('busy',True):
+        if (self.physical and not self.blockers and e.fresh('r3',now)
+                and r3.get('state')=='CONTROLLED_STOP' and r3.get('phase') in CONTROLLED_HOME_PHASES
+                and not r3.get('fault_latched') and not self.owner_cancel_ack
+                and self.cancel_future is None and now>=self.cancel_retry_at
+                and self.cancel.service_is_ready() and not any(k=='cancel' for k,_ in effects)):
+            self.cancel_future=self.cancel.call_async(Trigger.Request());self.cancel_retry_at=now+.5
+        blocker=home_dispatch_blocker(e,now,physical=self.physical,blockers=self.blockers,
+            cancel_ack=self.owner_cancel_ack,
+            services_ready=self.cancel.service_is_ready() and self.home.service_is_ready(),
+            unique_publishers=all(self.count_publishers(topic)==1 for topic in self.topics.values()))
+        if not blocker and not self.stop_home_attempted:
             self.stop_home_attempted=True
             e.request_id+=1
             self.stop_home=dict(id=e.request_id,session_id=e.session,navigation_session_id=e.inputs['nav']['session_id'],owner_session_id=owner['owner_session_id'],goal_revision=e.revision,operation='home',owner=owner,grasp_plan=None,scan_index=0,observed_ns=time.monotonic_ns())
+            self.home_dispatch.request=self.stop_home
+        perception=e.inputs.get('perception',{})
+        if self.home_dispatch.due(now,perception,not blocker):
+            # Same request id: accepted work cannot be duplicated by a retry.
+            self.stop_home['observed_ns']=time.monotonic_ns()
+            self.stop_home['owner']=owner
             self.compute_pub.publish(String(data=json.dumps(self.stop_home)))
+            self.home_dispatch.sent_at=now
+        if r3.get('state')=='CONTROLLED_STOP':
+            phase=self.stop_home_result or ('CALCULATING' if self.home_dispatch.accepted else
+                'WAIT_COMPUTE_ACK' if self.home_dispatch.sent_at is not None else blocker)
+            if self.home_dispatch.finished and owner.get('mission_id')==(self.home_dispatch.request or {}).get('id'):
+                phase='OWNER_'+str(owner.get('mission_state','UNKNOWN'))
+            detail=dict(phase=phase,blocker=blocker,owner_blocker=owner.get('mission_blocker',''),
+                        r3_phase=r3.get('phase'),request_id=(self.home_dispatch.request or {}).get('id'))
+            if detail!=self.stop_home_status:
+                self.stop_home_status=detail
+                self.get_logger().info('STOP_HOME '+json.dumps(detail,ensure_ascii=False))
+                if journal is not None:journal.put('stop_home',**detail)
         for kind,data in effects:
             if kind=='invalidate_navigation_goal':
                 if self.invalidate_nav.service_is_ready():self.invalidate_nav.call_async(Trigger.Request())
@@ -304,6 +342,7 @@ class Coordinator(Node):
                 elif kind=='trajectory':self.trajectory_pub.publish(String(data=json.dumps(data,allow_nan=False)))
             else:e.cancel(now,'MISSION_HEALTH_INVALID',True)
         status=e.status(now)
+        status['stop_home']=self.stop_home_status
         if journal is not None:status['short_journal']=journal.status()
         status['gripper_observation']=self.grip_observer.status(time.monotonic_ns()) if self.grip_observer else {'state':'DISABLED'}
         status['gripper_observation']['error']=self.grip_error

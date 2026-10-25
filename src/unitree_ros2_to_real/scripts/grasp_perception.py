@@ -7,6 +7,7 @@ import json
 from pathlib import Path
 from mission.leg_plan_trace import LegPlanTrace
 from mission.compute_cancel import ComputeCancellation
+from mission.stop_home import geometry_home_ready
 import queue
 import threading
 import time
@@ -381,18 +382,23 @@ class Perception(Node):
                     owner_status=dict(self.trace_owner))
         now=time.monotonic()
         runtime_readiness=self.backend.readiness() if self.backend else dict(ready=False,reason='PERCEPTION_NOT_INITIALIZED')
+        home_ready=geometry_home_ready(controlled_stop=self.controlled_stop,phase=self.r3_phase,
+            cancel_complete=self.vision_cancel_complete,backend_ready=runtime_readiness['ready'] and self.reason=='READY',
+            scene_error=self.scene_error,reloading=self.vision_reloading)
         ready=(self.backend is not None and not getattr(self,'vision_reloading',False) and self.reason=='READY'
                and not self.scene_error
-               and (not getattr(self,'controlled_stop',False) or self.r3_phase in CONTROLLED_HOME_PHASES)
+               and (not getattr(self,'controlled_stop',False) or home_ready)
                and runtime_readiness['ready']
                and (not self.busy or self.cfg['execution']['state_timeout_s'] is None
                     or now-self.started<self.cfg['execution']['state_timeout_s']))
         reason=(self.scene_error or self.reason) if self.backend is not None else self.reason
         if self.backend is not None and not runtime_readiness['ready']:
             reason=runtime_readiness['reason']
+        if self.controlled_stop and not self.vision_cancel_complete:
+            reason='CONTROLLED_STOP_PREPARING_GEOMETRY'
         report_scene(self,reason)
         camera_mode=self.backend.camera_mode if self.backend else 'unverified'
-        self.health.publish(String(data=json.dumps(dict(observed_ns=time.monotonic_ns(),ready=bool(ready),reason=reason,scene_error=self.scene_error,busy=self.busy,last_compute=self.last_compute,busy_elapsed_s=now-self.started if self.busy else 0.,
+        self.health.publish(String(data=json.dumps(dict(observed_ns=time.monotonic_ns(),ready=bool(ready),home_compute_ready=home_ready,active_request_id=self.last_request,active_request_session=self.request_session,reason=reason,scene_error=self.scene_error,busy=self.busy,last_compute=self.last_compute,busy_elapsed_s=now-self.started if self.busy else 0.,
             callback_timing=dict(gap_s=self.tick_gap_s,max_gap_s=self.max_tick_gap_s,
                 preparation_s=(time.monotonic_ns()-tick_started)/1e9,previous_tick_s=getattr(self,'last_tick_duration_s',0.)),
             model_ready=bool(self.backend is not None and self.reason=='READY' and not getattr(self,'controlled_stop',False)),
