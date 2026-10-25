@@ -52,41 +52,59 @@ def seconds(value):
     return f'{value:.1f} с' if isinstance(value,(int,float)) else 'время неизвестно'
 
 
+def block(title,*fields):
+    return ['\n'+title+'\n'+'\n'.join('  '+field for field in fields)+'\n']
+
+
+def scene_status_line(reason):
+    fields=['Статус: '+reason_text(reason)]
+    if reason.startswith('SCENE_SNAPSHOT_STALE:'):
+        fields+=['Текущие измерения не готовы; это не итог расчёта.',
+                 'Остановка миссии обозначается [ОСТАНОВКА] / [ОТМЕНА].']
+    fields.append('Код: '+reason)
+    return block('[ДАННЫЕ]',*fields)[0]
+
+
 def terminal_lines(row):
     event=row.get('event')
-    if event=='start':return []
     if event=='mission_state':
         state=row.get('state');reason=row.get('reason','');pending=row.get('pending') or {}
         if state in ('BLOCKED','CANCELLED'):
             label='ОСТАНОВКА' if state=='BLOCKED' else 'ОТМЕНА'
-            duration=row.get('previous_phase_duration_s')
-            suffix=('; этап длился '+seconds(duration)) if duration is not None else ''
-            return [f'[{label}] {reason_text(reason)}{suffix}. Код: {reason}.']
-        text=STATES.get(state,state or 'Состояние неизвестно')
+            fields=['Причина: '+reason_text(reason)]
+            if row.get('previous_phase_duration_s') is not None:
+                fields.append('Этап длился: '+seconds(row['previous_phase_duration_s']))
+            return block('['+label+']',*fields,'Код: '+reason)
+        fields=['Статус: '+STATES.get(state,state or 'Состояние неизвестно')]
         if pending.get('operation'):
-            kind='расчёт' if pending.get('kind')=='compute' else 'движение'
-            text+='; '+kind+': '+OPERATIONS.get(pending['operation'],pending['operation'])
-        lines=['[МИССИЯ] '+text+'.']
+            kind='Расчёт' if pending.get('kind')=='compute' else 'Движение'
+            fields.append(kind+': '+OPERATIONS.get(pending['operation'],pending['operation']))
         if reason=='TARGET_NOT_GRASPED_CONTINUING':
-            lines.append('[ЗАХВАТ] Объект не схвачен; продолжаем миссию: отход и возврат HOME.')
-        return lines
+            fields+=['Захват: объект не схвачен.', 'Далее: отход и возврат HOME.']
+        return block('[МИССИЯ]',*fields)
     if event=='planning_stage':
         name=row.get('stage');label=STAGES.get(name,name)
-        if row.get('status')=='running':return ['[ПЛАН] '+label+'…']
-        if row.get('status')=='completed':return ['[ПЛАН] '+label+': завершено за '+seconds(row.get('elapsed_s'))+'.']
-        reason=row.get('reason','')
-        return ['[ПЛАН] '+label+': '+reason_text(reason)+'; '+seconds(row.get('elapsed_s'))+'.']
+        status=row.get('status')
+        fields=['Статус: '+{'running':'выполняется','completed':'завершено',
+            'cancelled':'отменено','failed':'ошибка'}.get(status,str(status))]
+        if row.get('elapsed_s') is not None:fields.append('Время: '+seconds(row['elapsed_s']))
+        if row.get('reason'):
+            fields+=['Причина: '+reason_text(row['reason']),'Код: '+row['reason']]
+        return block('[ПЛАН] '+label,*fields)
     if event=='compute_result':
         summary=row.get('summary',{});operation=OPERATIONS.get(row.get('operation'),row.get('operation','расчёт'))
         outcome='готово' if row.get('ok') else reason_text(row.get('reason',''))
         if row.get('operation')=='detect' and row.get('ok'):
             outcome='объект найден' if row.get('found') else 'объект не найден'
-        lines=[f'[РАСЧЁТ] {operation}: {outcome}; {seconds(summary.get("elapsed_s"))}.']
+        fields=['Результат: '+outcome,'Время: '+seconds(summary.get('elapsed_s'))]
+        if not row.get('ok') and row.get('reason'):fields.append('Код: '+row['reason'])
+        lines=block('[РАСЧЁТ] '+operation,*fields)
         counts=summary.get('filter_counts',{})
         if 'decoded' in counts:
-            lines.append('[ОТБОР] GraspNet: '+str(counts.get('decoded'))+
-                '; после фильтров: '+str(counts.get('after_depth'))+
-                '; после NMS: '+str(counts.get('after_nms','—'))+
-                '; вариантов после IK: '+str(counts.get('ik_feasible','—'))+'.')
+            lines+=block('[ОТБОР]',
+                'GraspNet: '+str(counts.get('decoded')),
+                'После фильтров: '+str(counts.get('after_depth')),
+                'После NMS: '+str(counts.get('after_nms','—')),
+                'вариантов после IK: '+str(counts.get('ik_feasible','—')))
         return lines
     return []

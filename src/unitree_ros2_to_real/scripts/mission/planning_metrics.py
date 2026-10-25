@@ -38,4 +38,10 @@ def ik_summary(calls):
     return dict(calls=len(calls), cache_hits=sum(bool(c.get('cache_hit')) for c in calls),
                 elapsed_s=sum(c.get('elapsed_s', 0.) for c in calls),
                 thread_cpu_s=sum(c.get('thread_cpu_s', 0.) for c in calls),
-                attempts=sum(c.get('attempt_count', 0) for c in calls))
+                attempts=sum(c.get('attempt_count', 0) for c in calls),
+                fallback_attempts=sum(a.get('method')=='bounded_least_squares'
+                    for c in calls for a in c.get('attempts',[])),
+                fallback_accepted=sum(a.get('method')=='bounded_least_squares' and bool(a.get('accepted'))
+                    for c in calls for a in c.get('attempts',[])),
+                fallback_elapsed_s=sum(a.get('elapsed_s',0.) for c in calls
+                    for a in c.get('attempts',[]) if a.get('method')=='bounded_least_squares'))

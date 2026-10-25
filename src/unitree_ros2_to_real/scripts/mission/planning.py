@@ -153,7 +153,10 @@ class Planning:
             def get_state(inner,request_feedback=False):return self.joints.copy(),np.zeros(6)
         ikcfg=self.grasp['grasp_pipeline']['grasp']
         cart=ikcfg['cartesian_ik']
-        self.ik=IkChecker(ConfigOnlyArm(),ikcfg['ik_retry_count'],cart['ik_position_tolerance_m'],np.deg2rad(cart['ik_orientation_tolerance_deg']))
+        report('ik_solver_prepare')
+        self.ik=IkChecker(ConfigOnlyArm(),ikcfg['ik_retry_count'],cart['ik_position_tolerance_m'],np.deg2rad(cart['ik_orientation_tolerance_deg']),
+                          bounded_fallback=ikcfg.get('ik_bounded_fallback_enabled',False))
+        report('ik_solver_ready '+str(self.ik.solver_preparation))
         nav=__import__('yaml').safe_load(Path(cfg['paths']['navigation']).read_text())
         self.feedback_ttl=self.grasp['robot']['motion']['motion_feedback']['max_feedback_age_s']
         self.nav_ttl=nav['bridge']['sensor_timeout_s']
@@ -662,12 +665,25 @@ class Planning:
             self.compute_metrics['grasp_rejections']=rejections
             self.compute_metrics['ik_transform_audit']=dict(camera_to_current_arm=cam_to_arm.tolist(), current_odom_arm=odom_now.tolist(), capture_odom_arm=at['odom_arm'].tolist(), capture_arm_camera=at['arm_camera'].tolist(), tcp_frame='End_link', units='m_rad')
             self.compute_metrics['candidate_validation']={}
-            audit={} if trace is not None else None
+            audit={} if trace is not None or debug is not None else None
             if audit is not None:self.compute_metrics['grasp_candidate_audit']=audit
+            def publish_arm(status):
+                if debug is None:return
+                try:
+                    from .arm_debug import planning_snapshot
+                    debug.arm.submit(planning_snapshot(request,self.cfg['paths']['arm_urdf'],
+                        start,cam_to_arm,audit or {},self.compute_metrics.get('ik_calls',[]),status))
+                except Exception as error:
+                    self.compute_metrics['arm_debug_error']=str(error)
+            publish_arm('CALCULATING')
+            candidate=None
+            selection_status='INTERRUPTED_OR_ERROR'
             try:
                 with planning_stage(self.compute_metrics,'selection_including_collision',trace,request,progress=progress):
                     candidate=_select_executable_grasp(self.ik,GeometryOnly(),GraspGroup(result['grasps']),cam_to_arm,g['pregrasp_offset_m'],g.get('retreat_offset_m',g['pregrasp_offset_m']),g['insertion_depth_m'],robot['max_grasp_depth_m'],g['min_base_z_m'],g['min_jaw_z_m'],'rars01',True,True,np.array([g['position_compensation_base_m'][axis] for axis in 'xyz']),g['ik_candidate_limit'],g['cartesian_ik'],g['candidate_selection'],path_validator=validate,rejection_diagnostics=rejections,local_height_filters_enabled=self.cfg.get('local_height_filters_enabled',True),cancel_check=self.collision.check_deadline,selection_metrics=self.compute_metrics['candidate_validation'],candidate_diagnostics=audit,verbose=not self.cfg['execution'].get('short_journal_enabled',False))
+                selection_status='SELECTED_COLLISION_CHECKED' if candidate is not None else 'NO_EXECUTABLE_CANDIDATE'
             finally:
+                publish_arm(selection_status)
                 filter_counts.update(self.compute_metrics['candidate_validation'])
                 filter_counts.update({key:audit[key] for key in ('input_count','after_nms',
                     'candidate_limit','after_candidate_limit','ik_feasible','rejected_depth',

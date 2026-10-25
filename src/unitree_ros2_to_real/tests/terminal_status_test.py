@@ -6,11 +6,22 @@ import sys
 import tempfile
 import unittest
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]/'scripts'))
-from mission.terminal_status import terminal_lines,reason_text
+from mission.terminal_status import terminal_lines,reason_text,scene_status_line
 from mission.short_journal import ShortJournal
 from mission.planning_metrics import planning_stage
 
 class Tests(unittest.TestCase):
+    def test_live_scene_warning_is_not_a_mission_result(self):
+        text=scene_status_line('SCENE_SNAPSHOT_STALE:legs')
+        self.assertIn('не итог расчёта',text)
+        self.assertIn('SCENE_SNAPSHOT_STALE:legs',text)
+        self.assertNotIn('не итог',scene_status_line('READY'))
+
+    def test_periodic_progress_is_not_printed(self):
+        self.assertEqual(terminal_lines(dict(event='planning_progress',stage='collision_approach',elapsed_s=30.)),[])
+        text=''.join(terminal_lines(dict(event='planning_stage',stage='collision_approach',status='completed',elapsed_s=51.)))
+        self.assertIn('\n  Статус: завершено\n  Время: 51.0 с\n',text)
+
     def test_timeout_and_grasp_planning_explained(self):
         text=' '.join(terminal_lines(dict(event='mission_state',state='BLOCKED',reason='PHASE_TIMEOUT',previous_phase_duration_s=180.)))
         self.assertIn('ОСТАНОВКА',text);self.assertIn('180.0 с',text);self.assertIn('PHASE_TIMEOUT',text)

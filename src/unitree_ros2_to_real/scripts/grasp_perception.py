@@ -229,8 +229,10 @@ class Perception(Node):
 
     def work(self):
         try:
-            from mission.compute_scheduling import inference_thread_nice
+            from mission.compute_scheduling import inference_thread_nice,inference_thread_status
             self.inference_nice=inference_thread_nice(self.cfg.get('compute',{}).get('inference_nice',0))
+            self.inference_thread_info=inference_thread_status()
+            self.get_logger().info('PLANNING_THREAD '+json.dumps(self.inference_thread_info))
             from mission.planning import Planning
             def progress(stage):
                 if self.stop_event.is_set():raise RuntimeError('PERCEPTION_SHUTDOWN')
@@ -396,6 +398,7 @@ class Perception(Node):
             scene_ready=bool(self.backend is not None and not self.scene_error),
             startup_checks=dict(self.startup_checks),
             inference_nice=getattr(self,'inference_nice',None),
+            inference_thread=getattr(self,'inference_thread_info',None),
             preload_ready=self.backend is not None and verified(self.backend.startup_checks),
             camera_mode=camera_mode,runtime_readiness=runtime_readiness,
             observation_verified=dict(getattr(self.backend,'observation_verified',{})),

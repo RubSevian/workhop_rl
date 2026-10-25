@@ -36,7 +36,17 @@ class Tests(unittest.TestCase):
             self.assertEqual(metrics['active_stage']['stage'],'graspnet')
         self.assertEqual(metrics['planning_stages'][0]['status'],'completed')
         self.assertEqual(ik_summary([dict(elapsed_s=2.,thread_cpu_s=.5,attempt_count=3)]),
-                         dict(calls=1,cache_hits=0,elapsed_s=2.,thread_cpu_s=.5,attempts=3))
+                         dict(calls=1,cache_hits=0,elapsed_s=2.,thread_cpu_s=.5,attempts=3,
+                              fallback_attempts=0,fallback_accepted=0,fallback_elapsed_s=0))
+
+    def test_fallback_summary_separates_attempts_and_acceptance(self):
+        summary=ik_summary([dict(attempts=[
+            dict(method='dls',elapsed_s=.1),
+            dict(method='bounded_least_squares',elapsed_s=.2,accepted=False),
+            dict(method='bounded_least_squares',elapsed_s=.3,accepted=True)])])
+        self.assertEqual(summary['fallback_attempts'],2)
+        self.assertEqual(summary['fallback_accepted'],1)
+        self.assertAlmostEqual(summary['fallback_elapsed_s'],.5)
 
 
 if __name__=='__main__':unittest.main()

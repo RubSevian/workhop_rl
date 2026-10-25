@@ -65,7 +65,7 @@ class HeartbeatContracts(unittest.TestCase):
         self.assertEqual(deployment['guardian']['status_source_timeout_s'],.25)
 
     def test_source_specific_admission_and_later_freshness_share_one_clock(self):
-        for name, ttl in [('nav', .60), ('perception', 1.00), ('r3', .50),
+        for name, ttl in [('nav', .60), ('perception', 1.50), ('r3', .50),
                           ('owner', .25), ('base', 1.00), ('scene', 1.00)]:
             with self.subTest(name=name):
                 for age, accepted in [(ttl-.001, True), (ttl, True), (ttl+.001, False)]:
@@ -89,7 +89,7 @@ class HeartbeatContracts(unittest.TestCase):
         m=Mission(self.cfg, 'test')
         self.assertTrue(m.observe('perception', {'observed_ns': 100_000_000_000, 'ready': False}, 100.49))
         self.assertFalse(m.perception_service_ready(100.49))
-        self.assertFalse(m.fresh('perception', 101.001))
+        self.assertFalse(m.fresh('perception', 101.501))
         self.assertFalse(m.observe('scene', {'observed_ns': 100_000_000_000}, 101.001))
 
     def test_future_duplicate_and_out_of_order_never_renew_lease(self):
@@ -125,7 +125,7 @@ class HeartbeatContracts(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             path=Path(directory)/'mission.yaml'
             for key, values in [('nav_status_ttl_s', (True,0.,float('nan'),.601)),
-                                ('perception_status_ttl_s', (True,-1.,float('inf'),1.001))]:
+                                ('perception_status_ttl_s', (True,-1.,float('inf'),1.501))]:
                 for value in values:
                     data=copy.deepcopy(raw);data['go2_mission']['execution'][key]=value
                     path.write_text(yaml.safe_dump(data))

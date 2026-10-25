@@ -11,6 +11,8 @@ STAGES={'decoded':'decoded_grasps','cloud':'pre_bbox_grasps','bbox':'bbox_grasps
 
 class GraspDebug:
     def __init__(self,directory):
+        from .arm_debug import ArmDebug
+        self.arm = ArmDebug(directory)
         self.path=Path(directory)/'latest.npz'
         self.error='';self.dropped=0;self.closed=False
         self.queue=queue.Queue(maxsize=1)
@@ -42,6 +44,7 @@ class GraspDebug:
         except Exception as error:self.error=str(error)
 
     def close(self):
+        self.arm.close()
         self.closed=True
         try:self.queue.put_nowait(None)
         except queue.Full:
