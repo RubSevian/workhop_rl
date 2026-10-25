@@ -366,6 +366,9 @@ class Perception(Node):
             body=self.body_source.select(self.navigation_session)
             if body:
                 with self.lock:self.scene_buffer.bodies.append(body)
+            # TF/odometry processing may outlast the joint freshness budget.
+            # Consume real queued receipts again before validating the scene.
+            dispatch_pending(self.owner_subscription,self.owner)
             with self.lock:self.scene_buffer.snapshot(time.monotonic_ns())
             self.scene_error=''
         except Exception as error:self.scene_error=str(error) or type(error).__name__

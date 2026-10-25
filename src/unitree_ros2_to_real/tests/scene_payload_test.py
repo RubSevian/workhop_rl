@@ -23,6 +23,17 @@ class ScenePayloadTests(unittest.TestCase):
   scene['live_legs_ns']=now;scene['live_feedback_ns']=now-250_000_001
   with self.assertRaisesRegex(ValueError,'live_feedback_ns'):validate_scene_data(scene,cfg,now,'nav','arm')
 
+ def test_half_second_arm_scene_boundary_and_future_stamp(self):
+  cfg={'limits':{'sensor_age_s':1.,'arm_age_s':.5,'legs_age_s':.5},'frames':{'max_state_skew_s':.1}}
+  scene=self.make().data();now=2_000_000_000
+  scene['body']['mono_ns']=now;scene['feedback_ns']=now;scene['legs_ns']=now;scene['live_legs_ns']=now
+  for age in (300_000_000,500_000_000):
+   scene['live_feedback_ns']=now-age
+   validate_scene_data(scene,cfg,now,'nav','arm')
+  for age in (500_000_001,-1):
+   scene['live_feedback_ns']=now-age
+   with self.assertRaisesRegex(ValueError,'live_feedback_ns'):validate_scene_data(scene,cfg,now,'nav','arm')
+
  def test_payload_matches_recursive_baseline_including_types(self):
   for live in [None,31]:
    s=self.make(live);expected=asdict(s);expected.update(live_feedback_ns=21 if live is None else live,live_legs_ns=22 if live is None else live,frame='base',world_frame='map',anchor_ns=20)

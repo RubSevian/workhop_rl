@@ -165,7 +165,7 @@ class Integration(unittest.TestCase):
         self.assertEqual(f.m.state,'ARM_SEARCH')
         self.assertTrue(f.m.perception_service_ready(f.now))
         self.assertFalse(f.m.inputs['perception']['ready'])
-        self.assertFalse(f.m.perception_service_ready(f.now+1.))
+        self.assertFalse(f.m.perception_service_ready(f.now+f.m.cfg['execution']['perception_status_ttl_s']+.01))
         f.perception.update(ready=True,reason='READY');f.tick(False)
         self.assertTrue(f.m.result(f.compute(request),f.now));self.assertEqual(f.m.state,'PLAN_GRASP')
 
@@ -246,7 +246,7 @@ class Integration(unittest.TestCase):
                 elif invalid not in ('stale_health','stale_scene'):marker[invalid]='wrong'
                 f.perception['observation_verified']=marker;f.feed()
                 if invalid=='stale_health':f.m.received['perception']=f.now-2.
-                if invalid=='stale_scene':f.m.inputs['scene']['live_feedback_ns']=int((f.now-.4)*1e9)
+                if invalid=='stale_scene':f.m.inputs['scene']['live_feedback_ns']=int((f.now-f.m.cfg['limits']['arm_age_s']-.01)*1e9)
                 f.m.wait_for_observation(f.now)
                 self.assertEqual(f.m.recovery_since,since)
                 if invalid=='late':self.assertEqual(f.m.state,'BLOCKED')
@@ -256,7 +256,7 @@ class Integration(unittest.TestCase):
         f.perception.update(ready=False,reason='SCENE_SNAPSHOT_STALE:live_arm');f.tick(False)
         since=f.m.recovery_since
         f.perception.update(ready=True,reason='READY');f.feed()
-        f.m.inputs['scene']['live_feedback_ns']=int((f.now-.4)*1e9)
+        f.m.inputs['scene']['live_feedback_ns']=int((f.now-f.m.cfg['limits']['arm_age_s']-.01)*1e9)
         self.assertTrue(f.m.wait_for_observation(f.now))
         self.assertEqual(f.m.recovery_since,since)
         self.assertIn('STALE',f.m.recovery_reason)
@@ -791,7 +791,7 @@ class Integration(unittest.TestCase):
 
     def test_historical_camera_pose_keeps_live_feedback_required(self):
         from dataclasses import replace
-        now=10**9;capture=now-500_000_000
+        now=10**9;capture=now-600_000_000
         body=BodyPose(capture,capture,'nav','tf',np.eye(4).tolist(),np.eye(4).tolist())
         buffer=SceneBuffer(CFG);buffer.bodies.append(body)
         buffer.arm([.1]*7,capture,'arm');buffer.leg([0.]*12,capture)

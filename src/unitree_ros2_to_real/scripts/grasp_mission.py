@@ -200,6 +200,7 @@ class Coordinator(Node):
         try:
             body=self.body_source.select(self.engine.inputs.get('nav',{}).get('session_id',''))
             if body:self.scene_buffer.bodies.append(body)
+            dispatch_pending(self.owner_subscription,lambda msg:self.observe('owner',msg,None))
             scene=self.scene_buffer.snapshot(time.monotonic_ns())
             body=scene.body
             rotation=Rotation.from_matrix(np.asarray(body.map_body)[:3,:3])

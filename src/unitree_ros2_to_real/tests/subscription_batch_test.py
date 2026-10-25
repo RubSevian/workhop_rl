@@ -41,10 +41,10 @@ class Tests(unittest.TestCase):
         from mission.scene import SceneBuffer,BodyPose
         f=Fixture();f.feed();now=round(f.now*1e9)
         original=f.m.inputs['scene']
-        for queued_age,fresh in ((10_000_000,True),(400_000_000,False)):
+        for queued_age,fresh in ((10_000_000,True),(600_000_000,False)):
             scene=SceneBuffer(f.m.cfg)
             scene.bodies.append(BodyPose(**original['body']))
-            scene.arm([0.]*7,now-500_000_000,'arm')
+            scene.arm([0.]*7,now-700_000_000,'arm')
             scene.leg([0.]*12,now)
             with self.assertRaisesRegex(ValueError,'SCENE_SNAPSHOT_STALE:live_arm'):scene.snapshot(now)
             queued=dict(q=[0.]*7,frame_received_ns=now-queued_age)

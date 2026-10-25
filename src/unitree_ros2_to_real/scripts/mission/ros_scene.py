@@ -77,6 +77,13 @@ def report_scene(node,reason):
     if (reason!=getattr(node,'_logged_scene_reason',None)
             and now-getattr(node,'_scene_log_time',float('-inf'))>=node.cfg['execution']['diagnostic_log_interval_s']):
         node._logged_scene_reason=reason;node._scene_log_time=now
+        journal=getattr(node,'short_journal',None)
+        if journal is not None and reason.startswith('SCENE_SNAPSHOT_STALE:'):
+            journal.put('scene_freshness',reason=reason,
+                streams=node.scene_buffer.diagnostics(time.monotonic_ns()),
+                arm_max_age_s=node.cfg['limits']['arm_age_s'],
+                tick_gap_s=getattr(node,'tick_gap_s',None),
+                previous_tick_s=getattr(node,'last_tick_duration_s',None))
         if node.cfg['execution'].get('short_journal_enabled',False):
             node.get_logger().info(scene_status_line(reason))
             return

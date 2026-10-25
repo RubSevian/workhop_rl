@@ -53,6 +53,56 @@ class HeartbeatContracts(unittest.TestCase):
                 self.assertEqual(row['busy'],busy)
                 self.assertIn('last_tick_duration_s',vars(node))
 
+    def test_queued_arm_feedback_after_slow_tf_is_consumed_before_snapshot(self):
+        import ast,json,queue,threading
+        from types import SimpleNamespace as NS
+        from unittest.mock import Mock
+        source=(PACKAGE/'scripts/grasp_perception.py').read_text()
+        # Compare the actual timer with its previous receive-before-TF order.
+        old=source.replace('            dispatch_pending(self.owner_subscription,self.owner)\n','')
+        for code,queued,expected in ((old,True,False),(source,True,True),(source,False,False)):
+            now=[100.];last=[100.];pending=[];ages=[]
+            def select(_):
+                now[0]=100.7
+                if queued:pending.append(100.69)
+            def dispatch(subscription,callback):
+                if subscription=='arm' and pending:callback(pending.pop())
+            def snapshot(stamp):
+                age=stamp/1e9-last[0];ages.append(age)
+                if age>.5:raise ValueError('SCENE_SNAPSHOT_STALE:live_arm')
+            tree=ast.parse(code)
+            cls=next(n for n in tree.body if isinstance(n,ast.ClassDef) and n.name=='Perception')
+            method=next(n for n in cls.body if isinstance(n,ast.FunctionDef) and n.name=='tick')
+            scope=dict(time=NS(monotonic=lambda:now[0],monotonic_ns=lambda:round(now[0]*1e9)),
+                dispatch_pending=dispatch,report_scene=lambda *args:None,
+                CONTROLLED_HOME_PHASES=(),String=NS,json=json,queue=queue,verified=lambda _:True)
+            exec(compile(ast.Module(body=[method],type_ignores=[]),'timer-regression','exec'),scope)
+            node=NS(cfg={'execution':{'state_timeout_s':None}},busy=False,started=0.,reason='READY',
+                owner_subscription='arm',owner=lambda stamp:last.__setitem__(0,stamp),native_leg_input=None,
+                odometry_subscription=None,odom=None,mission_status_subscription=None,mission_status=None,
+                navigation_session='nav',lock=threading.Lock(),
+                body_source=NS(listener=NS(tf_sub=None,callback=None),select=select,diagnostics={}),
+                scene_buffer=NS(snapshot=snapshot,diagnostics=lambda _:{}),
+                backend=NS(readiness=lambda:dict(ready=True,reason='READY'),camera_mode='active',
+                    startup_checks={},compute_metrics={},collision=NS()),
+                health=Mock(),last_compute={},startup_checks={},leg_reader=NS(status=lambda:{}),completed=queue.Queue())
+            scope['tick'](node)
+            result=json.loads(node.health.publish.call_args.args[0].data)
+            self.assertEqual(result['ready'],expected)
+            self.assertAlmostEqual(ages[-1],.01 if expected else .7)
+
+    def test_arm_scene_budget_is_separate_from_owner_watchdog(self):
+        self.assertEqual(self.cfg['limits']['arm_age_s'],.5)
+        deployment=yaml.safe_load(Path(self.cfg['paths']['deployment']).read_text())['real_deployment']
+        self.assertEqual(deployment['rars01']['feedback_timeout_s'],.25)
+        raw=yaml.safe_load(CONFIG.read_text())
+        with tempfile.TemporaryDirectory() as directory:
+            path=Path(directory)/'mission.yaml'
+            for value in (True,0.,-.1,.501,float('nan')):
+                data=copy.deepcopy(raw);data['go2_mission']['frames']['arm_feedback_max_age_s']=value
+                path.write_text(yaml.safe_dump(data))
+                with self.assertRaisesRegex(ValueError,'arm_feedback_max_age_s'):load(path,ROOT)
+
     def test_timing_profile_disables_bulk_disk_recording_without_changing_control(self):
         self.assertFalse(self.cfg['execution']['diagnostic_recording_enabled'])
         self.assertFalse(self.cfg['gripper_observation']['recording_enabled'])

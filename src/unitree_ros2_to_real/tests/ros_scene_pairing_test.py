@@ -204,7 +204,7 @@ class PairingTests(unittest.TestCase):
         validate_scene_data(snapshot.data(),self.cfg,self.now,'nav','arm')
         collision=Collision.__new__(Collision);collision.cfg=self.cfg;collision.environment_enabled=False
         collision.validated_scene(dict(scene_snapshot=snapshot.data(),navigation_session_id='nav',owner_session_id='arm',map_body=np.eye(4).tolist()),False)
-        self.now+=251_000_000
+        self.now+=501_000_000
         with self.assertRaisesRegex(ValueError,'STALE:live_arm'):self.scene.snapshot(self.now)
         with self.assertRaisesRegex(ValueError,'STALE'):validate_scene_data(snapshot.data(),self.cfg,self.now,'nav','arm')
 
@@ -273,7 +273,7 @@ class PairingTests(unittest.TestCase):
         self.assertFalse(Mission.observe(mission,'scene',changed,self.now/1e9))
         future=copy.deepcopy(refreshed);future['live_feedback_ns']=self.now+1_000_000
         self.assertFalse(Mission.observe(mission,'scene',future,self.now/1e9))
-        self.now+=300_000_000
+        self.now+=501_000_000
         self.assertFalse(Mission.observe(mission,'scene',refreshed,self.now/1e9))
 
     def test_modelled_body_epoch_and_tf_mismatch_still_rejected(self):
@@ -286,7 +286,7 @@ class PairingTests(unittest.TestCase):
         from grasp_perception import Perception
         from grasp_mission import Coordinator
         output=[];observations={}
-        backend=NS(readiness=lambda:dict(ready=True,reason='READY'),collision=NS(last_stats={}),sensors_ready=lambda:True,startup_checks=dict(geometry=True,yolo=True,graspnet=True,camera=True),camera_mode='standby')
+        backend=NS(compute_metrics={},readiness=lambda:dict(ready=True,reason='READY'),collision=NS(last_stats={}),sensors_ready=lambda:True,startup_checks=dict(geometry=True,yolo=True,graspnet=True,camera=True),camera_mode='standby')
         perception=NS(cfg=self.cfg,body_source=self.source,scene_buffer=self.scene,
             leg_reader=NS(status=lambda:dict(mode='test',projected=0,fallback=0)),leg_receive_stats={},
             navigation_session='nav',lock=contextlib.nullcontext(),scene_error='',backend=backend,
@@ -301,6 +301,7 @@ class PairingTests(unittest.TestCase):
         coordinator=NS(cfg=self.cfg,body_source=coordinator_source,scene_buffer=coordinator_scene,
             engine=engine,scene_error='',get_logger=lambda:NS(info=lambda text:None))
         perception.odometry_subscription=None;coordinator.odometry_subscription=None
+        coordinator.owner_subscription=None
         perception.owner_subscription=None;perception.owner=lambda msg:None
         perception.native_leg_input=None;perception.mission_status_subscription=None
         perception.odom=lambda msg:Perception.odom(perception,msg)

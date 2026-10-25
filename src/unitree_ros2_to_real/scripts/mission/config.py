@@ -79,8 +79,11 @@ def load(path, workspace):
     legs_age=cfg['frames'].get('leg_feedback_max_age_s',deployment['rars01']['feedback_timeout_s'])
     if type(legs_age) not in (int,float) or not math.isfinite(legs_age) or not 0<legs_age<=.5:
         raise ValueError('invalid frames.leg_feedback_max_age_s (maximum 0.5 s)')
+    arm_age=cfg['frames'].get('arm_feedback_max_age_s',deployment['rars01']['feedback_timeout_s'])
+    if type(arm_age) not in (int,float) or not math.isfinite(arm_age) or not 0<arm_age<=.5:
+        raise ValueError('invalid frames.arm_feedback_max_age_s (maximum 0.5 s)')
     cfg['limits']={'legs_age_s':legs_age,'sensor_age_s':navigation['bridge']['sensor_timeout_s'],
-                   'arm_age_s':deployment['rars01']['feedback_timeout_s'],
+                   'arm_age_s':arm_age,
                    'tf_position_tolerance_m':navigation['bridge']['tf_pair_position_tolerance_m'],
                    'tf_quaternion_tolerance':navigation['bridge']['tf_pair_quaternion_tolerance']}
     # Never feed malformed limits to search/timers, even in read-only mode.
