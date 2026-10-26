@@ -13,6 +13,7 @@ sys.path.insert(0, str(PACKAGE/'scripts'))
 from mission.config import load
 from mission.core import Mission
 from mission.health_contract import source_ttl
+from mission.stop_home import geometry_home_ready
 
 CONFIG = ROOT/'repos/rars01_graspnet/config/jetson_orin_nano.yaml'
 
@@ -31,7 +32,7 @@ class HeartbeatContracts(unittest.TestCase):
         method=next(n for n in cls.body if isinstance(n,ast.FunctionDef) and n.name=='tick')
         scope=dict(time=NS(monotonic=lambda:10000.,monotonic_ns=lambda:10000000000000),
             dispatch_pending=lambda *args:None,report_scene=lambda *args:None,
-            CONTROLLED_HOME_PHASES=(),String=NS,json=json,queue=queue,verified=lambda checks:True)
+            geometry_home_ready=geometry_home_ready,CONTROLLED_HOME_PHASES=(),String=NS,json=json,queue=queue,verified=lambda checks:True)
         exec(compile(ast.Module(body=[method],type_ignores=[]),'grasp_perception.tick','exec'),scope)
         for timeout,busy,camera_ok,scene_ok,expected in (
             (None,True,True,True,True),(None,False,True,True,True),
@@ -39,7 +40,7 @@ class HeartbeatContracts(unittest.TestCase):
             (300.,True,True,True,False),(20000.,True,True,True,True)):
             with self.subTest(timeout=timeout,busy=busy,camera_ok=camera_ok,scene_ok=scene_ok):
                 snapshot=Mock(side_effect=None if scene_ok else ValueError('SCENE_STALE'))
-                node=NS(cfg={'execution':{'state_timeout_s':timeout}},busy=busy,started=0.,reason='READY',
+                node=NS(cfg={'execution':{'state_timeout_s':timeout}},busy=busy,started=0.,reason='READY',controlled_stop=False,r3_phase='',vision_cancel_complete=False,vision_reloading=False,last_request=0,request_session='',
                     owner_subscription=None,owner=None,native_leg_input=None,odometry_subscription=None,odom=None,
                     mission_status_subscription=None,mission_status=None,navigation_session='nav',lock=threading.Lock(),
                     body_source=NS(listener=NS(tf_sub=None,callback=None),select=lambda _:None,diagnostics={}),
@@ -75,9 +76,9 @@ class HeartbeatContracts(unittest.TestCase):
             method=next(n for n in cls.body if isinstance(n,ast.FunctionDef) and n.name=='tick')
             scope=dict(time=NS(monotonic=lambda:now[0],monotonic_ns=lambda:round(now[0]*1e9)),
                 dispatch_pending=dispatch,report_scene=lambda *args:None,
-                CONTROLLED_HOME_PHASES=(),String=NS,json=json,queue=queue,verified=lambda _:True)
+                geometry_home_ready=geometry_home_ready,CONTROLLED_HOME_PHASES=(),String=NS,json=json,queue=queue,verified=lambda _:True)
             exec(compile(ast.Module(body=[method],type_ignores=[]),'timer-regression','exec'),scope)
-            node=NS(cfg={'execution':{'state_timeout_s':None}},busy=False,started=0.,reason='READY',
+            node=NS(cfg={'execution':{'state_timeout_s':None}},busy=False,started=0.,reason='READY',controlled_stop=False,r3_phase='',vision_cancel_complete=False,vision_reloading=False,last_request=0,request_session='',
                 owner_subscription='arm',owner=lambda stamp:last.__setitem__(0,stamp),native_leg_input=None,
                 odometry_subscription=None,odom=None,mission_status_subscription=None,mission_status=None,
                 navigation_session='nav',lock=threading.Lock(),

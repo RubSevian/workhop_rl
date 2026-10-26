@@ -147,6 +147,33 @@ class StartupTests(unittest.TestCase):
             node.worker_thread.start();self.assertTrue(ready.wait(1.))
             node.destroy_node()
         self.assertFalse(node.worker_thread.is_alive());self.assertIsNone(node.backend)
+        # Idle work can reach finally before destroy_node closes the inference worker.
+        # Both resources must close and the thread must be joined, in either order.
+        self.assertCountEqual(calls,['inference stopped','backend closed'])
+
+    def test_shutdown_unblocks_inference_before_join_and_is_repeatable(self):
+        from grasp_perception import Perception
+        from rclpy.node import Node
+        import threading,queue
+        # A blocked inference call must be released by close, not by join timeout.
+        entered=threading.Event();released=threading.Event();calls=[];warnings=[]
+        def close(force):
+            self.assertTrue(force)
+            if not released.is_set():calls.append('inference stopped');released.set()
+        backend=SimpleNamespace(collision=SimpleNamespace(),worker=SimpleNamespace(close=close))
+        node=Perception.__new__(Perception)
+        node.backend=backend;node.cfg={'startup':{'shutdown_timeout_s':1.}}
+        node.stop_event=threading.Event();node.jobs=queue.Queue();node.completed=queue.Queue()
+        node.get_logger=lambda:SimpleNamespace(warning=warnings.append)
+        def blocked_work():
+            entered.set()
+            if released.wait(2.):calls.append('backend closed')
+        node.worker_thread=threading.Thread(target=blocked_work)
+        node.worker_thread.start();self.assertTrue(entered.wait(1.))
+        with patch.object(Node,'destroy_node',return_value=True):
+            node.destroy_node();node.destroy_node()
+        self.assertFalse(node.worker_thread.is_alive());self.assertIsNone(node.backend)
+        self.assertEqual(warnings,[])
         self.assertEqual(calls,['inference stopped','backend closed'])
 
     def test_close_releases_models_even_if_camera_close_fails(self):
@@ -176,7 +203,7 @@ class StartupTests(unittest.TestCase):
         module=importlib.util.module_from_spec(spec);spec.loader.exec_module(module)
         context=LaunchContext()
         context.launch_configurations.update(workspace=str(root),physical='true',test_mode='ready_observe',start_arm_owner='true',
-            network_interface='enP8p1s0',mission_config_path=str(root/'repos/rars01_graspnet/config/jetson_orin_nano.yaml'))
+            architecture_monitor='true',network_interface='enP8p1s0',mission_config_path=str(root/'repos/rars01_graspnet/config/jetson_orin_nano.yaml'))
         # Test this checkout's launch/config pair, independently of the active
         # installed baseline. Actions are only constructed, never executed.
         prefix=Path(self.enterContext(tempfile.TemporaryDirectory()))

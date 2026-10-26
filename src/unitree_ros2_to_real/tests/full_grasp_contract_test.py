@@ -19,7 +19,10 @@ class FullGraspContracts(unittest.TestCase):
         self.assertEqual(CFG['gripper_torque_control']['contact_torque_nm'],2.2)
         self.assertNotIn('full_grasp_motor_torque_cap_unqualified',blockers(CFG))
         self.assertFalse(CFG['grasp_verification']['motor_torque_cap_validated'])
-        self.assertIn('physical_retreat_clearance_unqualified',blockers(CFG))
+        self.assertTrue(CFG['execution']['automatic_retreat'])
+        self.assertNotIn('physical_retreat_clearance_unqualified',blockers(CFG))
+        manual=copy.deepcopy(CFG);manual['execution']['automatic_retreat']=False;manual['operator_trial']=False
+        self.assertIn('physical_retreat_clearance_unqualified',blockers(manual))
         diagnostic=copy.deepcopy(CFG);diagnostic['test_mode']='ready_observe'
         self.assertFalse(blockers(diagnostic))
 
@@ -53,6 +56,11 @@ class FullGraspContracts(unittest.TestCase):
         context=LaunchContext();context.launch_configurations.update(workspace=str(root),physical='true',test_mode='full',start_arm_owner='true',network_interface='',mission_config_path=str(root/'repos/rars01_graspnet/config/jetson_orin_nano.yaml'))
         with tempfile.TemporaryDirectory() as tmp:
             prefix=Path(tmp);lib=prefix/'lib/unitree_legged_real';lib.mkdir(parents=True)
+            import yaml
+            raw=yaml.safe_load(Path(context.launch_configurations['mission_config_path']).read_text())
+            raw['go2_mission']['execution']['automatic_retreat']=False
+            path=prefix/'manual.yaml';path.write_text(yaml.safe_dump(raw))
+            context.launch_configurations['mission_config_path']=str(path)
             (lib/'mission').symlink_to(source/'scripts/mission',target_is_directory=True)
             with patch.object(launch,'get_package_prefix',return_value=str(prefix)),patch.object(launch,'get_package_share_directory',return_value=str(source)),patch.object(launch,'Node') as node:
                 with self.assertRaisesRegex(RuntimeError,'physical_retreat_clearance_unqualified'):

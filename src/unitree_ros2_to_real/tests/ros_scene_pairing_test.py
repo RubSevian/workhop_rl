@@ -290,7 +290,7 @@ class PairingTests(unittest.TestCase):
         perception=NS(cfg=self.cfg,body_source=self.source,scene_buffer=self.scene,
             leg_reader=NS(status=lambda:dict(mode='test',projected=0,fallback=0)),leg_receive_stats={},
             navigation_session='nav',lock=contextlib.nullcontext(),scene_error='',backend=backend,
-            reason='READY',busy=False,last_compute={},startup_checks=backend.startup_checks,
+            reason='READY',busy=False,controlled_stop=False,r3_phase='',vision_cancel_complete=False,vision_reloading=False,last_request=0,request_session='',last_compute={},startup_checks=backend.startup_checks,
             health=NS(publish=lambda msg:output.append(json.loads(msg.data))),completed=queue.Queue(),
             get_logger=lambda:NS(info=lambda text:None))
         with patch('mission.ros_scene.BodyTransformBuffer',return_value=self.buffer),patch('mission.ros_scene.TransformListener'):

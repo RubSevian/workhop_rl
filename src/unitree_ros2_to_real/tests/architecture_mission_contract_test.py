@@ -47,7 +47,8 @@ class ArchitectureMissionTests(unittest.TestCase):
         self.assertEqual(source_ttl(cfg,'r3'),.25)
 
     def test_perception_status_missing_in_wait_goal_is_recoverable(self):
-        f=Fixture();f.tick();f.feed();f.m.received['perception']=f.now-1.001
+        from mission.health_contract import source_ttl
+        f=Fixture();f.tick();f.feed();f.m.received['perception']=f.now-source_ttl(f.m.cfg,'perception')-.001
         f.m.step(f.now,int(f.now*1e9))
         self.assertEqual(f.m.state,'WAIT_GOAL')
         self.assertEqual(f.m.reason,'PERCEPTION_STATUS_UNAVAILABLE')
@@ -122,10 +123,13 @@ class ArchitectureMissionTests(unittest.TestCase):
     def test_reverse_rejects_unknown_hold_epoch_and_start(self):
         segment,current=self.reverse_fixture()
         with self.assertRaisesRegex(ValueError,'HOLD_UNKNOWN'):reverse_segment(segment,current,CFG,known_empty=False)
+        inside=copy.deepcopy(current)
+        inside['q7'][0]+=CFG['execution']['start_tolerance_rad']-.001
+        self.assertTrue(reverse_segment(segment,inside,CFG,known_empty=True)['reused_approval'])
         for change,reason in [('epoch','EPOCH_CHANGED'),('start','START_CHANGED')]:
             modified=copy.deepcopy(current)
             if change=='epoch':modified['scene_snapshot']['body']['tf_revision']='new'
-            else:modified['q7'][0]+=.021
+            else:modified['q7'][0]+=CFG['execution']['start_tolerance_rad']+.001
             with self.assertRaisesRegex(ValueError,reason):reverse_segment(segment,modified,CFG,known_empty=True)
 
     def test_reverse_keeps_approval_when_live_legs_change(self):

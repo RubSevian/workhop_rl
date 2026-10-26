@@ -74,8 +74,10 @@ for key in ('policy_scheduler','remote_auto_sequence','motion_diagnostics_enable
     c.launch_configurations[key]=''
 m._controller(c)
 resolved=captured[-1]
-assert resolved['parameters'][0]['motion_diagnostics_enabled'] is True
-assert resolved['parameters'][0]['motion_diagnostics_duration_s']==540.0
+import yaml
+trace=yaml.safe_load(Path(c.launch_configurations['config_path']).read_text())['real_deployment']['r3_commissioning']['motion_diagnostics']
+assert resolved['parameters'][0]['motion_diagnostics_enabled'] is trace['enabled']
+assert resolved['parameters'][0]['motion_diagnostics_duration_s']==trace['duration_s']
 assert resolved['parameters'][0]['remote_auto_sequence'] is True
 assert resolved['additional_env']['R3_RT_CONFIG_PATH']==c.launch_configurations['config_path']
 print('PASS ordinary launch takes scheduler/sequence/motion settings from YAML')

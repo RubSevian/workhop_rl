@@ -265,7 +265,7 @@ class PlanningContracts(unittest.TestCase):
 
     def test_physical_retreat_requires_clearance_evidence_even_if_torque_qualified(self):
         from mission.config import blockers,physical_retreat_qualified
-        p,_=self.setup_planner();cfg=p.cfg;cfg['test_mode']='full'
+        p,_=self.setup_planner();cfg=p.cfg;cfg['test_mode']='full';cfg['execution']['automatic_retreat']=False;cfg['operator_trial']=False
         cfg['grasp_verification'].update(motor_torque_cap_validated=True,motor_torque_cap_evidence='synthetic fixture')
         self.assertIn('physical_retreat_clearance_unqualified',blockers(cfg))
         cfg['collision']['retreat_physical_clearance_validated']=True
@@ -290,12 +290,16 @@ class PlanningContracts(unittest.TestCase):
         p.eye=NS(chain=lambda *a:(np.eye(4),np.eye(4)));p.geometry=NS(motor_angle_for_width=lambda width:.9);p.ik=object()
         at=copy.deepcopy(sample);at.update(capture_mono_ns=sample['body'].mono_ns,
                     capture_ros_ns=sample['body'].ros_ns,odom_arm=np.eye(4),arm_camera=np.eye(4))
-        p.detect=lambda *a:(None,None,NS(conf=.9,bbox_xyxy=[0,0,1,1]),at,np.array([.1,.2,.3]))
+        p.detect=lambda *a:(None,None,NS(conf=.9,bbox_xyxy=[0,0,1,1],mask=np.ones((1,1),bool),mask_source='segmentation',class_name='synthetic'),at,np.array([.1,.2,.3]))
         def infer(*a,**k):
             self.assertEqual(p.observation_verified['id'],12)
             self.assertEqual(p.observation_verified['session_id'],'test')
-            return dict(grasps=[1],elapsed_s=.1)
+            self.assertEqual(k['mask_source'],'segmentation')
+            np.testing.assert_array_equal(k['target_mask'],np.ones((1,1),bool))
+            return dict(grasps=np.zeros((1,17)),elapsed_s=.1)
         p.worker=NS(infer=infer);p.camera=NS(K=np.eye(3))
+        # This test isolates snapshot admission; membership has its own RGB-D tests.
+        p.cfg['target_binding']={'enabled':False}
         p.grasp['graspnet']=dict(num_point=1,min_depth=.1,max_depth=2.,collision_thresh=.01,
                                 voxel_size=.01,target_margin_px=0,target_expand_ratio=1.,worker_timeout_s=1.)
         p.grasp['robot']['rars01'].update(max_grasp_width_m=.1,max_grasp_depth_m=.1)

@@ -143,6 +143,11 @@ class MonitorTests(unittest.TestCase):
                 actions=module._launch(c);self.assertTrue(is_monitor(actions[0]));self.assertEqual(sum(map(is_monitor,actions)),1)
                 self.assertIsInstance(actions[1],RegisterEventHandler)
                 c.launch_configurations['test_mode']='full'
+                import yaml
+                raw=yaml.safe_load(Path(c.launch_configurations['mission_config_path']).read_text())
+                raw['go2_mission']['execution']['automatic_retreat']=False
+                path=prefix/'manual.yaml';path.write_text(yaml.safe_dump(raw))
+                c.launch_configurations['mission_config_path']=str(path)
                 with patch.object(module,'Node') as node:
                     with self.assertRaisesRegex(RuntimeError,'physical_retreat_clearance_unqualified'):module._launch(c)
                     node.assert_not_called()
