@@ -28,7 +28,7 @@ def compute_summary(metrics):
             'position_tolerance_m','orientation_tolerance_rad','attempt_count')})
         failed[-1]['near_joint_limits']=near
         if call.get('attempts'):failed[-1]['last_attempt_reason']=call['attempts'][-1].get('reason')
-    return dict(collision_profile=metrics.get('collision_profile',{}),
+    return dict(target_shape=metrics.get('target_shape',{}),collision_profile=metrics.get('collision_profile',{}),
         live_validation_elapsed_s=metrics.get('live_validation_elapsed_s'),
         trajectory_build_elapsed_s=metrics.get('trajectory_build_elapsed_s'),
         elapsed_s=metrics.get('elapsed_s'),ik_summary=metrics.get('ik_summary',{}),

@@ -16,7 +16,7 @@ class FullGraspContracts(unittest.TestCase):
     def test_full_preflight_retains_clearance_without_claiming_hardware_cap(self):
         self.assertEqual(CFG['test_mode'],'full')
         self.assertEqual(CFG['grasp_assessment'],dict(contact_torque_nm=1.5,min_grasp_width_m=.05,confirmation_duration_s=2.))
-        self.assertEqual(CFG['gripper_torque_control']['contact_torque_nm'],2.2)
+        self.assertEqual(CFG['gripper_torque_control']['contact_torque_nm'],2.8)
         self.assertNotIn('full_grasp_motor_torque_cap_unqualified',blockers(CFG))
         self.assertFalse(CFG['grasp_verification']['motor_torque_cap_validated'])
         self.assertTrue(CFG['execution']['automatic_retreat'])
@@ -40,7 +40,7 @@ class FullGraspContracts(unittest.TestCase):
                     path=Path(tmp)/'mission.yaml';path.write_text(yaml.safe_dump(cfg))
                     with self.assertRaisesRegex(ValueError,'gripper_torque_control'):
                         load(path,root)
-        cfg=copy.deepcopy(original);cfg['go2_mission']['gripper_torque_control']['hold_deadband_nm']=2.2
+        cfg=copy.deepcopy(original);cfg['go2_mission']['gripper_torque_control']['hold_deadband_nm']=control['contact_torque_nm']
         with tempfile.TemporaryDirectory() as tmp:
             path=Path(tmp)/'mission.yaml';path.write_text(yaml.safe_dump(cfg))
             with self.assertRaisesRegex(ValueError,'deadband'):load(path,root)
