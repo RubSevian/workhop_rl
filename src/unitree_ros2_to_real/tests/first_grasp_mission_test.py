@@ -928,10 +928,48 @@ class Integration(unittest.TestCase):
             planner.validate_result(copy.deepcopy(original),changing_arm,request={'operation':'pregrasp'})
         self.assertEqual(len(rebuilds),1) # no unbounded chase/replan loop
 
+    def test_confirmed_scan_home_is_revoked_by_arm_motion(self):
+        f=Fixture();f.feed()
+        self.assertIsNone(f.m.scan_home_plan())
+        f.m.done_motion('scan_pose',f.now)
+        self.assertEqual(f.m.scan_home_plan()['scan_q'],f.owner['q'][:6])
+        f.owner['q'][1]+=.03;f.feed()
+        self.assertIsNone(f.m.scan_home_plan())
+        f.owner['q'][1]=float('nan');f.feed()
+        self.assertIsNone(f.m.scan_home_plan())
+
+    def test_scene_recovers_before_scan_dispatch_and_never_reuses_old_plan(self):
+        f=Fixture();f.start()
+        for _ in range(500):
+            f.tick()
+            if f.m.state=='ARM_SEARCH':break
+        f.feed();f.m.request('scan_step',f.now)
+        request=f.m.effects[-1][1];f.m.drain()
+        result=f.compute(request)
+        f.m.received['legs']=f.now-1.
+        self.assertTrue(f.m.result(result,f.now))
+        self.assertIsNone(f.m.pending)
+        self.assertEqual(f.m.retry_operation,'scan_step')
+        self.assertFalse(any(k=='trajectory' for k,_ in f.m.drain()))
+        self.assertTrue(f.m.wait_for_observation(f.now))
+        f.now+=.3;f.feed()
+        self.assertTrue(f.m.wait_for_observation(f.now))
+        effects=f.m.drain();self.assertEqual([k for k,_ in effects],['compute'])
+        self.assertGreater(effects[0][1]['id'],request['id'])
+        f.m.result(f.compute(effects[0][1]),f.now)
+        self.assertEqual([k for k,_ in f.m.drain()],['trajectory'])
+        self.assertIsNone(f.m.recovery_since)
+        # Once published, a freshness failure must cancel, never retry motion.
+        f.m.inputs['perception']['ready']=False
+        f.m.inputs['perception']['reason']='SCENE_SNAPSHOT_STALE:live_legs'
+        self.assertTrue(f.m.wait_for_observation(f.now))
+        self.assertEqual(f.m.state,'BLOCKED')
+        self.assertIsNone(f.m.retry_operation)
+
     def test_three_branches(self):
-        for branch,end in [('success','GRASP_PRESUMED_SUCCESS'),('not_found','OBJECT_NOT_FOUND'),('ik_fail','BLOCKED')]:
+        for branch,end in [('success','GRASP_PRESUMED_SUCCESS'),('not_found','OBJECT_NOT_FOUND'),('ik_fail','GRASP_UNREACHABLE')]:
             f=Fixture(branch);self.assertEqual(f.run(),end)
-            self.assertEqual(f.owner['arm_home_ready'],branch!='ik_fail')
+            self.assertTrue(f.owner['arm_home_ready'])
             self.assertFalse(f.owner['gripper_hold_confirmed']);self.assertIsNone(f.m.status(f.now)['object_grasped'])
             self.assertEqual(f.owner['gripper_command_active'],branch=='success')
             count=f.commands

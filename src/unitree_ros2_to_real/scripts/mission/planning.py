@@ -243,9 +243,15 @@ class Planning:
             raise
 
     def pause_camera(self):
-        if self.camera is not None:self.camera.close()
-        self.camera=None;self.camera_mode='standby'
-        self.last_detection=None
+        camera=self.camera
+        # Publish intentional standby before close() blocks/sets CAMERA_CLOSED.
+        # The worker remains busy until close returns; no new job can start.
+        self.camera_mode='standby';self.camera=None;self.last_detection=None
+        try:
+            if camera is not None:camera.close()
+        except Exception as error:
+            self.camera_error=str(error);self.camera_mode='failed'
+            raise
 
     def stop_task_perception(self):
         # Called off the ROS executor; this affects only our inference child/camera.

@@ -163,7 +163,7 @@ class ArmOwner final:public rclcpp::Node {
   if(grasp_verification_mode_!="torque_width"&&grasp_verification_mode_!="stub")throw std::runtime_error("unsupported grasp verification mode");
   payload_checks_enabled_=y["collision"]["payload_enabled"]?y["collision"]["payload_enabled"].as<bool>():true;
   MissionStreamConfig c;c.close_duration_s=y["grasp_verification"]["close_duration_s"].as<double>();c.gripper_velocity=sdk_config.position_velocity_limits[6];c.kp=sdk_config.default_kp;c.kd=sdk_config.default_kd;c.rate=sdk_config.command_rate_hz;
-  c.start_tolerance=y["execution"]["start_tolerance_rad"].as<double>();c.reached_tolerance=y["execution"]["joint_reached_tolerance_rad"].as<double>();
+  c.start_tolerance=y["execution"]["start_tolerance_rad"].as<double>();scan_home_tolerance_=c.start_tolerance;c.reached_tolerance=y["execution"]["joint_reached_tolerance_rad"].as<double>();
   c.max_duration_s=y["execution"]["max_plan_duration_s"].as<double>();
   max_plan_samples_=size_t(c.rate*c.max_duration_s)+1;
   c.settled_velocity=feedback["velocity_tolerance_deg_s"].as<double>()*std::acos(-1.)/180;
@@ -205,14 +205,16 @@ class ArmOwner final:public rclcpp::Node {
   mission_=std::make_unique<MissionStream>(c);
   home_->SetMissionProvider([this](ArmTime now,const AutoHomeStatus& status)->std::optional<AutoHomeController::Command>{
    if(!mission_->has_command())return std::nullopt;
-   return mission_->Tick(now,status,Authority(now,home_requested_||active_home_,true));
+   auto command=mission_->Tick(now,status,Authority(now,home_requested_||active_home_,true));
+   scan_home_reference_.Observe(mission_->state(),status.joints.position);
+   return command;
   });
   r3_sub_=create_subscription<std_msgs::msg::String>("/go2/locomotion_status",1,[this](std_msgs::msg::String::SharedPtr msg){
    r3_authority_=r3_planned_disable_ready_=false;try{auto v=YAML::Load(msg->data);const auto ns=v["observed_ns"].as<int64_t>();
     if(ns<=Ns(r3_stamp_))return;r3_stamp_=ArmTime(std::chrono::nanoseconds(ns));
     r3_nav_session_=v["navigation_session_id"].as<std::string>();
     const auto session=v["controller_session_id"].as<std::string>();
-    if(!r3_session_.empty()&&r3_session_!=session){mission_->Cancel(home_->status(),"controller_session_changed");retired_session_=mission_session_;}
+    if(!r3_session_.empty()&&r3_session_!=session){scan_home_reference_.Reset();mission_->Cancel(home_->status(),"controller_session_changed");retired_session_=mission_session_;}
     r3_session_=session;r3_active_=v["state"].as<std::string>()=="ACTIVE"&&v["phase"].as<std::string>()=="RL_ZERO";
     r3_stopping_=v["state"].as<std::string>()=="CONTROLLED_STOP";
     r3_home_phase_allowed_=ControlledStopHomePhaseAllowed(v["phase"].as<std::string>());
@@ -229,7 +231,7 @@ class ArmOwner final:public rclcpp::Node {
   health_sub_=create_subscription<std_msgs::msg::String>("/go2/mission/health",1,[this](std_msgs::msg::String::SharedPtr msg){
    health_ready_=false;try{auto v=YAML::Load(msg->data);const auto ns=v["observed_ns"].as<int64_t>();if(ns<=Ns(health_stamp_))return;
     health_stamp_=ArmTime(std::chrono::nanoseconds(ns));const auto session=v["session_id"].as<std::string>();
-    if(!mission_session_.empty()&&mission_session_!=session){mission_->Cancel(home_->status(),"mission_session_changed");retired_session_=mission_session_;}
+    if(!mission_session_.empty()&&mission_session_!=session){scan_home_reference_.Reset();mission_->Cancel(home_->status(),"mission_session_changed");retired_session_=mission_session_;}
     mission_session_=session;health_nav_session_=v["navigation_session_id"].as<std::string>();health_ready_=v["ready"].as<bool>();health_goal_revision_=v["goal_revision"].as<uint64_t>();
     const auto phase=v["phase"].as<std::string>();
     health_phase_=phase;
@@ -271,7 +273,7 @@ class ArmOwner final:public rclcpp::Node {
    const auto operation=v["operation"]?v["operation"].as<std::string>():"";
    const auto policy=v["collision_policy"]?v["collision_policy"].as<std::string>():"";
    const bool collision_admitted=v["collision_checked"].as<bool>()||
-    UncheckedScanHomeAllowed(policy,operation,health_phase_,v["kind"].as<std::string>(),scan_return_admitted_,mission_->state())||
+    UncheckedScanHomeAllowed(policy,operation,health_phase_,v["kind"].as<std::string>(),scan_home_reference_.Matches(home_->status().joints.position,scan_home_tolerance_),mission_->state(),r3_home_phase_allowed_&&home_requested_)||
     UncheckedSearchPlanAllowed(policy,operation,health_phase_,v["kind"].as<std::string>(),mission_->holding(),result.points);
    if(!Authority(now,is_home)||count_publishers("/rars01/mission/trajectory")!=1||
       v["session_id"].as<std::string>()!=mission_session_||v["owner_session_id"].as<std::string>()!=owner_session_||
@@ -316,7 +318,7 @@ class ArmOwner final:public rclcpp::Node {
    const bool motor_limits=MotorLimitPlanAllowed(operation,health_phase_,kind);
    mission_->ObserveAssessment(now,home_->status());
    if(!mission_->Start(v["id"].as<uint64_t>(),v["kind"].as<std::string>(),result.points,now,home_->status(),search,motor_limits))throw std::runtime_error("trajectory bounds/start/hold rejected");
-   scan_return_admitted_=operation=="retreat"&&v["returns_to_scan"]&&v["returns_to_scan"].as<bool>();
+   scan_home_reference_.Begin(operation,v["returns_to_scan"]&&v["returns_to_scan"].as<bool>());
    if(ready_observe_&&kind=="move")ready_move_seen_=true;
    if(approved_trial){trial_state_="EXECUTING";trial_service_.reset();}
    mission_blocker_.clear();active_home_=is_home;if(is_home)home_requested_=false;
@@ -513,7 +515,7 @@ class ArmOwner final:public rclcpp::Node {
  std::unique_ptr<AutoHomeController> home_;
  rclcpp::Service<std_srvs::srv::Trigger>::SharedPtr return_home_,emergency_,planned_disable_;
  uint64_t logged_timeout_id_=0;
- bool scan_return_admitted_=false;
+ ScanHomeReference scan_home_reference_;double scan_home_tolerance_=.025;
  rclcpp::Publisher<rars01_state_interfaces::msg::ArmFastState>::SharedPtr fast_state_;
  rclcpp::Publisher<std_msgs::msg::String>::SharedPtr state_;rclcpp::TimerBase::SharedPtr timer_;
 };

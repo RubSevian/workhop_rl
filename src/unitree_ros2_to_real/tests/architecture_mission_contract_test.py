@@ -81,19 +81,22 @@ class ArchitectureMissionTests(unittest.TestCase):
         f=Fixture();f.start();f.base['tilt_rad']=f.m.cfg['settle']['max_tilt_rad']+.01;f.tick(False)
         self.assertEqual(f.m.state,'BLOCKED');self.assertEqual(f.m.reason,'BASE_TILT_UNSAFE')
 
-    def test_planning_rejection_waits_for_operator_without_retry_or_motion(self):
+    def test_planning_rejection_returns_from_confirmed_scan_without_retry(self):
         for reason in ('IK_FAIL','NO_CANDIDATES','CANDIDATE_GEOMETRY_REJECTED','NO_COLLISION_FREE_CANDIDATE: arm/leg'):
             class Rejected(Fixture):
                 def compute(self,data):
                     result=super().compute(data)
                     if data['operation']=='grasp_plan':result.update(ok=False,reason=reason)
                     return result
-            f=Rejected();self.assertEqual(f.run(),'BLOCKED');self.assertEqual(f.m.reason,reason)
+            f=Rejected();self.assertEqual(f.run(),'GRASP_UNREACHABLE');self.assertEqual(f.m.last_grasp_error,reason)
+            self.assertTrue(f.owner['arm_home_ready'])
+            homes=[d for k,d in f.effects if k=='compute' and d['operation']=='home']
+            self.assertEqual(len(homes),1);self.assertTrue(homes[0]['home_from_scan'])
             plans=[d for k,d in f.effects if k=='compute' and d['operation']=='grasp_plan']
             self.assertEqual(len(plans),1)
-            self.assertFalse(any(k=='compute' and d['operation'] in ('pregrasp','close','reverse_search','home','scan_step') for k,d in f.effects))
+            self.assertFalse(any(k=='compute' and d['operation'] in ('pregrasp','close','reverse_search','scan_step') for k,d in f.effects))
             for _ in range(10):f.tick()
-            self.assertEqual(f.m.state,'BLOCKED');self.assertIsNone(f.m.pending)
+            self.assertEqual(f.m.state,'GRASP_UNREACHABLE');self.assertIsNone(f.m.pending)
 
     def test_unknown_grasp_does_not_start_reverse_or_retreat(self):
         class Unknown(Fixture):
@@ -103,6 +106,17 @@ class ArchitectureMissionTests(unittest.TestCase):
         f=Unknown();self.assertEqual(f.run(),'BLOCKED')
         self.assertEqual(f.m.reason,'GRASP_ASSESSMENT_UNKNOWN:NO_VALID_ASSESSMENT')
         self.assertFalse(any(k=='compute' and d['operation'] in ('retreat','reverse_search') for k,d in f.effects))
+
+    def test_rejected_ik_without_confirmed_scan_does_not_issue_unchecked_home(self):
+        class Unconfirmed(Fixture):
+            def compute(self,data):
+                result=super().compute(data)
+                if data['operation']=='grasp_plan':
+                    self.m.confirmed_scan_q=None
+                    result.update(ok=False,reason='IK_FAIL')
+                return result
+        f=Unconfirmed();self.assertEqual(f.run(),'BLOCKED')
+        self.assertFalse(any(k=='compute' and d['operation']=='home' for k,d in f.effects))
 
     def reverse_fixture(self):
         f=Fixture();f.feed();scene=copy.deepcopy(f.m.inputs['scene'])

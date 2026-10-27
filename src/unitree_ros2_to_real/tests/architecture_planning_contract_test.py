@@ -13,6 +13,23 @@ from mission.scene import BodyPose, WorldGraspAnchor
 
 
 class PlanningContracts(unittest.TestCase):
+    def test_intentional_camera_close_keeps_geometry_ready(self):
+        p=Planning.__new__(Planning);p.camera_mode='active';p.last_detection=object()
+        p.startup_checks={'geometry':True,'camera':True,'yolo':True,'graspnet':True}
+        p.worker=NS(is_alive=lambda:True)
+        observations=[]
+        def close():
+            observations.append(p.readiness())
+            self.assertIsNone(p.camera)
+        p.camera=NS(close=close)
+        p.pause_camera()
+        self.assertEqual(observations,[dict(ready=True,reason='READY')])
+        self.assertEqual(p.camera_mode,'standby')
+        def fail():raise RuntimeError('close failed')
+        p.camera=NS(close=fail)
+        with self.assertRaisesRegex(RuntimeError,'close failed'):p.pause_camera()
+        self.assertFalse(p.readiness()['ready'])
+
     def test_object_motion_uses_existing_duration_and_motor_velocity_limits(self):
         p,_=self.setup_planner()
         p._command_joint_bounds=np.array([[-3.,3.]]*6)

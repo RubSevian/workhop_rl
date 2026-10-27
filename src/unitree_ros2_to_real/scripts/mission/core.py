@@ -11,6 +11,7 @@ from .scene_wait import transient_scene_error
 from .health_contract import source_ttl, input_diagnostic
 
 OBSERVATIONS = {'detect', 'observe_grasp', 'grasp_plan'}
+PRESET_COMPUTES = {'scan_pose', 'scan_step', 'scan_return', 'refine', 'home'}
 
 def retryable_observation(reason):
     return transient_scene_error(reason) or reason in ('RGBD_STALE_OR_REPEATED', 'RGBD_TF_FEEDBACK_STALE')
@@ -41,6 +42,7 @@ class Mission:
         self.stability_reason='';self.stability_restarts=0
         self.result_after_home = 'MISSION_COMPLETED_UNVERIFIED'
         self.home_from_scan=False
+        self.confirmed_scan_q=None
         self.grasp_plan = None
         self.close_outcome='MISSION_COMPLETED_UNVERIFIED'
         self.object_anchor=None;self.q_search=None;self.grasp_attempt=0
@@ -136,6 +138,7 @@ class Mission:
         # Accept its new identity, then use the normal NAVIGATING -> BASE_SETTLE
         # path so post-goal zero acknowledgement and settling still apply.
         if goal['revision']>self.last_revision and goal.get('stamp_ns',0)>self.armed_ros_ns and goal['state'] in ('REQUESTED','ACTIVE','SUCCEEDED'):
+            self.confirmed_scan_q=None
             self.started=now;self.revision,self.goal_stamp=goal['revision'],goal['stamp_ns']
             self.transition('NAVIGATING',now)
         return self.drain()
@@ -223,16 +226,16 @@ class Mission:
         if self.state in ('WAIT_GOAL','NAVIGATING'):return False
         perception=self.inputs['perception']
         reason='' if perception.get('ready') else perception.get('reason','PERCEPTION_INVALID')
-        stationary=(self.state in ('BASE_SETTLE','ARM_SEARCH','PLAN_GRASP')
+        stationary=(self.state in ('BASE_SETTLE','ARM_SCAN_POSE','ARM_SEARCH','VIEW_REFINEMENT','PLAN_GRASP','RETURN_HOME')
                     and (not self.pending or (self.pending['kind']=='compute'
-                         and self.pending['operation'] in OBSERVATIONS)))
+                         and self.pending['operation'] in OBSERVATIONS|PRESET_COMPUTES)))
         if stationary:
             r3=self.inputs['r3'];command=r3.get('motion_command',[])
             stationary=(r3.get('phase')=='RL_ZERO' and len(command)==3
-                        and all(math.isfinite(v) and abs(v)<=1e-6 for v in command)
-                        and self.fresh('legs',now))
+                        and all(math.isfinite(v) and abs(v)<=1e-6 for v in command))
         if not reason and stationary:
-            if not self.fresh('base',now):reason='SCENE_SNAPSHOT_STALE:body'
+            if not self.fresh('legs',now):reason='SCENE_SNAPSHOT_STALE:live_legs'
+            elif not self.fresh('base',now):reason='SCENE_SNAPSHOT_STALE:body'
             elif not self.fresh('scene',now):reason='SCENE_SNAPSHOT_STALE:body'
             else:reason=self.scene_error(now)
         # Waiting for a goal/navigation can tolerate perception geometry lag,
@@ -261,7 +264,7 @@ class Mission:
             # Preserve the deadline only for an actual retry after a failed
             # observation, not an original compute with a recovered health blip.
             if (self.recovery_retry_active and self.pending
-                    and self.pending['operation'] in OBSERVATIONS):return False
+                    and self.pending['operation'] in OBSERVATIONS|PRESET_COMPUTES):return False
             self.clear_recovery()
         return False
 
@@ -275,14 +278,27 @@ class Mission:
             and now-self.recovery_since<self.cfg['execution'].get('observation_recovery_timeout_s',30.)
             and transient_scene_error(data.get('reason',''))))
 
+    def scan_home_plan(self):
+        """Only a measured, completed scan pose permits the preset HOME policy."""
+        q=self.inputs.get('owner',{}).get('q',[])
+        scan=self.confirmed_scan_q
+        if (scan is None or len(scan)!=6 or len(q)<6
+                or not all(math.isfinite(v) for v in [*scan,*q[:6]])
+                or max(abs(a-b) for a,b in zip(q[:6],scan))>self.cfg['execution']['start_tolerance_rad']):
+            return None
+        return dict(scan_q=list(scan))
+
     def done_motion(self, operation, now):
+        if operation in ('scan_pose','scan_step','scan_return','refine'):
+            self.confirmed_scan_q=list(self.inputs['owner']['q'][:6])
         if operation == 'scan_pose':
             self.transition('ARM_SEARCH', now)
             self.detect_at = now + self.cfg['search']['settle_s']
         elif operation == 'scan_step':
             self.detect_at = now + self.cfg['search']['settle_s']
         elif operation == 'scan_return':
-            self.go_home('OBJECT_NOT_FOUND', now)
+            self.grasp_plan=self.scan_home_plan()
+            self.go_home('OBJECT_NOT_FOUND', now,from_scan=self.grasp_plan is not None)
         elif operation == 'refine':
             self.transition('PLAN_GRASP', now)
             self.detect_at = now + self.cfg['search']['settle_s']
@@ -312,6 +328,7 @@ class Mission:
             scan=(self.grasp_plan or {}).get('scan_q',[])
             if len(scan)!=6 or max(abs(a-b) for a,b in zip(self.inputs['owner']['q'][:6],scan))>self.cfg['execution']['start_tolerance_rad']:
                 self.cancel(now,'SCAN_RETURN_UNCONFIRMED',True);return
+            self.confirmed_scan_q=list(self.inputs['owner']['q'][:6])
             self.go_home(self.close_outcome, now,from_scan=True)
         elif operation == 'home':
             owner = self.inputs['owner']
@@ -377,7 +394,8 @@ class Mission:
         self.pending = None
         if not result.get('ok'):
             reason = result.get('reason', 'PLAN_REJECTED')
-            if operation in OBSERVATIONS and retryable_observation(reason):
+            if ((operation in OBSERVATIONS and retryable_observation(reason))
+                    or (operation in PRESET_COMPUTES and transient_scene_error(reason))):
                 self.defer_observation(reason,now,operation)
                 return True
             if operation=='grasp_plan' and reason=='OBJECT_LOST_AFTER_REFINEMENT':
@@ -385,13 +403,26 @@ class Mission:
                 return True
             # Unsafe HOME never falls through to a direct zero joint target.
             if operation=='grasp_plan' and (reason in ('IK_FAIL','NO_CANDIDATES','CANDIDATE_GEOMETRY_REJECTED') or reason.startswith('NO_COLLISION_FREE_CANDIDATE:')):
-                # Planning rejection is diagnostic: wait for the operator.
-                # Physical failed-grasp retries retain their existing policy.
-                self.cancel(now, reason, True)
+                self.last_grasp_error=reason
+                scan=self.scan_home_plan()
+                if scan is not None and not self.inputs['owner'].get('gripper_command_active'):
+                    self.grasp_plan=scan
+                    self.go_home('GRASP_UNREACHABLE',now,from_scan=True)
+                else:self.cancel(now,reason,True)
             else:
                 self.cancel(now, reason, True)
             return True
-        if operation in OBSERVATIONS:self.clear_recovery()
+        if operation in PRESET_COMPUTES:
+            perception=self.inputs.get('perception',{})
+            reason=(perception.get('reason','PERCEPTION_INVALID') if not perception.get('ready') else
+                    'SCENE_SNAPSHOT_STALE:live_legs' if not self.fresh('legs',now) else
+                    'SCENE_SNAPSHOT_STALE:body' if not self.fresh('base',now) or not self.fresh('scene',now) else
+                    self.scene_error(now))
+            if reason:
+                if transient_scene_error(reason):self.defer_observation(reason,now,operation)
+                else:self.cancel(now,reason,True)
+                return True
+        if operation in OBSERVATIONS|PRESET_COMPUTES:self.clear_recovery()
         if operation == 'observe_grasp':
             self.last_observation=result.get('observation',{})
             self.detect_at=now+self.cfg['search']['settle_s']
@@ -414,6 +445,8 @@ class Mission:
         else:
             # The owner does its own bounds/authority/start validation. It does
             # not take arbitrary joint targets from a CUDA process directly.
+            # Match owner evidence: an in-flight move has no completed scan pose.
+            self.confirmed_scan_q=None
             self.pending = dict(p, kind='motion', at=now,
                                 trajectory=copy.deepcopy(result['trajectory']),
                                 scene=copy.deepcopy(result['trajectory'].get('scene_snapshot',self.inputs.get('scene'))))

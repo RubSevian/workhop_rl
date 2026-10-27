@@ -49,6 +49,17 @@ int main(){
   assert(!m.holding()&&cmd.kp[6]==0);
   assert(!m.CompletedHomeHoldAllowed("GRASP_PRESUMED_SUCCESS"));
  }
+ // Requested 2.8 Nm target: 2.2 Nm is no longer contact, overload unwinds.
+ for(double polarity:{-1.,1.}){
+  auto cfg=c;cfg.gripper_control.contact_torque_nm=2.8;cfg.gripper_control.close_speed_rad_s=.25;
+  MeasuredGripperControl m(cfg.gripper_control,cfg.assessment,0,1,100,.1);
+  auto s=sample(1,.7,0,1);m.Begin(t(1),s);assert(m.Update(t(1),s,true,false));
+  auto before=m.target();s=sample(1.01,.7,polarity*2.2,2);assert(m.Update(t(1.01),s,true,false));
+  assert(!m.contact()&&m.target()<before);
+  before=m.target();s=sample(1.02,.7,polarity*2.81,3);assert(m.Update(t(1.02),s,true,false));
+  assert(m.contact()&&m.target()==before);
+  s=sample(1.03,.7,polarity*3.2,4);assert(m.Update(t(1.03),s,true,true));assert(m.target()>before);
+ }
  // Polarity of measured torque is deliberately irrelevant. Both closing joint
  // directions are supported without using torque sign as an extra criterion.
  for(double polarity:{-1.,1.})for(bool reverse:{false,true}){

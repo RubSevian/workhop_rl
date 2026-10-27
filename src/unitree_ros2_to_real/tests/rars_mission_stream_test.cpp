@@ -27,6 +27,19 @@ int main(){
   assert(!UncheckedSearchPlanAllowed("preset_search_unchecked","refine","VIEW_REFINEMENT","move",false,points));
  }
 
+ ScanHomeReference scan_ref;std::array<float,7> measured{0,.5,.2,.1,0,0,.4};
+ assert(!scan_ref.Matches(measured,.025));
+ scan_ref.Begin("scan_pose");scan_ref.Observe("EXECUTING",measured);assert(!scan_ref.Matches(measured,.025));
+ scan_ref.Observe("SUCCEEDED",measured);assert(scan_ref.Matches(measured,.025));
+ scan_ref.Observe("CANCELLED",measured);assert(scan_ref.Matches(measured,.025));
+ auto moved=measured;moved[1]+=.03;assert(!scan_ref.Matches(moved,.025));
+ assert(UncheckedScanHomeAllowed("scan_to_home_unchecked","home","BLOCKED","home",true,"CANCELLED",true));
+ assert(!UncheckedScanHomeAllowed("scan_to_home_unchecked","home","BLOCKED","home",true,"CANCELLED",false));
+ scan_ref.Begin("scan_step");scan_ref.Observe("CANCELLED",measured);assert(!scan_ref.Matches(measured,.025));
+ scan_ref.Begin("refine");scan_ref.Observe("SUCCEEDED",measured);assert(scan_ref.Matches(measured,.025));
+ scan_ref.Begin("pregrasp");scan_ref.Observe("SUCCEEDED",measured);assert(!scan_ref.Matches(measured,.025));
+ scan_ref.Begin("retreat",true);scan_ref.Observe("SUCCEEDED",measured);assert(scan_ref.Matches(measured,.025));
+ scan_ref.Reset();assert(!scan_ref.Matches(measured,.025));
  assert(UncheckedScanHomeAllowed("scan_to_home_unchecked","home","RETURN_HOME","home",true,"SUCCEEDED"));
  assert(!UncheckedScanHomeAllowed("scan_to_home_unchecked","home","RETURN_HOME","home",false,"SUCCEEDED"));
  assert(!UncheckedScanHomeAllowed("scan_to_home_unchecked","home","RETURN_HOME","home",true,"EXECUTING"));

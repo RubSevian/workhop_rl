@@ -313,7 +313,7 @@ real_deployment:
     controlled_stop:
       failed_arm_pd_stop_enabled: true # X: fresh PD capture/confirmation before planned_disable; descent remains gated.
       lie_down_trial: false # Explicit launch override permits commissioning, not validation.
-      arm_home_timeout_s: 10.0
+      arm_home_timeout_s: 30.0 # Total X-to-HOME budget: preparation, planning, motion and confirmation.
       arm_home_settle_s: 0.2
   capture_hold_sec: 0.02
 operator_trial_record:

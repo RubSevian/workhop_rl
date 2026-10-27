@@ -28,7 +28,10 @@ def compute_summary(metrics):
             'position_tolerance_m','orientation_tolerance_rad','attempt_count')})
         failed[-1]['near_joint_limits']=near
         if call.get('attempts'):failed[-1]['last_attempt_reason']=call['attempts'][-1].get('reason')
-    return dict(elapsed_s=metrics.get('elapsed_s'),ik_summary=metrics.get('ik_summary',{}),
+    return dict(collision_profile=metrics.get('collision_profile',{}),
+        live_validation_elapsed_s=metrics.get('live_validation_elapsed_s'),
+        trajectory_build_elapsed_s=metrics.get('trajectory_build_elapsed_s'),
+        elapsed_s=metrics.get('elapsed_s'),ik_summary=metrics.get('ik_summary',{}),
         camera_resume_elapsed_s=metrics.get('camera_resume_elapsed_s'),
         yolo_elapsed_s=metrics.get('yolo_elapsed_s'),
         stages=[{key:stage.get(key) for key in ('stage','status','elapsed_s','thread_cpu_s','reason')}

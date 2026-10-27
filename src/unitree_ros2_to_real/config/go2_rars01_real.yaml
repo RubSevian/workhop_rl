@@ -170,7 +170,7 @@ real_deployment:
       motor_kd: [3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3] # Official Go2 Passive candidate; physical gate stays false.
     controlled_stop:
       lie_down_trial: false # Explicit launch override permits commissioning, not validation.
-      arm_home_timeout_s: 10.0
+      arm_home_timeout_s: 30.0 # Total X-to-HOME budget: preparation, planning, motion and confirmation.
       arm_home_settle_s: 0.2
     lie_down:
       operator_validated: false # Dynamics/criteria still require commissioning.

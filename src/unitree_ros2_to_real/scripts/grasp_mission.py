@@ -286,7 +286,7 @@ class Coordinator(Node):
                     goal_revision=e.revision,phase=e.state,ready=bool(ready),physical=bool(self.physical),base_locked=e.state in ARM_PHASES|TERMINAL,blockers=self.blockers,
                     scene_error=self.scene_error,observation_recovery=e.status(now)['observation_recovery'],lowstate_decode=(self.native_leg_input.status() if getattr(self,'native_leg_input',None) else self.leg_reader.status()),tf_pair=dict(self.body_source.diagnostics),streams=self.scene_buffer.diagnostics(time.monotonic_ns()))
         self.health_pub.publish(String(data=json.dumps(health)))
-        # X uses the same collision planner and owner, never a blind zero target.
+        # X uses checked HOME, or the measured confirmed-scan HOME policy.
         # Owner acknowledges the HOME request, while R3 still waits for measured
         # HOME. B/fault cannot use this path and always revokes execution.
         if self.cancel_future is not None and self.cancel_future.done():
@@ -308,6 +308,9 @@ class Coordinator(Node):
             self.stop_home_attempted=True
             e.request_id+=1
             self.stop_home=dict(id=e.request_id,session_id=e.session,navigation_session_id=e.inputs['nav']['session_id'],owner_session_id=owner['owner_session_id'],goal_revision=e.revision,operation='home',owner=owner,grasp_plan=None,scan_index=0,observed_ns=time.monotonic_ns())
+            scan=e.scan_home_plan()
+            if scan is not None:
+                self.stop_home.update(home_from_scan=True,grasp_plan=scan)
             self.home_dispatch.request=self.stop_home
         perception=e.inputs.get('perception',{})
         if self.home_dispatch.due(now,perception,not blocker):

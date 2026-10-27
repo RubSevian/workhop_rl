@@ -84,11 +84,32 @@ class Topology:
         return 'moving_adjacent' if len(path)==1 else 'moving_chain'
 
 class Collision:
+    @property
+    def pairs(self):
+        return self._pairs
+
+    @pairs.setter
+    def pairs(self, values):
+        # Replacing a diagnostic subset rebuilds the cache; in-place mutation
+        # is disallowed so the broadphase cannot silently use stale pairs.
+        self._pairs=tuple(tuple(pair) for pair in values)
+        self._pairs_array=np.asarray(self._pairs,dtype=int).reshape(-1,2)
+        self._pairs_array.setflags(write=False)
+
     def __init__(self,cfg,geometry):
         import pinocchio as pin
         import coal
         self.pin,self.fcl,self.cfg,self.gripper=pin,coal,cfg,geometry
         self.model=pin.buildModelFromUrdf(cfg['paths']['full_urdf'])
+        names=([prefix+'_'+joint+'_joint' for prefix in ('FR','FL','RR','RL') for joint in ('hip','thigh','calf')]
+               +['joint'+str(i) for i in range(1,7)]+['gripper_left_joint','gripper_right_joint'])
+        mapping=[]
+        for name in names:
+            j=self.model.getJointId(name)
+            if j>=self.model.njoints or self.model.nqs[j]!=1:raise ValueError('COLLISION_JOINT_MAPPING:'+name)
+            k=self.model.idx_qs[j]
+            mapping.append((name,k,float(self.model.lowerPositionLimit[k]),float(self.model.upperPositionLimit[k])))
+        self._joint_mapping=tuple(mapping)
         self.geom=pin.buildGeomFromUrdf(self.model,cfg['paths']['full_urdf'],pin.GeometryType.COLLISION,
             package_dirs=[str(Path(cfg['paths']['description_root']).parent)])
         self.topology=Topology(cfg['paths']['full_urdf'])
@@ -255,17 +276,12 @@ class Collision:
         state,legs=np.asarray(state,dtype=float),np.asarray(legs,dtype=float)
         if state.shape!=(7,) or legs.shape!=(12,) or not np.isfinite(np.r_[state,legs]).all():raise ValueError('INVALID_JOINT_STATE')
         q=self.pin.neutral(self.model)
-        names=[prefix+'_'+joint+'_joint' for prefix in ('FR','FL','RR','RL') for joint in ('hip','thigh','calf')]
         width=measured_gripper_width(self.gripper,float(state[6]),self.cfg['collision'].get('gripper_closed_measurement_tolerance_rad',0.))
-        entries=list(zip(names,legs))+list(zip(('joint'+str(i) for i in range(1,7)),state[:6]))+[(n,width/2) for n in ('gripper_left_joint','gripper_right_joint')]
-        for name,value in entries:
-            j=self.model.getJointId(name)
-            if j>=self.model.njoints or self.model.nqs[j]!=1:raise ValueError('COLLISION_JOINT_MAPPING:'+name)
-            k=self.model.idx_qs[j]
-            q[k]=validate_geometry_joint(name,value,self.model.lowerPositionLimit[k],self.model.upperPositionLimit[k],
+        for (name,k,lower,upper),value in zip(self._joint_mapping,(*legs,*state[:6],width/2,width/2)):
+            q[k]=validate_geometry_joint(name,value,lower,upper,
                 self.cfg['collision'].get('arm_joint_measurement_tolerance_rad',0.))
         self.pin.forwardKinematics(self.model,self.data,q);self.pin.updateFramePlacements(self.model,self.data)
-        self.pin.updateGeometryPlacements(self.model,self.data,self.geom,self.gdata,q)
+        self.pin.updateGeometryPlacements(self.model,self.data,self.geom,self.gdata)
         poses=self.rigid_placements([t.homogeneous for t in self.gdata.oMg])
         self._placements_ref=poses;self._placements_q=q.copy()
         return poses
@@ -298,7 +314,7 @@ class Collision:
         transforms=poses if poses is getattr(self,'_placements_ref',None) else self.rigid_placements(poses)
         world=(transforms@self._local_corners.transpose(0,2,1)).transpose(0,2,1)[:,:,:3]
         low,high=world.min(axis=1),world.max(axis=1)
-        pairs=np.asarray(self.pairs,dtype=int).reshape(-1,2)
+        pairs=self._pairs_array
         if self.broadphase_enabled and len(pairs):
             i,j=pairs[:,0],pairs[:,1]
             gap=np.maximum(np.maximum(low[i]-high[j],low[j]-high[i]),0.)
@@ -435,7 +451,7 @@ class Collision:
                     self.last_stats['sample_index']=sample
                     poses=self.placements(state,scene['legs'])
                     if self.self_failure(poses,sample):return False
-                    world=[map_body@t for t in poses]
+                    world=[map_body@t for t in poses] if self.environment_enabled or payload else None
                     for i,link in enumerate(self.links):
                         if link not in self.arm_links:continue
                         for category,shape,pose in obstacles:

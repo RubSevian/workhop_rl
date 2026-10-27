@@ -39,10 +39,31 @@ inline bool UncheckedSearchPlanAllowed(const std::string& policy,const std::stri
   if(!std::isfinite(q[j])||std::abs(q[j]-points.front()[j])>1e-6F)return false;
  return true;
 }
+// Owner-local evidence: a cancelled/incomplete move never creates a scan reference.
+class ScanHomeReference {
+ public:
+ void Reset(){q_.reset();pending_=false;}
+ void Begin(const std::string& operation,bool returns_to_scan=false){
+  Reset();pending_=operation=="scan_pose"||operation=="scan_step"||operation=="scan_return"||operation=="refine"||(operation=="retreat"&&returns_to_scan);
+ }
+ void Observe(const std::string& state,const std::array<float,7>& measured){
+  if(!pending_)return;
+  if(state=="SUCCEEDED"){q_=measured;pending_=false;}
+  else if(state=="FAILED"||state=="CANCELLED")pending_=false;
+ }
+ bool Matches(const std::array<float,7>& measured,double tolerance)const{
+  if(!q_||!std::isfinite(tolerance)||tolerance<=0)return false;
+  for(size_t j=0;j<6;++j)if(!std::isfinite(measured[j])||!std::isfinite((*q_)[j])||std::abs(measured[j]-(*q_)[j])>tolerance)return false;
+  return true;
+ }
+ private:
+ std::optional<std::array<float,7>> q_;bool pending_=false;
+};
 inline bool UncheckedScanHomeAllowed(const std::string& policy,const std::string& operation,
- const std::string& phase,const std::string& kind,bool returned_to_scan,const std::string& previous_state){
- return policy=="scan_to_home_unchecked"&&operation=="home"&&kind=="home"&&
-        phase=="RETURN_HOME"&&returned_to_scan&&previous_state=="SUCCEEDED";
+ const std::string& phase,const std::string& kind,bool confirmed_scan,const std::string& previous_state,bool controlled_stop=false){
+ return policy=="scan_to_home_unchecked"&&operation=="home"&&kind=="home"&&confirmed_scan&&
+        ((phase=="RETURN_HOME"&&previous_state=="SUCCEEDED")||
+         (controlled_stop&&previous_state=="CANCELLED"));
 }
 inline bool ControlledStopHomePhaseAllowed(const std::string& phase){
  return phase=="ARM_RETURN_HOME"||phase=="ARM_HOME_BLOCKED"||phase=="ARM_HOME_SETTLE";

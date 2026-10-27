@@ -31,6 +31,7 @@ class ContractTests(unittest.TestCase):
             # A stale navigation-goal latch must not prevent stop HOME supervision.
             wait_goal_stale_since=1.,perception_service_ready=lambda now:False,
             session='m',revision=1,state='CANCELLED',request_id=10,
+            scan_home_plan=lambda:dict(scan_q=[0.,.5,0.,0.,0.,0.]),
             status=lambda now:dict(observation_recovery={}))
         listener=NS(tf_sub=None,callback=lambda msg:None)
         client=NS(service_is_ready=lambda:True,call_async=lambda req:None)
@@ -53,6 +54,8 @@ class ContractTests(unittest.TestCase):
             gm.Coordinator.tick(s)
             self.assertTrue(health[-1]['ready']);self.assertEqual(len(sent),1)
             self.assertEqual(sent[0]['operation'],'home')
+            self.assertTrue(sent[0]['home_from_scan'])
+            self.assertEqual(sent[0]['grasp_plan']['scan_q'],[0.,.5,0.,0.,0.,0.])
             # A dropped request is retried, retaining identity.
             s.home_dispatch.sent_at-=1;gm.Coordinator.tick(s)
             self.assertEqual(len(sent),2);self.assertEqual(sent[0]['id'],sent[1]['id'])
