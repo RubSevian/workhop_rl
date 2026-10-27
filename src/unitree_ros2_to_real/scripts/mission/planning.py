@@ -428,7 +428,10 @@ class Planning:
             velocity[0]=min(velocity[0],self.cfg['search']['speed_rad_s'])
         if object_motion:
             duration=self.grasp['robot']['ready_pose']['duration']
-        duration=max(3.0,float(duration))
+        minimum=float(self.grasp['robot'].get('motion',{}).get('minimum_duration_s',4.5))
+        if not np.isfinite(minimum) or minimum<=0:
+            raise ValueError('INVALID_MINIMUM_MOTION_DURATION')
+        duration=max(minimum,float(duration))
         points,_=waypoint_motion_samples(start[:6],targets,duration,1/self.grasp['robot']['rars01']['command_rate_hz'],velocity)
         p=np.vstack([start[:6],*points]);grip=np.full(len(p),start[6])
         if gripper_end is not None:

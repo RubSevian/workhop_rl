@@ -38,7 +38,7 @@ class PlanningContracts(unittest.TestCase):
         start=np.zeros(7);target=np.ones(6)*.5
         points=p.samples(start,[target],1.5,object_motion=True)
         speed=np.abs(np.diff(points[:,:6],axis=0))*100.
-        self.assertAlmostEqual((len(points)-1)/100.,3.)
+        self.assertAlmostEqual((len(points)-1)/100.,4.5)
         self.assertGreater(speed.max(),.1)
         self.assertLessEqual(speed.max(),.8+1e-6)
         np.testing.assert_allclose(points[-1,:6],target)
@@ -47,7 +47,7 @@ class PlanningContracts(unittest.TestCase):
         # A restrictive motor limit stretches the duration instead of being bypassed.
         p.grasp['robot']['rars01']['position_velocity_limits_rad_s']=[.05]*7
         limited=p.samples(start,[target],1.5,object_motion=True)
-        self.assertGreater((len(limited)-1)/100.,3.)
+        self.assertGreater((len(limited)-1)/100.,4.5)
         self.assertLessEqual((np.abs(np.diff(limited[:,:6],axis=0))*100.).max(),.04+1e-6)
 
     def test_only_search_joint_one_is_capped_other_motion_uses_motor_limits(self):
@@ -64,11 +64,15 @@ class PlanningContracts(unittest.TestCase):
         p.grasp['robot']['rars01']['position_velocity_limits_rad_s']=[.05]*7
         self.assertLessEqual(peak(p.samples(start,[target],3.,scan_pose=True)),.05+1e-6)
 
-    def test_position_moves_have_three_second_floor(self):
+    def test_position_moves_have_configurable_four_point_five_second_floor(self):
         p,_=self.setup_planner();p.grasp['robot']['ready_pose']={'duration':1.}
         for options in ({},{'search':True},{'scan_pose':True},{'object_motion':True}):
             points=p.samples(np.zeros(7),[np.array([.01,0,0,0,0,0])],.1,**options)
-            self.assertGreaterEqual((len(points)-1)/100.,3.)
+            self.assertGreaterEqual((len(points)-1)/100.,4.5)
+
+        p.grasp['robot']['motion']['minimum_duration_s']=6.
+        points=p.samples(np.zeros(7),[np.array([.01,0,0,0,0,0])],.1)
+        self.assertAlmostEqual((len(points)-1)/100.,6.)
 
     def test_home_from_scan_preserves_hold_and_skips_geometry(self):
         p,sample=self.setup_planner();p.grasp['robot']['ready_pose']={'duration':3.};p.compute_metrics={}
@@ -80,7 +84,7 @@ class PlanningContracts(unittest.TestCase):
         self.assertEqual(result['collision_policy'],'scan_to_home_unchecked')
         np.testing.assert_array_equal(result['points'][-1][:6],np.zeros(6))
         self.assertTrue(all(point[6]==.35 for point in result['points']))
-        self.assertGreaterEqual((len(result['points'])-1)/100.,3.)
+        self.assertGreaterEqual((len(result['points'])-1)/100.,4.5)
         request['grasp_plan']['scan_q'][0]+=.1
         with self.assertRaisesRegex(ValueError,'SCAN_RETURN_UNCONFIRMED'):p.execute(request,lambda *a:sample)
 
