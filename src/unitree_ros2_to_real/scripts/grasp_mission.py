@@ -161,7 +161,10 @@ class Coordinator(Node):
             if self.grip_observer is not None:
                 row=self.grip_observer.observe(owner,time.monotonic_ns(),self.engine.state)
                 if row is not None and self.grip_log is not None:
-                    row['last_compute_metrics']=dict(self.engine.last_compute_metrics)
+                    row.update(mission_session_id=self.engine.session,
+                        configured_contact_target_nm=self.cfg['gripper_torque_control']['contact_torque_nm'],
+                        grasp_assessment=owner.get('grasp_assessment'),
+                        grasp_assessment_reason=owner.get('grasp_assessment_reason'))
                     self.grip_log.put(row)
         except Exception as error:self.grip_error=str(error)
 

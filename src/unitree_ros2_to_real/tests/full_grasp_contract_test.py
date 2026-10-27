@@ -16,7 +16,7 @@ class FullGraspContracts(unittest.TestCase):
     def test_full_preflight_retains_clearance_without_claiming_hardware_cap(self):
         self.assertEqual(CFG['test_mode'],'full')
         self.assertEqual(CFG['grasp_assessment'],dict(contact_torque_nm=1.5,min_grasp_width_m=.05,confirmation_duration_s=2.))
-        self.assertEqual(CFG['gripper_torque_control']['contact_torque_nm'],2.8)
+        self.assertEqual(CFG['gripper_torque_control']['contact_torque_nm'],3.2)
         self.assertNotIn('full_grasp_motor_torque_cap_unqualified',blockers(CFG))
         self.assertFalse(CFG['grasp_verification']['motor_torque_cap_validated'])
         self.assertTrue(CFG['execution']['automatic_retreat'])

@@ -43,6 +43,26 @@ class ObservationTests(unittest.TestCase):
         self.assertEqual(o.observe(d,2050000000,'RETREAT')['state'],'CONTACT_CANDIDATE')
         d=sample(2100000000);d['gripper_command_active']=False
         self.assertEqual(o.observe(d,2100000000,'GRASP')['reason'],'NO_HOLD_COMMAND')
+    def test_mission_records_compact_measured_torque_and_configured_target(self):
+        import ast,time
+        from types import SimpleNamespace as NS
+        source=Path(__file__).resolve().parents[1]/'scripts/grasp_mission.py'
+        tree=ast.parse(source.read_text())
+        method=next(node for node in ast.walk(tree) if isinstance(node,ast.FunctionDef) and node.name=='observe_gripper')
+        scope={'time':time};exec(compile(ast.Module(body=[method],type_ignores=[]),str(source),'exec'),scope)
+        rows=[];observer=GripperObservation(CFG,GRIP,.1)
+        fake=NS(grip_observer=observer,grip_log=NS(put=rows.append),grip_error='',
+                engine=NS(session='test-session',state='GRASP'),
+                cfg={'gripper_torque_control':{'contact_torque_nm':3.2}})
+        stamp=time.monotonic_ns();owner=sample(stamp,grasp_assessment='NOT_GRASPED',grasp_assessment_reason='WIDTH_BELOW_MINIMUM')
+        scope['observe_gripper'](fake,owner)
+        self.assertEqual(fake.grip_error,'');self.assertEqual(len(rows),1)
+        self.assertEqual(rows[0]['torque_nm'],-2.3)
+        self.assertEqual(rows[0]['configured_contact_target_nm'],3.2)
+        self.assertEqual(rows[0]['grasp_assessment'],'NOT_GRASPED')
+        self.assertNotIn('last_compute_metrics',rows[0])
+        self.assertLess(len(json.dumps(rows[0])),1800)
+
     def test_recording_and_disk_error_are_diagnostic(self):
         with tempfile.TemporaryDirectory() as root:
             path=Path(root)/'data.jsonl';log=ObservationLog(path,CFG)
