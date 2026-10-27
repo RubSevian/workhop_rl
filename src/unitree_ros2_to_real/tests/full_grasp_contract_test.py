@@ -15,8 +15,8 @@ from mission.config import blockers,load
 class FullGraspContracts(unittest.TestCase):
     def test_full_preflight_retains_clearance_without_claiming_hardware_cap(self):
         self.assertEqual(CFG['test_mode'],'full')
-        self.assertEqual(CFG['grasp_assessment'],dict(contact_torque_nm=1.5,min_grasp_width_m=.05,confirmation_duration_s=2.))
-        self.assertEqual(CFG['gripper_torque_control']['contact_torque_nm'],3.2)
+        self.assertEqual(CFG['grasp_assessment'],dict(contact_torque_nm=1.5,min_grasp_width_m=.02,confirmation_duration_s=2.))
+        self.assertEqual(CFG['gripper_torque_control']['contact_torque_nm'],3.5)
         self.assertNotIn('full_grasp_motor_torque_cap_unqualified',blockers(CFG))
         self.assertFalse(CFG['grasp_verification']['motor_torque_cap_validated'])
         self.assertTrue(CFG['execution']['automatic_retreat'])
@@ -30,7 +30,7 @@ class FullGraspContracts(unittest.TestCase):
         import yaml
         root=Path(__file__).resolve().parents[5]
         control=CFG['gripper_torque_control']
-        self.assertEqual((control['kp'],control['kd'],control['close_speed_rad_s']),(20.,1.,.25))
+        self.assertEqual((control['kp'],control['kd'],control['close_speed_rad_s']),(40.,1.,.25))
         self.assertGreaterEqual(CFG['grasp_verification']['close_duration_s'],1./control['close_speed_rad_s']+CFG['grasp_assessment']['confirmation_duration_s'])
         original=yaml.safe_load((root/'repos/rars01_graspnet/config/jetson_orin_nano.yaml').read_text())
         for key in ('kp','kd','close_speed_rad_s','contact_torque_nm','hold_gain_rad_s_per_nm','hold_deadband_nm','max_target_lead_rad'):
