@@ -104,9 +104,9 @@ class HeartbeatContracts(unittest.TestCase):
                 path.write_text(yaml.safe_dump(data))
                 with self.assertRaisesRegex(ValueError,'arm_feedback_max_age_s'):load(path,ROOT)
 
-    def test_timing_profile_disables_bulk_disk_recording_without_changing_control(self):
+    def test_timing_profile_keeps_compact_gripper_recording_without_changing_control(self):
         self.assertFalse(self.cfg['execution']['diagnostic_recording_enabled'])
-        self.assertFalse(self.cfg['gripper_observation']['recording_enabled'])
+        self.assertTrue(self.cfg['gripper_observation']['recording_enabled'])
         self.assertTrue(self.cfg['gripper_observation']['enabled'])
         deployment=yaml.safe_load(Path(self.cfg['paths']['deployment']).read_text())['real_deployment']['r3_commissioning']
         self.assertFalse(deployment['control_latency']['enabled'])

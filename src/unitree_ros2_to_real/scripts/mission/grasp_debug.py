@@ -28,6 +28,7 @@ class GraspDebug:
             for stage,key in STAGES.items():
                 # Missing stage data is an error, not a misleading empty stage.
                 data[stage]=np.asarray(result.get('depth_grasps',result[key]) if stage=='depth' else result[key]).copy().reshape(-1,17)
+            if 'depth_adjusted_grasps' in result:data['depth_adjusted']=np.asarray(result['depth_adjusted_grasps']).copy().reshape(-1,17)
             if 'target_mask' in result:data['target_mask']=np.asarray(result['target_mask'],dtype=bool).copy()
             if 'target_binding' in result:data['target_binding']=np.asarray(result['grasps']).copy().reshape(-1,17)
             self.queue.put_nowait(data)
