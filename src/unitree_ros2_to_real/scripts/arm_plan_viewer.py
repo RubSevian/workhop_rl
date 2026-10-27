@@ -51,12 +51,26 @@ def load_arm_snapshot(path):
     return data
 
 
-def draw_arm_snapshot(ax,data,candidate_name):
+def draw_arm_snapshot(ax,data,candidate_name,*,snapshot=None,top=False):
     view=(ax.elev,ax.azim);ax.clear();extent=[]
     def arm(q,color,label,style='-'):
         pts,t=arm_fk(data['urdf'],q);extent.extend(pts)
         ax.plot(*pts.T,linestyle=style,marker='o',ms=3,lw=2,color=color,label=label)
         return t
+    if snapshot is not None:
+        from grasp_viewer import matched_arm,snapshot_cloud
+        if matched_arm(snapshot,data) is not None:
+            xyz,rgb,mask=snapshot_cloud(snapshot,step=6)
+            camera=np.asarray(data['camera_to_arm'])
+            xyz=xyz@camera[:3,:3].T+camera[:3,3]
+            # Show target geometry only here; full surroundings are in the cloud tab.
+            if mask.any():
+                ax.scatter(*xyz[mask].T,c=rgb[mask],s=3,alpha=.5,label='Measured target surface')
+                extent.extend(xyz[mask])
+    center=data.get('target_center')
+    if center and center.get('active'):
+        point=np.asarray(center['center_base_m']);extent.append(point)
+        ax.scatter(*point,c='magenta',marker='x',s=80,label='Visible target centre')
     arm(data['current_q'],'gray','Measured at planning start')
     ax.scatter(0,0,0,c='black',s=55,label='Arm base / robot marker')
     candidate=next((c for c in data['candidates'] if c['candidate']==candidate_name),None)
@@ -65,7 +79,7 @@ def draw_arm_snapshot(ax,data,candidate_name):
         target=pose_matrix(candidate['grasp_End_link_pose6d'])
         camera=np.asarray(data['camera_to_arm'])
         obj=(camera@np.r_[candidate['translation_camera_m'],1])[:3]
-        ax.scatter(*obj,c='orange',s=80,label='Object: GraspNet point (shape unknown)')
+        ax.scatter(*obj,c='orange',s=80,label='GraspNet origin (not object centre)')
         extent.extend([pre[:3,3],target[:3,3],obj])
         ax.plot(*np.array([pre[:3,3],target[:3,3]]).T,'k--',label=f'Approach {np.linalg.norm(pre[:3,3]-target[:3,3])*100:.1f} cm')
         ax.scatter(*target[:3,3],c='red',marker='x',s=50,label='Requested TCP')
@@ -87,9 +101,52 @@ def draw_arm_snapshot(ax,data,candidate_name):
         if path:ax.plot(*np.array(path).T,color='seagreen',lw=1,label='Accepted approach TCP samples')
     pts=np.array(extent);center=(pts.min(0)+pts.max(0))/2;r=max(np.ptp(pts,axis=0).max()*.6,.15)
     for setter,c in zip((ax.set_xlim,ax.set_ylim,ax.set_zlim),center):setter(c-r,c+r)
-    ax.set_box_aspect((1,1,1));ax.view_init(*view)
+    ax.set_box_aspect((1,1,1));ax.view_init(90,-90) if top else ax.view_init(*view)
     ax.set(xlabel='base_link X (m)',ylabel='Y (m)',zlabel='Z (m)')
     selected=data.get('selected')==candidate_name and candidate is not None
     ax.set_title(f'{candidate_name or "Waiting for candidates"}\n'+
                  ('SELECTED; configured collision checks passed' if selected else 'Diagnostic only; candidate not approved'))
+    ax.legend(fontsize=7,loc='upper left')
+
+
+def draw_depth_snapshot(ax,data,candidate_name,*,snapshot=None,top=False):
+    """Object and depth in arm base, without rotating the object into jaw axes."""
+    from grasp_viewer import matched_arm,snapshot_cloud
+    ax.clear()
+    c=next((c for c in data['candidates'] if c['candidate']==candidate_name),None)
+    if c is None:
+        ax.set_title('Waiting for a candidate');return
+    camera=np.asarray(data['camera_to_arm']);rotation=camera[:3,:3]@np.asarray(c['rotation_camera'])
+    origin=camera[:3,:3]@np.asarray(c['translation_camera_m'])+camera[:3,3]
+    def base(points):return np.asarray(points)@rotation.T+origin
+    depth=float(c['depth_m']);width=float(c['width_m'])
+    paired=snapshot is not None and matched_arm(snapshot,data) is not None
+    geometry=snapshot['metadata'].get('parameters',{}).get('cloud_collision',{}) if paired else {}
+    length=float(geometry.get('finger_length_m',.08));extent=[origin]
+    if paired:
+        xyz,rgb,mask=snapshot_cloud(snapshot,step=3)
+        xyz=xyz@camera[:3,:3].T+camera[:3,3]
+        if mask.any():
+            target=xyz[mask];extent.extend(target)
+            ax.scatter(*target.T,c=rgb[mask],s=5,alpha=.55,label='Measured target surface')
+    for y in [-width/2,width/2]:
+        points=base([[depth-length,y,0],[depth,y,0]]);extent.extend(points)
+        ax.plot(*points.T,c='red',lw=3,label='Usable jaws (schematic)' if y<0 else None)
+    tips=base([[depth,-width/2,0],[depth,width/2,0]])
+    ax.plot(*tips.T,c='red',ls='--',label='Jaw tip plane')
+    end=base([depth,0,0]);arrow=end-origin
+    ax.quiver(*origin,*arrow,color='blue',linewidth=2.5,arrow_length_ratio=.2)
+    ax.plot(*np.array([origin,end]).T,c='blue',lw=2,label=f'GraspNet depth: {depth*1000:.0f} mm')
+    ax.text(*(origin+arrow/2+np.array([0,0,.015])),f'{depth*1000:.0f} mm',color='blue')
+    ax.scatter(*origin,c='orange',s=35,label='Depth origin')
+    center=data.get('target_center')
+    if center and center.get('active'):
+        point=np.asarray(center['center_base_m']);extent.append(point)
+        ax.scatter(*point,c='magenta',marker='x',s=75,label='Visible 3D target centre')
+    points=np.asarray(extent);mid=(points.min(0)+points.max(0))/2;radius=max(float(np.ptp(points,axis=0).max())*.6,.10)
+    for setter,value in zip((ax.set_xlim,ax.set_ylim,ax.set_zlim),mid):setter(value-radius,value+radius)
+    ax.set(xlabel='base_link X (m)',ylabel='Y (m)',zlabel='Z (m)')
+    ax.set_box_aspect((1,1,1));ax.set_proj_type('ortho');ax.view_init(90 if top else 23,-90 if top else -65)
+    if top:ax.set_zticks([]);ax.set_zlabel('')
+    ax.set_title(('Top view' if top else 'Robot-frame view')+f': {candidate_name}\nDepth {depth*1000:.0f} mm, not measured penetration'+('' if paired else '\nNo matching cloud'))
     ax.legend(fontsize=7,loc='upper left')

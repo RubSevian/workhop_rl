@@ -28,13 +28,16 @@ def main():
     status=ttk.Label(yolo,text=str(pointer),wraplength=420);status.pack(fill=tk.X)
     tabs=ttk.Notebook(grasp);tabs.pack(fill=tk.BOTH,expand=True)
     grasp_tab=ttk.Frame(tabs);arm_tab=ttk.Frame(tabs)
-    tabs.add(grasp_tab,text='GraspNet / camera');tabs.add(arm_tab,text='Arm / approach')
+    tabs.add(grasp_tab,text='GraspNet / cloud');tabs.add(arm_tab,text='Arm / approach')
     controls=ttk.Frame(grasp_tab);controls.pack(fill=tk.X)
     ttk.Label(controls,text='GraspNet stage:').pack(side=tk.LEFT)
-    stage=tk.StringVar(value='decoded')
+    stage=tk.StringVar(value='target_binding')
     selector=ttk.Combobox(controls,textvariable=stage,state='readonly',
         values=('decoded','cloud','bbox','width','depth','target_binding'),width=12)
     selector.pack(side=tk.LEFT,padx=8)
+    view=tk.StringVar(value='base_top')
+    ttk.Combobox(controls,textvariable=view,state='readonly',values=('base_top','base_3d','camera'),width=10).pack(side=tk.LEFT)
+
     ttk.Label(controls,text='Saved calculation; independent of latest YOLO frame').pack(side=tk.LEFT)
     grasp_status=ttk.Label(grasp_tab,text='Waiting for a GraspNet calculation…',wraplength=950)
     grasp_status.pack(fill=tk.X)
@@ -56,10 +59,15 @@ def main():
     arm_choice=tk.StringVar()
     arm_selector=ttk.Combobox(arm_controls,textvariable=arm_choice,state='readonly',width=24)
     arm_selector.pack(side=tk.LEFT)
+    depth_detail=tk.BooleanVar(value=False)
+    ttk.Checkbutton(arm_controls,text='Depth detail',variable=depth_detail).pack(side=tk.LEFT)
+    arm_top=tk.BooleanVar(value=True)
+    ttk.Checkbutton(arm_controls,text='Top view (base +Z)',variable=arm_top).pack(side=tk.LEFT)
+
     arm_status=ttk.Label(arm_tab,text='Waiting for a new debug planning result',wraplength=950)
     arm_status.pack(fill=tk.X)
     try:
-        from arm_plan_viewer import load_arm_snapshot,draw_arm_snapshot
+        from arm_plan_viewer import load_arm_snapshot,draw_arm_snapshot,draw_depth_snapshot
         arm_fig=Figure(figsize=(9,7),dpi=100);arm_ax=arm_fig.add_subplot(111,projection='3d')
         arm_ax.view_init(elev=23,azim=-65)
         arm_canvas=FigureCanvasTkAgg(arm_fig,master=arm_tab)
@@ -73,7 +81,7 @@ def main():
 
     def refresh():
         nonlocal last,original,last_size,snapshot,grasp_stamp,rendered
-        nonlocal arm_stamp,arm_data,arm_rendered
+        nonlocal arm_stamp,arm_data,arm_rendered,arm_ax
         try:
             meta=json.loads(pointer.read_text());path=meta['image_path']
             version=(path,meta['saved_wall_ns'])
@@ -90,14 +98,26 @@ def main():
             status.configure(text=f'YOLO request {meta.get("operation_id", "?")} | {age:.1f}s ago | dropped={meta.get("dropped",0)}')
         except FileNotFoundError:status.configure(text='Waiting for detection. Camera starts after search pose.')
         except Exception as error:status.configure(text=f'YOLO: {error}')
+        # Cache both files once per new snapshot; never pair different requests.
+        try:
+            current=arm_file.stat().st_mtime_ns
+            if current!=arm_stamp:
+                arm_data=load_arm_snapshot(arm_file);arm_stamp=current
+                names=[c['candidate'] for c in arm_data['candidates']]
+                arm_selector.configure(values=names)
+                arm_choice.set(arm_data.get('selected') or (names[0] if names else ''))
+        except FileNotFoundError:pass
+        except Exception as error:arm_status.configure(text=f'Arm snapshot: {error}')
+        try:
+            current=grasp_file.stat().st_mtime_ns
+            if current!=grasp_stamp:snapshot=load_snapshot(grasp_file);grasp_stamp=current
+        except FileNotFoundError:pass
+        except Exception as error:grasp_status.configure(text=f'GraspNet: {error}')
         if canvas is not None and tabs.select()==str(grasp_tab):
             try:
-                current=grasp_file.stat().st_mtime_ns
-                if current!=grasp_stamp:
-                    snapshot=load_snapshot(grasp_file);grasp_stamp=current
-                key=(grasp_stamp,stage.get())
+                key=(grasp_stamp,arm_stamp,stage.get(),view.get())
                 if snapshot is not None and key!=rendered:
-                    draw_snapshot(ax2,ax3,snapshot,stage.get(),args.max_grasps)
+                    draw_snapshot(ax2,ax3,snapshot,stage.get(),args.max_grasps,arm=arm_data,view=view.get())
                     counts=' → '.join(f'{name}: {len(snapshot[name])}' for name in STAGES)
                     grasp_status.configure(text=f'GraspNet request {snapshot["metadata"]["request_id"]} | {counts}')
                     canvas.draw_idle();rendered=key
@@ -105,21 +125,24 @@ def main():
             except Exception as error:grasp_status.configure(text=f'GraspNet: {error}')
         if arm_canvas is not None and tabs.select()==str(arm_tab):
             try:
-                current=arm_file.stat().st_mtime_ns
-                if current!=arm_stamp:
-                    arm_data=load_arm_snapshot(arm_file);arm_stamp=current
-                    names=[c['candidate'] for c in arm_data['candidates']]
-                    arm_selector.configure(values=names)
-                    if arm_choice.get() not in names:
-                        arm_choice.set(arm_data.get('selected') or (names[0] if names else ''))
-                key=(arm_stamp,arm_choice.get())
+                key=(arm_stamp,grasp_stamp,arm_choice.get(),arm_top.get(),depth_detail.get())
                 if arm_data is not None and key!=arm_rendered:
-                    draw_arm_snapshot(arm_ax,arm_data,arm_choice.get())
+                    arm_fig.clear()
+                    arm_ax=arm_fig.add_subplot(121 if depth_detail.get() else 111,projection='3d')
+                    arm_ax.view_init(23,-65)
+                    if depth_detail.get():
+                        draw_depth_snapshot(arm_ax,arm_data,arm_choice.get(),snapshot=snapshot)
+                        top_ax=arm_fig.add_subplot(122,projection='3d')
+                        draw_depth_snapshot(top_ax,arm_data,arm_choice.get(),snapshot=snapshot,top=True)
+                    else:
+                        arm_ax.set_proj_type('persp')
+                        if not arm_top.get() and arm_ax.elev==90:arm_ax.view_init(23,-65)
+                        draw_arm_snapshot(arm_ax,arm_data,arm_choice.get(),snapshot=snapshot,top=arm_top.get())
                     arm_canvas.draw_idle();arm_rendered=key
                 age=(time.time_ns()-arm_data['saved_wall_ns'])/1e9
                 arm_status.configure(text=f'Request {arm_data["request_id"]} | {arm_data["status"]} | '
                     f'{age:.1f}s ago | Saved planning state, NOT live robot motion. '
-                    'Object shape unknown; failed IK is not an executable pose.')
+                    'Cloud paired by request ID; base Z is not gravity. Failed IK is not executable.')
             except FileNotFoundError:
                 arm_status.configure(text='Waiting for a NEW grasp plan with grasp_debug_enabled=true. Old snapshots have no arm state.')
             except Exception as error:arm_status.configure(text=f'Arm snapshot: {error}')

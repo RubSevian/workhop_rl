@@ -614,7 +614,8 @@ class Planning:
             debug=getattr(self,'grasp_debug',None)
             if debug is not None:
                 debug.submit(color,depth,self.camera.K,result,dict(request_id=request['id'],
-                    capture_mono_ns=at['capture_mono_ns'],min_depth=opts['min_depth'],max_depth=opts['max_depth']))
+                    capture_mono_ns=at['capture_mono_ns'],min_depth=opts['min_depth'],max_depth=opts['max_depth'],
+                    camera_to_arm=at['arm_camera'].tolist(),display_frame='base_link_at_capture'))
                 self.compute_metrics['grasp_debug']=dict(path=str(debug.path),error=debug.error,dropped=debug.dropped)
             self.collision.check_deadline()
             self.compute_metrics['graspnet_worker_elapsed_s']=result.get('elapsed_s')
@@ -654,6 +655,10 @@ class Planning:
             shape=target_shape(depth,self.camera.K,d.mask,g['candidate_selection'],
                 mask_source=getattr(d,'mask_source','unknown'),min_depth=opts['min_depth'],max_depth=opts['max_depth']) if g['candidate_selection'].get('weight_shape',0)>0 else dict(active=False,confidence=0.,reason='DISABLED')
             self.compute_metrics['target_shape']=shape
+            from rars01_graspnet.target_center import target_center
+            center=target_center(depth,self.camera.K,d.mask,cam_to_arm,g['candidate_selection'],
+                mask_source=getattr(d,'mask_source','unknown'),min_depth=opts['min_depth'],max_depth=opts['max_depth']) if g['candidate_selection'].get('weight_center',0)>0 else dict(active=False,reason='DISABLED',frame='base_link')
+            self.compute_metrics['target_center']=center
             rejected_paths=[];approved_candidates={}
             reference_gripper=dict(model='open_gripper_approximation',opening_width_m=robot['max_grasp_width_m'],
                 motor_angle_rad=float(self.geometry.motor_angle_for_width(robot['max_grasp_width_m'])))
@@ -705,7 +710,7 @@ class Planning:
             self.compute_metrics['grasp_rejections']=rejections
             self.compute_metrics['ik_transform_audit']=dict(camera_to_current_arm=cam_to_arm.tolist(), current_odom_arm=odom_now.tolist(), capture_odom_arm=at['odom_arm'].tolist(), capture_arm_camera=at['arm_camera'].tolist(), tcp_frame='End_link', units='m_rad')
             self.compute_metrics['candidate_validation']={}
-            audit={} if trace is not None or debug is not None else None
+            audit={'target_center':center} if trace is not None or debug is not None else None
             if audit is not None:self.compute_metrics['grasp_candidate_audit']=audit
             def publish_arm(status):
                 if debug is None:return
@@ -720,7 +725,7 @@ class Planning:
             selection_status='INTERRUPTED_OR_ERROR'
             try:
                 with planning_stage(self.compute_metrics,'selection_including_collision',trace,request,progress=progress):
-                    candidate=_select_executable_grasp(self.ik,GeometryOnly(),GraspGroup(result['grasps']),cam_to_arm,g['pregrasp_offset_m'],g.get('retreat_offset_m',g['pregrasp_offset_m']),g['insertion_depth_m'],robot['max_grasp_depth_m'],g['min_base_z_m'],g['min_jaw_z_m'],'rars01',True,True,np.array([g['position_compensation_base_m'][axis] for axis in 'xyz']),g['ik_candidate_limit'],g['cartesian_ik'],g['candidate_selection'],max_grasp_width_m=robot['max_grasp_width_m'],target_shape_camera=shape,ranking_robot=self.grasp['robot'],retreat_speed_scale=.25 if self.cfg.get('operator_trial') else 1.,path_validator=validate,rejection_diagnostics=rejections,local_height_filters_enabled=self.cfg.get('local_height_filters_enabled',True),cancel_check=self.collision.check_deadline,selection_metrics=self.compute_metrics['candidate_validation'],candidate_diagnostics=audit,verbose=not self.cfg['execution'].get('short_journal_enabled',False))
+                    candidate=_select_executable_grasp(self.ik,GeometryOnly(),GraspGroup(result['grasps']),cam_to_arm,g['pregrasp_offset_m'],g.get('retreat_offset_m',g['pregrasp_offset_m']),g['insertion_depth_m'],robot['max_grasp_depth_m'],g['min_base_z_m'],g['min_jaw_z_m'],'rars01',True,True,np.array([g['position_compensation_base_m'][axis] for axis in 'xyz']),g['ik_candidate_limit'],g['cartesian_ik'],g['candidate_selection'],max_grasp_width_m=robot['max_grasp_width_m'],target_shape_camera=shape,target_center_base=center,ranking_robot=self.grasp['robot'],retreat_speed_scale=.25 if self.cfg.get('operator_trial') else 1.,path_validator=validate,rejection_diagnostics=rejections,local_height_filters_enabled=self.cfg.get('local_height_filters_enabled',True),cancel_check=self.collision.check_deadline,selection_metrics=self.compute_metrics['candidate_validation'],candidate_diagnostics=audit,verbose=not self.cfg['execution'].get('short_journal_enabled',False))
                 selection_status='SELECTED_COLLISION_CHECKED' if candidate is not None else 'NO_EXECUTABLE_CANDIDATE'
             finally:
                 publish_arm(selection_status)

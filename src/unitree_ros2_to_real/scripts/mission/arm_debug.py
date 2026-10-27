@@ -68,5 +68,5 @@ def planning_snapshot(request, urdf, current_q, camera_to_arm, audit, calls, sta
                 camera_to_arm=camera_to_arm.tolist(), status=status,
                 candidates=audit.get('orientations', []),
                 ik=[{key:call[key] for key in fields if key in call} for call in calls],
-                selected=audit.get('selected'),
+                selected=audit.get('selected'),target_center=audit.get('target_center'),
                 note='Saved planning state, not live motion. Failed IK is not an executable pose.')
