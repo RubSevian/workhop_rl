@@ -39,6 +39,8 @@ int main(){
   assert(m.CompletedHomeHoldAllowed("GRASP_PRESUMED_SUCCESS"));
   for(const auto* phase:{"BLOCKED","CANCELLED","IDLE"})assert(!m.CompletedHomeHoldAllowed(phase));
   assert(m.CompletedHomeHoldAllowed("TARGET_NOT_GRASPED"));
+  for(const auto* phase:{"RETURN_NAV_PREPARE","RETURN_NAVIGATING","RETURN_NAV_SETTLE","RETURNED_TO_START"})
+   assert(m.CompletedHomeHoldAllowed(phase));
   for(int n=31;n<=130;++n){
    const auto cmd=m.Tick(t(11+n*.01),sample(11+n*.01,.7F,2.2F,n+101),m.CompletedHomeHoldAllowed("TARGET_NOT_GRASPED"));
    assert(m.holding()&&m.CompletedHomeHoldAllowed("GRASP_PRESUMED_SUCCESS"));

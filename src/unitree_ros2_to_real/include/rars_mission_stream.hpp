@@ -218,7 +218,9 @@ class MissionStream {
  // Terminal success may retain an already active hold after a completed HOME.
  // This grants no new trajectory authority and cannot restart a stopped regulator.
  bool CompletedHomeHoldAllowed(const std::string& phase)const{
-  return (phase=="GRASP_PRESUMED_SUCCESS"||phase=="TARGET_NOT_GRASPED")&&kind_=="home"&&state_=="SUCCEEDED"&&
+  return (phase=="GRASP_PRESUMED_SUCCESS"||phase=="TARGET_NOT_GRASPED"||
+          phase=="RETURN_NAV_PREPARE"||phase=="RETURN_NAVIGATING"||
+          phase=="RETURN_NAV_SETTLE"||phase=="RETURNED_TO_START")&&kind_=="home"&&state_=="SUCCEEDED"&&
          !busy_&&holding_&&gripper_.active();
  }
  bool has_command()const{return initialized_;}

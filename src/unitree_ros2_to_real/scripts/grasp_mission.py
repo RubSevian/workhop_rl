@@ -12,6 +12,8 @@ from rclpy.qos import qos_profile_sensor_data, QoSProfile, ReliabilityPolicy
 from std_msgs.msg import String
 from std_srvs.srv import Trigger
 from nav_msgs.msg import Odometry
+from geometry_msgs.msg import PointStamped
+from rclpy.time import Time
 from unitree_go.msg import LowState
 from scipy.spatial.transform import Rotation
 from mission.scene import SceneBuffer, matrix_pose
@@ -65,6 +67,8 @@ class Coordinator(Node):
         self.health_pub=self.create_publisher(String,'/go2/mission/health',1)
         self.compute_pub=self.create_publisher(String,'/rars01/mission/compute',1)
         self.trajectory_pub=self.create_publisher(String,'/rars01/mission/trajectory',1)
+        self.return_goal_pub=self.create_publisher(PointStamped,'/goal_point',1)
+        self.create_service(Trigger,'/go2/mission/return_to_start',self.return_to_start)
         self.cancel=self.create_client(Trigger,'/rars01/mission/cancel_manipulation')
         self.cancel_nav=self.create_client(Trigger,'/go2/mission/cancel_navigation')
         self.invalidate_nav=self.create_client(Trigger,'/go2/mission/invalidate_navigation_goal')
@@ -96,6 +100,16 @@ class Coordinator(Node):
             QoSProfile(depth=self.cfg['frames'].get('scene_receive_depth',32),reliability=ReliabilityPolicy.BEST_EFFORT))
         self.create_timer(self.cfg['execution']['tick_s'],self.tick)
         self.get_logger().info('Mission preloaded DISARMED; physical blockers: '+', '.join(self.blockers))
+
+    def return_to_start(self, request, response):
+        if not self.physical or self.blockers:
+            response.success=False;response.message='RETURN_PHYSICAL_NOT_READY';return response
+        if not all(self.count_publishers(topic)==1 for topic in self.topics.values()):
+            response.success=False;response.message='RETURN_SOURCE_OWNER_NOT_UNIQUE';return response
+        if self.return_goal_pub.get_subscription_count()<2:
+            response.success=False;response.message='RETURN_REQUIRES_FAR_AND_BRIDGE';return response
+        response.success,response.message=self.engine.return_navigation.request(self.engine,time.monotonic())
+        return response
 
     def observe(self,name,msg,info):
         started=time.monotonic();value=None;outcome='decode_error';publisher_count=None;parse_error=None
@@ -288,6 +302,10 @@ class Coordinator(Node):
                     navigation_session_id=e.inputs.get('nav',{}).get('session_id',''),
                     goal_revision=e.revision,phase=e.state,ready=bool(ready),physical=bool(self.physical),base_locked=e.state in ARM_PHASES|TERMINAL,blockers=self.blockers,
                     scene_error=self.scene_error,observation_recovery=e.status(now)['observation_recovery'],lowstate_decode=(self.native_leg_input.status() if getattr(self,'native_leg_input',None) else self.leg_reader.status()),tf_pair=dict(self.body_source.diagnostics),streams=self.scene_buffer.diagnostics(time.monotonic_ns()))
+        health.update(return_request_ns=e.return_navigation.request_ns,
+                      return_target=e.return_navigation.target(),
+                      home_completed_ns=e.base_motion_window['home_completed_ns'],
+                      arm_home_ready=e.fresh('owner',now) and e.inputs.get('owner',{}).get('arm_home_ready') is True)
         self.health_pub.publish(String(data=json.dumps(health)))
         # X uses checked HOME, or the measured confirmed-scan HOME policy.
         # Owner acknowledges the HOME request, while R3 still waits for measured
@@ -345,6 +363,11 @@ class Coordinator(Node):
             elif ready:
                 data['observed_ns']=time.monotonic_ns()
                 if kind=='compute':self.compute_pub.publish(String(data=json.dumps(data,allow_nan=False)))
+                elif kind=='return_navigation_goal':
+                    goal=PointStamped();goal.header.frame_id='map'
+                    goal.header.stamp=Time(nanoseconds=data['stamp_ns']).to_msg()
+                    goal.point.x,goal.point.y,goal.point.z=map(float,data['target'])
+                    self.return_goal_pub.publish(goal)
                 elif kind=='trajectory':self.trajectory_pub.publish(String(data=json.dumps(data,allow_nan=False)))
             else:e.cancel(now,'MISSION_HEALTH_INVALID',True)
         status=e.status(now)

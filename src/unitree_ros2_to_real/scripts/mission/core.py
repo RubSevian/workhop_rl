@@ -9,6 +9,7 @@ from .scene import matrix_pose, validate_scene_data
 from .transforms import pose_distance
 from .scene_wait import transient_scene_error
 from .health_contract import source_ttl, input_diagnostic
+from .return_navigation import ReturnNavigation, RETURN_PHASES
 
 OBSERVATIONS = {'detect', 'observe_grasp', 'grasp_plan'}
 PRESET_COMPUTES = {'scan_pose', 'scan_step', 'scan_return', 'refine', 'home'}
@@ -16,7 +17,7 @@ PRESET_COMPUTES = {'scan_pose', 'scan_step', 'scan_return', 'refine', 'home'}
 def retryable_observation(reason):
     return transient_scene_error(reason) or reason in ('RGBD_STALE_OR_REPEATED', 'RGBD_TF_FEEDBACK_STALE')
 
-TERMINAL = {'MISSION_COMPLETED_UNVERIFIED','GRASP_PRESUMED_SUCCESS','TARGET_NOT_GRASPED', 'OBJECT_NOT_FOUND', 'GRASP_UNREACHABLE', 'BLOCKED', 'CANCELLED'}
+TERMINAL = {'MISSION_COMPLETED_UNVERIFIED','GRASP_PRESUMED_SUCCESS','TARGET_NOT_GRASPED', 'OBJECT_NOT_FOUND', 'GRASP_UNREACHABLE', 'BLOCKED', 'CANCELLED', 'RETURNED_TO_START'}
 ARM_PHASES = {'BASE_SETTLE','ARM_SCAN_POSE','ARM_SEARCH','VIEW_REFINEMENT','PLAN_GRASP',
               'PREGRASP','GRASP','WAIT_RETREAT_APPROVAL','RETREAT','RETURN_HOME','RETURN_SEARCH'}
 
@@ -56,6 +57,8 @@ class Mission:
         self.input_rejections={}
         self.availability={}
         self.new_goal_after_recovery=False
+        self.base_motion_window = dict(scan_started_ns=None, home_completed_ns=None)
+        self.return_navigation = ReturnNavigation()
 
     def observe(self, name, data, now):
         # Duplicate/out-of-order or future producer samples never refresh leases.
@@ -134,11 +137,14 @@ class Mission:
             return self.drain()
         self.reason='' if vision_ok else 'PERCEPTION_STATUS_UNAVAILABLE' if not self.fresh('perception',now) else 'PERCEPTION_NOT_READY'
         goal=nav['goal']
+        new_goal = goal['revision']>self.last_revision and goal.get('stamp_ns',0)>self.armed_ros_ns
+        self.return_navigation.observe_departure(self, now, goal.get('stamp_ns') if new_goal else None)
         # A nearby goal may complete before the first status reaches us.
         # Accept its new identity, then use the normal NAVIGATING -> BASE_SETTLE
         # path so post-goal zero acknowledgement and settling still apply.
         if goal['revision']>self.last_revision and goal.get('stamp_ns',0)>self.armed_ros_ns and goal['state'] in ('REQUESTED','ACTIVE','SUCCEEDED'):
             self.confirmed_scan_q=None
+            self.base_motion_window = dict(scan_started_ns=None, home_completed_ns=None)
             self.started=now;self.revision,self.goal_stamp=goal['revision'],goal['stamp_ns']
             self.transition('NAVIGATING',now)
         return self.drain()
@@ -149,6 +155,8 @@ class Mission:
         return ''
 
     def transition(self, state, now, reason=''):
+        if state == 'ARM_SCAN_POSE' and self.base_motion_window['scan_started_ns'] is None:
+            self.base_motion_window['scan_started_ns'] = int(now * 1e9)
         self.state, self.entered, self.reason = state, now, reason
         self.events.append(dict(state=state, time=now, reason=reason, revision=self.revision))
 
@@ -335,6 +343,8 @@ class Mission:
             if not owner.get('arm_home_ready'):
                 self.cancel(now, 'HOME_UNCONFIRMED', True)
                 return
+            if self.base_motion_window['scan_started_ns'] is not None:
+                self.base_motion_window['home_completed_ns'] = int(now * 1e9)
             self.transition(self.result_after_home, now)
 
     def go_home(self, result, now,from_scan=False):
@@ -458,6 +468,8 @@ class Mission:
     def step(self, now, ros_now_ns):
         self.last_now = now
         if self.entered==0:self.entered=now
+        if self.state in RETURN_PHASES:
+            return self.return_navigation.step(self, now, ros_now_ns)
         if self.state in TERMINAL:
             return self.drain()
         r3, nav, owner = (self.inputs.get(n, {}) for n in ('r3','nav','owner'))
@@ -473,6 +485,7 @@ class Mission:
             self.last_revision = nav['goal']['revision']
             self.started = now
             self.transition('WAIT_GOAL', now, 'new operator goal required')
+            self.return_navigation.observe_departure(self, now)
             return self.drain()
         if self.state=='WAIT_GOAL':return self.wait_goal_step(now,ros_now_ns,active)
         if self.state=='BASE_SETTLE' and self.stable_since is None:
@@ -620,6 +633,8 @@ class Mission:
             key:self.pending[key] for key in ('id','operation','kind','at') if key in self.pending}
         return dict(automatic_retreat=bool(self.cfg['execution'].get('automatic_retreat',False)),operator_trial=bool(self.cfg.get('operator_trial')),retreat_operator_approval_required=self.state=='WAIT_RETREAT_APPROVAL',availability=self.availability,input_rejections=self.input_rejections,wait_goal_stale_since=self.wait_goal_stale_since,stale_input_diagnostic=self.stale_input_diagnostic,observation_recovery=dict(reason=self.recovery_reason,since=self.recovery_since,retry_operation=self.retry_operation,retry_active=self.recovery_retry_active,retries=self.observation_retries),test_mode='ready_observe' if self.ready_observe else 'full',last_observation=self.last_observation,last_compute_metrics=self.last_compute_metrics,grasp_verification='torque_width',grasp_assessment=self.inputs.get('owner',{}).get('grasp_assessment','UNKNOWN'),object_grasped=None,observed_ns=int(now*1e9), session_id=self.session, state=self.state,
                     reason=self.reason, navigation_session_id=self.nav_session,
+                    state_entered_ns=int(self.entered*1e9), base_motion_window=dict(self.base_motion_window),
+                    return_to_start=self.return_navigation.status(),
                     goal_revision=self.revision, goal_stamp_ns=self.goal_stamp,
                     elapsed_s=max(0.,now-self.started) if self.started else 0.,
                     phase_elapsed_s=max(0.,now-self.entered), pending=pending,

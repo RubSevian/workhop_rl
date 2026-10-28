@@ -15,7 +15,7 @@ class NavAdapterContracts(unittest.TestCase):
     def node(self):
         calls=[];gate=NavigationGate(recovery_samples=5)
         node=NS(gate=gate,goals=GoalTracker(),goal_after_ns=100,command_after_ns=100,
-                mission_health=NS(base_locked=False),path_recovery=PathRecovery(),
+                mission_health=NS(base_locked=False,return_request_ns=0),path_recovery=PathRecovery(),
                 header_valid=lambda msg:True,header_age=lambda msg:0.,
                 get_clock=lambda:NS(now=lambda:NS(nanoseconds=1000)),tick=lambda:calls.append('tick'),
                 get_logger=lambda:NS(warn=lambda msg:None))
