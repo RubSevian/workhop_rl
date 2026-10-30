@@ -82,6 +82,7 @@ class ShortJournal:
             phase_elapsed_s=now-engine.entered,goal_revision=engine.revision,
             pending={k:pending.get(k) for k in ('id','kind','operation')},
             grasp_assessment=assessment,
+            anchor_recovery=engine.anchor_diagnostic() if hasattr(engine,"anchor_diagnostic") else None,
             camera={key:runtime.get(key) for key in ('ready','reason','color_age_s','depth_age_s',
                 'ipc_health_age_s','ipc_timing','acquisition')})
 

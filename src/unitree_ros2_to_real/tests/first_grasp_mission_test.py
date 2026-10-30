@@ -146,6 +146,110 @@ class Integration(unittest.TestCase):
                 f.effect(kind,data)
         self.fail('No detect request')
 
+    def test_search_anchor_reacquires_and_discards_old_detection(self):
+        f,request=self.observation_fixture()
+        original=copy.deepcopy(f.m.scene_anchor);window=copy.deepcopy(f.m.base_motion_window)
+        commands=f.commands;f.base['pose'][0]=.26
+        self.assertEqual(f.tick(False),[])
+        self.assertTrue(f.m.anchor_recovery['active'])
+        self.assertFalse(f.m.result(f.compute(request),f.now))
+        self.assertIsNone(f.m.pending);self.assertEqual(f.m.state,'ARM_SEARCH')
+        for _ in range(260):f.tick(False)
+        self.assertFalse(f.m.anchor_recovery['active'])
+        self.assertEqual(f.m.original_scene_anchor,original)
+        self.assertEqual(f.m.base_motion_window,window)
+        self.assertEqual(f.m.base_anchor[0],.26)
+        diagnostic=f.m.status(f.now)['anchor_recovery']
+        self.assertEqual(diagnostic['original']['translation_m'],.26)
+        self.assertEqual(diagnostic['working']['translation_m'],0.)
+        self.assertEqual(f.commands,commands)
+        self.assertEqual(f.m.pending['operation'],'detect')
+        self.assertNotEqual(f.m.pending['id'],request['id'])
+        self.assertFalse(f.m.result(f.compute(request),f.now))
+        f.base['pose'][0]=.52;f.tick(False)
+        self.assertEqual(f.m.reason,'SCENE_ANCHOR_DISCONTINUITY')
+
+    def test_search_anchor_gradual_drift_then_fresh_grasp_reaches_home(self):
+        f,request=self.observation_fixture()
+        for _ in range(26):
+            f.base['pose'][0]+=.01;f.tick(False)
+        self.assertTrue(f.m.anchor_recovery['active'])
+        f.m.result(f.compute(request),f.now)
+        for _ in range(1000):
+            f.tick()
+            if f.m.state in TERMINAL:break
+        self.assertEqual(f.m.state,'GRASP_PRESUMED_SUCCESS')
+        self.assertIsNotNone(f.m.base_motion_window['home_completed_ns'])
+        self.assertAlmostEqual(f.m.anchor_diagnostic()['original']['translation_m'],.26)
+
+    def test_search_anchor_result_callback_cannot_race_drift_guard(self):
+        f,request=self.observation_fixture();f.base['pose'][0]=.26;f.feed()
+        self.assertFalse(f.m.result(f.compute(request),f.now))
+        self.assertEqual(f.m.state,'ARM_SEARCH')
+        self.assertTrue(f.m.anchor_recovery['active']);self.assertIsNone(f.m.pending)
+        self.assertEqual(f.m.drain(),[])
+
+    def test_search_anchor_keeps_motion_tilt_epoch_authority_guards(self):
+        for failure in ('motion','tilt','epoch','authority','command','arm_moved','grasp_phase'):
+            with self.subTest(failure=failure):
+                f,request=self.observation_fixture();f.base['pose'][0]=.26
+                if failure=='motion':f.owner['mission_state']='EXECUTING'
+                if failure=='tilt':f.base['tilt_rad']=f.m.cfg['settle']['max_tilt_rad']+.01
+                if failure=='epoch':f.tf_revision='changed'
+                if failure=='authority':f.r3['state']='CONTROLLED_STOP'
+                if failure=='command':f.r3['motion_command']=[.01,0,0]
+                if failure=='arm_moved':f.owner['q'][0]+=.03
+                if failure=='grasp_phase':f.m.state='PREGRASP'
+                effects=f.tick(False)
+                self.assertIn(f.m.state,('BLOCKED','CANCELLED'))
+                self.assertTrue(all(kind=='cancel' for kind,_ in effects))
+                self.assertEqual(f.m.anchor_recovery['attempts'],0)
+
+    def test_search_anchor_timeout_including_stale_scene_and_pending_compute(self):
+        for mode in ('drifting','missing_scene','pending_compute'):
+            with self.subTest(mode=mode):
+                f,request=self.observation_fixture();f.base['pose'][0]=.26;f.tick(False)
+                if mode!='pending_compute':f.m.result(f.compute(request),f.now)
+                for i in range(770):
+                    if mode=='drifting':f.base['pose'][0]+=.001
+                    f.feed()
+                    if mode=='missing_scene':f.m.received.pop('scene',None)
+                    effects=f.m.step(f.now,int(f.now*1e9))
+                    self.assertTrue(all(kind=='cancel' for kind,_ in effects))
+                    if f.m.state in TERMINAL:break
+                self.assertEqual(f.m.reason,'SEARCH_ANCHOR_RECOVERY_TIMEOUT')
+
+    def test_search_anchor_recovery_still_blocks_on_live_faults(self):
+        for failure in ('tilt','command','epoch','arm_moved','odometry','authority'):
+            with self.subTest(failure=failure):
+                f,request=self.observation_fixture();f.base['pose'][0]=.26;f.tick(False)
+                f.m.result(f.compute(request),f.now)
+                if failure=='tilt':f.base['tilt_rad']=.5
+                if failure=='command':f.r3['motion_command']=[.01,0,0]
+                if failure=='epoch':f.tf_revision='changed'
+                if failure=='arm_moved':f.owner['q'][0]+=.03
+                if failure=='odometry':f.perception=dict(ready=False,reason='ODOMETRY_DISCONTINUITY')
+                if failure=='authority':f.r3['state']='CONTROLLED_STOP'
+                f.tick(False)
+                self.assertIn(f.m.state,('BLOCKED','CANCELLED'))
+                self.assertEqual(f.m.base_anchor[0],0.)
+
+    def test_search_anchor_stability_window_restarts_and_does_not_use_repeated_scene(self):
+        f,request=self.observation_fixture();f.base['pose'][0]=.26;f.tick(False)
+        f.m.result(f.compute(request),f.now)
+        for _ in range(150):f.tick(False)
+        since=f.m.anchor_recovery['stable_since']
+        f.base['pose'][0]+=.021;f.tick(False)
+        self.assertGreater(f.m.anchor_recovery['stable_since'],since)
+        for _ in range(150):f.tick(False)
+        self.assertTrue(f.m.anchor_recovery['active'])
+        old=copy.deepcopy(f.m.inputs['scene']);received=f.m.received['scene']
+        for _ in range(260):
+            f.feed();f.m.inputs['scene']=copy.deepcopy(old);f.m.received['scene']=received
+            f.m.step(f.now,int(f.now*1e9))
+        self.assertTrue(f.m.anchor_recovery['active']);self.assertIsNone(f.m.pending)
+        self.assertEqual(f.m.base_anchor[0],0.)
+
     def test_transient_observation_retries_same_pose_and_new_identity(self):
         f,request=self.observation_fixture();index=f.m.scan_index;commands=f.commands
         failed=f.compute(request);failed.update(ok=False,reason='RGBD_STALE_OR_REPEATED')

@@ -40,6 +40,9 @@ class Mission:
         self.stable_since, self.base_anchor = None, None
         self.leg_anchor = None
         self.scene_anchor=None;self.goal_reached=None;self.window_pose=None
+        self.original_scene_anchor=None
+        self.anchor_recovery=dict(active=False, attempts=0, since=None, stable_since=None, reason="")
+        self.anchor_window=None;self.anchor_last_sample=None
         self.stability_reason='';self.stability_restarts=0
         self.result_after_home = 'MISSION_COMPLETED_UNVERIFIED'
         self.home_from_scan=False
@@ -363,6 +366,93 @@ class Mission:
             if self.state!='ARM_SEARCH':self.transition('ARM_SEARCH', now, 'NEXT_OBSERVATION')
             self.request('scan_step', now)
 
+    def recover_search_anchor(self, now):
+        """One bounded re-observation at a measured stationary search pose.
+
+        Never updates the original scan reference or authorizes arm movement.
+        The adjacent-sample odometry guard remains in BodyPoseProvider.
+        """
+        recovery=self.anchor_recovery
+        if self.state!='ARM_SEARCH' or self.scene_anchor is None:return False
+        scene=self.inputs.get('scene',{});owner=self.inputs.get('owner',{})
+        if recovery['active'] and now-recovery['since']>=self.cfg['settle']['timeout_s']:
+            self.cancel(now,'SEARCH_ANCHOR_RECOVERY_TIMEOUT',True);return True
+        if recovery['active']:
+            command=self.inputs.get('r3',{}).get('motion_command',[])
+            if (self.inputs.get('r3',{}).get('phase')!='RL_ZERO' or len(command)!=3 or
+                    any(not math.isfinite(v) or abs(v)>1e-6 for v in command)):
+                self.cancel(now,'BASE_COMMAND_NONZERO',True);return True
+            perception=self.inputs.get('perception',{})
+            if not perception.get('ready') and not transient_scene_error(perception.get('reason','PERCEPTION_INVALID')):
+                self.cancel(now,perception.get('reason','PERCEPTION_INVALID'),True);return True
+            timeout=self.cfg['search']['timeout_s']
+            if timeout is not None and now-self.entered>timeout:
+                self.cancel(now,'PHASE_TIMEOUT',True);return True
+            if owner.get('mission_state') not in ('IDLE','SUCCEEDED'):
+                self.cancel(now,'SCENE_ANCHOR_DISCONTINUITY',True);return True
+            if self.fresh('base',now) and self.inputs['base']['tilt_rad']>self.cfg['settle']['max_tilt_rad']:
+                self.cancel(now,'SCENE_ANCHOR_DISCONTINUITY',True);return True
+        valid=all(self.fresh(n,now) for n in ('scene','base','legs','owner'))
+        error=self.scene_error(now) if valid else 'SCENE_SNAPSHOT_STALE:body'
+        if error:
+            if not recovery['active']:return False
+            recovery['stable_since']=None;self.anchor_window=None;self.anchor_last_sample=None
+            if not transient_scene_error(error):self.cancel(now,error,True)
+            return True
+        pose=matrix_pose(scene['body']['map_body'])
+        pe,re=pose_distance(self.base_anchor,pose)
+        exceeded=(pe>self.cfg['frames']['continuity_translation_m'] or
+                  re>self.cfg['frames']['continuity_rotation_rad'])
+        if not recovery['active'] and not exceeded:return False
+        command=self.inputs.get('r3',{}).get('motion_command',[])
+        if (self.inputs.get('r3',{}).get('phase')!='RL_ZERO' or len(command)!=3
+                or any(not math.isfinite(v) or abs(v)>1e-6 for v in command)):
+            self.cancel(now,'BASE_COMMAND_NONZERO',True);return True
+        if (scene['body']['navigation_session_id']!=self.nav_session or
+                scene['body']['tf_revision']!=self.scene_anchor['body']['tf_revision']):
+            self.cancel(now,'WORLD_ANCHOR_EPOCH_CHANGED',True);return True
+        eligible=(self.confirmed_scan_q is not None and
+                  owner.get('mission_state') in ('IDLE','SUCCEEDED') and
+                  not owner.get('gripper_command_active') and
+                  (not self.pending or (self.pending['kind']=='compute' and
+                   self.pending['operation'] in ('detect','observe_grasp'))))
+        q=owner.get('q',[])[:6]
+        tolerance=self.cfg['execution']['joint_reached_tolerance_rad']
+        eligible=(eligible and len(q)==6 and all(math.isfinite(v) for v in q) and
+                  max(abs(a-b) for a,b in zip(q,self.confirmed_scan_q))<=tolerance)
+        if (not eligible or self.inputs['base']['tilt_rad']>self.cfg['settle']['max_tilt_rad']
+                or (not recovery['active'] and recovery['attempts']>=1)):
+            self.cancel(now,'SCENE_ANCHOR_DISCONTINUITY',True);return True
+        if not recovery['active']:
+            recovery.update(active=True,attempts=1,since=now,stable_since=None,
+                            reason='WAITING_FOR_STABLE_SEARCH_SCENE')
+            self.reason=recovery['reason']
+            self.anchor_window=None;self.anchor_last_sample=None
+        stamp=min(scene['body']['mono_ns'],scene['feedback_ns'],scene['legs_ns'])/1e9
+        # A repeated scene or a stream gap cannot demonstrate continuous rest.
+        if self.anchor_last_sample is not None and stamp<=self.anchor_last_sample:return True
+        gap=(self.anchor_last_sample is not None and
+             stamp-self.anchor_last_sample>min(source_ttl(self.cfg,n) for n in ('scene','base','legs','owner')))
+        self.anchor_last_sample=stamp
+        window=self.anchor_window
+        moved=(window is not None and (
+            pose_distance(window[0],pose)[0]>self.cfg['settle']['max_translation_m'] or
+            pose_distance(window[0],pose)[1]>self.cfg['settle']['max_rotation_rad'] or
+            max(abs(a-b) for a,b in zip(window[1],q))>tolerance))
+        if window is None or gap or moved:
+            self.anchor_window=(pose,list(q));recovery['stable_since']=stamp
+        if stamp-recovery['stable_since']<self.cfg['settle']['min_stable_s'] or self.pending:return True
+        if not self.inputs.get('perception',{}).get('ready'):return True
+        self.scene_anchor=copy.deepcopy(scene)
+        self.scene_anchor.update(captured_ns=int(now*1e9),goal_revision=self.revision,mission_session_id=self.session)
+        self.base_anchor=pose;self.leg_anchor=list(scene['legs'])
+        self.object_anchor=None;self.grasp_plan=None;self.q_search=None
+        self.clear_recovery()
+        recovery.update(active=False,reason='SEARCH_SCENE_REACQUIRED')
+        self.reason=recovery['reason'];self.detect_at=now
+        # Dispatch on the next step, after the usual authority/health checks.
+        return True
+
     def result(self, result, now):
         p = self.pending
         stamp=result.get('observed_ns')
@@ -398,6 +488,11 @@ class Mission:
             diagnostic.update(reason='OBSERVATION_RECOVERY_TIMEOUT',action='BLOCK')
             self.cancel(now,'OBSERVATION_RECOVERY_TIMEOUT:'+self.recovery_reason,True)
             return False
+        if self.state=='ARM_SEARCH' and p['operation'] in ('detect','observe_grasp'):
+            if self.recover_search_anchor(now):
+                if self.state not in TERMINAL:self.pending=None
+                diagnostic.update(reason='SEARCH_ANCHOR_RESULT_DISCARDED',action='REOBSERVE')
+                return False
         diagnostic['accepted']=True
         self.last_compute_metrics=result.get('compute_metrics',{})
         operation = p['operation']
@@ -528,6 +623,8 @@ class Mission:
             self.cancel(now, 'MISSION_TIMEOUT', True)
         elif self.state!='WAIT_GOAL' and (nav['goal']['revision'] != self.revision or nav['goal'].get('stamp_ns')!=self.goal_stamp):
             self.cancel(now, 'GOAL_REPLACED')
+        elif self.recover_search_anchor(now):
+            pass
         elif self.wait_for_observation(now):
             pass
         elif self.state == 'NAVIGATING':
@@ -575,6 +672,7 @@ class Mission:
                 elif self.stable_since is not None and now-self.stable_since>=self.cfg['settle']['min_stable_s']:
                     self.scene_anchor=copy.deepcopy(scene)
                     self.scene_anchor.update(captured_ns=int(now*1e9),goal_revision=self.revision,mission_session_id=self.session)
+                    self.original_scene_anchor=copy.deepcopy(self.scene_anchor)
                     self.base_anchor=matrix_pose(scene['body']['map_body'])
                     self.leg_anchor=list(scene['legs'])
                     self.stability_reason='FIXED_WAIT_COMPLETE'
@@ -625,6 +723,19 @@ class Mission:
         effects, self.effects = self.effects, []
         return [(kind,data) for kind,data in effects if self.state not in TERMINAL or kind=='cancel']
 
+    def anchor_diagnostic(self):
+        diagnostic=dict(self.anchor_recovery)
+        try:
+            pose=matrix_pose(self.inputs['scene']['body']['map_body'])
+            for key,reference in (('working',self.scene_anchor),('original',self.original_scene_anchor)):
+                if reference is not None:
+                    translation,rotation=pose_distance(matrix_pose(reference['body']['map_body']),pose)
+                    diagnostic[key]=dict(translation_m=translation,rotation_rad=rotation,
+                                         captured_ns=reference.get('captured_ns'))
+            diagnostic['scene_observed_ns']=self.inputs['scene']['observed_ns']
+        except (KeyError,TypeError,ValueError):pass
+        return diagnostic
+
     def status(self, now):
         # Periodic health/status is consumed on sensor callback executors.
         # Keep the full approved trajectory in self.pending and its command;
@@ -642,5 +753,6 @@ class Mission:
                     stable_since=self.stable_since,stable_duration_s=max(0.,now-self.stable_since) if self.stable_since is not None else 0.,
                     goal_reached_duration_s=max(0.,now-self.goal_reached) if self.goal_reached is not None else 0.,
                     stability_reason=self.stability_reason,stability_restarts=self.stability_restarts,
+                    anchor_recovery=self.anchor_diagnostic(),original_scene_anchor=self.original_scene_anchor,
                     scene_anchor=self.scene_anchor,object_anchor=self.object_anchor,q_search=self.q_search,
                     grasp_attempt=self.grasp_attempt,last_grasp_error=self.last_grasp_error)
