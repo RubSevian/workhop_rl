@@ -55,7 +55,8 @@ class Fixture:
         elif kind=='trajectory':
             self.commands+=1;self.owner['q']=data['points'][-1].copy()
             # Synthetic owner outcome only; no physical torque qualification.
-            if data['kind']=='close':self.owner.update(q=self.owner['q'][:6]+[.4],gripper_command_active=True,gripper_hold_target=.4,grasp_assessment='GRASPED')
+            if data['kind']=='close':self.owner.update(q=self.owner['q'][:6]+[.4],gripper_command_active=True,gripper_hold_target=.4,grasp_assessment='NOT_GRASPED' if self.branch=='not_grasped' else 'GRASPED')
+            if data['kind']=='release':self.owner.update(gripper_command_active=False,grasp_assessment='NOT_GRASPED')
             self.owner.update(mission_id=data['id'],mission_state='SUCCEEDED',arm_home_ready=all(abs(x)<1e-6 for x in self.owner['q'][:6]))
         elif kind=='cancel':self.owner['mission_state']='CANCELLED'
     def compute(self,data):
@@ -72,7 +73,8 @@ class Fixture:
             else:out['grasp_plan']={'fixture':'synthetic-IK','scan_q':data['owner']['q'][:6]}
         else:
             start=data['owner']['q'];end=start.copy()
-            if op=='home':end[:6]=[0.]*6
+            if op=='retry_home_open':end[6]=.8
+            elif op=='home':end[:6]=[0.]*6
             elif op=='scan_pose':end[:6]=[0.,.2,.2,.1,0,0];end[6]=.8
             elif op=='refine':end[1]+=.01;end[2]+=.01
             elif op in ('scan_step','scan_return'):end[0]=0. if op=='scan_return' else search_angles(CFG['search'])[data['scan_index']]
@@ -81,7 +83,7 @@ class Fixture:
             sys.path.insert(0,str(ROOT/'repos/rars01_graspnet'))
             from rars01_graspnet.real_grasp_trajectory import joint_motion_samples
             points,_=joint_motion_samples(start,end,.1,.01,np.ones(7))
-            out['trajectory']=dict(kind='home' if op=='home' else 'close' if op=='close' else 'move',points=[q.tolist() for q in points],collision_checked=True,payload_checked=False)
+            out['trajectory']=dict(kind='release' if op=='retry_home_open' else 'home' if op=='home' else 'close' if op=='close' else 'move',points=[q.tolist() for q in points],collision_checked=True,payload_checked=False)
         return out
     def start(self):
         self.tick();assert self.m.state=='WAIT_GOAL'
@@ -90,7 +92,7 @@ class Fixture:
         self.nav['goal']['state']='SUCCEEDED';self.tick()
     def run(self):
         self.start()
-        for _ in range(2000):
+        for _ in range(4000):
             self.tick()
             if self.m.state in TERMINAL:return self.m.state
         raise AssertionError(self.m.status(self.now))
@@ -132,7 +134,9 @@ class Integration(unittest.TestCase):
             f.m.done_motion('retreat',f.now)
             self.assertEqual(f.m.pending['operation'],'home')
             f.m.done_motion('home',f.now)
-            self.assertEqual(f.m.state,'TARGET_NOT_GRASPED')
+            self.assertEqual(f.m.state,'ARM_SCAN_POSE')
+            self.assertEqual(f.m.full_attempt,2)
+            self.assertEqual(f.m.attempt_history[0]['result'],'TARGET_NOT_GRASPED')
         f=Fixture();f.owner.update(grasp_assessment='UNKNOWN',grasp_assessment_reason='FEEDBACK_INVALID_OR_STALE');f.feed()
         f.m.done_motion('close',f.now)
         self.assertEqual(f.m.state,'BLOCKED')
@@ -145,6 +149,145 @@ class Integration(unittest.TestCase):
                 if kind=='compute' and data['operation']=='detect':return f,data
                 f.effect(kind,data)
         self.fail('No detect request')
+
+    def test_home_release_uses_stationary_arm_speed_limits_and_collision_check(self):
+        from mission.planning import Planning
+        from types import SimpleNamespace
+        from unittest.mock import Mock
+        planner=Planning.__new__(Planning);planner.cfg=copy.deepcopy(CFG)
+        planner.grasp={'robot':{'rars01':{'position_velocity_limits_rad_s':[1.]*6+[.1],
+            'command_rate_hz':100,'max_grasp_width_m':.08},'ready_pose':{'duration':1.}}}
+        planner.geometry=SimpleNamespace(motor_angle_for_width=lambda width:.8)
+        planner.collision_scene=lambda sample: {'fixture':'scene'}
+        planner.collision=SimpleNamespace(check=Mock(return_value=True),last_reason='BLOCKED',last_failure='BLOCKED')
+        owner=dict(arm_home_ready=True,gripper_command_active=True,grasp_assessment='NOT_GRASPED',gripper_hold_target=0.)
+        sample=dict(q7=[0.]*7,scene_snapshot={'fixture':'fresh'})
+        trajectory=planner.retry_home_open(sample,owner)['trajectory'];points=np.array(trajectory['points'])
+        np.testing.assert_allclose(points[:,:6],0.,atol=1e-12)
+        self.assertAlmostEqual(points[-1,6],.8)
+        self.assertLessEqual(np.max(np.abs(np.diff(points[:,6])))*100,.1+1e-6)
+        self.assertEqual(trajectory['kind'],'release');self.assertTrue(trajectory['collision_checked'])
+        self.assertEqual(trajectory['payload_checked'],bool(CFG['collision'].get('payload_enabled',True)))
+        planner.collision.check.assert_called_once()
+        for assessment in ('UNKNOWN','GRASPED'):
+            with self.assertRaisesRegex(ValueError,'HOLD_UNKNOWN'):
+                planner.retry_home_open(sample,owner|dict(grasp_assessment=assessment))
+        with self.assertRaisesRegex(ValueError,'HOME_UNCONFIRMED'):
+            planner.retry_home_open(sample|dict(q7=[.1]+[0.]*6),owner)
+        planner.collision.check.return_value=False
+        with self.assertRaisesRegex(ValueError,'BLOCKED'):planner.retry_home_open(sample,owner)
+
+    def test_loss_during_retreat_or_home_retries_after_confirmed_home(self):
+        for phase in ('RETREAT','RETURN_HOME'):
+            with self.subTest(phase=phase):
+                f=Fixture();f.start();lost=False
+                for _ in range(1800):
+                    if f.m.full_attempt==1 and f.m.state==phase:
+                        f.owner.update(grasp_assessment='NOT_GRASPED',q=f.owner['q'][:6]+[0.],gripper_hold_target=0.)
+                        lost=True
+                    f.tick()
+                    if f.m.state in TERMINAL:break
+                self.assertTrue(lost);self.assertEqual(f.m.state,'GRASP_PRESUMED_SUCCESS')
+                self.assertEqual(f.m.full_attempt,2)
+                first,second=f.m.attempt_history
+                self.assertEqual(first['close_outcome'],'GRASP_PRESUMED_SUCCESS')
+                self.assertEqual(first['home_grasp_assessment'],'NOT_GRASPED')
+                self.assertEqual(first['result'],'TARGET_NOT_GRASPED')
+                self.assertEqual(first['reason'],'OBJECT_LOST_BEFORE_HOME')
+                self.assertEqual(second['home_grasp_assessment'],'GRASPED')
+                ops=[d['operation'] for k,d in f.effects if k=='compute']
+                self.assertEqual(ops.count('home'),2);self.assertEqual(ops.count('retry_home_open'),1)
+
+    def test_home_with_unknown_assessment_blocks_without_release_or_retry(self):
+        f=Fixture();f.start()
+        for _ in range(1000):
+            if f.m.state=='RETURN_HOME':f.owner.update(grasp_assessment='UNKNOWN',grasp_assessment_reason='FEEDBACK_INVALID_OR_STALE')
+            f.tick()
+            if f.m.state in TERMINAL:break
+        self.assertEqual(f.m.state,'BLOCKED')
+        self.assertTrue(f.m.reason.startswith('GRASP_ASSESSMENT_UNKNOWN_AT_HOME:'))
+        self.assertEqual(f.m.full_attempt,1);self.assertTrue(f.owner['arm_home_ready'])
+        self.assertIsNotNone(f.m.base_motion_window['home_completed_ns'])
+        self.assertFalse(any(k=='compute' and d['operation']=='retry_home_open' for k,d in f.effects))
+
+    def test_loss_on_second_home_finishes_not_grasped_without_third_attempt(self):
+        f=Fixture();f.start()
+        for _ in range(2000):
+            if f.m.state=='RETURN_HOME':f.owner.update(grasp_assessment='NOT_GRASPED',gripper_hold_target=0.)
+            f.tick()
+            if f.m.state in TERMINAL:break
+        self.assertEqual(f.m.state,'TARGET_NOT_GRASPED');self.assertEqual(f.m.full_attempt,2)
+        self.assertEqual([r['reason'] for r in f.m.attempt_history],['OBJECT_LOST_BEFORE_HOME']*2)
+        self.assertEqual(sum(k=='compute' and d['operation']=='home' for k,d in f.effects),2)
+
+    def test_full_retry_success_after_each_routine_failure(self):
+        for branch in ('not_found','ik_fail','not_grasped'):
+            with self.subTest(branch=branch):
+                f=Fixture(branch);f.start();start=copy.deepcopy(f.m.return_navigation.start)
+                deadline=f.m.started;goal=(f.m.revision,f.m.goal_stamp);original=None
+                for _ in range(4000):
+                    if f.m.full_attempt==2:f.branch='success'
+                    f.tick()
+                    if original is None and f.m.original_scene_anchor is not None:original=copy.deepcopy(f.m.original_scene_anchor)
+                    if f.m.state in TERMINAL:break
+                self.assertEqual(f.m.state,'GRASP_PRESUMED_SUCCESS')
+                self.assertEqual(f.m.full_attempt,2);self.assertEqual(len(f.m.attempt_history),2)
+                self.assertEqual(f.m.return_navigation.start,start);self.assertEqual(f.m.started,deadline)
+                self.assertEqual((f.m.revision,f.m.goal_stamp),goal)
+                self.assertEqual(f.m.original_scene_anchor,original)
+                self.assertEqual(sum(e['state']=='NAVIGATING' for e in f.m.events),1)
+                computes=[d for k,d in f.effects if k=='compute'];ops=[d['operation'] for d in computes]
+                self.assertEqual(ops.count('scan_pose'),2);self.assertEqual(ops.count('home'),2)
+                self.assertEqual(ops.count('retry_home_open'),int(branch=='not_grasped'))
+                second=next(d for d in computes if d['full_attempt']==2 and d['operation']=='scan_pose')
+                for key in ('object_anchor','grasp_plan','q_search'):self.assertIsNone(second[key])
+                self.assertEqual(second['scan_index'],0)
+                self.assertLess(f.m.attempt_history[0]['home_completed_ns'],f.m.attempt_history[1]['scan_started_ns']+1)
+                self.assertEqual(f.m.base_motion_window['scan_started_ns'],f.m.attempt_history[0]['scan_started_ns'])
+                self.assertEqual(f.m.base_motion_window['home_completed_ns'],f.m.attempt_history[1]['home_completed_ns'])
+
+    def test_full_retry_stops_after_two_failed_grasps(self):
+        f=Fixture('not_grasped');self.assertEqual(f.run(),'TARGET_NOT_GRASPED')
+        self.assertEqual([r['result'] for r in f.m.attempt_history],['TARGET_NOT_GRASPED']*2)
+        ops=[d['operation'] for k,d in f.effects if k=='compute']
+        self.assertEqual(ops.count('home'),2);self.assertEqual(ops.count('retry_home_open'),1)
+        count=f.commands
+        for _ in range(20):f.tick()
+        self.assertEqual(f.commands,count)
+
+    def test_full_retry_candidate_failures_use_existing_home(self):
+        for reason in ('NO_CANDIDATES','IK_FAIL','NO_TARGET_BOUND_GRASPS','CANDIDATE_GEOMETRY_REJECTED','NO_COLLISION_FREE_CANDIDATE: blocked'):
+            with self.subTest(reason=reason):
+                f=Fixture('ik_fail');compute=f.compute
+                def replacement(data):
+                    result=compute(data)
+                    if data['operation']=='grasp_plan':result.update(ok=False,reason=reason)
+                    return result
+                f.compute=replacement
+                self.assertEqual(f.run(),'GRASP_UNREACHABLE')
+                self.assertEqual([r['reason'] for r in f.m.attempt_history],[reason]*2)
+                self.assertEqual(sum(d['operation']=='scan_pose' for k,d in f.effects if k=='compute'),2)
+
+    def test_full_retry_never_bypasses_home_authority_or_unknown_hold(self):
+        for fault in ('home','authority','hold','scene'):
+            with self.subTest(fault=fault):
+                f=Fixture('not_grasped');f.start()
+                for _ in range(1000):
+                    f.tick()
+                    if (f.m.state=='RETURN_HOME' and f.m.pending and f.m.pending['kind']=='motion'
+                            and f.owner['mission_id']==f.m.pending['id']):break
+                self.assertEqual(f.m.state,'RETURN_HOME')
+                if fault=='home':f.owner['arm_home_ready']=False
+                f.tick(False)
+                if fault=='home':
+                    self.assertEqual(f.m.reason,'HOME_UNCONFIRMED');continue
+                self.assertEqual(f.m.full_attempt,2)
+                if fault=='authority':f.r3['state']='CONTROLLED_STOP'
+                if fault=='hold':f.owner['grasp_assessment']='UNKNOWN'
+                if fault=='scene':f.tf_revision='changed'
+                effects=f.tick(False)
+                self.assertIn(f.m.state,('BLOCKED','CANCELLED'))
+                self.assertTrue(all(k=='cancel' for k,d in effects))
 
     def test_search_anchor_reacquires_and_discards_old_detection(self):
         f,request=self.observation_fixture()
@@ -673,10 +816,10 @@ class Integration(unittest.TestCase):
         f=Fixture('not_found');self.assertEqual(f.run(),'OBJECT_NOT_FOUND')
         operations=[data for kind,data in f.effects if kind=='compute']
         scans=[d for d in operations if d['operation'] in ('scan_pose','scan_step','scan_return','home')]
-        self.assertEqual([d['operation'] for d in scans],['scan_pose']+['scan_step']*15+['scan_return','home'])
+        self.assertEqual([d['operation'] for d in scans],(['scan_pose']+['scan_step']*15+['scan_return','home'])*2)
         self.assertEqual([d['scan_index'] for d in scans[1:16]],list(range(1,16)))
         observations=[d['owner']['q'][0] for d in operations if d['operation']=='detect']
-        np.testing.assert_allclose(observations,[0.,-.5,-1.,-1.5,-2.,-2.5,-2.,-1.5,-1.,-.5,0.,.5,1.,1.5,2.,2.5])
+        np.testing.assert_allclose(observations,[0.,-.5,-1.,-1.5,-2.,-2.5,-2.,-1.5,-1.,-.5,0.,.5,1.,1.5,2.,2.5]*2)
         self.assertEqual(scans[-1]['owner']['q'][0],0.)
         f=Fixture();f.start()
         for _ in range(1000):

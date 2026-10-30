@@ -81,7 +81,7 @@ class ArchitectureMissionTests(unittest.TestCase):
         f=Fixture();f.start();f.base['tilt_rad']=f.m.cfg['settle']['max_tilt_rad']+.01;f.tick(False)
         self.assertEqual(f.m.state,'BLOCKED');self.assertEqual(f.m.reason,'BASE_TILT_UNSAFE')
 
-    def test_planning_rejection_returns_from_confirmed_scan_without_retry(self):
+    def test_planning_rejection_gets_two_attempts_with_confirmed_scan_home(self):
         for reason in ('IK_FAIL','NO_CANDIDATES','CANDIDATE_GEOMETRY_REJECTED','NO_COLLISION_FREE_CANDIDATE: arm/leg'):
             class Rejected(Fixture):
                 def compute(self,data):
@@ -91,9 +91,9 @@ class ArchitectureMissionTests(unittest.TestCase):
             f=Rejected();self.assertEqual(f.run(),'GRASP_UNREACHABLE');self.assertEqual(f.m.last_grasp_error,reason)
             self.assertTrue(f.owner['arm_home_ready'])
             homes=[d for k,d in f.effects if k=='compute' and d['operation']=='home']
-            self.assertEqual(len(homes),1);self.assertTrue(homes[0]['home_from_scan'])
+            self.assertEqual(len(homes),2);self.assertTrue(all(h['home_from_scan'] for h in homes))
             plans=[d for k,d in f.effects if k=='compute' and d['operation']=='grasp_plan']
-            self.assertEqual(len(plans),1)
+            self.assertEqual(len(plans),2)
             self.assertFalse(any(k=='compute' and d['operation'] in ('pregrasp','close','reverse_search','scan_step') for k,d in f.effects))
             for _ in range(10):f.tick()
             self.assertEqual(f.m.state,'GRASP_UNREACHABLE');self.assertIsNone(f.m.pending)

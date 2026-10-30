@@ -12,7 +12,7 @@ from .health_contract import source_ttl, input_diagnostic
 from .return_navigation import ReturnNavigation, RETURN_PHASES
 
 OBSERVATIONS = {'detect', 'observe_grasp', 'grasp_plan'}
-PRESET_COMPUTES = {'scan_pose', 'scan_step', 'scan_return', 'refine', 'home'}
+PRESET_COMPUTES = {'retry_home_open', 'scan_pose', 'scan_step', 'scan_return', 'refine', 'home'}
 
 def retryable_observation(reason):
     return transient_scene_error(reason) or reason in ('RGBD_STALE_OR_REPEATED', 'RGBD_TF_FEEDBACK_STALE')
@@ -37,6 +37,9 @@ class Mission:
         self.pending = None
         self.last_result_diagnostic = None
         self.scan_index, self.detect_at = 0, 0.
+        self.full_attempt=1;self.max_full_attempts=2
+        self.attempt_history=[];self.attempt_scan_started_ns=None
+        self.retry_scan_pending=False
         self.stable_since, self.base_anchor = None, None
         self.leg_anchor = None
         self.scene_anchor=None;self.goal_reached=None;self.window_pose=None
@@ -158,6 +161,8 @@ class Mission:
         return ''
 
     def transition(self, state, now, reason=''):
+        if state == 'ARM_SCAN_POSE' and self.attempt_scan_started_ns is None:
+            self.attempt_scan_started_ns=int(now*1e9)
         if state == 'ARM_SCAN_POSE' and self.base_motion_window['scan_started_ns'] is None:
             self.base_motion_window['scan_started_ns'] = int(now * 1e9)
         self.state, self.entered, self.reason = state, now, reason
@@ -179,7 +184,7 @@ class Mission:
             owner_session_id=self.owner_session, owner=copy.deepcopy(self.inputs['owner']),
             home_from_scan=self.home_from_scan if operation=='home' else False,
             grasp_plan=self.grasp_plan, object_anchor=self.object_anchor,q_search=self.q_search,
-            grasp_attempt=self.grasp_attempt,reverse_segment=copy.deepcopy(self.attempt_segments[-1]) if operation in ('reverse_search','retry_open') and self.attempt_segments else None,
+            full_attempt=self.full_attempt,grasp_attempt=self.grasp_attempt,reverse_segment=copy.deepcopy(self.attempt_segments[-1]) if operation in ('reverse_search','retry_open') and self.attempt_segments else None,
             scan_index=self.scan_index)))
 
     def failed_grasp_attempt(self, reason, now):
@@ -327,6 +332,10 @@ class Mission:
                     'TARGET_NOT_GRASPED_CONTINUING' if assessment=='NOT_GRASPED' else ('OPERATOR_RETREAT_APPROVAL_REQUIRED' if manual_retreat else ''))
                 self.request('retreat',now)
             else:self.cancel(now,'GRASP_ASSESSMENT_UNKNOWN:'+self.inputs['owner'].get('grasp_assessment_reason','NO_VALID_ASSESSMENT'),True)
+        elif operation=='retry_home_open':
+            if self.inputs['owner'].get('gripper_command_active'):
+                self.cancel(now,'RETRY_RELEASE_UNCONFIRMED',True)
+            # Next step rechecks HOME, scene and authority before scan_pose.
         elif operation=='retry_open':
             self.request('reverse_search',now)
         elif operation=='reverse_search':
@@ -348,7 +357,42 @@ class Mission:
                 return
             if self.base_motion_window['scan_started_ns'] is not None:
                 self.base_motion_window['home_completed_ns'] = int(now * 1e9)
-            self.transition(self.result_after_home, now)
+            # The close result is provisional: the owner keeps evaluating
+            # torque/width during retreat and HOME. Never finish using a stale
+            # close_outcome after the measured object has been lost.
+            if self.result_after_home in ('GRASP_PRESUMED_SUCCESS','TARGET_NOT_GRASPED'):
+                assessment=owner.get('grasp_assessment','UNKNOWN')
+                if assessment=='GRASPED':
+                    self.result_after_home='GRASP_PRESUMED_SUCCESS'
+                elif assessment=='NOT_GRASPED':
+                    if self.result_after_home=='GRASP_PRESUMED_SUCCESS':
+                        self.last_grasp_error='OBJECT_LOST_BEFORE_HOME'
+                    self.result_after_home='TARGET_NOT_GRASPED'
+                else:
+                    self.last_grasp_error='GRASP_ASSESSMENT_UNKNOWN_AT_HOME:'+owner.get('grasp_assessment_reason','NO_VALID_ASSESSMENT')
+                    self.result_after_home='BLOCKED'
+            self.attempt_history.append(dict(iteration=self.full_attempt,result=self.result_after_home,
+                reason=self.last_grasp_error or self.result_after_home,
+                close_outcome=self.close_outcome,home_grasp_assessment=owner.get('grasp_assessment','UNKNOWN'),
+                scan_started_ns=self.attempt_scan_started_ns,home_completed_ns=int(now*1e9),
+                anchor=self.anchor_diagnostic()))
+            if self.result_after_home=='BLOCKED':
+                self.cancel(now,self.last_grasp_error,True);return
+            retryable=self.result_after_home in ('OBJECT_NOT_FOUND','GRASP_UNREACHABLE','TARGET_NOT_GRASPED')
+            if retryable and not self.ready_observe and self.full_attempt<self.max_full_attempts:
+                self.full_attempt+=1
+                self.scan_index=0;self.detect_at=now
+                self.object_anchor=None;self.grasp_plan=None;self.q_search=None
+                self.confirmed_scan_q=None;self.attempt_segments=[];self.grasp_attempt=0
+                self.last_observation=None;self.last_compute_metrics={};self.last_grasp_error=''
+                self.home_from_scan=False;self.close_outcome='MISSION_COMPLETED_UNVERIFIED'
+                self.clear_recovery();self.observation_retries=0
+                self.pending=None;self.retry_scan_pending=True;self.attempt_scan_started_ns=None
+                # Preserve original anchor, recovery budget, navigation start and
+                # mission deadline. Overall measurement ends at the final HOME.
+                self.base_motion_window['home_completed_ns']=None
+                self.transition('ARM_SCAN_POSE',now,'SECOND_ATTEMPT_AFTER_CONFIRMED_HOME')
+            else:self.transition(self.result_after_home, now)
 
     def go_home(self, result, now,from_scan=False):
         self.home_from_scan=from_scan
@@ -507,7 +551,7 @@ class Mission:
                 self.next_search(now)
                 return True
             # Unsafe HOME never falls through to a direct zero joint target.
-            if operation=='grasp_plan' and (reason in ('IK_FAIL','NO_CANDIDATES','CANDIDATE_GEOMETRY_REJECTED') or reason.startswith('NO_COLLISION_FREE_CANDIDATE:')):
+            if operation=='grasp_plan' and (reason in ('IK_FAIL','NO_CANDIDATES','NO_TARGET_BOUND_GRASPS','CANDIDATE_GEOMETRY_REJECTED') or reason.startswith('NO_COLLISION_FREE_CANDIDATE:')):
                 self.last_grasp_error=reason
                 scan=self.scan_home_plan()
                 if scan is not None and not self.inputs['owner'].get('gripper_command_active'):
@@ -710,7 +754,17 @@ class Mission:
                     elif (self.cfg['execution']['state_timeout_s'] is not None and now-p['at'] > self.cfg['execution']['state_timeout_s']):
                         self.cancel(now, 'OWNER_PLAN_NOT_ACCEPTED:'+owner.get('mission_blocker',''), True)
                 elif not self.pending and now >= self.detect_at:
-                    if self.state == 'ARM_SEARCH':
+                    if self.state=='ARM_SCAN_POSE' and self.retry_scan_pending:
+                        if not owner.get('arm_home_ready'):
+                            self.cancel(now,'HOME_UNCONFIRMED',True)
+                        elif owner.get('gripper_command_active'):
+                            if owner.get('grasp_assessment')!='NOT_GRASPED':
+                                self.cancel(now,'RETRY_OBJECT_HOLD_UNKNOWN',True)
+                            else:self.request('retry_home_open',now)
+                        else:
+                            self.retry_scan_pending=False
+                            self.request('scan_pose',now)
+                    elif self.state == 'ARM_SEARCH':
                         self.request('observe_grasp' if self.ready_observe else 'detect', now)
                     elif self.state == 'PLAN_GRASP':
                         self.request('grasp_plan', now)
@@ -746,6 +800,8 @@ class Mission:
                     reason=self.reason, navigation_session_id=self.nav_session,
                     state_entered_ns=int(self.entered*1e9), base_motion_window=dict(self.base_motion_window),
                     return_to_start=self.return_navigation.status(),
+                    full_attempt=self.full_attempt,max_full_attempts=self.max_full_attempts,
+                    attempt_history=copy.deepcopy(self.attempt_history),attempt_scan_started_ns=self.attempt_scan_started_ns,
                     goal_revision=self.revision, goal_stamp_ns=self.goal_stamp,
                     elapsed_s=max(0.,now-self.started) if self.started else 0.,
                     phase_elapsed_s=max(0.,now-self.entered), pending=pending,

@@ -82,7 +82,7 @@ class FullGraspContracts(unittest.TestCase):
             with self.assertRaisesRegex(ValueError,'ASSESSMENT_UNKNOWN'):
                 release_for_retry(segment,current,CFG,open_angle=1.,rate=100.,velocity=2.,assessment=state)
 
-    def test_failed_close_continues_retreat_home_without_retry(self):
+    def test_failed_close_retries_only_after_home_and_stops_after_second(self):
         class FailedCloses(Fixture):
             def effect(self,kind,data):
                 super().effect(kind,data)
@@ -97,7 +97,10 @@ class FullGraspContracts(unittest.TestCase):
                 return super().compute(data)
         f=FailedCloses();self.assertEqual(f.run(),'TARGET_NOT_GRASPED')
         operations=[d['operation'] for kind,d in f.effects if kind=='compute']
-        self.assertEqual(operations.count('close'),1);self.assertEqual(operations.count('grasp_plan'),1)
+        self.assertEqual(operations.count('close'),2);self.assertEqual(operations.count('grasp_plan'),2)
+        first_home=operations.index('home')
+        self.assertEqual(operations[first_home+1:first_home+3],['retry_home_open','scan_pose'])
+        self.assertEqual(operations.count('home'),2)
         self.assertNotIn('retry_open',operations);self.assertNotIn('reverse_search',operations)
         self.assertEqual(operations[-2: ],['retreat','home'])
         self.assertEqual(operations[-1],'home')

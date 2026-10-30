@@ -17,6 +17,14 @@ class Tests(unittest.TestCase):
         self.assertIn('SCENE_SNAPSHOT_STALE:legs',text)
         self.assertNotIn('не итог',scene_status_line('READY'))
 
+    def test_second_attempt_and_home_release_are_visible(self):
+        text=' '.join(terminal_lines(dict(event='mission_state',state='ARM_SCAN_POSE',
+            reason='SECOND_ATTEMPT_AFTER_CONFIRMED_HOME',full_attempt=2,
+            pending=dict(kind='compute',operation='retry_home_open'))))
+        self.assertIn('Попытка: 2 / 2',text)
+        self.assertIn('HOME подтверждён',text)
+        self.assertIn('открытие гриппера в HOME',text)
+
     def test_periodic_progress_is_not_printed(self):
         self.assertEqual(terminal_lines(dict(event='planning_progress',stage='collision_approach',elapsed_s=30.)),[])
         text=''.join(terminal_lines(dict(event='planning_stage',stage='collision_approach',status='completed',elapsed_s=51.)))

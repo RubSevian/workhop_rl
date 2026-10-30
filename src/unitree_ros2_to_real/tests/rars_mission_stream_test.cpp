@@ -159,6 +159,23 @@ int main(){
    assert(empty.Start(1,"close",std::vector<std::array<float,7>>(2,f.joints.position),at(200),f));
    f.joints.position[6]=q;empty.Tick(at(200.01),f,true);
    assert(empty.state()=="SUCCEEDED");assert(empty.assessment().state()=="NOT_GRASPED");
+   // Full second attempt: HOME preserves holding; release must precede scan.
+   f.joints.position.fill(0);f.joints.velocity.fill(0);
+   auto home_points=std::vector<std::array<float,7>>(2,f.joints.position);
+   for(auto& point:home_points)point[6]=empty.command().q[6];
+   assert(empty.Start(2,"home",home_points,at(201),f));
+   for(int n=0;n<50;++n)empty.Tick(at(201+n*.01),f,true);
+   assert(empty.state()=="SUCCEEDED"&&empty.holding());
+   auto release_points=std::vector<std::array<float,7>>(401,f.joints.position);
+   for(size_t n=0;n<release_points.size();++n)release_points[n][6]=.8F*n/400;
+   assert(!empty.Start(3,"move",release_points,at(202),f));
+   assert(empty.Start(3,"release",release_points,at(202),f));
+   assert(!empty.holding());
+   for(int n=0;n<450;++n){f.joints.position[6]=.8F*std::min(n,400)/400;empty.Tick(at(202+n*.01),f,true);}
+   assert(empty.state()=="SUCCEEDED"&&!empty.holding());
+   auto scan_points=std::vector<std::array<float,7>>(2,f.joints.position);
+   assert(empty.Start(4,"move",scan_points,at(207),f));
+
   }
   FreshStream contact(c);auto f=feedback;f.joints.position[6]=.7;
   assert(contact.Start(1,"close",std::vector<std::array<float,7>>(2,f.joints.position),at(210),f));

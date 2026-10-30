@@ -405,6 +405,24 @@ class Planning:
         metrics['detection_reason']='INSUFFICIENT_AGREEING_FRAMES'
         return None
 
+    def retry_home_open(self, sample, owner):
+        """Release only confirmed NOT_GRASPED at measured HOME, with fresh collision checks."""
+        start=np.asarray(sample['q7'],dtype=float).copy()
+        if (not owner.get('arm_home_ready') or start.shape!=(7,) or not np.isfinite(start).all()
+                or np.max(np.abs(start[:6]))>self.cfg['execution']['joint_reached_tolerance_rad']):
+            raise ValueError('HOME_UNCONFIRMED')
+        if not owner.get('gripper_command_active') or owner.get('grasp_assessment')!='NOT_GRASPED':
+            raise ValueError('RETRY_OBJECT_HOLD_UNKNOWN')
+        start[6]=float(owner['gripper_hold_target'])
+        opened=self.geometry.motor_angle_for_width(self.grasp['robot']['rars01']['max_grasp_width_m'])
+        velocity=self.grasp['robot']['rars01']['position_velocity_limits_rad_s'][6]
+        duration=max(self.grasp['robot']['ready_pose']['duration'],1.875*abs(opened-start[6])/velocity)
+        points=self.samples(start,[start[:6]],duration,opened)
+        # Owner still holds until release admission; retain its payload contract.
+        trajectory=self.checked(points,sample,True,'release')
+        trajectory.update(operation='retry_home_open',retry_release_assessment='NOT_GRASPED')
+        return dict(trajectory=trajectory)
+
     def samples(self, start, targets, duration, gripper_end=None, *, search=False, object_motion=False, scan_pose=False):
         from rars01_graspnet.real_grasp_trajectory import waypoint_motion_samples
         # Measured overshoot is valid geometry, but commanded points must stay
@@ -749,6 +767,8 @@ class Planning:
             object_anchor=WorldObjectAnchor(np.asarray(anchor).tolist(),at['capture_mono_ns'],at['capture_ros_ns'],
                 at['body'].navigation_session_id,at['body'].tf_revision,request['goal_revision'],request['owner_session_id'],float(d.conf))
             return dict(object_anchor=object_anchor.data(),grasp_plan=dict(approved_segments=approved_candidates[id(candidate)],planning_scene_snapshot=copy.deepcopy(current['scene_snapshot']),scan_q=start[:6].tolist(),pregrasp=candidate.pregrasp_joints.tolist(),approach=[q.tolist() for q in candidate.approach_joint_waypoints],retreat=[q.tolist() for q in candidate.retreat_joint_waypoints],cost=candidate.cost,object_map=anchor.tolist(),camera_to_arm=cam_to_arm.tolist(),poses_map=poses_map,world_grasp_anchor=world.data(),pose_kind='End_link_TCP'))
+        elif op=='retry_home_open':
+            return self.retry_home_open(sample,owner)
         elif op=='retry_open':
             from .approved_motion import release_for_retry
             trajectory=release_for_retry(request['reverse_segment'],sample,self.cfg,

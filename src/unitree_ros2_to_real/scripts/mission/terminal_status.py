@@ -26,7 +26,7 @@ STAGES={'detection':'Получение кадров и обнаружение �
     'collision_close':'Проверка коллизий: закрытие губок',
     'collision_return_scan':'Проверка коллизий: возврат в сохранённую позу сканирования',
     'collision_home':'Проверка коллизий: возврат HOME'}
-OPERATIONS={'scan_pose':'поза поиска','detect':'обнаружение объекта','grasp_plan':'план захвата',
+OPERATIONS={'retry_home_open':'открытие гриппера в HOME перед повторной попыткой','scan_pose':'поза поиска','detect':'обнаружение объекта','grasp_plan':'план захвата',
     'observe_grasp':'наблюдение захвата','pregrasp':'позиция перед захватом',
     'approach':'подход','close':'закрытие губок','retreat':'отход','home':'возврат HOME',
     'scan_step':'поворот поиска','scan_return':'возврат после поиска'}
@@ -84,6 +84,10 @@ def terminal_lines(row):
                 fields.append('Этап длился: '+seconds(row['previous_phase_duration_s']))
             return block('['+label+']',*fields,'Код: '+reason)
         fields=['Статус: '+STATES.get(state,state or 'Состояние неизвестно')]
+        if row.get('full_attempt') is not None:
+            fields.append('Попытка: '+str(row['full_attempt'])+' / 2')
+        if reason=='SECOND_ATTEMPT_AFTER_CONFIRMED_HOME':
+            fields.append('HOME подтверждён; начинаем новый поиск после первой неудачи.')
         if pending.get('operation'):
             kind='Расчёт' if pending.get('kind')=='compute' else 'Движение'
             fields.append(kind+': '+OPERATIONS.get(pending['operation'],pending['operation']))
