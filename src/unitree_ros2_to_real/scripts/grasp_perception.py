@@ -1,12 +1,14 @@
 #!/usr/bin/env python3
 """Perception/planning process, with a bounded work queue and no serial SDK.
 
-CUDA waits never block ROS callbacks or the independent arm-owner cancel port.
+Model inference runs in child processes; ROS health remains in this process.
 """
 import json
+import faulthandler
 from pathlib import Path
 from mission.leg_plan_trace import LegPlanTrace
 from mission.compute_cancel import ComputeCancellation
+from mission.camera_intent import camera_requested
 from mission.stop_home import geometry_home_ready
 import queue
 import threading
@@ -57,6 +59,12 @@ class Perception(Node):
         self.controlled_stop=False;self.r3_output_stopped=False;self.r3_state='';self.vision_reloading=False;self.r3_phase='';self.last_r3_stamp=0;self.vision_cancel_complete=False;self.cancel_thread=None
         physical=self.declare_parameter('physical',False).value
         self.reason='READ_ONLY';self.backend=None;self.busy=False;self.started=0.;self.last_compute={}
+        self.camera_wanted=False;self.camera_intent_stamp=0
+        self.health_sequence=0;self.health_stage='startup';self.health_stage_ns=time.monotonic_ns()
+        self.health_stage_times={}
+        self.traceback_file=None
+        if self.short_journal is not None:
+            self.traceback_file=self.short_journal.path.with_suffix('.stacks.log').open('a')
         self.startup_checks=dict(geometry=False,yolo=False,graspnet=False,camera=False)
         self.lock=threading.Lock();self.last_request=0;self.request_session=''
         self.compute_cancel=ComputeCancellation()
@@ -64,6 +72,7 @@ class Perception(Node):
         self.stop_event=threading.Event();self.worker_thread=None
         self.health=self.create_publisher(String,'/rars01/mission/perception_health',1)
         self.results=self.create_publisher(String,'/rars01/mission/computed',1)
+        self.result_guard=self.create_guard_condition(self.publish_completed)
         self.joints=self.create_publisher(JointState,'/rars01/joint_states',1)
         owner_type=String
         if self.arm_state_transport=='typed':
@@ -186,10 +195,19 @@ class Perception(Node):
 
     def sample_context(self,capture_ns,ros_ns,*,wait=True):
         def read():
-            with self.lock:
-                if self.body_source.provider.fault:raise ValueError(self.body_source.provider.fault)
-                if self.scene_error and not transient_scene_error(self.scene_error):raise ValueError(self.scene_error)
-                return self.scene_buffer.snapshot(time.monotonic_ns(),capture_ns)
+            try:
+                with self.lock:
+                    if self.body_source.provider.fault:raise ValueError(self.body_source.provider.fault)
+                    if self.scene_error and not transient_scene_error(self.scene_error):raise ValueError(self.scene_error)
+                    return self.scene_buffer.snapshot(time.monotonic_ns(),capture_ns)
+            except ValueError as error:
+                backend=getattr(self,'backend',None)
+                if backend is not None:
+                    counts=backend.compute_metrics.setdefault('frame_scene_rejections',{})
+                    reason=str(error)
+                    if reason not in counts and len(counts)>=32:reason='OTHER_SCENE_REJECTION'
+                    counts[reason]=counts.get(reason,0)+1
+                raise
         # None explicitly requests a coherent live scene at its body measurement.
         # Camera requests retain their exposure timestamp while delayed odometry
         # arrives. Only the planning worker waits; the ROS executor stays free.
@@ -208,6 +226,9 @@ class Perception(Node):
             status=json.loads(msg.data)
             stamp=status['observed_ns']
             if type(stamp) is not int or not 0<=(time.monotonic_ns()-stamp)/1e9<=self.cfg['execution']['heartbeat_ttl_s']:return
+            if stamp<=self.camera_intent_stamp:return
+            self.camera_intent_stamp=stamp
+            self.camera_wanted=camera_requested(status)
             self.compute_cancel.observe(status)
         except (ValueError,KeyError,TypeError):return
 
@@ -227,6 +248,20 @@ class Perception(Node):
             if journal is not None:
                 journal.put('compute_started',request_id=d['id'],mission_session_id=d['session_id'],operation=d['operation'])
         except (ValueError,KeyError,TypeError,queue.Full):return
+
+    def service_camera_intent(self):
+        # Only this worker starts/stops the camera in normal operation.
+        # No blocking camera startup inside a ROS subscription callback.
+        if not self.controlled_stop:
+            wanted=(self.camera_wanted and
+                0<=(time.monotonic_ns()-self.camera_intent_stamp)/1e9<=self.cfg['execution']['heartbeat_ttl_s'])
+            if wanted and self.backend.camera_mode=='standby':
+                try:
+                    self.backend.resume_camera()
+                except Exception as error:
+                    self.get_logger().error('CAMERA_EARLY_START_FAILED:'+str(error))
+            elif not self.camera_wanted and self.backend.camera_mode=='active':
+                self.backend.pause_camera()
 
     def work(self):
         try:
@@ -259,7 +294,9 @@ class Perception(Node):
             while not self.stop_event.is_set():
                 try:request=self.jobs.get(timeout=.1)
                 except queue.Empty:
-                    self.resume_task_perception();continue
+                    self.resume_task_perception()
+                    self.service_camera_intent()
+                    continue
                 if self.stop_event.is_set():break
                 out={k:request[k] for k in ('id','session_id','navigation_session_id','owner_session_id','goal_revision')}
                 if getattr(self,'controlled_stop',False) and (request['operation']!='home' or self.r3_phase not in CONTROLLED_HOME_PHASES):
@@ -316,7 +353,9 @@ class Perception(Node):
                     encoding_started=time.monotonic()
                     encoded=json.dumps(out,allow_nan=False)
                     self.last_compute['result_encode_s']=time.monotonic()-encoding_started
+                    out['queued_ns']=time.monotonic_ns()
                     self.completed.put_nowait((out,encoded))
+                    self.result_guard.trigger()
         except Exception as e:
             self.reason='PERCEPTION_INIT_FAILED:'+str(e)
             self.get_logger().error(self.reason)
@@ -326,12 +365,15 @@ class Perception(Node):
                 except Exception as error:self.get_logger().error(str(error))
 
     def destroy_node(self):
+        if getattr(self,'traceback_file',None) is not None:
+            faulthandler.cancel_dump_traceback_later()
         self.stop_event.set()
         if self.backend is not None:
             self.backend.collision.cancel_reason='SHUTDOWN'
             # Only terminate our own inference worker, never an arm/leg owner.
-            worker=getattr(self.backend,'worker',None)
-            if worker is not None:worker.close(force=True)
+            for name in ('worker','yolo_worker'):
+                worker=getattr(self.backend,name,None)
+                if worker is not None:worker.close(force=True)
         if self.worker_thread is not None:
             self.worker_thread.join(timeout=self.cfg['startup']['shutdown_timeout_s'])
             if self.worker_thread.is_alive():
@@ -347,10 +389,41 @@ class Perception(Node):
         if trace is not None:trace.close()
         journal=getattr(self,'short_journal',None)
         if journal is not None:journal.close()
+        if getattr(self,'traceback_file',None) is not None:
+            self.traceback_file.close()
         return super().destroy_node()
+
+    def publish_completed(self):
+        # Executor-owned: does not update scene or refresh the result timestamp.
+        try:out,encoded=self.completed.get_nowait()
+        except queue.Empty:return
+        self.busy=False
+        allowed=(not self.stop_event.is_set() and self.compute_cancel.allows(out)
+                 and (not self.controlled_stop or out.get('compute_metrics',{}).get('operation')=='home'))
+        published_ns=time.monotonic_ns()
+        queued_ns=out.get('queued_ns',out['observed_ns'])
+        if allowed:
+            # Reuse the already encoded large plan; append only timing scalars.
+            encoded=encoded[:-1]+',"queued_ns":'+str(queued_ns)+',"publish_started_ns":'+str(published_ns)+'}'
+            self.results.publish(String(data=encoded))
+        journal=getattr(self,'short_journal',None)
+        if journal is not None:
+            journal.put('compute_delivery',request_id=out['id'],published=allowed,
+                completed_ns=out['observed_ns'],queued_ns=queued_ns,publish_started_ns=published_ns,
+                queue_wait_s=(published_ns-queued_ns)/1e9)
+
+    def health_checkpoint(self,stage):
+        now=time.monotonic_ns()
+        self.health_stage_times[self.health_stage]=(now-self.health_stage_ns)/1e9
+        self.health_stage=stage;self.health_stage_ns=now
 
     def tick(self):
         tick_started=time.monotonic_ns()
+        self.health_checkpoint('subscriptions')
+        self.health_stage_times={}
+        if self.traceback_file is not None:
+            faulthandler.dump_traceback_later(source_ttl(self.cfg,'perception'),
+                file=self.traceback_file,repeat=False)
         previous=getattr(self,'last_tick_started_ns',tick_started)
         self.last_tick_started_ns=tick_started
         self.tick_gap_s=(tick_started-previous)/1e9
@@ -363,6 +436,8 @@ class Perception(Node):
         dispatch_pending(self.odometry_subscription,self.odom)
         dispatch_pending(self.body_source.listener.tf_sub,self.body_source.listener.callback)
         dispatch_pending(self.mission_status_subscription,self.mission_status)
+        self.publish_completed()
+        self.health_checkpoint('scene')
         try:
             body=self.body_source.select(self.navigation_session)
             if body:
@@ -381,6 +456,7 @@ class Perception(Node):
                 trace.observe(latest[1],latest[0],busy=self.busy,r3_phase=self.r3_phase,
                     owner_status=dict(self.trace_owner))
         now=time.monotonic()
+        self.health_checkpoint('readiness')
         runtime_readiness=self.backend.readiness() if self.backend else dict(ready=False,reason='PERCEPTION_NOT_INITIALIZED')
         home_ready=geometry_home_ready(controlled_stop=self.controlled_stop,phase=self.r3_phase,
             cancel_complete=self.vision_cancel_complete,backend_ready=runtime_readiness['ready'] and self.reason=='READY',
@@ -398,7 +474,9 @@ class Perception(Node):
             reason='CONTROLLED_STOP_PREPARING_GEOMETRY'
         report_scene(self,reason)
         camera_mode=self.backend.camera_mode if self.backend else 'unverified'
-        self.health.publish(String(data=json.dumps(dict(observed_ns=time.monotonic_ns(),ready=bool(ready),home_compute_ready=home_ready,active_request_id=self.last_request,active_request_session=self.request_session,reason=reason,scene_error=self.scene_error,busy=self.busy,last_compute=self.last_compute,busy_elapsed_s=now-self.started if self.busy else 0.,
+        self.health_checkpoint('encode_publish')
+        self.health_sequence+=1
+        self.health.publish(String(data=json.dumps(dict(health_sequence=self.health_sequence,health_stages=dict(self.health_stage_times),observed_ns=time.monotonic_ns(),ready=bool(ready),home_compute_ready=home_ready,active_request_id=self.last_request,active_request_session=self.request_session,reason=reason,scene_error=self.scene_error,busy=self.busy,last_compute=self.last_compute,busy_elapsed_s=now-self.started if self.busy else 0.,
             callback_timing=dict(gap_s=self.tick_gap_s,max_gap_s=self.max_tick_gap_s,
                 preparation_s=(time.monotonic_ns()-tick_started)/1e9,previous_tick_s=getattr(self,'last_tick_duration_s',0.)),
             model_ready=bool(self.backend is not None and self.reason=='READY' and not getattr(self,'controlled_stop',False)),
@@ -416,12 +494,15 @@ class Perception(Node):
             collision_progress=dict(getattr(self.backend.collision,'last_stats',{})) if self.backend else {},
             leg_plan_trace=dict(path=str(trace.path),error=trace.error,dropped=trace.dropped) if trace else None,
             lowstate_decode=(self.native_leg_input.status() if getattr(self,'native_leg_input',None) else self.leg_reader.status()),tf_pair=dict(self.body_source.diagnostics),streams=self.scene_buffer.diagnostics(time.monotonic_ns())))))
-        try:
-            out,encoded=self.completed.get_nowait();self.busy=False
-            if self.compute_cancel.allows(out) and (not getattr(self,'controlled_stop',False) or out.get('compute_metrics',{}).get('operation')=='home'):
-                self.results.publish(String(data=encoded))
-        except queue.Empty:pass
+        self.health_checkpoint('result')
         self.last_tick_duration_s=(time.monotonic_ns()-tick_started)/1e9
+        if (self.last_tick_duration_s>self.cfg['execution']['tick_s'] or
+                self.tick_gap_s>self.cfg['execution']['heartbeat_ttl_s']):
+            if self.short_journal is not None:
+                self.short_journal.put('health_timing',sequence=self.health_sequence,
+                    gap_s=self.tick_gap_s,duration_s=self.last_tick_duration_s,
+                    stages=dict(self.health_stage_times),active_request_id=self.last_request)
+        self.health_checkpoint('idle')
 
 def main():
     from mission.ros_main import spin

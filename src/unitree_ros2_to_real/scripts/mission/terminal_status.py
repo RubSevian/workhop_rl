@@ -37,7 +37,10 @@ def reason_text(reason):
     if reason=='TARGET_BINDING_SEGMENTATION_REQUIRED':return 'Для привязки захвата нужна маска сегментации; рамка недостаточна'
     if reason=='CONTROLLED_STOP_PREPARING_GEOMETRY':return 'Остановка распознавания; подготовка расчёта возврата руки'
     reason=str(reason or '')
-    descriptions={'PHASE_TIMEOUT':'Истёк общий срок этапа',
+    descriptions={'DETECTION_RESULT_RETRY_EXHAUSTED':'Повторный результат поиска тоже устарел; продолжение заблокировано',
+                  'DETECTION_RESULT_RECOVERY_TIMEOUT':'Истекло время восстановления доставки результата поиска',
+                  'PERCEPTION_STATUS_STALE':'Просрочен статус Perception; возраст и операция записаны в STALE_INPUT_DIAGNOSTIC',
+        'PHASE_TIMEOUT':'Истёк общий срок этапа',
         'CAMERA_FRAME_STALE':'Кадры камеры старше разрешённого возраста',
         'RGBD_STALE_OR_REPEATED':'Не получены новые пригодные RGB-D кадры',
         'RGBD_TF_FEEDBACK_STALE':'Не удалось согласовать кадр с измерениями робота',

@@ -307,6 +307,11 @@ class PairingTests(unittest.TestCase):
         perception.odom=lambda msg:Perception.odom(perception,msg)
         perception.mission_status=lambda msg:None
         perception.body_source.listener.tf_sub=None
+        import threading
+        perception.stop_event=threading.Event();perception.traceback_file=None
+        perception.health_sequence=0;perception.health_stage_times={}
+        perception.health_checkpoint=lambda stage:None
+        perception.publish_completed=lambda:Perception.publish_completed(perception)
         start=self.now
         for i in range(100):
             self.now=start+i*10_000_000
@@ -327,14 +332,15 @@ class PairingTests(unittest.TestCase):
         perception.results=NS(publish=lambda msg:published.append(msg.data))
         request=dict(id=42,session_id='session',operation='scan_pose',observed_ns=self.now)
         perception.compute_cancel.begin(request)
-        result=dict(id=42,session_id='session',ok=True,trajectory={'points':[[0.]*7]*2})
+        result=dict(id=42,session_id='session',observed_ns=self.now,ok=True,trajectory={'points':[[0.]*7]*2})
         encoded=json.dumps(result)
         perception.completed.put((result,encoded));Perception.tick(perception)
-        self.assertEqual(published,[encoded])
+        self.assertEqual(len(published),1)
+        self.assertEqual(json.loads(published[0])['observed_ns'],self.now)
         perception.completed.put((result,encoded))
         perception.compute_cancel.observe(dict(session_id='session',observed_ns=self.now,state='BLOCKED'))
         Perception.tick(perception)
-        self.assertEqual(published,[encoded])
+        self.assertEqual(len(published),1)
 
     def test_odometry_tf_pose_mismatch_is_reported_and_not_adopted(self):
         self.buffer.set_transform(tf('camera_init','aft_mapped',self.now),'test')

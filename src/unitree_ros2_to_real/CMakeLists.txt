@@ -81,7 +81,7 @@ ament_target_dependencies(go2_r3_commissioning rclcpp std_msgs std_srvs geometry
 add_library(rars_auto_home STATIC src/rars_auto_home.cpp)
 target_include_directories(rars_auto_home PUBLIC include "${RARS_ARM_SDK_ROOT}/include")
 add_executable(scene_leg_collector src/scene_leg_collector.cpp)
-ament_target_dependencies(scene_leg_collector rclcpp unitree_go go2_scene_interfaces)
+ament_target_dependencies(scene_leg_collector rclcpp std_msgs unitree_go go2_scene_interfaces)
 add_executable(rars_r3_owner src/rars_r3_owner.cpp)
 target_link_libraries(rars_r3_owner rars_sdk_readonly rars_auto_home yaml-cpp)
 ament_target_dependencies(rars_r3_owner rclcpp std_msgs std_srvs rars01_state_interfaces)

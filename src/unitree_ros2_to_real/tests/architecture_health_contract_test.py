@@ -48,6 +48,9 @@ class HeartbeatContracts(unittest.TestCase):
                     backend=NS(readiness=lambda:dict(ready=camera_ok,reason='READY' if camera_ok else 'CAMERA_FRAME_STALE'),
                         camera_mode='active',startup_checks={},compute_metrics={},collision=NS()),
                     health=Mock(),last_compute={},startup_checks={},leg_reader=NS(status=lambda:{}),completed=queue.Queue())
+                node.health_checkpoint=lambda stage:None;node.traceback_file=None;node.short_journal=None
+                node.publish_completed=lambda:None;node.health_sequence=0;node.health_stage_times={}
+                node.cfg['execution'].update(tick_s=.02,heartbeat_ttl_s=.25)
                 scope['tick'](node)
                 row=json.loads(node.health.publish.call_args.args[0].data)
                 self.assertEqual(row['ready'],expected)
@@ -87,6 +90,9 @@ class HeartbeatContracts(unittest.TestCase):
                 backend=NS(readiness=lambda:dict(ready=True,reason='READY'),camera_mode='active',
                     startup_checks={},compute_metrics={},collision=NS()),
                 health=Mock(),last_compute={},startup_checks={},leg_reader=NS(status=lambda:{}),completed=queue.Queue())
+            node.health_checkpoint=lambda stage:None;node.traceback_file=None;node.short_journal=None
+            node.publish_completed=lambda:None;node.health_sequence=0;node.health_stage_times={}
+            node.cfg['execution'].update(tick_s=.02,heartbeat_ttl_s=.25)
             scope['tick'](node)
             result=json.loads(node.health.publish.call_args.args[0].data)
             self.assertEqual(result['ready'],expected)

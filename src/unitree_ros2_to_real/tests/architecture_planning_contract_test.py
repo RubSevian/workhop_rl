@@ -16,7 +16,7 @@ class PlanningContracts(unittest.TestCase):
     def test_intentional_camera_close_keeps_geometry_ready(self):
         p=Planning.__new__(Planning);p.camera_mode='active';p.last_detection=object()
         p.startup_checks={'geometry':True,'camera':True,'yolo':True,'graspnet':True}
-        p.worker=NS(is_alive=lambda:True)
+        p.worker=NS(is_alive=lambda:True);p.yolo_worker=NS(is_alive=lambda:True)
         observations=[]
         def close():
             observations.append(p.readiness())

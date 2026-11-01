@@ -101,6 +101,7 @@ class ArmOwner final:public rclcpp::Node {
    response->success=true;response->message="owner advancement cancelled; gripper hold preserved; no HOME issued";
   });
   state_=create_publisher<std_msgs::msg::String>("/rars01/commissioning/state",10);
+  temperatures_=create_publisher<std_msgs::msg::String>("/rars01/diagnostics/temperatures",1);
   if(declare_parameter<bool>("fast_state_enabled",false))
    fast_state_=create_publisher<rars01_state_interfaces::msg::ArmFastState>("/rars01/commissioning/fast_state",10);
   return_home_=create_service<std_srvs::srv::Trigger>("/rars01/control/return_home",[this](std_srvs::srv::Trigger::Request::SharedPtr,std_srvs::srv::Trigger::Response::SharedPtr response){
@@ -205,13 +206,20 @@ class ArmOwner final:public rclcpp::Node {
   mission_=std::make_unique<MissionStream>(c);
   home_->SetMissionProvider([this](ArmTime now,const AutoHomeStatus& status)->std::optional<AutoHomeController::Command>{
    if(!mission_->has_command())return std::nullopt;
-   auto command=mission_->Tick(now,status,Authority(now,home_requested_||active_home_,true));
+   const bool authority=Authority(now,home_requested_||active_home_,true);
+   if(!authority&&mission_->busy()){
+    const auto age=[&](ArmTime stamp){return stamp==ArmTime{}?-1.:std::chrono::duration<double>(now-stamp).count();};
+    RCLCPP_ERROR(get_logger(),"ARM_AUTHORITY_REVOKED plan=%llu heartbeat_ttl_s=%.3f feedback_ttl_s=%.3f r3_age_s=%.6f nav_age_s=%.6f health_age_s=%.6f feedback_age_s=%.6f r3_authority=%d nav_ready=%d health_ready=%d r3_active=%d manipulating=%d home_request=%d stopping=%d home_phase=%d completed_home_hold=%d mission_session_present=%d retired_session=%d nav_health_match=%d nav_r3_match=%d revision=%llu r3_publishers=%zu nav_publishers=%zu health_publishers=%zu phase=%s",
+     static_cast<unsigned long long>(mission_->id()),mission_ttl_,mission_feedback_ttl_,age(r3_stamp_),age(nav_stamp_),age(health_stamp_),status.feedback_age_s,
+     int(r3_authority_),int(nav_ready_),int(health_ready_),int(r3_active_),int(health_manipulating_),int(home_requested_||active_home_),int(r3_stopping_),int(r3_home_phase_allowed_),int(mission_->CompletedHomeHoldAllowed(health_phase_)),int(!mission_session_.empty()),int(mission_session_==retired_session_),int(nav_session_==health_nav_session_),int(r3_nav_session_==nav_session_),static_cast<unsigned long long>(health_goal_revision_),count_publishers("/go2/locomotion_status"),count_publishers("/go2/mission/readiness"),count_publishers("/go2/mission/health"),health_phase_.c_str());
+   }
+   auto command=mission_->Tick(now,status,authority);
    scan_home_reference_.Observe(mission_->state(),status.joints.position);
    return command;
   });
   r3_sub_=create_subscription<std_msgs::msg::String>("/go2/locomotion_status",1,[this](std_msgs::msg::String::SharedPtr msg){
-   r3_authority_=r3_planned_disable_ready_=false;try{auto v=YAML::Load(msg->data);const auto ns=v["observed_ns"].as<int64_t>();
-    if(ns<=Ns(r3_stamp_))return;r3_stamp_=ArmTime(std::chrono::nanoseconds(ns));
+   try{auto v=YAML::Load(msg->data);const auto ns=v["observed_ns"].as<int64_t>();
+    if(ns<=Ns(r3_stamp_))return;r3_authority_=r3_planned_disable_ready_=false;r3_stamp_=ArmTime(std::chrono::nanoseconds(ns));
     r3_nav_session_=v["navigation_session_id"].as<std::string>();
     const auto session=v["controller_session_id"].as<std::string>();
     if(!r3_session_.empty()&&r3_session_!=session){scan_home_reference_.Reset();mission_->Cancel(home_->status(),"controller_session_changed");retired_session_=mission_session_;}
@@ -221,15 +229,15 @@ class ArmOwner final:public rclcpp::Node {
     r3_planned_disable_ready_=r3_stopping_&&v["phase"].as<std::string>()=="ARM_DISABLE"&&v["pd_hold_confirmed"]&&v["pd_hold_confirmed"].as<bool>()&&!v["fault_latched"].as<bool>();
     auto command=v["motion_command"].as<std::vector<double>>();bool zero=command.size()==3;for(double x:command)zero=zero&&std::isfinite(x)&&std::abs(x)<1e-6;
     r3_authority_=v["operation_profile"].as<std::string>()=="full_mission"&&v["capabilities"]["arm_motion"].as<bool>()&&!v["fault_latched"].as<bool>()&&zero;
-   }catch(...){r3_authority_=false;}
+   }catch(...){r3_authority_=r3_planned_disable_ready_=false;}
   });
   nav_sub_=create_subscription<std_msgs::msg::String>("/go2/mission/readiness",1,[this](std_msgs::msg::String::SharedPtr msg){
-   nav_ready_=false;try{auto v=YAML::Load(msg->data);const auto ns=v["observed_ns"].as<int64_t>();if(ns<=Ns(nav_stamp_))return;
+   try{auto v=YAML::Load(msg->data);const auto ns=v["observed_ns"].as<int64_t>();if(ns<=Ns(nav_stamp_))return;nav_ready_=false;
     nav_stamp_=ArmTime(std::chrono::nanoseconds(ns));nav_session_=v["session_id"].as<std::string>();nav_ready_=v["navigation_ready"].as<bool>();
    }catch(...){nav_ready_=false;}
   });
   health_sub_=create_subscription<std_msgs::msg::String>("/go2/mission/health",1,[this](std_msgs::msg::String::SharedPtr msg){
-   health_ready_=false;try{auto v=YAML::Load(msg->data);const auto ns=v["observed_ns"].as<int64_t>();if(ns<=Ns(health_stamp_))return;
+   try{auto v=YAML::Load(msg->data);const auto ns=v["observed_ns"].as<int64_t>();if(ns<=Ns(health_stamp_))return;health_ready_=false;
     health_stamp_=ArmTime(std::chrono::nanoseconds(ns));const auto session=v["session_id"].as<std::string>();
     if(!mission_session_.empty()&&mission_session_!=session){scan_home_reference_.Reset();mission_->Cancel(home_->status(),"mission_session_changed");retired_session_=mission_session_;}
     mission_session_=session;health_nav_session_=v["navigation_session_id"].as<std::string>();health_ready_=v["ready"].as<bool>();health_goal_revision_=v["goal_revision"].as<uint64_t>();
@@ -336,6 +344,22 @@ class ArmOwner final:public rclcpp::Node {
   // A second deadline gate would drop early callbacks under normal jitter.
   try{home_->Tick(ArmClock::now(),connect_,true);}catch(const std::exception& e){home_->Fault(std::string("owner_exception: ")+e.what());}
   const auto& s=home_->status();
+  // Diagnostic-only snapshot from the existing owner; no extra serial reads.
+  const auto thermal_now=ArmClock::now();
+  if(thermal_now>=next_temperature_){
+   next_temperature_=thermal_now+std::chrono::seconds(1);
+   YAML::Emitter thermal;thermal<<YAML::Flow<<YAML::BeginMap
+    <<YAML::Key<<"observed_ns"<<YAML::Value<<Ns(thermal_now)
+    <<YAML::Key<<"owner_session_id"<<YAML::Value<<owner_session_
+    <<YAML::Key<<"frame_received_ns"<<YAML::Value<<(s.feedback_stamp?Ns(*s.feedback_stamp):0)
+    <<YAML::Key<<"connected"<<YAML::Value<<s.communication.connected
+    <<YAML::Key<<"valid"<<YAML::Value<<Values(s.joints.valid)
+    <<YAML::Key<<"motor_id"<<YAML::Value<<std::vector<int>(s.joints.motor_id.begin(),s.joints.motor_id.end())
+    <<YAML::Key<<"mos_c"<<YAML::Value<<Values(s.joints.mos_temperature)
+    <<YAML::Key<<"rotor_c"<<YAML::Value<<Values(s.joints.rotor_temperature)
+    <<YAML::EndMap;
+   std_msgs::msg::String message;message.data=thermal.c_str();temperatures_->publish(message);
+  }
   if(mission_)mission_->ObserveAssessment(ArmClock::now(),s);
   if(mission_&&mission_->timeout_snapshot()&&mission_->timeout_snapshot()->plan_id!=logged_timeout_id_){
    const auto& d=*mission_->timeout_snapshot();logged_timeout_id_=d.plan_id;
@@ -518,5 +542,7 @@ class ArmOwner final:public rclcpp::Node {
  ScanHomeReference scan_home_reference_;double scan_home_tolerance_=.025;
  rclcpp::Publisher<rars01_state_interfaces::msg::ArmFastState>::SharedPtr fast_state_;
  rclcpp::Publisher<std_msgs::msg::String>::SharedPtr state_;rclcpp::TimerBase::SharedPtr timer_;
+ rclcpp::Publisher<std_msgs::msg::String>::SharedPtr temperatures_;
+ ArmClock::time_point next_temperature_{};
 };
 int main(int argc,char** argv){rclcpp::init(argc,argv);try{rclcpp::spin(std::make_shared<ArmOwner>());}catch(const std::exception& e){RCLCPP_ERROR(rclcpp::get_logger("rars_r3"),"Failed closed: %s",e.what());rclcpp::shutdown();return 1;}rclcpp::shutdown();}

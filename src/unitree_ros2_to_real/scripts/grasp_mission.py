@@ -248,7 +248,7 @@ class Coordinator(Node):
                 age=(time.monotonic_ns()-data.get('observed_ns',0))/1e9
                 if data.get('ok') and r3.get('state')=='CONTROLLED_STOP' and r3.get('phase') in CONTROLLED_HOME_PHASES and not r3.get('fault_latched') and self.engine.fresh('r3',time.monotonic()) and data.get('observed_ns',0)>0 and age>=0:
                     trajectory=dict(data['trajectory'],**{k:pending[k] for k in ('id','session_id','navigation_session_id','owner_session_id','goal_revision')},observed_ns=time.monotonic_ns())
-                    self.trajectory_pub.publish(String(data=json.dumps(trajectory,allow_nan=False)))
+                    self.trajectory_pub.publish(String(data=json.dumps(trajectory,allow_nan=False,separators=(',',':'))))
                 else:
                     self.stop_home_result='PLAN_REJECTED:'+data.get('reason','authority revoked')
                     self.get_logger().error('Controlled-stop HOME blocked: '+data.get('reason','authority revoked'))
@@ -257,7 +257,15 @@ class Coordinator(Node):
                 self.engine.result(data,decode_finished)
                 diagnostic=dict(self.engine.last_result_diagnostic or {})
                 diagnostic.update(result_bytes=len(msg.data.encode('utf-8')),
-                                  decode_s=decode_finished-decode_started)
+                                  decode_s=decode_finished-decode_started,
+                                  result_processing_s=time.monotonic()-decode_finished)
+                for key in ('queued_ns','publish_started_ns'):
+                    stamp=data.get(key)
+                    if type(stamp) is int and stamp>0:
+                        diagnostic[key]=stamp
+                stamp=data.get('publish_started_ns')
+                if type(stamp) is int and stamp>0:
+                    diagnostic['publish_to_callback_s']=decode_started-stamp/1e9
                 journal=getattr(self,'short_journal',None)
                 if journal is not None:journal.put('compute_result_admission',**diagnostic)
                 text='COMPUTE_RESULT_ADMISSION '+json.dumps(diagnostic,ensure_ascii=False,allow_nan=False)
@@ -362,15 +370,18 @@ class Coordinator(Node):
                 if self.cancel_nav.service_is_ready():self.cancel_nav.call_async(Trigger.Request())
             elif ready:
                 data['observed_ns']=time.monotonic_ns()
-                if kind=='compute':self.compute_pub.publish(String(data=json.dumps(data,allow_nan=False)))
+                if kind=='compute':self.compute_pub.publish(String(data=json.dumps(data,allow_nan=False,separators=(',',':'))))
                 elif kind=='return_navigation_goal':
                     goal=PointStamped();goal.header.frame_id='map'
                     goal.header.stamp=Time(nanoseconds=data['stamp_ns']).to_msg()
                     goal.point.x,goal.point.y,goal.point.z=map(float,data['target'])
                     self.return_goal_pub.publish(goal)
-                elif kind=='trajectory':self.trajectory_pub.publish(String(data=json.dumps(data,allow_nan=False)))
+                elif kind=='trajectory':self.trajectory_pub.publish(String(data=json.dumps(data,allow_nan=False,separators=(',',':'))))
             else:e.cancel(now,'MISSION_HEALTH_INVALID',True)
         status=e.status(now)
+        status['callback_timing']=dict(tick_gap_s=self.input_diagnostics.tick_gap_s,
+            max_tick_gap_s=self.input_diagnostics.max_tick_gap_s,
+            tick_before_status_s=time.monotonic()-tick_started)
         status['stop_home']=self.stop_home_status
         if journal is not None:status['short_journal']=journal.status()
         status['gripper_observation']=self.grip_observer.status(time.monotonic_ns()) if self.grip_observer else {'state':'DISABLED'}

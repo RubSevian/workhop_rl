@@ -138,6 +138,9 @@ class Planning:
         from rars01_graspnet.gripper_geometry import RarsGripperGeometry
         from rars01_graspnet.real_grasp_ik import IkChecker
         self.grasp=load_config(cfg['paths']['grasp_config'])
+        timeout=self.grasp['yolo']['worker_timeout_s']
+        if type(timeout) not in (int,float) or not np.isfinite(timeout) or timeout<=0:
+            raise ValueError('YOLO_WORKER_TIMEOUT_INVALID')
         self.fk=RarsKinematics(cfg['paths']['arm_urdf'],'base_link','End_link')
         gcfg=self.grasp['robot']['gripper']['rars01']
         geometry_fields=('linkage_radius_m','connecting_rod_length_m','carriage_width_m','jaw_center_End_link_m','jaw_depth_m','jaw_height_m','R_grasp_End_link')
@@ -176,24 +179,17 @@ class Planning:
 
     def _preload_perception(self,report):
         cfg=self.cfg
-        from utils.yolo_utils import load_yolo,resolve_yolo_model_path
-        from utils.graspnet_worker import GraspNetWorker
-        report('torch_import')
-        import cv2,torch
+        from utils.yolo_utils import resolve_yolo_model_path
+        from utils.yolo_worker import YoloWorker
+        import cv2
         cv2.setNumThreads(cfg['compute']['cpu_threads'])
-        torch.set_num_threads(cfg['compute']['cpu_threads'])
+        from utils.graspnet_worker import GraspNetWorker
         if not resolve_yolo_model_path(self.grasp['yolo']['model_name'],Path(cfg['paths']['grasp_root'])).is_file():
             raise ValueError('YOLO_MODEL_MISSING_NO_AUTODOWNLOAD')
-        report('yolo_load')
-        self.yolo,self.yolo_options=load_yolo(self.grasp,project_root=Path(cfg['paths']['grasp_root']),extra_classes=[cfg['object_class'],*cfg.get('object_class_aliases',[])])
-        report('yolo_warmup')
-        from utils.yolo_utils import detect_objects
-        detect_objects(self.yolo,np.zeros((self.grasp['camera']['color_height'],self.grasp['camera']['color_width'],3),dtype=np.uint8),self.yolo_options)
-        if torch.cuda.is_available():
-            torch.cuda.synchronize()
-            # Keep warmed models/kernels, release only unused YOLO activation
-            # cache before starting GraspNet and idle NAV on the shared RAM.
-            torch.cuda.empty_cache()
+        report('yolo_worker_load_and_warmup')
+        self.yolo_worker=YoloWorker(self.grasp,cfg['paths']['grasp_root'],
+            [cfg['object_class'],*cfg.get('object_class_aliases',[])],
+            cfg['compute']['cpu_threads'],cfg['startup']['model_timeout_s'])
         self.startup_checks['yolo']=True
         checkpoint=Path(cfg['paths']['grasp_root'])/self.grasp['graspnet']['checkpoint']
         report('graspnet_worker_start')
@@ -256,7 +252,8 @@ class Planning:
     def stop_task_perception(self):
         # Called off the ROS executor; this affects only our inference child/camera.
         if getattr(self,'worker',None) is not None:self.worker.close(force=True)
-        self.pause_camera();self.yolo=None
+        if getattr(self,'yolo_worker',None) is not None:self.yolo_worker.close(force=True)
+        self.pause_camera()
         self.geometry_only_controlled_stop=True
 
     def readiness(self):
@@ -265,7 +262,8 @@ class Planning:
             return dict(ready=ready,reason='READY' if ready else 'CONTROLLED_STOP_GEOMETRY_NOT_READY')
         reason=('PERCEPTION_CLOSED' if getattr(self,'_closed',False) else
                 'PERCEPTION_STARTUP_INCOMPLETE' if not all(self.startup_checks.values()) else
-                'GRASPNET_WORKER_EXITED' if not self.worker.is_alive() else '')
+                'GRASPNET_WORKER_EXITED' if not self.worker.is_alive() else
+                'YOLO_WORKER_EXITED' if not self.yolo_worker.is_alive() else '')
         if reason:return dict(ready=False,reason=reason)
         if self.camera_mode=='standby':return dict(ready=True,reason='READY')
         if self.camera_mode=='starting':
@@ -310,7 +308,11 @@ class Planning:
         return self._admit_frame(self._capture_frame(),context)
 
     def _capture_frame(self):
-        color,depth=self.camera.get_frame()
+        started=time.monotonic()
+        try:color,depth=self.camera.get_frame()
+        finally:
+            metrics=getattr(self,'compute_metrics',{})
+            metrics['frame_capture_wait_s']=metrics.get('frame_capture_wait_s',0.)+time.monotonic()-started
         timing=getattr(self.camera,'last_frame_timing',None)
         if color is None or depth is None or timing is None:raise ValueError('RGBD_TIMESTAMPS_MISSING')
         stamp=timing['color_system_ns'];depth_stamp=timing['depth_system_ns']
@@ -326,14 +328,17 @@ class Planning:
 
     def _admit_frame(self,frame,context):
         color,depth,capture_mono,stamp,timing=frame
-        sample=context(capture_mono,stamp)
+        started=time.monotonic()
+        try:sample=context(capture_mono,stamp)
+        finally:
+            metrics=getattr(self,'compute_metrics',{})
+            metrics['frame_scene_wait_s']=metrics.get('frame_scene_wait_s',0.)+time.monotonic()-started
         arm_camera,odom_arm=self.eye.chain(capture_mono,sample['feedback_ns'],sample['q'],
             sample['odom_mono_ns'],sample['odom_vehicle'])
         self.joints=np.asarray(sample['q'])
         return color,depth,dict(sample,frame_timing=timing,arm_camera=arm_camera,odom_arm=odom_arm,capture_mono_ns=capture_mono,capture_ros_ns=stamp,frame_age_s=(time.monotonic_ns()-capture_mono)/1e9)
 
     def detect(self, context, count, required=None):
-        from utils.yolo_utils import detect_objects
         from itertools import combinations
         strict=required is None
         required=count if strict else required
@@ -342,11 +347,21 @@ class Planning:
         observations=[];metrics['detection_observations']=observations
         metrics.update(detection_required=required,detection_budget=count,detection_confirmed=False)
         for index in range(count):
+            self.collision.check_deadline()
             frame_started=time.monotonic()
             color,depth,sample=self.frame(context)
             frame_wait_s=time.monotonic()-frame_started
             started=time.monotonic()
-            _,detections=detect_objects(self.yolo,color,self.yolo_options)
+            deadline=started+self.grasp['yolo']['worker_timeout_s']
+            if self.cfg['search']['timeout_s'] is not None:
+                deadline=min(deadline,started+self.cfg['search']['timeout_s'])
+            if self.collision.work_deadline_ns is not None:
+                deadline=min(deadline,self.collision.work_deadline_ns/1e9)
+            response=self.yolo_worker.detect(color,sample['capture_mono_ns'],deadline,
+                                             self.collision.check_deadline)
+            detections=response['detections']
+            metrics['yolo_worker_timing']={k:response[k] for k in ('id','capture_ns','started_ns','completed_ns')}
+            self.collision.check_deadline()
             metrics['yolo_calls']=metrics.get('yolo_calls',0)+1
             metrics['yolo_elapsed_s']=metrics.get('yolo_elapsed_s',0.)+time.monotonic()-started
             record=dict(frame=index+1,detections=[dict(class_name=d.class_name,confidence=float(d.conf),bbox_xyxy=list(d.bbox_xyxy) if hasattr(d,'bbox_xyxy') else None) for d in detections])
@@ -362,6 +377,12 @@ class Planning:
                         capture_mono_ns=sample.get('capture_mono_ns'),
                         capture_age_at_result_s=(time.monotonic_ns()-sample['capture_mono_ns'])/1e9 if sample.get('capture_mono_ns') else None))
                 except Exception as error:metrics['debug_error']=str(error)
+            age=(time.monotonic_ns()-sample['capture_mono_ns'])/1e9
+            if not 0<=age<=self.cfg['execution']['camera_max_age_s']:
+                record['reason']='RGBD_RESULT_STALE'
+                debug_frame()
+                if strict:return None
+                continue
             candidates=[d for d in detections if d.class_name in {self.cfg['object_class'],*self.cfg.get('object_class_aliases',[])} and d.conf>=self.cfg['search']['confidence']]
             if not candidates:
                 record['reason']='NO_TARGET_ABOVE_CONFIDENCE'
@@ -870,10 +891,13 @@ class Planning:
         finally:
             self.camera=None;self.camera_mode='closed'
         try:
+            if getattr(self,'yolo_worker',None) is not None:self.yolo_worker.close(force=True)
+        except Exception as error:errors.append(str(error))
+        try:
             if getattr(self,'worker',None) is not None:self.worker.close(force=True)
         except Exception as error:errors.append(str(error))
         finally:
-            self.worker=None;self.yolo=None;self.last_detection=None
+            self.worker=None;self.yolo_worker=None;self.last_detection=None
         import gc
         gc.collect()
         torch=sys.modules.get('torch')

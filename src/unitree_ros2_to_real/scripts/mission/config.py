@@ -198,6 +198,9 @@ def load(path, workspace):
         if value is not None and (type(value) not in (int,float) or not math.isfinite(value) or value<=0):
             raise ValueError('invalid optional timeout '+section+'.'+key)
     state_timeout=cfg['execution']['state_timeout_s']
+    result_ttl=cfg['execution'].get('detection_result_ttl_s',cfg['execution']['heartbeat_ttl_s'])
+    if type(result_ttl) not in (int,float) or not math.isfinite(result_ttl) or result_ttl<=0:
+        raise ValueError('invalid execution.detection_result_ttl_s')
     recovery=cfg['execution'].get('observation_recovery_timeout_s',30.)
     retry=cfg['execution'].get('observation_retry_delay_s',.25)
     if not 0<retry<recovery or (state_timeout is not None and recovery>state_timeout):

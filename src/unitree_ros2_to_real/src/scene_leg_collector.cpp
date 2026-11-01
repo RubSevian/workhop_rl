@@ -2,6 +2,9 @@
 #include <rclcpp/rclcpp.hpp>
 #include <unitree_go/msg/low_state.hpp>
 #include <go2_scene_interfaces/msg/scene_leg_batch.hpp>
+#include <std_msgs/msg/string.hpp>
+#include <array>
+#include <sstream>
 #include <chrono>
 #include <cmath>
 #include <string>
@@ -22,6 +25,7 @@ class SceneLegCollector : public rclcpp::Node {
       throw std::invalid_argument("Invalid bounded scene collector settings");
     capacity_=static_cast<size_t>(capacity);pending_.reserve(capacity_);
     publisher_=create_publisher<Batch>("/go2/scene/leg_samples",rclcpp::QoS(32));
+    temperatures_=create_publisher<std_msgs::msg::String>("/go2/diagnostics/temperatures",rclcpp::QoS(1));
     subscription_=create_subscription<unitree_go::msg::LowState>(
       "/lowstate",rclcpp::SensorDataQoS().keep_last(1),[this](unitree_go::msg::LowState::ConstSharedPtr msg) {
         const auto stamp=MonoNs();
@@ -34,6 +38,8 @@ class SceneLegCollector : public rclcpp::Node {
           if(!std::isfinite(sample.q[i]))return;
         }
         have_tick_=true;last_tick_=msg->tick;++received_;
+        temperature_stamp_=stamp;
+        for(size_t i=0;i<temperature_c_.size();++i)temperature_c_[i]=msg->motor_state[i].temperature;
         if(pending_.size()==capacity_) { pending_.erase(pending_.begin());++dropped_; }
         pending_.push_back(sample);
       });
@@ -44,6 +50,18 @@ class SceneLegCollector : public rclcpp::Node {
       batch.samples.assign(pending_.begin(),pending_.end());pending_.clear();
       publisher_->publish(batch);
     });
+    temperature_timer_=create_wall_timer(std::chrono::seconds(1),[this] {
+      // Reuse measured LowState from this observer. Never refresh its timestamp
+      // merely because a diagnostic timer fires or the source repeats a tick.
+      const bool valid=have_tick_&&count_publishers("/lowstate")==1;
+      std::ostringstream data;
+      data<<"{\"observed_ns\":"<<MonoNs()<<",\"frame_received_ns\":"<<temperature_stamp_
+          <<",\"source_session_id\":\""<<session_<<"\",\"robot_tick\":"<<last_tick_
+          <<",\"valid\":"<<(valid?"true":"false")<<",\"temperature_c\":[";
+      for(size_t i=0;i<temperature_c_.size();++i){if(i)data<<',';data<<temperature_c_[i];}
+      data<<"]}";
+      std_msgs::msg::String message;message.data=data.str();temperatures_->publish(message);
+    });
     RCLCPP_INFO(get_logger(),"Read-only native leg observer: no actuator output; batch period %d ms",period);
   }
  private:
@@ -52,6 +70,9 @@ class SceneLegCollector : public rclcpp::Node {
   rclcpp::Publisher<Batch>::SharedPtr publisher_;
   rclcpp::Subscription<unitree_go::msg::LowState>::SharedPtr subscription_;
   rclcpp::TimerBase::SharedPtr timer_;
+  std::array<int,12> temperature_c_{};uint64_t temperature_stamp_=0;
+  rclcpp::Publisher<std_msgs::msg::String>::SharedPtr temperatures_;
+  rclcpp::TimerBase::SharedPtr temperature_timer_;
 };
 int main(int argc,char** argv) {
   rclcpp::init(argc,argv);

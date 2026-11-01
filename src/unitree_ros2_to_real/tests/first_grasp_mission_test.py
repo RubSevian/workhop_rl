@@ -2,6 +2,7 @@
 """Synthetic integration: no camera, SDK, ROS goal or physical qualification."""
 import copy
 import json
+import time
 from pathlib import Path
 import sys
 import unittest
@@ -599,6 +600,15 @@ class Integration(unittest.TestCase):
         f.tick(False)
         self.assertEqual(f.m.stale_input_diagnostic,d)
 
+    def test_perception_silence_is_identified_without_relaxing_ttl(self):
+        f,request=self.observation_fixture()
+        f.feed()
+        f.m.received['perception']=f.now-2.
+        f.m.step(f.now,int(f.now*1e9))
+        self.assertEqual(f.m.state,'BLOCKED')
+        self.assertEqual(f.m.reason,'PERCEPTION_STATUS_STALE')
+        self.assertEqual(f.m.stale_input_diagnostic['stale_sources'],['perception'])
+
     def test_input_diagnostics_distinguishes_silence_decode_and_producer_age(self):
         from mission.input_diagnostics import InputDiagnostics
         d=InputDiagnostics();d.tick(1.);d.tick(1.4)
@@ -702,12 +712,14 @@ class Integration(unittest.TestCase):
         from unittest.mock import patch
         planner=Planning.__new__(Planning);planner.cfg=copy.deepcopy(CFG)
         planner.cfg.update(object_class='light blue coffee cup',object_class_aliases=['cup'])
-        planner.grasp={'graspnet':{'min_depth':.05,'max_depth':1.}}
-        planner.camera=SimpleNamespace(K=np.eye(3));planner.yolo=None;planner.yolo_options={}
+        planner.grasp={'graspnet':{'min_depth':.05,'max_depth':1.},'yolo':{'worker_timeout_s':30.}}
+        planner.camera=SimpleNamespace(K=np.eye(3))
+        planner.collision=SimpleNamespace(check_deadline=lambda:None,work_deadline_ns=None)
         detection=SimpleNamespace(class_name='cup',conf=.9,mask=None)
-        depth=np.zeros((3,3));sample={'odom_arm':np.eye(4),'arm_camera':np.eye(4)}
+        depth=np.zeros((3,3));sample={'odom_arm':np.eye(4),'arm_camera':np.eye(4),'capture_mono_ns':time.monotonic_ns()}
         planner.frame=lambda context:(None,depth,sample)
-        module=SimpleNamespace(detect_objects=lambda *args:(None,[detection]))
+        planner.yolo_worker=SimpleNamespace(detect=lambda image,stamp,*args:dict(detections=[detection],id=1,capture_ns=stamp,started_ns=stamp,completed_ns=time.monotonic_ns()))
+        module=SimpleNamespace()
         with patch.dict(sys.modules,{'utils.yolo_utils':module}):
             self.assertIsNone(planner.detect(None,1))
             detection.mask=np.ones((3,3),dtype=bool)
@@ -725,15 +737,17 @@ class Integration(unittest.TestCase):
             planner=Planning.__new__(Planning);planner.cfg=copy.deepcopy(CFG)
             planner.cfg.update(object_class='light blue coffee cup',object_class_aliases=['cup'])
             planner.cfg['search']['max_center_shift_px']=1.
-            planner.grasp={'graspnet':{'min_depth':.05,'max_depth':1.}}
-            planner.camera=NS(K=np.eye(3));planner.yolo=None;planner.yolo_options={}
-            planner.frame=lambda context:(None,np.full((5,5),500),{'odom_arm':np.eye(4),'arm_camera':np.eye(4)})
+            planner.grasp={'graspnet':{'min_depth':.05,'max_depth':1.},'yolo':{'worker_timeout_s':30.}}
+            planner.camera=NS(K=np.eye(3))
+            planner.collision=NS(check_deadline=lambda:None,work_deadline_ns=None)
+            planner.frame=lambda context:(None,np.full((5,5),500),{'odom_arm':np.eye(4),'arm_camera':np.eye(4),'capture_mono_ns':time.monotonic_ns()})
             def detection(position):
                 if position is None:return []
                 mask=np.zeros((5,5),bool);mask[position,position]=True
                 return [NS(class_name=class_name,conf=confidence,mask=mask)]
             sequence=iter(frames)
-            module=NS(detect_objects=lambda *a:(None,detection(next(sequence))))
+            planner.yolo_worker=NS(detect=lambda image,stamp,*args:dict(detections=detection(next(sequence)),id=1,capture_ns=stamp,started_ns=stamp,completed_ns=time.monotonic_ns()))
+            module=NS()
             with patch.dict(sys.modules,{'utils.yolo_utils':module}):result=planner.detect(None,5,required=required)
             return result,planner.compute_metrics
         result,metrics=run([1,1],class_name='light blue coffee cup')

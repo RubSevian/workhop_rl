@@ -4,6 +4,7 @@ All times here are host MONOTONIC. ROS capture time stays in stamped TF data.
 No command is sent merely because an old SUCCEEDED is replayed.
 """
 import copy
+from .trajectory_copy import copy_trajectory
 import math
 from .scene import matrix_pose, validate_scene_data
 from .transforms import pose_distance
@@ -36,6 +37,7 @@ class Mission:
         self.request_id = 0
         self.pending = None
         self.last_result_diagnostic = None
+        self.stale_detection_retries = 0
         self.scan_index, self.detect_at = 0, 0.
         self.full_attempt=1;self.max_full_attempts=2
         self.attempt_history=[];self.attempt_scan_started_ns=None
@@ -184,7 +186,7 @@ class Mission:
             owner_session_id=self.owner_session, owner=copy.deepcopy(self.inputs['owner']),
             home_from_scan=self.home_from_scan if operation=='home' else False,
             grasp_plan=self.grasp_plan, object_anchor=self.object_anchor,q_search=self.q_search,
-            full_attempt=self.full_attempt,grasp_attempt=self.grasp_attempt,reverse_segment=copy.deepcopy(self.attempt_segments[-1]) if operation in ('reverse_search','retry_open') and self.attempt_segments else None,
+            full_attempt=self.full_attempt,grasp_attempt=self.grasp_attempt,reverse_segment=copy_trajectory(self.attempt_segments[-1]) if operation in ('reverse_search','retry_open') and self.attempt_segments else None,
             scan_index=self.scan_index)))
 
     def failed_grasp_attempt(self, reason, now):
@@ -499,11 +501,14 @@ class Mission:
 
     def result(self, result, now):
         p = self.pending
+        result_ttl=(self.cfg['execution'].get('detection_result_ttl_s',self.cfg['execution']['heartbeat_ttl_s'])
+                    if p and p.get('operation')=='detect' else self.cfg['execution']['heartbeat_ttl_s'])
         stamp=result.get('observed_ns')
         age=now-stamp/1e9 if type(stamp) is int else None
         diagnostic=dict(request_id=result.get('id'),pending_id=p.get('id') if p else None,
             operation=p.get('operation') if p else None,result_age_s=age,
             heartbeat_ttl_s=self.cfg['execution']['heartbeat_ttl_s'],accepted=False,
+            result_ttl_s=result_ttl,
             reason='REQUEST_IDENTITY_MISMATCH',action='IGNORE_UNRELATED_RESULT')
         self.last_result_diagnostic=diagnostic
         if (not p or p['kind'] != 'compute' or result.get('id') != p['id']
@@ -522,7 +527,21 @@ class Mission:
         transport_plan=('trajectory' in result or
             (p['operation']=='grasp_plan' and result.get('ok') is True
              and isinstance(result.get('grasp_plan'),dict)))
-        if not transport_plan and age>self.cfg['execution']['heartbeat_ttl_s']:
+        if not transport_plan and age>result_ttl:
+            if self.state=='ARM_SEARCH' and p['operation']=='detect':
+                expired=(self.recovery_since is not None and
+                    now-self.recovery_since>=self.cfg['execution'].get('observation_recovery_timeout_s',30.))
+                if not expired and self.stale_detection_retries<1:
+                    self.stale_detection_retries+=1
+                    self.pending=None
+                    self.defer_observation('COMPUTE_RESULT_STALE',now,'detect')
+                    diagnostic.update(reason='COMPUTE_RESULT_STALE',action='REOBSERVE',
+                                      stale_detection_retries=self.stale_detection_retries)
+                    return False
+                reason='DETECTION_RESULT_RECOVERY_TIMEOUT' if expired else 'DETECTION_RESULT_RETRY_EXHAUSTED'
+                diagnostic.update(reason=reason,action='BLOCK')
+                self.cancel(now,reason,True)
+                return False
             diagnostic.update(reason='COMPUTE_RESULT_STALE',action='BLOCK')
             self.cancel(now,'COMPUTE_RESULT_STALE',True)
             return False
@@ -538,6 +557,7 @@ class Mission:
                 diagnostic.update(reason='SEARCH_ANCHOR_RESULT_DISCARDED',action='REOBSERVE')
                 return False
         diagnostic['accepted']=True
+        if p['operation']=='detect':self.stale_detection_retries=0
         self.last_compute_metrics=result.get('compute_metrics',{})
         operation = p['operation']
         self.pending = None
@@ -597,7 +617,7 @@ class Mission:
             # Match owner evidence: an in-flight move has no completed scan pose.
             self.confirmed_scan_q=None
             self.pending = dict(p, kind='motion', at=now,
-                                trajectory=copy.deepcopy(result['trajectory']),
+                                trajectory=copy_trajectory(result['trajectory']),
                                 scene=copy.deepcopy(result['trajectory'].get('scene_snapshot',self.inputs.get('scene'))))
             self.effects.append(('trajectory', dict(result['trajectory'], id=p['id'],operation=operation,
                 session_id=self.session, navigation_session_id=self.nav_session,
@@ -654,7 +674,7 @@ class Mission:
                     for n in names})
             if self.stale_input_diagnostic is None:self.stale_input_diagnostic=diagnostic
             stale=diagnostic['stale_sources']
-            self.cancel(now, 'STALE_INPUT', True)
+            self.cancel(now, 'PERCEPTION_STATUS_STALE' if stale==['perception'] else 'STALE_INPUT', True)
         elif not active:
             self.cancel(now, 'R3_AUTHORITY_REVOKED')
         elif (nav.get('session_id') != self.nav_session or r3.get('controller_session_id') != self.r3_session
@@ -743,7 +763,7 @@ class Mission:
                             self.transition('RETREAT',now,'ONE_SHOT_OPERATOR_APPROVAL_ACCEPTED')
                         if owner.get('mission_state') == 'SUCCEEDED':
                             if p['operation'] in ('refine','pregrasp','approach'):
-                                approved=copy.deepcopy(p['trajectory'])
+                                approved=copy_trajectory(p['trajectory'])
                                 approved['id']=p['id']
                                 approved.setdefault('scene_snapshot',p['scene'])
                                 self.attempt_segments.append(approved)

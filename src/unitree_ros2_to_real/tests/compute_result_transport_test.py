@@ -43,7 +43,7 @@ def test_cancelled_plan_cannot_be_resurrected():
 
 def test_stale_observation_and_bad_timestamps_do_not_hang_pending():
     f,r=pending('detect')
-    assert not f.m.result(r,f.now+.251)
+    assert not f.m.result(r,f.now+.351)
     assert f.m.state=='BLOCKED' and f.m.reason=='COMPUTE_RESULT_STALE'
     assert f.m.pending is None
     for stamp in (None,-1,int(1000e9)):

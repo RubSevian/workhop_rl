@@ -34,7 +34,11 @@ def compute_summary(metrics):
         trajectory_build_elapsed_s=metrics.get('trajectory_build_elapsed_s'),
         elapsed_s=metrics.get('elapsed_s'),ik_summary=metrics.get('ik_summary',{}),
         camera_resume_elapsed_s=metrics.get('camera_resume_elapsed_s'),
+        frame_capture_wait_s=metrics.get('frame_capture_wait_s'),
+        frame_scene_wait_s=metrics.get('frame_scene_wait_s'),
+        frame_scene_rejections=metrics.get('frame_scene_rejections',{}),
         yolo_elapsed_s=metrics.get('yolo_elapsed_s'),
+        yolo_worker_timing=metrics.get('yolo_worker_timing',{}),
         stages=[{key:stage.get(key) for key in ('stage','status','elapsed_s','thread_cpu_s','reason')}
                 for stage in metrics.get('planning_stages',[])],
         filter_counts=dict(metrics.get('grasp_filter_counts',{})),
@@ -87,6 +91,7 @@ class ShortJournal:
             attempt_scan_started_ns=getattr(engine,'attempt_scan_started_ns',None),
             attempt_history=copy.deepcopy(getattr(engine,'attempt_history',[])),
             base_motion_window=copy.deepcopy(getattr(engine,'base_motion_window',None)),
+            stale_input_diagnostic=copy.deepcopy(getattr(engine,'stale_input_diagnostic',None)),
             anchor_recovery=engine.anchor_diagnostic() if hasattr(engine,"anchor_diagnostic") else None,
             camera={key:runtime.get(key) for key in ('ready','reason','color_age_s','depth_age_s',
                 'ipc_health_age_s','ipc_timing','acquisition')})

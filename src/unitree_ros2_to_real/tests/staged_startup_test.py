@@ -38,11 +38,11 @@ class StartupTests(unittest.TestCase):
         p=Planning.__new__(Planning);p._closed=False
         p.worker=SimpleNamespace(close=Mock(),is_alive=lambda:False)
         p.camera=SimpleNamespace(close=Mock());camera=p.camera
-        p.camera_mode='active';p.yolo=object();p.last_detection=object()
+        p.camera_mode='active';p.yolo_worker=SimpleNamespace(close=lambda force:None);p.last_detection=object()
         p.startup_checks=dict.fromkeys(('geometry','yolo','graspnet','camera'),True)
         p.stop_task_perception()
         p.worker.close.assert_called_once_with(force=True);camera.close.assert_called_once()
-        self.assertIsNone(p.yolo);self.assertIsNone(p.camera);self.assertTrue(p.sensors_ready())
+        self.assertIsNone(p.camera);self.assertTrue(p.sensors_ready())
         p.startup_checks['geometry']=False;self.assertFalse(p.sensors_ready())
 
     def perception_mock(self):
@@ -61,6 +61,34 @@ class StartupTests(unittest.TestCase):
         node.jobs=queue.Queue(1);node.completed=queue.Queue(1)
         node.count_publishers=Mock(return_value=1);node.get_logger=Mock(return_value=Mock())
         return node
+
+    def test_camera_starts_in_worker_after_settle_status_and_closes_on_cancel(self):
+        import json
+        n=self.perception_mock();n.camera_intent_stamp=0;n.camera_wanted=False
+        n.backend.camera_mode='standby'
+        def start():n.backend.camera_mode='active'
+        def stop():n.backend.camera_mode='standby'
+        from unittest.mock import Mock
+        n.backend.resume_camera=Mock(side_effect=start)
+        n.backend.pause_camera=Mock(side_effect=stop)
+        def status(state):
+            n.mission_status(SimpleNamespace(data=json.dumps(dict(
+                session_id='test',observed_ns=time.monotonic_ns(),state=state))))
+        status('BASE_SETTLE')
+        n.backend.resume_camera.assert_not_called() # Callback never opens camera.
+        n.service_camera_intent()
+        n.backend.resume_camera.assert_called_once()
+        status('ARM_SCAN_POSE');n.service_camera_intent()
+        n.backend.resume_camera.assert_called_once() # No restart on the scan transition.
+        n.camera_intent_stamp=time.monotonic_ns()-int(1e9)
+        n.service_camera_intent()
+        n.backend.pause_camera.assert_not_called() # Do not cycle hardware on a late heartbeat.
+        status('BLOCKED');n.service_camera_intent()
+        n.backend.pause_camera.assert_called_once()
+        status('BASE_SETTLE');n.service_camera_intent()
+        self.assertEqual(n.backend.resume_camera.call_count,2)
+        status('RETURN_HOME');n.service_camera_intent()
+        self.assertEqual(n.backend.pause_camera.call_count,2)
 
     def test_perception_x_stale_status_and_home_permissions(self):
         import json
@@ -179,12 +207,12 @@ class StartupTests(unittest.TestCase):
     def test_close_releases_models_even_if_camera_close_fails(self):
         calls=[]
         p=Planning.__new__(Planning);p._closed=False
-        p.yolo=object();p.last_detection=object()
+        p.yolo_worker=SimpleNamespace(close=lambda force:None);p.last_detection=object()
         p.camera=SimpleNamespace(close=lambda:(_ for _ in ()).throw(RuntimeError('camera stop')))
         p.worker=SimpleNamespace(close=lambda force:calls.append('worker closed'))
         with self.assertRaisesRegex(RuntimeError,'PERCEPTION_CLOSE_FAILED'):p.close()
         self.assertEqual(calls,['worker closed'])
-        self.assertIsNone(p.camera);self.assertIsNone(p.worker);self.assertIsNone(p.yolo);self.assertIsNone(p.last_detection)
+        self.assertIsNone(p.camera);self.assertIsNone(p.worker);self.assertIsNone(p.yolo_worker);self.assertIsNone(p.last_detection)
         p.close();self.assertEqual(calls,['worker closed'])
 
     def test_launch_constructs_only_preload_until_verified_output(self):
@@ -262,7 +290,7 @@ class StartupTests(unittest.TestCase):
         p.grasp={'camera':{'fps':30}}
         p.camera=None;p.camera_mode='unverified';p.camera_error=''
         p.startup_checks=dict(geometry=True,yolo=True,graspnet=True,camera=True)
-        p.worker=SimpleNamespace(is_alive=lambda:True)
+        p.worker=SimpleNamespace(is_alive=lambda:True);p.yolo_worker=SimpleNamespace(is_alive=lambda:True)
         cameras=[]
         # Probe lifecycle is tested at the process facade boundary here;
         # real spawn/IPC and blocked SDK calls have their own camera_process_test.
