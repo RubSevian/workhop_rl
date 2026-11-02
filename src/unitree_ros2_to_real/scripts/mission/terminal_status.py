@@ -42,6 +42,7 @@ def reason_text(reason):
                   'PERCEPTION_STATUS_STALE':'Просрочен статус Perception; возраст и операция записаны в STALE_INPUT_DIAGNOSTIC',
         'PHASE_TIMEOUT':'Истёк общий срок этапа',
         'CAMERA_FRAME_STALE':'Кадры камеры старше разрешённого возраста',
+        'RGBD_SCENE_UNMATCHABLE':'Для кадра нет согласованных измерений; нужен новый кадр',
         'RGBD_STALE_OR_REPEATED':'Не получены новые пригодные RGB-D кадры',
         'RGBD_TF_FEEDBACK_STALE':'Не удалось согласовать кадр с измерениями робота',
         'IK_FAIL':'IK не нашёл допустимую позу для предложенных захватов',

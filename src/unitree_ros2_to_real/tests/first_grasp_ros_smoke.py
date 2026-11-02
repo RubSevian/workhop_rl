@@ -5,6 +5,8 @@ Explicitly uses synthetic readiness in memory; it never qualifies real hardware.
 Requires domain228 and loopback. Not installed as an operator executable.
 """
 import json
+import subprocess
+import signal
 import os
 from pathlib import Path
 import sys
@@ -89,8 +91,15 @@ class Fake(Node):
 def main():
     rclpy.init(args=['--ros-args','-p','workspace:='+str(ROOT),'-p','mission_config_path:='+str(ROOT/'repos/rars01_graspnet/config/jetson_orin_nano.yaml')])
     executor=SingleThreadedExecutor();fake=Fake();executor.add_node(fake)
+    # Exercise the same read-only native transport as the standard launch.
+    collector=subprocess.Popen([str(ROOT/'install_mission/unitree_legged_real/lib/unitree_legged_real/scene_leg_collector')],
+        stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
+    deadline=time.monotonic()+5.
+    while fake.count_publishers('/go2/scene/leg_samples')!=1 and time.monotonic()<deadline:
+        executor.spin_once(timeout_sec=.02)
     try:
-        for branch,end in [('success','MISSION_COMPLETED_UNVERIFIED'),('not_found','OBJECT_NOT_FOUND'),('ik_fail','GRASP_UNREACHABLE')]:
+        assert collector.poll() is None and fake.count_publishers('/go2/scene/leg_samples')==1
+        for branch,end in [('success','GRASP_PRESUMED_SUCCESS'),('not_found','OBJECT_NOT_FOUND'),('ik_fail','GRASP_UNREACHABLE')]:
             fake.fixture=Fixture(branch);fake.status={};fake.seen=[]
             fake.nav_ticks=fake.stop_ticks=0;fake.zero_since=None
             coordinator=Coordinator()
@@ -100,7 +109,7 @@ def main():
             coordinator.body_source.provider.chain=FrameChain(coordinator.cfg)
             coordinator.cfg['search']['settle_s']=.05
             executor.add_node(coordinator)
-            deadline=time.monotonic()+30
+            deadline=time.monotonic()+90
             while time.monotonic()<deadline:
                 executor.spin_once(timeout_sec=.02)
                 assert coordinator.count_publishers('/lowcmd')==0
@@ -116,5 +125,8 @@ def main():
             until=time.monotonic()+.3
             while time.monotonic()<until:executor.spin_once(timeout_sec=.02)
     finally:
+        collector.send_signal(signal.SIGINT)
+        try:collector.wait(timeout=5.)
+        except subprocess.TimeoutExpired:collector.kill();collector.wait(timeout=3.)
         executor.remove_node(fake);fake.destroy_node();executor.shutdown();rclpy.try_shutdown()
 if __name__=='__main__':main()

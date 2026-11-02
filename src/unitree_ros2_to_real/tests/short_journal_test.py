@@ -27,7 +27,7 @@ class Tests(unittest.TestCase):
             self.assertLess(journal.path.stat().st_size,3000)
 
     def test_failed_ik_summary_is_bounded_and_preserves_identity_and_stages(self):
-        metrics=dict(elapsed_s=2.,ik_summary=dict(calls=70),grasp_filter_counts=dict(after_bbox=20,after_nms=2,selected_candidate=None),
+        metrics=dict(last_scene_rejection={'selection':{'body_ns':100,'arm_ns':160,'skew_s':.06}},elapsed_s=2.,ik_summary=dict(calls=70),grasp_filter_counts=dict(after_bbox=20,after_nms=2,selected_candidate=None),
             ik_calls=[dict(success=False,candidate='rank=1 flip=0',stage='pregrasp',waypoint=0,
                 reason='IK_OR_FK_TOLERANCE_OR_LIMIT',position_error_m=.09,orientation_error_rad=.2,
                 position_tolerance_m=.004,orientation_tolerance_rad=.035,
@@ -40,6 +40,7 @@ class Tests(unittest.TestCase):
             request=dict(id=12,session_id='mission',operation='grasp_plan',goal_revision=2)
             journal.compute(request,dict(ok=False,reason='IK_FAIL'),metrics);journal.close()
             row=json.loads(journal.path.read_text());summary=row['summary']
+            self.assertEqual(summary['last_scene_rejection']['selection']['body_ns'],100)
             self.assertEqual(row['request_id'],12);self.assertEqual(row['mission_session_id'],'mission')
             self.assertEqual(summary['failed_ik_count'],70);self.assertEqual(len(summary['failed_ik']),64)
             self.assertEqual(summary['failed_ik_omitted'],6)

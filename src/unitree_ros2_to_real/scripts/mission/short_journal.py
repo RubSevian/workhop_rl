@@ -37,6 +37,7 @@ def compute_summary(metrics):
         frame_capture_wait_s=metrics.get('frame_capture_wait_s'),
         frame_scene_wait_s=metrics.get('frame_scene_wait_s'),
         frame_scene_rejections=metrics.get('frame_scene_rejections',{}),
+        last_scene_rejection=metrics.get('last_scene_rejection',{}),
         yolo_elapsed_s=metrics.get('yolo_elapsed_s'),
         yolo_worker_timing=metrics.get('yolo_worker_timing',{}),
         stages=[{key:stage.get(key) for key in ('stage','status','elapsed_s','thread_cpu_s','reason')}

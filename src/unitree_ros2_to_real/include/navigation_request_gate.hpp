@@ -11,8 +11,10 @@ class NavigationRequestGate {
  NavigationRequestGate(std::array<double,3> bounds,double timeout=.25,double readiness_timeout=.5)
  :bounds_(bounds),timeout_(timeout),readiness_timeout_(readiness_timeout){}
  bool Observe(const std::string& session,bool ready,bool enabled,SafetyTime observed,SafetyTime now) {
+  // A delayed duplicate from the same owner neither revokes nor renews its
+  // existing lease. Different owners and invalid new envelopes fail closed.
+  if(seen_&&session==session_&&observed<=observed_)return false;
   if(session.empty()||session.size()>128||!Fresh(now,observed,readiness_timeout_)||
-     (seen_&&observed<=observed_)||
      (seen_&&session!=session_&&Fresh(now,observed_,readiness_timeout_))){Invalidate();return false;}
   if(session!=session_||!ready||!enabled||!ready_||!enabled_)valid_=false;
   session_=session;observed_=observed;ready_=ready;enabled_=enabled;seen_=true;return true;

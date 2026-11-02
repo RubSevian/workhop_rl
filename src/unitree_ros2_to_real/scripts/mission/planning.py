@@ -299,7 +299,7 @@ class Planning:
                     lambda frame:self._admit_frame(frame,lambda cap,ros:context(cap,ros,wait=False)),
                     self.collision.check_deadline,self.cfg['execution']['camera_max_age_s'],self.cfg['execution']['tick_s'])
             except ValueError as error:
-                if str(error)!='RGBD_STALE_OR_REPEATED':raise
+                if str(error) not in ('RGBD_STALE_OR_REPEATED','RGBD_SCENE_UNMATCHABLE'):raise
                 metrics=self.compute_metrics
                 metrics['camera_admission_discarded']=metrics.get('camera_admission_discarded',0)+1
                 if attempt+1==attempts:raise

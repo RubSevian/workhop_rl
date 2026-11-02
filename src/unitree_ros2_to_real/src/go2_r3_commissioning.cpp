@@ -200,11 +200,14 @@ class R3Node final:public rclcpp::Node {
    YAML::Node decoded;std::string decode_error;
    try{if(message->data.size()>4096)throw std::runtime_error("oversize navigation envelope");decoded=YAML::Load(message->data);}
    catch(const std::exception& e){decode_error=e.what();}
-   ControlLock lock(mutex_,control_latency_.get(),__LINE__);mission_perception_ready_=false;
+   ControlLock lock(mutex_,control_latency_.get(),__LINE__);
    try{if(!decode_error.empty())throw std::runtime_error(decode_error);
     const auto& y=decoded;const auto stamp=TimeNs(y["observed_ns"].as<int64_t>());
     const auto session=y["session_id"].as<std::string>();const bool ready=y["navigation_ready"].as<bool>();
-    if(!navigation_gate_->Observe(session,ready,y["command_enabled"].as<bool>(),stamp,SafetyClock::now()))return;
+    if(!navigation_gate_->Observe(session,ready,y["command_enabled"].as<bool>(),stamp,SafetyClock::now())) {
+     if(!navigation_gate_->Ready(SafetyClock::now()))mission_perception_ready_=false;
+     return;
+    }
     mission_readiness_stamp_=stamp;mission_session_=session;
     mission_perception_ready_=y["perception_ready"].as<bool>();
     // Atomic envelope binds readiness, session and velocity. /cmd_vel remains
@@ -213,7 +216,7 @@ class R3Node final:public rclcpp::Node {
     if(!c.IsSequence()||c.size()!=3)throw std::runtime_error("invalid navigation command shape");
     if(control_mode_=="autonomy"&&motion_commands_enabled_&&supervisor_->system_state()!=SystemState::CONTROLLED_STOP&&!supervisor_->fault_latched())
      navigation_gate_->Accept(session,{c[0].as<double>(),c[1].as<double>(),c[2].as<double>()},y["command_age_s"].as<double>(),stamp,SafetyClock::now());
-   }catch(...){navigation_gate_->Invalidate();mission_readiness_stamp_={};}
+   }catch(...){navigation_gate_->Invalidate();mission_readiness_stamp_={};mission_perception_ready_=false;}
   },state_options);
   arm_home_client_=create_client<std_srvs::srv::Trigger>("/rars01/control/return_home");
   arm_planned_disable_client_=create_client<std_srvs::srv::Trigger>("/rars01/control/planned_disable");
@@ -309,7 +312,7 @@ class R3Node final:public rclcpp::Node {
  void PolicyCycle(int64_t expected,int64_t actual) {
   ControlScope callback(control_latency_.get(),2,__LINE__,expected,actual);
   if(policy_rt_)policy_rt_->Begin();
-  PolicyTick();
+  PolicyTick(expected,actual);
   if(policy_rt_)policy_rt_->Complete();
  }
  private:
@@ -447,7 +450,33 @@ class R3Node final:public rclcpp::Node {
    ControlLock lock(mutex_,control_latency_.get(),__LINE__);auto now=SafetyClock::now();Refresh(now);auto r=request(now);res->success=r.success;res->message=r.message;
   }));
  }
+ // DDS discovery and startup SDK orchestration belong to the existing
+ // service worker, never to the periodic inference worker. Preserve the
+ // original policy-period polling and graph lease; a stalled poll expires.
+ void PollInfrastructure() {
+  const auto started=SafetyClock::now();
+  if(last_infrastructure_poll_!=SafetyTime{} &&
+     (started-last_infrastructure_poll_).count()<policy_period_ns_)return;
+  last_infrastructure_poll_=started;
+  size_t publishers;bool nav_unique,nav_cancel,manipulation_cancel;
+  try {
+   publishers=count_publishers("/lowcmd");
+   nav_unique=count_publishers("/go2/mission/readiness")==1;
+   nav_cancel=nav_cancel_client_->service_is_ready();
+   manipulation_cancel=manipulation_cancel_client_->service_is_ready();
+  } catch(const rclcpp::exceptions::RCLError&) {
+   if(!rclcpp::ok())return;
+   throw;
+  }
+  ControlLock lock(mutex_,control_latency_.get(),__LINE__);const auto now=SafetyClock::now();
+  cached_publisher_count_=publishers;graph_stamp_=started;
+  nav_input_unique_=nav_unique;nav_cancel_available_=nav_cancel;
+  manipulation_cancel_available_=manipulation_cancel;
+  infrastructure_poll_s_=Age(now,started);
+  SdkTick(now);Refresh(now);SequenceTick(now);
+ }
  void PortTick() {
+  PollInfrastructure();
   if constexpr(compute_probe)return; // No arm/NAV service requests from a shadow executor.
   ControlLock lock(mutex_,control_latency_.get(),__LINE__);const auto requests=supervisor_->ConsumePortRequests();
   const auto generation=supervisor_->orchestration_generation();
@@ -509,8 +538,9 @@ class R3Node final:public rclcpp::Node {
  void Refresh(SafetyTime now) {
   inputs_.ready.lowstate_fresh=lowstate_.Fresh(now);inputs_.ready.remote_fresh=remote_->status().remote_valid;
   const bool mission_fresh=!mission_session_.empty()&&Age(now,mission_readiness_stamp_)>=0&&Age(now,mission_readiness_stamp_)<=supervisor_->profile().mission_timeout_s;
-  inputs_.navigation_ready=navigation_gate_->Ready(now)&&nav_cancel_available_&&nav_input_unique_;
-  inputs_.perception_ready=mission_fresh&&mission_perception_ready_&&manipulation_cancel_available_;
+  const bool graph_fresh=graph_stamp_!=SafetyTime{}&&Age(now,graph_stamp_)>=0&&Age(now,graph_stamp_)<=supervisor_->profile().graph_timeout_s;
+  inputs_.navigation_ready=graph_fresh&&navigation_gate_->Ready(now)&&nav_cancel_available_&&nav_input_unique_;
+  inputs_.perception_ready=graph_fresh&&mission_fresh&&mission_perception_ready_&&manipulation_cancel_available_;
   inputs_.own_output_healthy=output_&&lease_&&lease_->acquired()&&cached_publisher_count_==1&&Age(now,graph_stamp_)>=0&&Age(now,graph_stamp_)<=supervisor_->profile().graph_timeout_s;
   supervisor_->Observe(inputs_,now);supervisor_->ConfirmStockObserved(now);
  }
@@ -540,7 +570,7 @@ class R3Node final:public rclcpp::Node {
   if(!logged){RCLCPP_INFO(get_logger(),"Policy worker effective OpenMP max=%d interop=%d (thread initialized)",settings.openmp_max,settings.interop);logged=true;}
  }
  private:
- void PolicyTick() {
+ void PolicyTick(int64_t expected,int64_t actual) {
   // Fallback covers the diagnostic shared executor, whose workers are owned
   // by rclcpp. Normal execution initializes once before policy_executor.spin.
   InitializePolicyWorker();
@@ -567,26 +597,16 @@ class R3Node final:public rclcpp::Node {
   std::optional<MotionTraceSample> trace;
   SafetyTime trace_remote_stamp{};
   const auto callback_started=SafetyClock::now();
-  size_t publishers;bool nav_unique;
-  try {
-   publishers=count_publishers("/lowcmd");
-   nav_unique=count_publishers("/go2/mission/readiness")==1;
-  }catch(const rclcpp::exceptions::RCLError&){
-   // SIGINT may invalidate the context between executor dispatch and this
-   // graph query. Only an already-shutdown context is a normal exit.
-   if(!rclcpp::ok())return;
-   throw;
-  }
-  const auto graph_observed=SafetyClock::now();
+  const auto graph_observed=callback_started; // No DDS discovery on the policy worker.
   {
    ControlLock lock(mutex_,control_latency_.get(),__LINE__);auto now=SafetyClock::now();
-   SdkTick(now);
-   cached_publisher_count_=publishers;graph_stamp_=callback_started;
-   nav_input_unique_=nav_unique;
-   const bool mission_fresh=!mission_session_.empty()&&Age(now,mission_readiness_stamp_)>=0&&Age(now,mission_readiness_stamp_)<=supervisor_->profile().mission_timeout_s;
-   nav_cancel_available_=mission_fresh&&nav_cancel_client_->service_is_ready();
-   manipulation_cancel_available_=mission_fresh&&manipulation_cancel_client_->service_is_ready();
-   Refresh(now);SequenceTick(now);
+   if(!supervisor_->fault_latched()) {
+    policy_release_delay_s_=std::max(0.,double(actual-expected)/1.e9);
+    policy_input_wait_s_=Age(now,callback_started);
+    policy_start_gap_s_=last_policy_start_==SafetyTime{}?0.:Age(now,last_policy_start_);
+    last_policy_start_=now;
+   }
+   Refresh(now);
    remote_test_requested_=RemoteStickCommand(remote_->status(),supervisor_->profile());
    if(!read_only_&&supervisor_->system_state()==SystemState::ACTIVE&&supervisor_->NeedsPolicy()) {
     std::array<double,3> selected{};
@@ -647,6 +667,10 @@ class R3Node final:public rclcpp::Node {
     }
     const auto result_wait_started=SafetyClock::now();
     ControlLock lock(mutex_,control_latency_.get(),__LINE__);const auto completed=SafetyClock::now();
+    if(!supervisor_->fault_latched()) {
+     policy_result_wait_s_=Age(completed,result_wait_started);
+     policy_prepare_s_=Age(began,ticket->started);
+    }
     bool accepted;
     if constexpr(compute_probe) {
      // Diagnostic only: no supervisor state changes or target delivery. The
@@ -781,6 +805,13 @@ class R3Node final:public rclcpp::Node {
   snapshot.Add("motion_diagnostics_dropped", (motion_trace_?motion_trace_->dropped():0));
   snapshot.Add("model_loaded", core_.loaded());
   snapshot.Add("policy_ms", last_policy_ms_);
+  snapshot.Add("policy_release_delay_s",policy_release_delay_s_);
+  snapshot.Add("policy_input_wait_s",policy_input_wait_s_);
+  snapshot.Add("policy_start_gap_s",policy_start_gap_s_);
+  snapshot.Add("policy_result_wait_s",policy_result_wait_s_);
+  snapshot.Add("policy_prepare_s",policy_prepare_s_);
+  snapshot.Add("infrastructure_poll_s",infrastructure_poll_s_);
+  snapshot.Add("infrastructure_age_s",Age(now,graph_stamp_));
   snapshot.Add("policy_result_age_s", supervisor_->PolicyAgeSeconds(now));
   snapshot.Add("policy_zero_handoff_pending", supervisor_->zero_policy_handoff_pending());
   snapshot.Add("policy_inference_age_s", supervisor_->PolicyInferenceAgeSeconds(now));
@@ -866,6 +897,9 @@ class R3Node final:public rclcpp::Node {
  rclcpp::Subscription<unitree_go::msg::LowState>::SharedPtr low_sub_;
  rclcpp::Subscription<std_msgs::msg::String>::SharedPtr sport_sub_,arm_sub_,mission_readiness_sub_;
  size_t cached_publisher_count_=0;SafetyTime graph_stamp_{};
+ SafetyTime last_infrastructure_poll_{},last_policy_start_{};
+ double policy_release_delay_s_=0,policy_input_wait_s_=0,policy_start_gap_s_=0;
+ double policy_result_wait_s_=0,policy_prepare_s_=0,infrastructure_poll_s_=0;
  bool nav_cancel_available_=false,manipulation_cancel_available_=false;
  bool mission_perception_ready_=false;SafetyTime mission_readiness_stamp_{};std::string mission_session_;
 

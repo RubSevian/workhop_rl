@@ -22,8 +22,12 @@ int main(){
  assert(!g.Observe("b",true,true,at(1.3),at(1.3))); // live owner cannot be replaced
  assert(g.Observe("b",true,true,at(1.8),at(1.8)));session="b";observed=at(1.8);assert(g.Get(at(1.8))[0]==0);
  assert(accept({.1,0,0},0,at(1.8)));
+ assert(!g.Observe("b",true,true,at(1.8),at(1.85)));assert(g.Get(at(1.85))[0]==.1);
+ assert(g.Get(at(2.06))[0]==0); // duplicate did not renew the command age
  assert(!accept({std::numeric_limits<double>::quiet_NaN(),0,0},0,at(1.8)));assert(g.Get(at(1.8))[0]==0);
- assert(!g.Observe("b",true,true,at(1.8),at(1.9)));assert(!g.Ready(at(1.9)));
+ assert(!g.Observe("b",true,true,at(1.8),at(1.9)));assert(g.Ready(at(1.9)));
+ assert(!g.Observe("b",false,false,at(1.7),at(2.0)));assert(g.Ready(at(2.0)));
+ assert(!g.Observe("b",true,true,at(1.8),at(2.31)));assert(!g.Ready(at(2.31))); // replay cannot extend lease
  assert(!g.Observe("",true,true,at(2),at(2)));
  assert(!g.Observe("c",true,true,at(2.1),at(2)));
  assert(!g.Observe("c",true,true,at(2),at(2))); // previous owner still fresh

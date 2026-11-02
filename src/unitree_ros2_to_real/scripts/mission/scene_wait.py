@@ -45,7 +45,7 @@ def select_camera_frame(frames, admit, check_deadline, max_age_s, poll_s):
                 check_deadline()
                 result=admit(frame)
             except ValueError as error:
-                if str(error)=='RGBD_STALE_OR_REPEATED':continue
+                if str(error) in ('RGBD_STALE_OR_REPEATED','RGBD_SCENE_UNMATCHABLE'):continue
                 if not (transient_scene_error(str(error)) or str(error)=='RGBD_TF_FEEDBACK_STALE'):raise
                 retry.append((stamp,frame));continue
             check_deadline()

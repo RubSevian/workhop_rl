@@ -16,7 +16,7 @@ OBSERVATIONS = {'detect', 'observe_grasp', 'grasp_plan'}
 PRESET_COMPUTES = {'retry_home_open', 'scan_pose', 'scan_step', 'scan_return', 'refine', 'home'}
 
 def retryable_observation(reason):
-    return transient_scene_error(reason) or reason in ('RGBD_STALE_OR_REPEATED', 'RGBD_TF_FEEDBACK_STALE')
+    return transient_scene_error(reason) or reason in ('RGBD_STALE_OR_REPEATED', 'RGBD_SCENE_UNMATCHABLE', 'RGBD_TF_FEEDBACK_STALE')
 
 TERMINAL = {'MISSION_COMPLETED_UNVERIFIED','GRASP_PRESUMED_SUCCESS','TARGET_NOT_GRASPED', 'OBJECT_NOT_FOUND', 'GRASP_UNREACHABLE', 'BLOCKED', 'CANCELLED', 'RETURNED_TO_START'}
 ARM_PHASES = {'BASE_SETTLE','ARM_SCAN_POSE','ARM_SEARCH','VIEW_REFINEMENT','PLAN_GRASP',

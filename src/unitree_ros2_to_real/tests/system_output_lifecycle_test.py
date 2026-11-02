@@ -2,7 +2,7 @@
 from pathlib import Path
 root=Path(__file__).resolve().parents[1]
 s=(root/'src/go2_r3_commissioning.cpp').read_text()
-stop=s[s.index(' void StopPublisher()'):s.index(' void PolicyTick()')]
+stop=s[s.index(' void StopPublisher()'):s.index(' void PolicyTick(')]
 assert stop.index('SystemEvent::DISABLE_OUTPUT') < stop.index('output_.reset()') < stop.index('lease_.reset()') < stop.index('SystemEvent::OUTPUT_STOPPED')
 assert 'if(!output_&&!lease_)' in stop
 set_output=s[s.index(' R3Reply SetOutput('):s.index(' void SdkTick(')]
@@ -26,7 +26,7 @@ assert s.index('output_->publish(*packet);') < s.index('++sent_;') < s.index('co
 assert 'passive_command_sent' in s and 'last_commanded_leg_mode' in s
 print('PASS passive publication acknowledgement follows actual publish return')
 
-policy=s[s.index(' void PolicyTick()'):s.index(' ControlDiagnostics CaptureStatus(')]
+policy=s[s.index(' void PolicyTick('):s.index(' ControlDiagnostics CaptureStatus(')]
 assert policy.index('torch::InferenceMode inference;') < policy.index('a.ResetPolicyState()') < policy.index('a.Act()')
 warm=s[s.index('// Warm TorchScript'):s.index('  home_tolerance_=')]
 assert 'torch::InferenceMode inference;' in warm

@@ -194,6 +194,13 @@ class SceneBuffer:
                 last_error='SCENE_SNAPSHOT_SKEW'
             if historical:break # Do not move camera exposure to another body time.
             skipped+=1
+        # Monotonic histories which have all crossed the exposure cannot
+        # acquire another causal sample for it. Waiting out camera TTL cannot
+        # repair this tuple; discard this frame and request a new exposure.
+        if (historical and self.bodies and self.bodies[-1].mono_ns>capture_ns
+                and self.arms[-1][0]>capture_ns and self.legs[-1][0]>capture_ns):
+            self.selection.update(reference_ns=capture_ns,unmatchable_reason=last_error)
+            raise ValueError('RGBD_SCENE_UNMATCHABLE')
         raise ValueError(last_error)
 
 

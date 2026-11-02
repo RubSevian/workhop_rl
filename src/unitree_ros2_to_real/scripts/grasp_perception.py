@@ -195,11 +195,22 @@ class Perception(Node):
 
     def sample_context(self,capture_ns,ros_ns,*,wait=True):
         def read():
+            # Waiting for a delayed exposure remains cancellable on every poll.
+            backend=getattr(self,'backend',None)
+            if backend is not None:backend.collision.check_deadline()
             try:
                 with self.lock:
                     if self.body_source.provider.fault:raise ValueError(self.body_source.provider.fault)
                     if self.scene_error and not transient_scene_error(self.scene_error):raise ValueError(self.scene_error)
-                    return self.scene_buffer.snapshot(time.monotonic_ns(),capture_ns)
+                    try:
+                        return self.scene_buffer.snapshot(time.monotonic_ns(),capture_ns)
+                    except ValueError:
+                        # Capture the rejected tuple before another callback or
+                        # live readiness check can replace the selection.
+                        backend=getattr(self,'backend',None)
+                        if backend is not None:
+                            backend.compute_metrics['last_scene_rejection']=self.scene_buffer.diagnostics(time.monotonic_ns())
+                        raise
             except ValueError as error:
                 backend=getattr(self,'backend',None)
                 if backend is not None:
