@@ -601,8 +601,8 @@ class Planning:
             if self.scan_joints is None:raise ValueError('NO_SCAN_POSE')
             target=start[:6].copy()
             if (self.cfg['refinement'].get('full_view_enabled',False)
-                    and abs(start[3]-self.scan_joints[3])>self.cfg['execution']['start_tolerance_rad']):
-                target[3]=self.scan_joints[3] # Restore only the viewing tilt, not unrelated measured joints.
+                    and np.max(np.abs(start[1:6]-self.scan_joints[1:6]))>self.cfg['execution']['start_tolerance_rad']):
+                target[1:6]=self.scan_joints[1:6] # Restore a repositioned camera before the next scan yaw.
             target[0]=self.angles[0] if op=='scan_return' else self.angles[request['scan_index']]
         elif op=='refine':
             refine_started_ns=time.monotonic_ns()
@@ -610,8 +610,9 @@ class Planning:
             if self.scan_joints is None or payload:raise ValueError('REFINE_REQUIRES_EMPTY_SCAN_POSE')
             difference=np.abs(start[:6]-self.scan_joints)
             full_view=self.cfg['refinement'].get('full_view_enabled',False)
-            if full_view:difference[3]=max(0.,difference[3]-self.cfg['refinement']['max_pitch_rad'])
-            if np.max(difference[1:6])>self.cfg['execution']['start_tolerance_rad']:
+            prior=getattr(self,'refined_scan_q',None)
+            prior_ok=(full_view and prior is not None and np.max(np.abs(start[:6]-prior))<=self.cfg['execution']['start_tolerance_rad'])
+            if not prior_ok and np.max(difference[1:6])>self.cfg['execution']['start_tolerance_rad']:
                 raise ValueError('REFINE_SCAN_POSE_CHANGED')
             anchor=np.asarray(self.last_detection[4],dtype=float)
             from .refinement import select_scan_yaw
@@ -639,9 +640,37 @@ class Planning:
                     return odom_arm@arm_camera
                 target,detail=select_full_view(start[:6],camera_pose,world,self.camera.K,depth.shape,
                     lower,upper,(min(self.angles),max(self.angles)),self.scan_joints[3],
-                    opts['max_yaw_rad'],opts['max_pitch_rad'],opts['max_camera_translation_m'],
+                    opts['max_yaw_rad'],None,None,
                     opts['frame_margin_fraction'],self.collision.check_deadline)
                 detail['observed_view']=view
+                choices=[(target,detail)]
+                if request.get('view_retreat') or not detail['after']['predicted_full_view']:
+                    from .refinement import distant_view_candidates
+                    # Preserve the centered camera orientation, then translate it
+                    # away from the observed object using the existing End_link IK.
+                    def solve_camera(desired,reference):
+                        arm_camera,odom_arm=self.eye.chain(sample['capture_ns'],sample['feedback_ns'],reference,sample['odom_mono_ns'],sample['odom_vehicle'])
+                        end_target=np.linalg.inv(self.eye.compensation)@np.linalg.inv(odom_arm)@desired@np.linalg.inv(self.eye.end_camera)
+                        solution=self.ik.solve(*mat4_to_pose6d(end_target),reference_joints=reference)
+                        return solution.joints if solution.success else None
+                    choices=distant_view_candidates(target,camera_pose,solve_camera,world,self.camera.K,depth.shape,
+                        lower,upper,(max(min(self.angles),start[0]-opts['max_yaw_rad']),min(max(self.angles),start[0]+opts['max_yaw_rad'])),
+                        opts['max_yaw_rad'],opts['frame_margin_fraction'],self.grasp['graspnet']['max_depth'],self.collision.check_deadline)
+                self.compute_metrics['refinement_path_attempts']=[]
+                for target,detail in choices:
+                    self.collision.check_deadline()
+                    points=self.samples(start,[target],self.grasp['robot']['ready_pose']['duration'],search=True)
+                    try:trajectory=self.checked(points,sample,payload,'move',reference_ns=planning_reference_ns)
+                    except CandidatePathRejected as error:
+                        self.compute_metrics['refinement_path_attempts'].append(dict(status='COLLISION_REJECTED',reason=str(error)))
+                        continue
+                    self.compute_metrics['refinement_path_attempts'].append(dict(status='APPROVED'))
+                    self.compute_metrics['refinement']=detail
+                    self.compute_metrics['refine_prepare_elapsed_s']=(time.monotonic_ns()-refine_started_ns)/1e9
+                    self.refined_scan_q=np.asarray(target).copy()
+                    trajectory['operation']=op
+                    return dict(trajectory=trajectory,view_retreat_used=detail.get('mode')=='farther_camera_ik')
+                raise ValueError('TARGET_VIEW_UNREACHABLE')
             else:
                 target[0],detail=select_scan_yaw(start[0],camera_point,
                     max(lower[0],min(self.angles)),min(upper[0],max(self.angles)),
@@ -667,161 +696,7 @@ class Planning:
                 {key:request[key] for key in ('id','operation','session_id',
                  'navigation_session_id','owner_session_id','goal_revision')},
                 verified_ns=time.monotonic_ns())
-            opts=self.grasp['graspnet'];robot=self.grasp['robot']['rars01']
-            with planning_stage(self.compute_metrics,'graspnet',trace,request,progress=progress):
-                result=self.worker.infer(color,depth,self.camera.K,target_mask=d.mask,mask_source=getattr(d,'mask_source','unknown'),target_roi=opts.get('target_roi'),num_point=opts['num_point'],min_depth=opts['min_depth'],max_depth=opts['max_depth'],collision_thresh=opts['collision_thresh'],voxel_size=.01,bbox_xyxy=d.bbox_xyxy,target_margin_px=opts['target_margin_px'],target_expand_ratio=opts['target_expand_ratio'],max_grasp_width_m=robot['max_grasp_width_m'],max_grasp_depth_m=robot['max_grasp_depth_m'],minimum_grasp_depth_m=opts.get('minimum_grasp_depth_m',0.),cloud_collision=opts.get('cloud_collision'),timeout_s=opts['worker_timeout_s'],include_diagnostics=(self.cfg['compute'].get('grasp_full_diagnostics',True) or self.cfg['compute'].get('grasp_debug_enabled',False)))
-            self.compute_metrics['grasp_filter_counts']=dict(result.get('filter_counts',{}))
-            self.compute_metrics['graspnet_target_roi']=result.get('filter_parameters',{}).get('target_roi',{})
-            from .target_binding import filter_target_binding
-            result['depth_grasps']=np.asarray(result['grasps']).copy()
-            with planning_stage(self.compute_metrics,'target_binding',trace,request,progress=progress):
-                result['grasps'],binding=filter_target_binding(result['grasps'],depth,self.camera.K,d.mask,
-                    self.cfg.get('target_binding',{}),mask_source=getattr(d,'mask_source','unknown'),
-                    min_depth=opts['min_depth'],max_depth=opts['max_depth'],cancel_check=self.collision.check_deadline)
-            binding.update(target_class=d.class_name,target_confidence=float(d.conf))
-            result['target_mask']=np.asarray(d.mask,dtype=bool)
-            result['target_binding']=binding
-            result.setdefault('filter_counts',{})['after_target_binding']=len(result['grasps'])
-            result.setdefault('filter_parameters',{})['target_binding']=self.cfg.get('target_binding',{})
-            self.compute_metrics['target_binding']=binding
-            debug=getattr(self,'grasp_debug',None)
-            if debug is not None:
-                debug.submit(color,depth,self.camera.K,result,dict(request_id=request['id'],
-                    capture_mono_ns=at['capture_mono_ns'],min_depth=opts['min_depth'],max_depth=opts['max_depth'],
-                    camera_to_arm=at['arm_camera'].tolist(),display_frame='base_link_at_capture'))
-                self.compute_metrics['grasp_debug']=dict(path=str(debug.path),error=debug.error,dropped=debug.dropped)
-            self.collision.check_deadline()
-            self.compute_metrics['graspnet_worker_elapsed_s']=result.get('elapsed_s')
-            filter_counts=dict(result.get('filter_counts',result.get('counts',{})))
-            self.compute_metrics['grasp_filter_counts']=filter_counts
-            self.compute_metrics['grasp_filter_parameters']=dict(result.get('filter_parameters',{}))
-            if trace is not None:
-                trace.grasps(request,result['grasps'],filter_counts,result.get('filter_parameters',{}))
-            if op=='observe_grasp':
-                return dict(observation=dict(found=True,confidence=float(d.conf),graspnet_called=True,grasp_count=len(result['grasps']),capture_mono_ns=at['capture_mono_ns'],capture_ros_ns=at['capture_ros_ns'],frame_age_s=at['frame_age_s'],scene_snapshot=at['scene_snapshot']))
-            if binding['enabled'] and binding['input_count'] and not len(result['grasps']):
-                raise ValueError('NO_TARGET_BOUND_GRASPS')
-            # Inference may take seconds; rebase the RGB-D anchored transform at
-            # fresh odom/feedback rather than asking for stale 'latest' TF.
-            current=copy.deepcopy(context(None,None))
-            planning_reference_ns=time.monotonic_ns()
-            self.collision.validated_scene(self.collision_scene(current),False,reference_ns=planning_reference_ns)
-            if trace is not None:trace.begin(request,current,reference_ns=planning_reference_ns)
-            if current['owner_session_id']!=request['owner_session_id']:
-                raise ValueError('PLANNING_SESSION_CHANGED')
-            if current['body'].tf_revision!=at['body'].tf_revision or current['body'].navigation_session_id!=at['body'].navigation_session_id:
-                raise ValueError('WORLD_ANCHOR_EPOCH_CHANGED')
-            start=np.asarray(current['q7'],dtype=float);self.joints=start[:6].copy()
-            _,odom_now=self.eye.chain(current['capture_ns'],current['feedback_ns'],current['q'],current['odom_mono_ns'],current['odom_vehicle'])
-            cam_to_arm=np.linalg.inv(odom_now)@at['odom_arm']@at['arm_camera']
-            from utils import graspnet_utils
-            from graspnetAPI import GraspGroup
-            from rars01_graspnet.real_grasp_selection import _select_executable_grasp
-            geometry=self.geometry
-            class GeometryOnly:
-                def grasp_tcp_transform(inner,width):return geometry.solve_opening(width).T_grasp_End_link
-                def minimum_jaw_height(inner,pose,width):
-                    points=geometry.jaw_collision_points(width)
-                    return float((pose6d_to_mat4(*pose)@np.column_stack((points,np.ones(len(points)))).T)[2].min())
-            g=self.grasp['grasp_pipeline']['grasp']
-            from rars01_graspnet.grasp_ranking import target_shape
-            shape=target_shape(depth,self.camera.K,d.mask,g['candidate_selection'],
-                mask_source=getattr(d,'mask_source','unknown'),min_depth=opts['min_depth'],max_depth=opts['max_depth']) if g['candidate_selection'].get('weight_shape',0)>0 else dict(active=False,confidence=0.,reason='DISABLED')
-            self.compute_metrics['target_shape']=shape
-            from rars01_graspnet.target_center import target_center
-            center=target_center(depth,self.camera.K,d.mask,cam_to_arm,g['candidate_selection'],
-                mask_source=getattr(d,'mask_source','unknown'),min_depth=opts['min_depth'],max_depth=opts['max_depth']) if g['candidate_selection'].get('weight_center',0)>0 else dict(active=False,reason='DISABLED',frame='base_link')
-            self.compute_metrics['target_center']=center
-            rejected_paths=[];approved_candidates={}
-            reference_gripper=dict(model='open_gripper_approximation',opening_width_m=robot['max_grasp_width_m'],
-                motor_angle_rad=float(self.geometry.motor_angle_for_width(robot['max_grasp_width_m'])))
-            def check_candidate_path(points,has_payload,kind='move',open_reference=False):
-                # Freeze one coherent measured scene for the whole attempt.
-                # validate_result separately checks live admission after planning.
-                options=dict(reference_ns=planning_reference_ns)
-                if open_reference:options['gripper_reference']=reference_gripper
-                with planning_stage(self.compute_metrics,'collision_'+name,trace,request,progress=progress,
-                                    candidate_cost=float(candidate_cost),input_points=len(points)) as stage:
-                    try:
-                        return self.checked(points,current,has_payload,kind,**options)
-                    finally:
-                        stage['collision_profile']=copy.deepcopy(getattr(self.collision,'last_stats',{}))
-            name='';candidate_cost=0.
-            def validate(candidate):
-                nonlocal name,candidate_cost
-                candidate_cost=candidate.cost
-                try:
-                    approved={}
-                    phases=[('pregrasp',[candidate.pregrasp_joints],motion['pregrasp_duration_s'],False),
-                            ('approach',candidate.approach_joint_waypoints,motion['grasp_duration_s'],False),
-                            ('retreat',candidate.retreat_joint_waypoints,motion['retreat_duration_s'],True)]
-                    for name,waypoints,duration,has_payload in phases:
-                        begin=start.copy() if name=='pregrasp' else np.r_[candidate.pregrasp_joints if name=='approach' else candidate.grasp_joints,start[6]]
-                        approved[name]=check_candidate_path(self.samples(begin,waypoints,duration,object_motion=True),has_payload,open_reference=name in ('approach','retreat'))
-                        approved[name]['operation']=name
-                    name='close'
-                    closure_start=np.r_[candidate.grasp_joints,start[6]]
-                    closed=self.grasp['robot']['gripper']['rars01']['closed_position_rad']
-                    approved['close']=check_candidate_path(self.samples(closure_start,[candidate.grasp_joints],motion['grasp_duration_s'],closed),False,'close')
-                    approved['close']['points']=[closure_start.tolist(),closure_start.tolist()]
-                    name='return_scan'
-                    scan_return=check_candidate_path(self.samples(np.r_[candidate.retreat_joints,start[6]],
-                        [start[:6]],motion['retreat_duration_s']),True,open_reference=True)
-                    # One approved retreat command: withdraw, then return to the
-                    # measured scan pose. Completion confirms the final scan pose.
-                    approved['retreat']['points']+=scan_return['points'][1:]
-                    approved['retreat']['collision_points']+=scan_return['collision_points'][1:]
-                    approved['retreat']['returns_to_scan']=True
-                    approved['retreat']['scan_q']=start[:6].tolist()
-                    approved_candidates[id(candidate)]=approved
-                    return True
-                except CandidatePathRejected as error:
-                    rejected_paths.append(str(error))
-                    self.compute_metrics.setdefault('collision_rejections',[]).append(dict(stage=name,detail=str(error)))
-                    return False
-            rejections=[]
-            self.compute_metrics['grasp_rejections']=rejections
-            self.compute_metrics['ik_transform_audit']=dict(camera_to_current_arm=cam_to_arm.tolist(), current_odom_arm=odom_now.tolist(), capture_odom_arm=at['odom_arm'].tolist(), capture_arm_camera=at['arm_camera'].tolist(), tcp_frame='End_link', units='m_rad')
-            self.compute_metrics['candidate_validation']={}
-            audit={'target_center':center} if trace is not None or debug is not None else None
-            if audit is not None:self.compute_metrics['grasp_candidate_audit']=audit
-            def publish_arm(status):
-                if debug is None:return
-                try:
-                    from .arm_debug import planning_snapshot
-                    debug.arm.submit(planning_snapshot(request,self.cfg['paths']['arm_urdf'],
-                        start,cam_to_arm,audit or {},self.compute_metrics.get('ik_calls',[]),status))
-                except Exception as error:
-                    self.compute_metrics['arm_debug_error']=str(error)
-            publish_arm('CALCULATING')
-            candidate=None
-            selection_status='INTERRUPTED_OR_ERROR'
-            try:
-                with planning_stage(self.compute_metrics,'selection_including_collision',trace,request,progress=progress):
-                    candidate=_select_executable_grasp(self.ik,GeometryOnly(),GraspGroup(result['grasps']),cam_to_arm,g['pregrasp_offset_m'],g.get('retreat_offset_m',g['pregrasp_offset_m']),g['insertion_depth_m'],robot['max_grasp_depth_m'],g['min_base_z_m'],g['min_jaw_z_m'],'rars01',True,True,np.array([g['position_compensation_base_m'][axis] for axis in 'xyz']),g['ik_candidate_limit'],g['cartesian_ik'],g['candidate_selection'],max_grasp_width_m=robot['max_grasp_width_m'],target_shape_camera=shape,target_center_base=center,ranking_robot=self.grasp['robot'],retreat_speed_scale=.25 if self.cfg.get('operator_trial') else 1.,path_validator=validate,rejection_diagnostics=rejections,local_height_filters_enabled=self.cfg.get('local_height_filters_enabled',True),cancel_check=self.collision.check_deadline,selection_metrics=self.compute_metrics['candidate_validation'],candidate_diagnostics=audit,verbose=not self.cfg['execution'].get('short_journal_enabled',False))
-                selection_status='SELECTED_COLLISION_CHECKED' if candidate is not None else 'NO_EXECUTABLE_CANDIDATE'
-            finally:
-                publish_arm(selection_status)
-                filter_counts.update(self.compute_metrics['candidate_validation'])
-                filter_counts.update({key:audit[key] for key in ('input_count','after_nms',
-                    'candidate_limit','after_candidate_limit','ik_feasible','rejected_depth',
-                    'rejected_base_height','rejected_jaw_height','rejected_ik','selected') if audit is not None and key in audit})
-            if candidate is None:
-                if rejected_paths:raise ValueError('NO_COLLISION_FREE_CANDIDATE: '+rejected_paths[-1])
-                if any(item['reason'] in ('DEPTH_LIMIT','BASE_HEIGHT_LIMIT','JAW_HEIGHT_LIMIT') for item in rejections):
-                    raise ValueError('CANDIDATE_GEOMETRY_REJECTED')
-                if any(item['reason']=='NO_CANDIDATES' for item in rejections):raise ValueError('NO_CANDIDATES')
-                raise ValueError('IK_FAIL')
-            poses_map={name:(odom_now@pose6d_to_mat4(*pose)).tolist() for name,pose in [('pregrasp',candidate.pregrasp6d),('grasp',candidate.grasp6d),('retreat',candidate.retreat6d)]}
-            world=WorldGraspAnchor(poses_map['grasp'],at['capture_mono_ns'],at['capture_ros_ns'],
-                at['body'].navigation_session_id,at['body'].tf_revision,request['goal_revision'],float(d.conf))
-            # Preserve world poses computed in the candidate frame; refresh only
-            # the scene used for final freshness/epoch validation after selection.
-            final_scene=context(None,None)
-            world.validate(final_scene['body'],time.monotonic_ns(),self.cfg['execution']['mission_timeout_s'],request['goal_revision'],self.cfg['limits']['sensor_age_s'])
-            object_anchor=WorldObjectAnchor(np.asarray(anchor).tolist(),at['capture_mono_ns'],at['capture_ros_ns'],
-                at['body'].navigation_session_id,at['body'].tf_revision,request['goal_revision'],request['owner_session_id'],float(d.conf))
-            return dict(object_anchor=object_anchor.data(),grasp_plan=dict(approved_segments=approved_candidates[id(candidate)],planning_scene_snapshot=copy.deepcopy(current['scene_snapshot']),scan_q=start[:6].tolist(),pregrasp=candidate.pregrasp_joints.tolist(),approach=[q.tolist() for q in candidate.approach_joint_waypoints],retreat=[q.tolist() for q in candidate.retreat_joint_waypoints],cost=candidate.cost,object_map=anchor.tolist(),camera_to_arm=cam_to_arm.tolist(),poses_map=poses_map,world_grasp_anchor=world.data(),pose_kind='End_link_TCP'))
+            return self.grasp_generations(request,context,detection,op,trace,progress)
         elif op=='retry_home_open':
             return self.retry_home_open(sample,owner)
         elif op=='retry_open':
@@ -893,7 +768,9 @@ class Planning:
             raise ValueError('APPROVED_SEGMENTS_REQUIRED')
         preparation_started_ns=time.monotonic_ns()
         points=self.samples(start,[target],self.grasp['robot']['ready_pose']['duration'],grip,search=op in ('scan_step','scan_return','refine'),scan_pose=op=='scan_pose')
-        if op=='home' and request.get('home_from_scan'):
+        if (op=='home' and request.get('home_from_scan')
+                and (not self.cfg['refinement'].get('full_view_enabled',False)
+                     or (self.scan_joints is not None and np.max(np.abs(start[1:6]-self.scan_joints[1:6]))<=self.cfg['execution']['start_tolerance_rad']))):
             return dict(trajectory=dict(kind='home',operation='home',points=points.tolist(),
                 collision_checked=False,collision_policy='scan_to_home_unchecked',
                 payload_checked=bool(payload and self.cfg['collision'].get('payload_enabled',True)),
@@ -922,6 +799,223 @@ class Planning:
         trajectory=self.checked(points,sample,payload,'home' if op=='home' else 'move',
             **({} if planning_reference_ns is None else dict(reference_ns=planning_reference_ns)))
         return dict(trajectory=trajectory)
+
+    def grasp_generations(self,request,context,detection,op,trace,progress):
+        from .grasp_generations import run_generations,GenerationBudgetExceeded
+        from .scene import distance
+        opts=self.cfg.get('compute',{})
+        count=opts.get('grasp_generation_count',1) if op=='grasp_plan' else 1
+        budget=opts.get('grasp_generation_budget_s')
+        baseline=copy.deepcopy(context(None,None));tested=[];tested_geometry=[]
+        records=self.compute_metrics['grasp_generations']=[]
+        def validate_scene():
+            fresh=context(None,None)
+            if (fresh['owner_session_id']!=baseline['owner_session_id']
+                    or fresh['body'].navigation_session_id!=detection[3]['body'].navigation_session_id
+                    or fresh['body'].tf_revision!=detection[3]['body'].tf_revision):
+                raise ValueError('WORLD_ANCHOR_EPOCH_CHANGED')
+            if np.max(np.abs(np.asarray(fresh['q'])-baseline['q']))>self.cfg['execution']['start_tolerance_rad']:
+                raise ValueError('GRASP_GENERATION_ARM_MOVED')
+            pe,re=distance(baseline['body'].map_body,fresh['body'].map_body)
+            if pe>self.cfg['frames']['continuity_translation_m'] or re>self.cfg['frames']['continuity_rotation_rad']:
+                raise ValueError('APPROVED_BODY_DISCONTINUITY')
+            self.collision.validated_scene(self.collision_scene(fresh),False,reference_ns=time.monotonic_ns())
+        original_cancel=getattr(self.collision,'cancel_check',None)
+        def attempt(remaining):
+            def check_budget():
+                if original_cancel is not None:original_cancel()
+                # remaining calls the original deadline checker below, not this hook.
+                remaining()
+            self.collision.cancel_check=check_budget
+            for key in ('candidate_validation','generation_novel_candidates','grasp_filter_counts'):
+                self.compute_metrics.pop(key,None)
+            try:
+                return self._grasp_generation(request,context,detection,op,trace,progress,tested,tested_geometry,remaining)
+            finally:
+                self.collision.cancel_check=original_cancel
+                records[-1].update(filter_counts=copy.deepcopy(self.compute_metrics.get('grasp_filter_counts',{})),
+                    candidate_validation=copy.deepcopy(self.compute_metrics.get('candidate_validation',{})),
+                    novel_candidates=self.compute_metrics.get('generation_novel_candidates'))
+        def cancel():
+            # Avoid recursion through the temporary budget hook.
+            hook=getattr(self.collision,'cancel_check',None)
+            self.collision.cancel_check=original_cancel
+            try:self.collision.check_deadline()
+            finally:self.collision.cancel_check=hook
+        return run_generations(attempt,validate_scene,cancel,count,budget,records)
+
+    def _grasp_generation(self,request,context,detection,op,trace,progress,tested,tested_geometry,remaining):
+        from utils.transforms import mat4_to_pose6d,pose6d_to_mat4
+        color,depth,d,at,anchor=detection
+        motion=self.grasp['robot']['motion']
+        opts=self.grasp['graspnet'];robot=self.grasp['robot']['rars01']
+        with planning_stage(self.compute_metrics,'graspnet',trace,request,progress=progress):
+            result=self.worker.infer(color,depth,self.camera.K,target_mask=d.mask,mask_source=getattr(d,'mask_source','unknown'),target_roi=opts.get('target_roi'),num_point=opts['num_point'],min_depth=opts['min_depth'],max_depth=opts['max_depth'],collision_thresh=opts['collision_thresh'],voxel_size=.01,bbox_xyxy=d.bbox_xyxy,target_margin_px=opts['target_margin_px'],target_expand_ratio=opts['target_expand_ratio'],max_grasp_width_m=robot['max_grasp_width_m'],max_grasp_depth_m=robot['max_grasp_depth_m'],minimum_grasp_depth_m=opts.get('minimum_grasp_depth_m',0.),cloud_collision=opts.get('cloud_collision'),timeout_s=min(opts['worker_timeout_s'],remaining()),include_diagnostics=(self.cfg['compute'].get('grasp_full_diagnostics',True) or self.cfg['compute'].get('grasp_debug_enabled',False)))
+        self.compute_metrics['grasp_filter_counts']=dict(result.get('filter_counts',{}))
+        self.compute_metrics['graspnet_target_roi']=result.get('filter_parameters',{}).get('target_roi',{})
+        from .target_binding import filter_target_binding
+        result['depth_grasps']=np.asarray(result['grasps']).copy()
+        with planning_stage(self.compute_metrics,'target_binding',trace,request,progress=progress):
+            result['grasps'],binding=filter_target_binding(result['grasps'],depth,self.camera.K,d.mask,
+                self.cfg.get('target_binding',{}),mask_source=getattr(d,'mask_source','unknown'),
+                min_depth=opts['min_depth'],max_depth=opts['max_depth'],cancel_check=self.collision.check_deadline)
+        binding.update(target_class=d.class_name,target_confidence=float(d.conf))
+        result['target_mask']=np.asarray(d.mask,dtype=bool)
+        result['target_binding']=binding
+        result.setdefault('filter_counts',{})['after_target_binding']=len(result['grasps'])
+        result.setdefault('filter_parameters',{})['target_binding']=self.cfg.get('target_binding',{})
+        self.compute_metrics['target_binding']=binding
+        debug=getattr(self,'grasp_debug',None)
+        if debug is not None:
+            debug.submit(color,depth,self.camera.K,result,dict(request_id=request['id'],
+                capture_mono_ns=at['capture_mono_ns'],min_depth=opts['min_depth'],max_depth=opts['max_depth'],
+                camera_to_arm=at['arm_camera'].tolist(),display_frame='base_link_at_capture'))
+            self.compute_metrics['grasp_debug']=dict(path=str(debug.path),error=debug.error,dropped=debug.dropped)
+        self.collision.check_deadline()
+        self.compute_metrics['graspnet_worker_elapsed_s']=result.get('elapsed_s')
+        filter_counts=dict(result.get('filter_counts',result.get('counts',{})))
+        self.compute_metrics['grasp_filter_counts']=filter_counts
+        self.compute_metrics['grasp_filter_parameters']=dict(result.get('filter_parameters',{}))
+        if trace is not None:
+            trace.grasps(request,result['grasps'],filter_counts,result.get('filter_parameters',{}))
+        if op=='observe_grasp':
+            return dict(observation=dict(found=True,confidence=float(d.conf),graspnet_called=True,grasp_count=len(result['grasps']),capture_mono_ns=at['capture_mono_ns'],capture_ros_ns=at['capture_ros_ns'],frame_age_s=at['frame_age_s'],scene_snapshot=at['scene_snapshot']))
+        if binding['enabled'] and binding['input_count'] and not len(result['grasps']):
+            raise ValueError('NO_TARGET_BOUND_GRASPS')
+        # Inference may take seconds; rebase the RGB-D anchored transform at
+        # fresh odom/feedback rather than asking for stale 'latest' TF.
+        current=copy.deepcopy(context(None,None))
+        planning_reference_ns=time.monotonic_ns()
+        self.collision.validated_scene(self.collision_scene(current),False,reference_ns=planning_reference_ns)
+        if trace is not None:trace.begin(request,current,reference_ns=planning_reference_ns)
+        if current['owner_session_id']!=request['owner_session_id']:
+            raise ValueError('PLANNING_SESSION_CHANGED')
+        if current['body'].tf_revision!=at['body'].tf_revision or current['body'].navigation_session_id!=at['body'].navigation_session_id:
+            raise ValueError('WORLD_ANCHOR_EPOCH_CHANGED')
+        start=np.asarray(current['q7'],dtype=float);self.joints=start[:6].copy()
+        _,odom_now=self.eye.chain(current['capture_ns'],current['feedback_ns'],current['q'],current['odom_mono_ns'],current['odom_vehicle'])
+        cam_to_arm=np.linalg.inv(odom_now)@at['odom_arm']@at['arm_camera']
+        from utils import graspnet_utils
+        from graspnetAPI import GraspGroup
+        from rars01_graspnet.real_grasp_selection import _select_executable_grasp
+        if op != 'observe_grasp':
+            from .grasp_generations import unseen_grasps
+            signature=np.r_[start[:6],current['legs'],cam_to_arm.ravel()]
+            if tested_geometry and not np.allclose(signature,tested_geometry[0],atol=1e-6,rtol=0):
+                tested.clear() # A changed leg pose/rebase may make a previous rejection feasible.
+            tested_geometry[:]=[signature.copy()]
+            ranked=graspnet_utils.nms_grasp_group(GraspGroup(result['grasps']))
+            ranked.sort_by_score()
+            fresh=unseen_grasps(ranked.grasp_group_array,tested)
+            fresh=fresh[:g_limit] if (g_limit:=self.grasp['grasp_pipeline']['grasp']['ik_candidate_limit']) else fresh
+            result['grasps']=fresh
+            tested.extend(fresh.tolist())
+            self.compute_metrics['generation_novel_candidates']=len(fresh)
+        geometry=self.geometry
+        class GeometryOnly:
+            def grasp_tcp_transform(inner,width):return geometry.solve_opening(width).T_grasp_End_link
+            def minimum_jaw_height(inner,pose,width):
+                points=geometry.jaw_collision_points(width)
+                return float((pose6d_to_mat4(*pose)@np.column_stack((points,np.ones(len(points)))).T)[2].min())
+        g=self.grasp['grasp_pipeline']['grasp']
+        from rars01_graspnet.grasp_ranking import target_shape
+        shape=target_shape(depth,self.camera.K,d.mask,g['candidate_selection'],
+            mask_source=getattr(d,'mask_source','unknown'),min_depth=opts['min_depth'],max_depth=opts['max_depth']) if g['candidate_selection'].get('weight_shape',0)>0 else dict(active=False,confidence=0.,reason='DISABLED')
+        self.compute_metrics['target_shape']=shape
+        from rars01_graspnet.target_center import target_center
+        center=target_center(depth,self.camera.K,d.mask,cam_to_arm,g['candidate_selection'],
+            mask_source=getattr(d,'mask_source','unknown'),min_depth=opts['min_depth'],max_depth=opts['max_depth']) if g['candidate_selection'].get('weight_center',0)>0 else dict(active=False,reason='DISABLED',frame='base_link')
+        self.compute_metrics['target_center']=center
+        rejected_paths=[];approved_candidates={}
+        reference_gripper=dict(model='open_gripper_approximation',opening_width_m=robot['max_grasp_width_m'],
+            motor_angle_rad=float(self.geometry.motor_angle_for_width(robot['max_grasp_width_m'])))
+        def check_candidate_path(points,has_payload,kind='move',open_reference=False):
+            # Freeze one coherent measured scene for the whole attempt.
+            # validate_result separately checks live admission after planning.
+            options=dict(reference_ns=planning_reference_ns)
+            if open_reference:options['gripper_reference']=reference_gripper
+            with planning_stage(self.compute_metrics,'collision_'+name,trace,request,progress=progress,
+                                candidate_cost=float(candidate_cost),input_points=len(points)) as stage:
+                try:
+                    return self.checked(points,current,has_payload,kind,**options)
+                finally:
+                    stage['collision_profile']=copy.deepcopy(getattr(self.collision,'last_stats',{}))
+        name='';candidate_cost=0.
+        def validate(candidate):
+            nonlocal name,candidate_cost
+            candidate_cost=candidate.cost
+            try:
+                approved={}
+                phases=[('pregrasp',[candidate.pregrasp_joints],motion['pregrasp_duration_s'],False),
+                        ('approach',candidate.approach_joint_waypoints,motion['grasp_duration_s'],False),
+                        ('retreat',candidate.retreat_joint_waypoints,motion['retreat_duration_s'],True)]
+                for name,waypoints,duration,has_payload in phases:
+                    begin=start.copy() if name=='pregrasp' else np.r_[candidate.pregrasp_joints if name=='approach' else candidate.grasp_joints,start[6]]
+                    approved[name]=check_candidate_path(self.samples(begin,waypoints,duration,object_motion=True),has_payload,open_reference=name in ('approach','retreat'))
+                    approved[name]['operation']=name
+                name='close'
+                closure_start=np.r_[candidate.grasp_joints,start[6]]
+                closed=self.grasp['robot']['gripper']['rars01']['closed_position_rad']
+                approved['close']=check_candidate_path(self.samples(closure_start,[candidate.grasp_joints],motion['grasp_duration_s'],closed),False,'close')
+                approved['close']['points']=[closure_start.tolist(),closure_start.tolist()]
+                name='return_scan'
+                scan_return=check_candidate_path(self.samples(np.r_[candidate.retreat_joints,start[6]],
+                    [start[:6]],motion['retreat_duration_s']),True,open_reference=True)
+                # One approved retreat command: withdraw, then return to the
+                # measured scan pose. Completion confirms the final scan pose.
+                approved['retreat']['points']+=scan_return['points'][1:]
+                approved['retreat']['collision_points']+=scan_return['collision_points'][1:]
+                approved['retreat']['returns_to_scan']=True
+                approved['retreat']['scan_q']=start[:6].tolist()
+                approved_candidates[id(candidate)]=approved
+                return True
+            except CandidatePathRejected as error:
+                rejected_paths.append(str(error))
+                self.compute_metrics.setdefault('collision_rejections',[]).append(dict(stage=name,detail=str(error)))
+                return False
+        rejections=[]
+        self.compute_metrics['grasp_rejections']=rejections
+        self.compute_metrics['ik_transform_audit']=dict(camera_to_current_arm=cam_to_arm.tolist(), current_odom_arm=odom_now.tolist(), capture_odom_arm=at['odom_arm'].tolist(), capture_arm_camera=at['arm_camera'].tolist(), tcp_frame='End_link', units='m_rad')
+        self.compute_metrics['candidate_validation']={}
+        audit={'target_center':center} if trace is not None or debug is not None else None
+        if audit is not None:self.compute_metrics['grasp_candidate_audit']=audit
+        def publish_arm(status):
+            if debug is None:return
+            try:
+                from .arm_debug import planning_snapshot
+                debug.arm.submit(planning_snapshot(request,self.cfg['paths']['arm_urdf'],
+                    start,cam_to_arm,audit or {},self.compute_metrics.get('ik_calls',[]),status))
+            except Exception as error:
+                self.compute_metrics['arm_debug_error']=str(error)
+        publish_arm('CALCULATING')
+        candidate=None
+        selection_status='INTERRUPTED_OR_ERROR'
+        try:
+            with planning_stage(self.compute_metrics,'selection_including_collision',trace,request,progress=progress):
+                candidate=_select_executable_grasp(self.ik,GeometryOnly(),GraspGroup(result['grasps']),cam_to_arm,g['pregrasp_offset_m'],g.get('retreat_offset_m',g['pregrasp_offset_m']),g['insertion_depth_m'],robot['max_grasp_depth_m'],g['min_base_z_m'],g['min_jaw_z_m'],'rars01',True,False,np.array([g['position_compensation_base_m'][axis] for axis in 'xyz']),g['ik_candidate_limit'],g['cartesian_ik'],g['candidate_selection'],max_grasp_width_m=robot['max_grasp_width_m'],target_shape_camera=shape,target_center_base=center,ranking_robot=self.grasp['robot'],retreat_speed_scale=.25 if self.cfg.get('operator_trial') else 1.,path_validator=validate,rejection_diagnostics=rejections,local_height_filters_enabled=self.cfg.get('local_height_filters_enabled',True),cancel_check=self.collision.check_deadline,selection_metrics=self.compute_metrics['candidate_validation'],candidate_diagnostics=audit,verbose=not self.cfg['execution'].get('short_journal_enabled',False))
+            selection_status='SELECTED_COLLISION_CHECKED' if candidate is not None else 'NO_EXECUTABLE_CANDIDATE'
+        finally:
+            publish_arm(selection_status)
+            filter_counts.update(self.compute_metrics['candidate_validation'])
+            filter_counts.update({key:audit[key] for key in ('input_count','after_nms',
+                'candidate_limit','after_candidate_limit','ik_feasible','rejected_depth',
+                'rejected_base_height','rejected_jaw_height','rejected_ik','selected') if audit is not None and key in audit})
+        if candidate is None:
+            if rejected_paths:raise ValueError('NO_COLLISION_FREE_CANDIDATE: '+rejected_paths[-1])
+            if any(item['reason'] in ('DEPTH_LIMIT','BASE_HEIGHT_LIMIT','JAW_HEIGHT_LIMIT') for item in rejections):
+                raise ValueError('CANDIDATE_GEOMETRY_REJECTED')
+            if any(item['reason']=='NO_CANDIDATES' for item in rejections):raise ValueError('NO_CANDIDATES')
+            raise ValueError('IK_FAIL')
+        poses_map={name:(odom_now@pose6d_to_mat4(*pose)).tolist() for name,pose in [('pregrasp',candidate.pregrasp6d),('grasp',candidate.grasp6d),('retreat',candidate.retreat6d)]}
+        world=WorldGraspAnchor(poses_map['grasp'],at['capture_mono_ns'],at['capture_ros_ns'],
+            at['body'].navigation_session_id,at['body'].tf_revision,request['goal_revision'],float(d.conf))
+        # Preserve world poses computed in the candidate frame; refresh only
+        # the scene used for final freshness/epoch validation after selection.
+        final_scene=context(None,None)
+        world.validate(final_scene['body'],time.monotonic_ns(),self.cfg['execution']['mission_timeout_s'],request['goal_revision'],self.cfg['limits']['sensor_age_s'])
+        object_anchor=WorldObjectAnchor(np.asarray(anchor).tolist(),at['capture_mono_ns'],at['capture_ros_ns'],
+            at['body'].navigation_session_id,at['body'].tf_revision,request['goal_revision'],request['owner_session_id'],float(d.conf))
+        return dict(object_anchor=object_anchor.data(),grasp_plan=dict(approved_segments=approved_candidates[id(candidate)],planning_scene_snapshot=copy.deepcopy(current['scene_snapshot']),scan_q=start[:6].tolist(),pregrasp=candidate.pregrasp_joints.tolist(),approach=[q.tolist() for q in candidate.approach_joint_waypoints],retreat=[q.tolist() for q in candidate.retreat_joint_waypoints],cost=candidate.cost,object_map=anchor.tolist(),camera_to_arm=cam_to_arm.tolist(),poses_map=poses_map,world_grasp_anchor=world.data(),pose_kind='End_link_TCP'))
 
     def close(self):
         if getattr(self,'_closed',False):return

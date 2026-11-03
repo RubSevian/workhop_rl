@@ -128,6 +128,12 @@ def load(path, workspace):
                 raise ValueError(f'invalid {group}.{key}')
             if key not in ('joint1_min_rad','joint1_start_rad') and value <= 0:
                 raise ValueError(f'nonpositive {group}.{key}')
+    generations=cfg['compute'].get('grasp_generation_count',1)
+    if type(generations) is not int or not 1<=generations<=3:
+        raise ValueError('compute.grasp_generation_count must be an integer in [1,3]')
+    budget=cfg['compute'].get('grasp_generation_budget_s')
+    if budget is not None and (type(budget) not in (int,float) or not math.isfinite(budget) or budget<=0):
+        raise ValueError('compute.grasp_generation_budget_s must be null or finite and positive')
     nice=cfg['compute'].get('inference_nice',0)
     if type(nice) is not int or not 0<=nice<=19:raise ValueError('compute.inference_nice must be in [0,19]')
     if type(cfg['compute']['cpu_threads']) is not int or cfg['compute']['cpu_threads']<1:
@@ -168,7 +174,7 @@ def load(path, workspace):
             or not 1<=confirmations<=observations<=5):
         raise ValueError('search requires 1 <= confirmation_frames <= observations <= 5')
     if cfg['refinement'].get('full_view_enabled',False):
-        for key,maximum in (('max_pitch_rad',.5),('max_camera_translation_m',.1),('frame_margin_fraction',.24)):
+        for key,maximum in (('frame_margin_fraction',.24),):
             value=cfg['refinement'].get(key)
             if type(value) not in (int,float) or not math.isfinite(value) or not 0<value<=maximum:
                 raise ValueError('invalid refinement.'+key)

@@ -42,6 +42,7 @@ class Mission:
         self.full_attempt=1;self.max_full_attempts=2
         self.attempt_history=[];self.attempt_scan_started_ns=None
         self.retry_scan_pending=False
+        self.view_retreat_attempted=False
         self.stable_since, self.base_anchor = None, None
         self.leg_anchor = None
         self.scene_anchor=None;self.goal_reached=None;self.window_pose=None
@@ -187,7 +188,7 @@ class Mission:
             home_from_scan=self.home_from_scan if operation=='home' else False,
             grasp_plan=self.grasp_plan, object_anchor=self.object_anchor,q_search=self.q_search,
             full_attempt=self.full_attempt,grasp_attempt=self.grasp_attempt,reverse_segment=copy_trajectory(self.attempt_segments[-1]) if operation in ('reverse_search','retry_open') and self.attempt_segments else None,
-            scan_index=self.scan_index)))
+            scan_index=self.scan_index,view_retreat=self.view_retreat_attempted if operation=='refine' else False)))
 
     def failed_grasp_attempt(self, reason, now):
         self.last_grasp_error=reason
@@ -567,12 +568,21 @@ class Mission:
                     or (operation in PRESET_COMPUTES and transient_scene_error(reason))):
                 self.defer_observation(reason,now,operation)
                 return True
-            if ((operation=='grasp_plan' and reason in ('OBJECT_LOST_AFTER_REFINEMENT','TARGET_VIEW_INCOMPLETE'))
+            if (operation=='grasp_plan' and reason=='TARGET_VIEW_INCOMPLETE'
+                    and self.cfg['refinement'].get('enabled',True) and not self.view_retreat_attempted):
+                self.view_retreat_attempted=True
+                self.transition('VIEW_REFINEMENT',now,'TARGET_VIEW_INCOMPLETE')
+                self.request('refine',now)
+                return True
+            if ((operation=='grasp_plan' and reason=='OBJECT_LOST_AFTER_REFINEMENT')
                     or (operation=='refine' and reason=='REFINE_PATH_REJECTED')):
                 self.next_search(now)
                 return True
             # Unsafe HOME never falls through to a direct zero joint target.
-            if operation=='grasp_plan' and (reason in ('IK_FAIL','NO_CANDIDATES','NO_TARGET_BOUND_GRASPS','CANDIDATE_GEOMETRY_REJECTED') or reason.startswith('NO_COLLISION_FREE_CANDIDATE:')):
+            if ((operation=='refine' and reason=='TARGET_VIEW_UNREACHABLE') or
+                    (operation=='grasp_plan' and (reason in ('IK_FAIL','NO_CANDIDATES','NO_TARGET_BOUND_GRASPS',
+                        'CANDIDATE_GEOMETRY_REJECTED','TARGET_VIEW_INCOMPLETE','GRASP_GENERATION_BUDGET_EXHAUSTED')
+                        or reason.startswith('NO_COLLISION_FREE_CANDIDATE:')))):
                 self.last_grasp_error=reason
                 scan=self.scan_home_plan()
                 if scan is not None and not self.inputs['owner'].get('gripper_command_active'):
@@ -601,6 +611,7 @@ class Mission:
                 self.object_anchor=copy.deepcopy(result.get('object_anchor'))
                 self.q_search=list(result.get('q_search',self.inputs['owner']['q'][:6]))
                 self.grasp_attempt=1
+                self.view_retreat_attempted=False
                 self.attempt_segments=[]
                 refine=self.cfg['refinement'].get('enabled',True)
                 self.transition('VIEW_REFINEMENT' if refine else 'PLAN_GRASP', now)
@@ -613,6 +624,8 @@ class Mission:
             self.transition('PREGRASP', now)
             self.request('pregrasp', now)
         else:
+            if operation=='refine' and result.get('view_retreat_used') is True:
+                self.view_retreat_attempted=True
             # The owner does its own bounds/authority/start validation. It does
             # not take arbitrary joint targets from a CUDA process directly.
             # Match owner evidence: an in-flight move has no completed scan pose.

@@ -347,8 +347,12 @@ class PlanningContracts(unittest.TestCase):
             for candidate in candidates:self.assertTrue(kw['path_validator'](candidate))
             return candidates[0]
         selection._select_executable_grasp=select
-        api=ModuleType('graspnetAPI');api.GraspGroup=lambda value:value
-        utils=ModuleType('utils.graspnet_utils')
+        api=ModuleType('graspnetAPI')
+        class Group:
+            def __init__(self,value):self.grasp_group_array=np.asarray(value)
+            def sort_by_score(self):pass
+        api.GraspGroup=Group
+        utils=ModuleType('utils.graspnet_utils');utils.nms_grasp_group=lambda group:group
         request=dict(id=12,session_id='test',operation='grasp_plan',owner={},owner_session_id='arm',navigation_session_id='nav',goal_revision=1)
         with patch.dict(sys.modules,{'graspnetAPI':api,'utils.graspnet_utils':utils,'rars01_graspnet.real_grasp_selection':selection}),patch('mission.planning.time.monotonic_ns',return_value=sample['body'].mono_ns):
             first=p.execute(request,context);second=p.execute(request,context)
@@ -363,8 +367,8 @@ class PlanningContracts(unittest.TestCase):
                 self.assertEqual(scene['legs'],passes[begin][0]['legs'])
                 self.assertEqual(reference,sample['body'].mono_ns)
         self.assertNotEqual(passes[0][0]['legs'],passes[10][0]['legs'])
-        self.assertEqual(len(acquisitions),2)
-        self.assertEqual(len(reads),6) # initial, one attempt snapshot, final live admission per attempt
+        self.assertEqual(len(acquisitions),4) # pre-generation admission plus frozen path scene per request
+        self.assertEqual(len(reads),10) # initial, baseline, live pre-generation, frozen selection, final admission
         p.detect=lambda *a:None
         with self.assertRaisesRegex(ValueError,'OBJECT_LOST_AFTER_REFINEMENT'):
             p.execute(request,context)
