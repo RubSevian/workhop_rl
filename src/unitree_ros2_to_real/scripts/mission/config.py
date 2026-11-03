@@ -110,7 +110,7 @@ def load(path, workspace):
     # Never feed malformed limits to search/timers, even in read-only mode.
     for group in ('search', 'refinement', 'settle', 'execution'):
         for key, value in cfg[group].items():
-            if group == 'refinement' and key == 'enabled':
+            if group == 'refinement' and key in ('enabled','full_view_enabled'):
                 if type(value) is not bool:raise ValueError('invalid refinement.enabled')
                 continue
             if group == 'execution' and key in ('detection_debug_enabled','diagnostic_recording_enabled','short_journal_enabled','automatic_retreat'):
@@ -167,6 +167,11 @@ def load(path, workspace):
     if (type(observations) is not int or type(confirmations) is not int
             or not 1<=confirmations<=observations<=5):
         raise ValueError('search requires 1 <= confirmation_frames <= observations <= 5')
+    if cfg['refinement'].get('full_view_enabled',False):
+        for key,maximum in (('max_pitch_rad',.5),('max_camera_translation_m',.1),('frame_margin_fraction',.24)):
+            value=cfg['refinement'].get(key)
+            if type(value) not in (int,float) or not math.isfinite(value) or not 0<value<=maximum:
+                raise ValueError('invalid refinement.'+key)
     if not 3 <= cfg['refinement']['fresh_frames'] <= 5:
         raise ValueError('refinement requires 3-5 fresh frames')
     if cfg['settle']['min_stable_s'] < 5 or cfg['settle']['timeout_s'] <= cfg['settle']['min_stable_s']:

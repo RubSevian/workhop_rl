@@ -567,7 +567,8 @@ class Mission:
                     or (operation in PRESET_COMPUTES and transient_scene_error(reason))):
                 self.defer_observation(reason,now,operation)
                 return True
-            if operation=='grasp_plan' and reason=='OBJECT_LOST_AFTER_REFINEMENT':
+            if ((operation=='grasp_plan' and reason in ('OBJECT_LOST_AFTER_REFINEMENT','TARGET_VIEW_INCOMPLETE'))
+                    or (operation=='refine' and reason=='REFINE_PATH_REJECTED')):
                 self.next_search(now)
                 return True
             # Unsafe HOME never falls through to a direct zero joint target.

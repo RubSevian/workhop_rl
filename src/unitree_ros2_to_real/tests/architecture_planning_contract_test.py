@@ -134,6 +134,7 @@ class PlanningContracts(unittest.TestCase):
                     owner_session_id='arm',body=body,odom_vehicle=body.map_vehicle,
                     odom_mono_ns=body.mono_ns,scene_snapshot=scene,capture_ns=body.mono_ns)
         p=Planning.__new__(Planning);p.cfg=copy.deepcopy(f.m.cfg);p.frames=f.frames
+        p.cfg['refinement']['full_view_enabled']=False # Legacy contracts; full-view admission has dedicated tests.
         p.grasp={'robot':{'motion':{'pregrasp_duration_s':1.,'grasp_duration_s':1.,'retreat_duration_s':1.},
                          'rars01':{'command_rate_hz':100.,'position_velocity_limits_rad_s':[1.]*7},
                          'gripper':{'rars01':{'closed_position_rad':0.}}}}

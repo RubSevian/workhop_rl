@@ -563,7 +563,7 @@ class Planning:
         payload=owner.get('gripper_command_active') is True
         sample=context(None,None)
         planning_reference_ns=None
-        if op in ('scan_pose','refine'):
+        if op in ('scan_pose','refine') or (op in ('scan_step','scan_return') and self.cfg['refinement'].get('full_view_enabled',False)):
             # Check acquisition freshness before IK; later geometry passes use
             # this same scene/time. validate_result still admits live data.
             planning_reference_ns=time.monotonic_ns()
@@ -599,12 +599,19 @@ class Planning:
             target=self.scan_joints;grip=self.geometry.motor_angle_for_width(self.grasp['robot']['rars01']['max_grasp_width_m'])
         elif op in ('scan_step','scan_return'):
             if self.scan_joints is None:raise ValueError('NO_SCAN_POSE')
-            target=start[:6].copy();target[0]=self.angles[0] if op=='scan_return' else self.angles[request['scan_index']]
+            target=start[:6].copy()
+            if (self.cfg['refinement'].get('full_view_enabled',False)
+                    and abs(start[3]-self.scan_joints[3])>self.cfg['execution']['start_tolerance_rad']):
+                target[3]=self.scan_joints[3] # Restore only the viewing tilt, not unrelated measured joints.
+            target[0]=self.angles[0] if op=='scan_return' else self.angles[request['scan_index']]
         elif op=='refine':
             refine_started_ns=time.monotonic_ns()
             if self.last_detection is None:raise ValueError('NO_STABLE_OBJECT')
             if self.scan_joints is None or payload:raise ValueError('REFINE_REQUIRES_EMPTY_SCAN_POSE')
-            if np.max(np.abs(start[1:6]-self.scan_joints[1:6]))>self.cfg['execution']['start_tolerance_rad']:
+            difference=np.abs(start[:6]-self.scan_joints)
+            full_view=self.cfg['refinement'].get('full_view_enabled',False)
+            if full_view:difference[3]=max(0.,difference[3]-self.cfg['refinement']['max_pitch_rad'])
+            if np.max(difference[1:6])>self.cfg['execution']['start_tolerance_rad']:
                 raise ValueError('REFINE_SCAN_POSE_CHANGED')
             anchor=np.asarray(self.last_detection[4],dtype=float)
             from .refinement import select_scan_yaw
@@ -614,10 +621,32 @@ class Planning:
                 arm_camera,odom_arm=self.eye.chain(sample['capture_ns'],sample['feedback_ns'],q,sample['odom_mono_ns'],sample['odom_vehicle'])
                 return (np.linalg.inv(odom_arm@arm_camera)@np.r_[anchor,1.])[:3]
             target=start[:6].copy()
-            target[0],detail=select_scan_yaw(start[0],camera_point,
-                max(lower[0],min(self.angles)),min(upper[0],max(self.angles)),
-                self.cfg['refinement'].get('max_yaw_rad',.5),
-                self.cfg['refinement'].get('horizontal_tolerance_rad',.02))
+            if full_view:
+                from .refinement import frame_bounds, select_full_view
+                color,depth,det,at,_=self.last_detection
+                opts=self.cfg['refinement']
+                view=frame_bounds(det.mask,det.bbox_xyxy,depth.shape,opts['frame_margin_fraction'])
+                x0,y0,x1,y1=view['bounds_px']
+                valid=np.asarray(det.mask,bool)&(depth>0)&(depth>=1000*self.grasp['graspnet']['min_depth'])&(depth<=1000*self.grasp['graspnet']['max_depth'])
+                if not np.any(valid):raise ValueError('INVALID_TARGET_VIEW')
+                distance=float(np.median(depth[valid]))/1000.
+                rays=np.array([[x0,y0,1],[x1,y0,1],[x1,y1,1],[x0,y1,1]])
+                corners=np.linalg.solve(self.camera.K,rays.T).T*distance
+                pose=at['odom_arm']@at['arm_camera']
+                world=corners@pose[:3,:3].T+pose[:3,3]
+                def camera_pose(q):
+                    arm_camera,odom_arm=self.eye.chain(sample['capture_ns'],sample['feedback_ns'],q,sample['odom_mono_ns'],sample['odom_vehicle'])
+                    return odom_arm@arm_camera
+                target,detail=select_full_view(start[:6],camera_pose,world,self.camera.K,depth.shape,
+                    lower,upper,(min(self.angles),max(self.angles)),self.scan_joints[3],
+                    opts['max_yaw_rad'],opts['max_pitch_rad'],opts['max_camera_translation_m'],
+                    opts['frame_margin_fraction'],self.collision.check_deadline)
+                detail['observed_view']=view
+            else:
+                target[0],detail=select_scan_yaw(start[0],camera_point,
+                    max(lower[0],min(self.angles)),min(upper[0],max(self.angles)),
+                    self.cfg['refinement'].get('max_yaw_rad',.5),
+                    self.cfg['refinement'].get('horizontal_tolerance_rad',.02))
             self.compute_metrics['refinement']=detail
             self.compute_metrics['refine_prepare_elapsed_s']=(time.monotonic_ns()-refine_started_ns)/1e9
         elif op in ('grasp_plan','observe_grasp'):
@@ -627,6 +656,11 @@ class Planning:
                 if op=='observe_grasp':return dict(observation=dict(found=False,graspnet_called=False))
                 raise ValueError('OBJECT_LOST_AFTER_REFINEMENT')
             color,depth,d,at,anchor=detection
+            if self.cfg['refinement'].get('full_view_enabled',False):
+                from .refinement import frame_bounds
+                view=frame_bounds(d.mask,d.bbox_xyxy,depth.shape,self.cfg['refinement']['frame_margin_fraction'])
+                self.compute_metrics['target_view']=view
+                if not view['full_view']:raise ValueError('TARGET_VIEW_INCOMPLETE')
             # Published independently of profiling: detection has accepted fresh,
             # geometrically consistent RGB-D for this particular request.
             self.observation_verified=dict(
@@ -864,6 +898,16 @@ class Planning:
                 collision_checked=False,collision_policy='scan_to_home_unchecked',
                 payload_checked=bool(payload and self.cfg['collision'].get('payload_enabled',True)),
                 collision_context=self.collision_scene(sample),scene_snapshot=copy.deepcopy(sample['scene_snapshot'])))
+        if (op in ('refine','scan_step','scan_return') and self.cfg['refinement'].get('full_view_enabled',False)
+                and np.max(np.abs(points[:,1:6]-points[0,1:6]))>1e-6):
+            # New vertical motion/restoration is outside the yaw-only preset.
+            try:
+                trajectory=self.checked(points,sample,payload,'move',reference_ns=planning_reference_ns)
+            except CandidatePathRejected:
+                if op=='refine':raise ValueError('REFINE_PATH_REJECTED') from None
+                raise
+            trajectory['operation']=op
+            return dict(trajectory=trajectory)
         if op in ('scan_pose','scan_step','scan_return','refine'):
             # Operator-approved preset search policy, NOT collision approval.
             # Freshness, epochs, start tolerance and owner limits still apply.
