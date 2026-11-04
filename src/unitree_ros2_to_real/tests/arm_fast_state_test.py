@@ -4,13 +4,14 @@ from pathlib import Path
 from types import SimpleNamespace as NS
 import yaml
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]/'scripts'))
-from mission.arm_fast_state import to_mapping,from_mapping
+from mission.arm_fast_state import to_mapping,from_mapping,REJECTION_DEFAULTS
 from rclpy.serialization import serialize_message,deserialize_message
 from rars01_state_interfaces.msg import ArmFastState
 
 class Tests(unittest.TestCase):
     def payload(self):
         value=yaml.safe_load((Path(__file__).with_name('fixtures')/'arm_owner_state.yaml').read_text())
+        value.update(REJECTION_DEFAULTS)
         value['owner_session_id']='owner-test';value['grasp_assessment']='UNKNOWN';value['grasp_assessment_reason']='';return value
     def same(self,a,b):
         if isinstance(a,dict):
@@ -52,8 +53,15 @@ class Tests(unittest.TestCase):
         for key in ('q','dq','torque','accepted_target'):
             self.assertTrue(all(type(x) is float for x in decoded[key]))
 
+    def test_rejection_survives_typed_serialization(self):
+        value=self.payload()
+        value.update(rejected_plan_id=2**63+2,rejected_session_id='mission',
+            rejected_owner_session_id='owner-test',rejected_navigation_session_id='nav',
+            rejected_goal_revision=9,rejected_ns=10**12,rejection_reason='start mismatch')
+        self.same(value,to_mapping(deserialize_message(serialize_message(from_mapping(value)),ArmFastState)))
+
     def test_version_rejected(self):
-        msg=from_mapping(self.payload());msg.schema_version=2
+        msg=from_mapping(self.payload());msg.schema_version=999
         with self.assertRaisesRegex(ValueError,'SCHEMA'):to_mapping(msg)
     def test_oversized_text_rejected(self):
         msg=from_mapping(self.payload());msg.mission_error='x'*2_000_001

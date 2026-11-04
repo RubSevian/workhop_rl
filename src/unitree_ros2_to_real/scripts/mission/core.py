@@ -772,7 +772,15 @@ class Mission:
                     self.cancel(now,'SCENE_ANCHOR_DISCONTINUITY',True)
                 elif self.pending and self.pending['kind']=='motion':
                     p = self.pending
-                    if owner.get('mission_id') == p['id']:
+                    rejected = (owner.get('rejected_plan_id') == p['id']
+                        and owner.get('rejected_session_id') == self.session
+                        and owner.get('rejected_owner_session_id') == self.owner_session
+                        and owner.get('rejected_navigation_session_id') == self.nav_session
+                        and owner.get('rejected_goal_revision') == self.revision
+                        and owner.get('rejected_ns',0) >= int(p['at']*1e9))
+                    if rejected:
+                        self.cancel(now,'OWNER_REJECTED:'+owner.get('rejection_reason','UNKNOWN'),True)
+                    elif owner.get('mission_id') == p['id']:
                         if self.state=='WAIT_RETREAT_APPROVAL' and p['operation']=='retreat' and owner.get('mission_state') in ('EXECUTING','SUCCEEDED'):
                             self.transition('RETREAT',now,'ONE_SHOT_OPERATOR_APPROVAL_ACCEPTED')
                         if owner.get('mission_state') == 'SUCCEEDED':

@@ -8,6 +8,7 @@ import grasp_mission as gm
 import grasp_perception as gp
 from mission.stop_home import HomeDispatch
 from mission.compute_cancel import ComputeCancellation
+from mission.input_diagnostics import InputDiagnostics
 
 class ContractTests(unittest.TestCase):
     def test_perception_refuses_shutdown_window_and_deduplicates_retry(self):
@@ -31,11 +32,13 @@ class ContractTests(unittest.TestCase):
             # A stale navigation-goal latch must not prevent stop HOME supervision.
             wait_goal_stale_since=1.,perception_service_ready=lambda now:False,
             session='m',revision=1,state='CANCELLED',request_id=10,
+            return_navigation=NS(request_ns=0,target=lambda:None),
+            base_motion_window={'home_completed_ns':None},
             scan_home_plan=lambda:dict(scan_q=[0.,.5,0.,0.,0.,0.]),
             status=lambda now:dict(observation_recovery={}))
         listener=NS(tf_sub=None,callback=lambda msg:None)
         client=NS(service_is_ready=lambda:True,call_async=lambda req:None)
-        s=NS(engine=e,input_diagnostics=NS(tick=lambda now:None),status_subscriptions={},native_leg_input=None,
+        s=NS(engine=e,input_diagnostics=InputDiagnostics(),status_subscriptions={},native_leg_input=None,
             odometry_subscription=None,base=lambda msg:None,body_source=NS(listener=listener,diagnostics={}),
             refresh_scene=lambda:None,physical=True,blockers=[],short_journal=None,scene_error='',
             leg_reader=NS(status=lambda:{}),scene_buffer=NS(diagnostics=lambda now:{}),

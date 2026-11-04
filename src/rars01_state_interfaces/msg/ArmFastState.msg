@@ -1,5 +1,5 @@
 # Full owner snapshot. Source timestamps are host monotonic ns, not ROS time.
-uint32 schema_version 1
+uint32 schema_version 2
 uint64 observed_ns
 string owner_session_id
 bool mission_capable
@@ -7,6 +7,13 @@ uint64 mission_id
 string mission_state
 string mission_error
 string mission_blocker
+uint64 rejected_plan_id
+string rejected_session_id
+string rejected_owner_session_id
+string rejected_navigation_session_id
+uint64 rejected_goal_revision
+uint64 rejected_ns
+string rejection_reason
 bool home_requested
 string grasp_assessment
 string grasp_assessment_reason

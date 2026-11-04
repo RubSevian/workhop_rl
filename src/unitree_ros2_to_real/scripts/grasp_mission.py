@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 """Non-RT coordinator. The only motion effect goes to the existing arm owner."""
 import json
+from mission.plan_wire import encode_plan
+from mission.tick_timing import TickTiming
 from pathlib import Path
 import time
 import uuid
@@ -112,6 +114,7 @@ class Coordinator(Node):
         return response
 
     def observe(self,name,msg,info):
+        callback_cpu=time.thread_time()
         started=time.monotonic();value=None;outcome='decode_error';publisher_count=None;parse_error=None
         try:
             typed=name=='owner' and getattr(self,'arm_state_transport','yaml')=='typed'
@@ -168,7 +171,12 @@ class Coordinator(Node):
                 self.engine.input_rejections[name]=detail
             diagnostics=getattr(self,'input_diagnostics',None)
             if diagnostics is not None:
-                diagnostics.callback(name,started,time.monotonic(),outcome,value,publisher_count)
+                ended=time.monotonic()
+                diagnostics.callback(name,started,ended,outcome,value,publisher_count)
+                journal=getattr(self,'short_journal',None)
+                if journal is not None and ended-started>=.025:
+                    journal.put('mission_input_timing',source=name,started_ns=int(started*1e9),
+                        wall_s=ended-started,thread_cpu_s=time.thread_time()-callback_cpu,outcome=outcome)
 
     def observe_gripper(self, owner):
         try:
@@ -248,7 +256,7 @@ class Coordinator(Node):
                 age=(time.monotonic_ns()-data.get('observed_ns',0))/1e9
                 if data.get('ok') and r3.get('state')=='CONTROLLED_STOP' and r3.get('phase') in CONTROLLED_HOME_PHASES and not r3.get('fault_latched') and self.engine.fresh('r3',time.monotonic()) and data.get('observed_ns',0)>0 and age>=0:
                     trajectory=dict(data['trajectory'],**{k:pending[k] for k in ('id','session_id','navigation_session_id','owner_session_id','goal_revision')},observed_ns=time.monotonic_ns())
-                    self.trajectory_pub.publish(String(data=json.dumps(trajectory,allow_nan=False,separators=(',',':'))))
+                    self.trajectory_pub.publish(String(data=encode_plan(trajectory)))
                 else:
                     self.stop_home_result='PLAN_REJECTED:'+data.get('reason','authority revoked')
                     self.get_logger().error('Controlled-stop HOME blocked: '+data.get('reason','authority revoked'))
@@ -274,17 +282,24 @@ class Coordinator(Node):
         except (ValueError,TypeError,KeyError):self.engine.cancel(time.monotonic(),'INVALID_COMPUTE_RESULT',True)
 
     def tick(self):
+        timing=TickTiming()
         tick_started=time.monotonic();self.input_diagnostics.tick(tick_started)
         # Drain bounded queued source samples, never relax a freshness limit.
         for name,subscription in self.status_subscriptions.items():
             dispatch_pending(subscription,lambda msg,n=name:self.observe(n,msg,None))
+            timing.mark("input_"+name)
         if self.native_leg_input is not None:
             dispatch_pending(self.native_leg_subscription,self.leg_batch)
+        timing.mark("legs")
         dispatch_pending(self.odometry_subscription,self.base)
+        timing.mark("odometry")
         dispatch_pending(self.body_source.listener.tf_sub,self.body_source.listener.callback)
+        timing.mark("tf")
         self.refresh_scene()
+        timing.mark("scene")
         now=time.monotonic();e=self.engine
         effects=e.step(now,self.get_clock().now().nanoseconds) if self.physical and not self.blockers else e.drain()
+        timing.mark('engine_step')
         journal=getattr(self,'short_journal',None)
         if journal is not None:journal.transition(e,now)
         if e.stale_input_diagnostic is not None and not self.stale_fault_reported:
@@ -306,6 +321,7 @@ class Coordinator(Node):
                and e.inputs['owner'].get('target_valid') is True
                and self.cancel.service_is_ready() and self.home.service_is_ready()
                and all(self.count_publishers(topic)==1 for topic in self.topics.values()))
+        timing.mark('readiness_and_journal')
         health=dict(observed_ns=time.monotonic_ns(),session_id=e.session,
                     navigation_session_id=e.inputs.get('nav',{}).get('session_id',''),
                     goal_revision=e.revision,phase=e.state,ready=bool(ready),physical=bool(self.physical),base_locked=e.state in ARM_PHASES|TERMINAL,blockers=self.blockers,
@@ -314,7 +330,11 @@ class Coordinator(Node):
                       return_target=e.return_navigation.target(),
                       home_completed_ns=e.base_motion_window['home_completed_ns'],
                       arm_home_ready=e.fresh('owner',now) and e.inputs.get('owner',{}).get('arm_home_ready') is True)
-        self.health_pub.publish(String(data=json.dumps(health)))
+        timing.health_observed_ns=health['observed_ns']
+        health_message=String(data=json.dumps(health))
+        timing.mark('health_encode')
+        self.health_pub.publish(health_message)
+        timing.mark('health_publish')
         # X uses checked HOME, or the measured confirmed-scan HOME policy.
         # Owner acknowledges the HOME request, while R3 still waits for measured
         # HOME. B/fault cannot use this path and always revokes execution.
@@ -376,8 +396,9 @@ class Coordinator(Node):
                     goal.header.stamp=Time(nanoseconds=data['stamp_ns']).to_msg()
                     goal.point.x,goal.point.y,goal.point.z=map(float,data['target'])
                     self.return_goal_pub.publish(goal)
-                elif kind=='trajectory':self.trajectory_pub.publish(String(data=json.dumps(data,allow_nan=False,separators=(',',':'))))
+                elif kind=='trajectory':self.trajectory_pub.publish(String(data=encode_plan(data)))
             else:e.cancel(now,'MISSION_HEALTH_INVALID',True)
+        timing.mark('effects_and_home')
         status=e.status(now)
         status['callback_timing']=dict(tick_gap_s=self.input_diagnostics.tick_gap_s,
             max_tick_gap_s=self.input_diagnostics.max_tick_gap_s,
@@ -396,7 +417,10 @@ class Coordinator(Node):
         status['environment_collision_enabled']=self.cfg['collision'].get('environment_enabled',True)
         if self.blockers or not self.physical:
             status.update(state='BLOCKED',reason='PHYSICAL_NOT_READY',blockers=self.blockers+([] if self.physical else ['read_only_launch']))
-        self.status_pub.publish(String(data=json.dumps(status)))
+        status_message=String(data=json.dumps(status))
+        timing.mark('status_encode')
+        self.status_pub.publish(status_message)
+        timing.finish(self)
 
 def main():
     from mission.ros_main import spin

@@ -1,5 +1,6 @@
 #include "rars_auto_home.hpp"
 #include "rars_mission_stream.hpp"
+#include "mission_plan_identity.hpp"
 #include "retreat_trial.hpp"
 #include "optional_yaml_scalar.hpp"
 #include <regex>
@@ -208,6 +209,9 @@ class ArmOwner final:public rclcpp::Node {
    if(!mission_->has_command())return std::nullopt;
    const bool authority=Authority(now,home_requested_||active_home_,true);
    if(!authority&&mission_->busy()){
+    RCLCPP_ERROR(get_logger(),"MISSION_HEALTH_TIMING observed_ns=%lld callback_ns=%lld callback_gap_s=%.6f producer_gap_s=%.6f age_at_callback_s=%.6f decode_s=%.6f callback_silence_s=%.6f",
+     static_cast<long long>(Ns(health_stamp_)),static_cast<long long>(Ns(health_callback_stamp_)),health_callback_gap_s_,health_producer_gap_s_,health_age_at_callback_s_,health_decode_s_,
+     health_callback_stamp_==ArmTime{}?-1.:std::chrono::duration<double>(now-health_callback_stamp_).count());
     const auto age=[&](ArmTime stamp){return stamp==ArmTime{}?-1.:std::chrono::duration<double>(now-stamp).count();};
     RCLCPP_ERROR(get_logger(),"ARM_AUTHORITY_REVOKED plan=%llu heartbeat_ttl_s=%.3f feedback_ttl_s=%.3f r3_age_s=%.6f nav_age_s=%.6f health_age_s=%.6f feedback_age_s=%.6f r3_authority=%d nav_ready=%d health_ready=%d r3_active=%d manipulating=%d home_request=%d stopping=%d home_phase=%d completed_home_hold=%d mission_session_present=%d retired_session=%d nav_health_match=%d nav_r3_match=%d revision=%llu r3_publishers=%zu nav_publishers=%zu health_publishers=%zu phase=%s",
      static_cast<unsigned long long>(mission_->id()),mission_ttl_,mission_feedback_ttl_,age(r3_stamp_),age(nav_stamp_),age(health_stamp_),status.feedback_age_s,
@@ -237,7 +241,14 @@ class ArmOwner final:public rclcpp::Node {
    }catch(...){nav_ready_=false;}
   });
   health_sub_=create_subscription<std_msgs::msg::String>("/go2/mission/health",1,[this](std_msgs::msg::String::SharedPtr msg){
+   const auto callback_started=ArmClock::now();
    try{auto v=YAML::Load(msg->data);const auto ns=v["observed_ns"].as<int64_t>();if(ns<=Ns(health_stamp_))return;health_ready_=false;
+    // Diagnostic timestamps do not renew the producer lease.
+    health_callback_gap_s_=health_callback_stamp_==ArmTime{}?-1.:std::chrono::duration<double>(callback_started-health_callback_stamp_).count();
+    health_producer_gap_s_=health_stamp_==ArmTime{}?-1.:double(ns-Ns(health_stamp_))/1e9;
+    health_age_at_callback_s_=double(Ns(callback_started)-ns)/1e9;
+    health_decode_s_=std::chrono::duration<double>(ArmClock::now()-callback_started).count();
+    health_callback_stamp_=callback_started;
     health_stamp_=ArmTime(std::chrono::nanoseconds(ns));const auto session=v["session_id"].as<std::string>();
     if(!mission_session_.empty()&&mission_session_!=session){scan_home_reference_.Reset();mission_->Cancel(home_->status(),"mission_session_changed");retired_session_=mission_session_;}
     mission_session_=session;health_nav_session_=v["navigation_session_id"].as<std::string>();health_ready_=v["ready"].as<bool>();health_goal_revision_=v["goal_revision"].as<uint64_t>();
@@ -247,20 +258,21 @@ class ArmOwner final:public rclcpp::Node {
    }catch(...){health_ready_=false;}
   });
   plan_sub_=create_subscription<std_msgs::msg::String>("/rars01/mission/trajectory",1,[this](std_msgs::msg::String::SharedPtr msg){
-   if(trial_pending_){mission_blocker_="RETREAT_TRIAL_PENDING_NO_PLAN_REPLACEMENT";return;}
-   if(msg->data.size()>max_plan_samples_*256+65536||plan_future_.valid()){mission_blocker_="plan too large or parser busy";return;}
+   const auto identity=PlanWireIdentity(msg->data);
+   if(trial_pending_){RejectPlan(identity,"RETREAT_TRIAL_PENDING_NO_PLAN_REPLACEMENT");return;}
+   if(msg->data.size()>max_plan_samples_*256+65536||plan_future_.valid()){RejectPlan(identity,"plan too large or parser busy");return;}
    // YAML/arrays can take longer than an arm command slot. Decode on a separate
    // OTHER thread. The ROS owner remains responsive to cancel/emergency/timer.
-   plan_future_=std::async(std::launch::async,[msg,limit=max_plan_samples_]{
-    ParsedPlan result;try{
-     auto v=YAML::Load(msg->data);auto samples=v["points"].as<std::vector<std::vector<float>>>();
-     if(samples.size()>limit)throw std::runtime_error("plan sample cap exceeded");
-     result.points.reserve(samples.size());
-     for(const auto& q:samples){if(q.size()!=7)throw std::runtime_error("seven target values required");std::array<float,7> p;std::copy(q.begin(),q.end(),p.begin());result.points.push_back(p);}
-     v.remove("points");result.header=v;
-    }catch(const std::exception& e){result.error=e.what();}return result;
+   plan_future_=std::async(std::launch::async,[msg,identity,limit=max_plan_samples_]{
+    return ParseMissionPlan(msg->data,limit,identity);
    });
   });
+ }
+ void RejectPlan(const std::optional<MissionPlanIdentity>& identity,const std::string& reason){
+  mission_blocker_=reason;
+  // No stream cancellation or disable here. This is a correlated admission
+  // result; Mission applies its existing cancellation policy for its own ID.
+  if(identity){rejected_plan_=identity;rejection_reason_=reason;rejected_ns_=Ns(ArmClock::now());}
  }
  void AdmitPlan(){
   if(!mission_)return;
@@ -330,7 +342,7 @@ class ArmOwner final:public rclcpp::Node {
    if(ready_observe_&&kind=="move")ready_move_seen_=true;
    if(approved_trial){trial_state_="EXECUTING";trial_service_.reset();}
    mission_blocker_.clear();active_home_=is_home;if(is_home)home_requested_=false;
-  }catch(const std::exception& e){mission_blocker_=e.what();if(approved_trial)RevokeRetreatTrial("ADMISSION_REJECTED");}
+  }catch(const std::exception& e){RejectPlan(result.identity,e.what());if(approved_trial)RevokeRetreatTrial("ADMISSION_REJECTED");}
  }
  void RevokeRetreatTrial(const std::string& reason){
   if(!trial_approval_.ticket().empty()||trial_pending_)trial_state_=reason;
@@ -382,6 +394,12 @@ class ArmOwner final:public rclcpp::Node {
    fast.mission_state=(mission_?mission_->state():"DISABLED");
    fast.mission_error=(mission_?mission_->error():mission_blocker_);
    fast.mission_blocker=mission_blocker_;
+   fast.rejected_plan_id=rejected_plan_?rejected_plan_->id:0;
+   fast.rejected_session_id=rejected_plan_?rejected_plan_->session:"";
+   fast.rejected_owner_session_id=rejected_plan_?rejected_plan_->owner:"";
+   fast.rejected_navigation_session_id=rejected_plan_?rejected_plan_->navigation:"";
+   fast.rejected_goal_revision=rejected_plan_?rejected_plan_->revision:0;
+   fast.rejected_ns=rejected_ns_;fast.rejection_reason=rejection_reason_;
    fast.home_requested=home_requested_;
    fast.grasp_verification=(mission_?grasp_verification_mode_:"inactive");
    fast.grasp_assessment=(mission_?mission_->assessment().state():"UNKNOWN");
@@ -441,6 +459,13 @@ class ArmOwner final:public rclcpp::Node {
    <<YAML::Key<<"mission_state"<<YAML::Value<<(mission_?mission_->state():"DISABLED")
    <<YAML::Key<<"mission_error"<<YAML::Value<<(mission_?mission_->error():mission_blocker_)
    <<YAML::Key<<"mission_blocker"<<YAML::Value<<mission_blocker_
+   <<YAML::Key<<"rejected_plan_id"<<YAML::Value<<(rejected_plan_?rejected_plan_->id:0)
+   <<YAML::Key<<"rejected_session_id"<<YAML::Value<<(rejected_plan_?rejected_plan_->session:"")
+   <<YAML::Key<<"rejected_owner_session_id"<<YAML::Value<<(rejected_plan_?rejected_plan_->owner:"")
+   <<YAML::Key<<"rejected_navigation_session_id"<<YAML::Value<<(rejected_plan_?rejected_plan_->navigation:"")
+   <<YAML::Key<<"rejected_goal_revision"<<YAML::Value<<(rejected_plan_?rejected_plan_->revision:0)
+   <<YAML::Key<<"rejected_ns"<<YAML::Value<<rejected_ns_
+   <<YAML::Key<<"rejection_reason"<<YAML::Value<<rejection_reason_
    <<YAML::Key<<"operator_trial"<<YAML::Value<<operator_trial_
    <<YAML::Key<<"automatic_retreat"<<YAML::Value<<automatic_retreat_
    <<YAML::Key<<"retreat_trial"<<YAML::Value<<YAML::BeginMap
@@ -516,8 +541,9 @@ class ArmOwner final:public rclcpp::Node {
    <<YAML::Key<<"accepted_ns"<<YAML::Value<<Ns(*s.accepted_stamp);
   e<<YAML::EndMap;std_msgs::msg::String msg;msg.data=e.c_str();state_->publish(msg);
  }
- struct ParsedPlan{YAML::Node header;std::vector<std::array<float,7>> points;std::string error;};
+ using ParsedPlan=ParsedMissionPlan;
  std::future<ParsedPlan> plan_future_;
+ std::optional<MissionPlanIdentity> rejected_plan_;std::string rejection_reason_;uint64_t rejected_ns_{};
  std::optional<ParsedPlan> trial_pending_;RetreatTrialApproval trial_approval_;
  bool operator_trial_=false,automatic_retreat_=false;uint64_t trial_plan_id_=0;
  std::string trial_state_="DISABLED",trial_service_name_;
@@ -529,7 +555,8 @@ class ArmOwner final:public rclcpp::Node {
  uint64_t health_goal_revision_=0;bool health_manipulating_=false;
  std::string grasp_verification_mode_="inactive";
  double mission_feedback_ttl_=.1,mission_ttl_=.25;bool r3_home_phase_allowed_=false,r3_planned_disable_ready_=false,payload_checks_enabled_=true,r3_authority_=false,r3_active_=false,r3_stopping_=false,nav_ready_=false,health_ready_=false,home_requested_=false,active_home_=false;
- ArmTime r3_stamp_{},nav_stamp_{},health_stamp_{};
+ ArmTime r3_stamp_{},nav_stamp_{},health_stamp_{},health_callback_stamp_{};
+ double health_callback_gap_s_=-1.,health_producer_gap_s_=-1.,health_age_at_callback_s_=-1.,health_decode_s_=-1.;
  rclcpp::Subscription<std_msgs::msg::String>::SharedPtr r3_sub_,nav_sub_,health_sub_,plan_sub_;
  rclcpp::Service<std_srvs::srv::Trigger>::SharedPtr cancel_;
  bool connect_=false;AutoHomeState last_state_=AutoHomeState::READ_ONLY;

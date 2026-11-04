@@ -5,6 +5,7 @@ import sys
 from types import SimpleNamespace as NS, ModuleType
 import unittest
 from unittest.mock import patch
+from contextlib import nullcontext
 import numpy as np
 sys.path.insert(0,str(Path(__file__).parent))
 from first_grasp_mission_test import Fixture
@@ -327,7 +328,7 @@ class PlanningContracts(unittest.TestCase):
         p.grasp['robot']['rars01'].update(max_grasp_width_m=.1,max_grasp_depth_m=.1)
         p.grasp['grasp_pipeline']={'grasp':dict(pregrasp_offset_m=.1,insertion_depth_m=0.,min_base_z_m=0.,
                 min_jaw_z_m=0.,position_compensation_base_m=dict(x=0,y=0,z=0),ik_candidate_limit=2,cartesian_ik={},candidate_selection={})}
-        p.samples=lambda start,targets,*a,**k:np.vstack([start,np.r_[targets[-1],start[6]]])
+        p.samples=lambda start,targets,*a,**k:np.vstack([start,*[np.r_[q,start[6]] for q in targets]])
         passes=[];reads=[];acquisitions=[]
         def context(*a):
             value=copy.deepcopy(sample);value['legs'][0]+=.001*len(reads)
@@ -352,9 +353,9 @@ class PlanningContracts(unittest.TestCase):
             def __init__(self,value):self.grasp_group_array=np.asarray(value)
             def sort_by_score(self):pass
         api.GraspGroup=Group
-        utils=ModuleType('utils.graspnet_utils');utils.nms_grasp_group=lambda group:group
+        utils=ModuleType('utils.grasp_geometry');utils.nms_grasp_group=lambda group:group
         request=dict(id=12,session_id='test',operation='grasp_plan',owner={},owner_session_id='arm',navigation_session_id='nav',goal_revision=1)
-        with patch.dict(sys.modules,{'graspnetAPI':api,'utils.graspnet_utils':utils,'rars01_graspnet.real_grasp_selection':selection}),patch('mission.planning.time.monotonic_ns',return_value=sample['body'].mono_ns):
+        with patch.dict(sys.modules,{'graspnetAPI':api,'utils.grasp_geometry':utils,'rars01_graspnet.real_grasp_selection':selection}),patch('mission.planning.time.monotonic_ns',return_value=sample['body'].mono_ns):
             first=p.execute(request,context);second=p.execute(request,context)
         self.assertEqual(p.observation_verified['id'],12)
         self.assertEqual(p.observation_verified['session_id'],'test')
@@ -403,8 +404,9 @@ class PlanningContracts(unittest.TestCase):
         p.grasp['grasp_pipeline']={'grasp':dict(pregrasp_offset_m=.1,insertion_depth_m=0.,min_base_z_m=0.,
                 min_jaw_z_m=0.,position_compensation_base_m=dict(x=0,y=0,z=0),ik_candidate_limit=2,cartesian_ik={},candidate_selection={})}
         p.cfg['compute']['grasp_generation_count']=1
-        p.cfg['compute']['rrt_connect']={'enabled':True}
-        p.samples=lambda start,targets,*a,**k:np.vstack([start,np.r_[targets[-1],start[6]]])
+        p.cfg['compute']['rrt_connect']=dict(enabled=True,timeout_s=None,max_extensions=200,range_rad=.35,seed=42,shortcut_checks=8)
+        p._command_joint_bounds=np.array([[-1.,1.]]*6)
+        p.samples=lambda start,targets,*a,**k:np.vstack([start,*[np.r_[q,start[6]] for q in targets]])
         passes=[];reads=[];acquisitions=[]
         def context(*a):
             value=copy.deepcopy(sample);value['legs'][0]+=.001*len(reads)
@@ -417,6 +419,15 @@ class PlanningContracts(unittest.TestCase):
         events=[]
         original_checked=checked
         def selective_checked(points,scene,payload,kind='move',**options):
+            if mode in ('real_rrt','impossible_return','return_rrt'):
+                from mission.planning import CandidatePathRejected
+                for a,b in zip(points[:-1],points[1:]):
+                    q=np.linspace(a,b,51)
+                    wall=(q[:,0]>.25)&(q[:,0]<.55)
+                    if mode!='impossible_return' or not payload:wall &= np.abs(q[:,1])<.35
+                    if mode=='return_rrt' and not payload:wall[:]=False
+                    if np.any(wall):raise CandidatePathRejected('COLLISION:test_wall')
+                return original_checked(points,scene,payload,kind,**options)
             if len(events) and events[-1].startswith('direct'):
                 if mode=='stale':raise ValueError('SCENE_STALE')
                 if mode!='direct_success' or events[-1]=='direct0':
@@ -428,6 +439,11 @@ class PlanningContracts(unittest.TestCase):
         candidates=[NS(pregrasp_joints=np.zeros(6),grasp_joints=np.zeros(6),retreat_joints=np.zeros(6),
                        approach_joint_waypoints=[np.zeros(6)],retreat_joint_waypoints=[np.zeros(6)],
                        pregrasp6d=[0.]*6,grasp6d=[0.]*6,retreat6d=[0.]*6,cost=i) for i in [1.,2.]]
+        if mode in ('real_rrt','impossible_return','return_rrt'):
+            for c in candidates:
+                c.pregrasp_joints=np.array([.8,0,0,0,0,0]);c.grasp_joints=c.pregrasp_joints.copy()
+                c.retreat_joints=c.pregrasp_joints.copy()
+                c.approach_joint_waypoints=[c.grasp_joints];c.retreat_joint_waypoints=[c.retreat_joints]
         selection=ModuleType('rars01_graspnet.real_grasp_selection')
         def select(*a,**kw):
             for i,candidate in enumerate(candidates):
@@ -440,25 +456,65 @@ class PlanningContracts(unittest.TestCase):
             def __init__(self,value):self.grasp_group_array=np.asarray(value)
             def sort_by_score(self):pass
         api.GraspGroup=Group
-        utils=ModuleType('utils.graspnet_utils');utils.nms_grasp_group=lambda group:group
+        utils=ModuleType('utils.grasp_geometry');utils.nms_grasp_group=lambda group:group
         request=dict(id=12,session_id='test',operation='grasp_plan',owner={},owner_session_id='arm',navigation_session_id='nav',goal_revision=1)
-        def fallback(planner,start,current,reference,blocked,validate,config,records):
+        def fallback(planner,start,current,reference,blocked,validate,config,records,gripper_reference):
             self.assertEqual(events,['direct0','direct1'])
-            self.assertEqual(blocked,candidates)
+            self.assertEqual(blocked,[(c,'pregrasp') for c in candidates])
             events.append('fallback')
-            self.assertTrue(validate(blocked[0],[blocked[0].pregrasp_joints]))
-            return blocked[0]
-        with patch.dict(sys.modules,{'graspnetAPI':api,'utils.graspnet_utils':utils,'rars01_graspnet.real_grasp_selection':selection}),patch('mission.planning.time.monotonic_ns',return_value=sample['body'].mono_ns),patch('mission.rrt_connect.fallback_pregrasp',side_effect=fallback) as reserve:
+            candidate=blocked[0][0]
+            via=np.array([.1,.2,.3,0,0,0])
+            candidate.retreat_joints=np.ones(6)*.05
+            candidate.retreat_joint_waypoints=[candidate.retreat_joints]
+            self.assertTrue(validate(candidate,[via,candidate.pregrasp_joints],reverse=True))
+            return candidate
+        with patch.dict(sys.modules,{'graspnetAPI':api,'utils.grasp_geometry':utils,'rars01_graspnet.real_grasp_selection':selection}),patch('mission.planning.time.monotonic_ns',return_value=sample['body'].mono_ns),(nullcontext() if mode in ('real_rrt','impossible_return','return_rrt') else patch('mission.rrt_connect.fallback_complete',side_effect=fallback)) as reserve:
             if mode=='stale':
                 with self.assertRaisesRegex(ValueError,'SCENE_STALE'):p.execute(request,context)
                 reserve.assert_not_called()
                 return
+            if mode=='impossible_return':
+                with self.assertRaisesRegex(ValueError,'NO_COLLISION_FREE_CANDIDATE'):p.execute(request,context)
+                self.assertLessEqual(p.compute_metrics['rrt_connect'][0]['total_extensions'],200)
+                return
             result=p.execute(request,context)
+            if mode in ('real_rrt','return_rrt'):
+                approved=result['grasp_plan']['approved_segments']
+                self.assertEqual(approved['retreat']['return_planner'],'rrt_connect' if mode=='return_rrt' else 'checked_reverse')
+                if mode=='real_rrt':self.assertGreater(len(approved['pregrasp']['waypoints']),2)
+                else:self.assertEqual({r['scope'] for r in p.compute_metrics['rrt_connect']},{'generation','return'})
+                np.testing.assert_array_equal(approved['retreat']['points'][-1][:6],result['grasp_plan']['scan_q'])
+                self.assertLessEqual(p.compute_metrics['rrt_connect'][0]['total_extensions'],200)
+                return
             if mode=='direct_success':reserve.assert_not_called()
             else:
                 reserve.assert_called_once()
                 self.assertEqual(result['grasp_plan']['approved_segments']['pregrasp']['planner'],'rrt_connect')
                 self.assertEqual(set(result['grasp_plan']['approved_segments']),{'pregrasp','approach','retreat','close'})
+                retreat=result['grasp_plan']['approved_segments']['retreat']
+                self.assertEqual(retreat['return_planner'],'checked_reverse')
+                np.testing.assert_array_equal(retreat['return_waypoints'][0],candidates[0].pregrasp_joints)
+                np.testing.assert_array_equal(retreat['return_waypoints'][1],[.1,.2,.3,0,0,0])
+                np.testing.assert_array_equal(retreat['points'][-1][:6],result['grasp_plan']['scan_q'])
+                self.assertEqual(passes[-1][2]['model'],'open_gripper_approximation')
+
+    def test_full_generation_uses_real_rrt_and_checks_round_trip(self):
+        self._fallback_scenario('real_rrt')
+
+    def test_full_generation_can_search_return_after_direct_outbound(self):
+        self._fallback_scenario('return_rrt')
+
+    def test_full_generation_never_admits_impossible_loaded_return(self):
+        self._fallback_scenario('impossible_return')
+
+    def test_payload_collision_is_retryable_but_missing_contact_model_is_not(self):
+        from mission.planning import CandidatePathRejected
+        p,sample=self.setup_planner()
+        p.cfg['collision']['payload_enabled']=True
+        for reason in ('PAYLOAD_COLLISION:body','PAYLOAD_ENVIRONMENT_COLLISION','PAYLOAD_CONTACT_MODEL_MISSING'):
+            p.collision=NS(check=lambda *a,**kw:False,last_reason=reason,last_failure=reason)
+            expected=ValueError if reason=='PAYLOAD_CONTACT_MODEL_MISSING' else CandidatePathRejected
+            with self.assertRaises(expected):p.checked(np.zeros((2,7)),sample,True)
 
     def test_rrt_waits_until_all_direct_candidates_rejected(self):
         self._fallback_scenario('fallback')

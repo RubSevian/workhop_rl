@@ -51,8 +51,8 @@ int main(){
   assert(!m.holding()&&cmd.kp[6]==0);
   assert(!m.CompletedHomeHoldAllowed("GRASP_PRESUMED_SUCCESS"));
  }
- // Requested 2.8 Nm target: 2.2 Nm is no longer contact, overload unwinds.
- for(double target:{2.8,3.2})for(double polarity:{-1.,1.}){
+ // Higher contact targets: 2.2 Nm is no longer contact, overload unwinds.
+ for(double target:{2.8,3.2,4.25})for(double polarity:{-1.,1.}){
   auto cfg=c;cfg.gripper_control.contact_torque_nm=target;cfg.gripper_control.close_speed_rad_s=.25;
   MeasuredGripperControl m(cfg.gripper_control,cfg.assessment,0,1,100,.1);
   auto s=sample(1,.7,0,1);m.Begin(t(1),s);assert(m.Update(t(1),s,true,false));

@@ -133,6 +133,9 @@ class Planning:
         self.frames=FrameChain(cfg)
         sys.path.insert(0,cfg['paths']['grasp_root'])
         __import__('os').environ['GRASPNET_ROOT']=cfg['paths']['graspnet_root']
+        # Load CPU grasp containers/geometry before readiness; Torch stays in the worker.
+        from utils import grasp_geometry
+        from rars01_graspnet.real_grasp_selection import _select_executable_grasp
         from rars01_graspnet.config import load_config
         from rars01_graspnet.kinematics import RarsKinematics
         from rars01_graspnet.gripper_geometry import RarsGripperGeometry
@@ -503,7 +506,7 @@ class Planning:
             collision_points[:,6]=gripper_reference['motor_angle_rad']
         if not self.collision.check(collision_points,scene,payload,**options):
             reason=self.collision.last_reason
-            if reason.startswith(('COLLISION:', 'SOLID_CONTAINMENT_COLLISION', 'ENVIRONMENT_')):
+            if reason.startswith(('COLLISION:', 'SOLID_CONTAINMENT_COLLISION', 'ENVIRONMENT_', 'PAYLOAD_COLLISION:', 'PAYLOAD_ENVIRONMENT_COLLISION')):
                 raise CandidatePathRejected(str(self.collision.last_failure))
             raise ValueError(str(self.collision.last_failure))
         trajectory=dict(kind=kind,points=command_points.tolist(),collision_checked=True,
@@ -895,7 +898,7 @@ class Planning:
         start=np.asarray(current['q7'],dtype=float);self.joints=start[:6].copy()
         _,odom_now=self.eye.chain(current['capture_ns'],current['feedback_ns'],current['q'],current['odom_mono_ns'],current['odom_vehicle'])
         cam_to_arm=np.linalg.inv(odom_now)@at['odom_arm']@at['arm_camera']
-        from utils import graspnet_utils
+        from utils import grasp_geometry
         from graspnetAPI import GraspGroup
         from rars01_graspnet.real_grasp_selection import _select_executable_grasp
         if op != 'observe_grasp':
@@ -904,7 +907,7 @@ class Planning:
             if tested_geometry and not np.allclose(signature,tested_geometry[0],atol=1e-6,rtol=0):
                 tested.clear() # A changed leg pose/rebase may make a previous rejection feasible.
             tested_geometry[:]=[signature.copy()]
-            ranked=graspnet_utils.nms_grasp_group(GraspGroup(result['grasps']))
+            ranked=grasp_geometry.nms_grasp_group(GraspGroup(result['grasps']))
             ranked.sort_by_score()
             fresh=unseen_grasps(ranked.grasp_group_array,tested)
             fresh=fresh[:g_limit] if (g_limit:=self.grasp['grasp_pipeline']['grasp']['ik_candidate_limit']) else fresh
@@ -926,7 +929,7 @@ class Planning:
         center=target_center(depth,self.camera.K,d.mask,cam_to_arm,g['candidate_selection'],
             mask_source=getattr(d,'mask_source','unknown'),min_depth=opts['min_depth'],max_depth=opts['max_depth']) if g['candidate_selection'].get('weight_center',0)>0 else dict(active=False,reason='DISABLED',frame='base_link')
         self.compute_metrics['target_center']=center
-        rejected_paths=[];approved_candidates={};blocked_pregrasps=[]
+        rejected_paths=[];approved_candidates={};blocked_paths=[]
         reference_gripper=dict(model='open_gripper_approximation',opening_width_m=robot['max_grasp_width_m'],
             motor_angle_rad=float(self.geometry.motor_angle_for_width(robot['max_grasp_width_m'])))
         def check_candidate_path(points,has_payload,kind='move',open_reference=False):
@@ -941,7 +944,7 @@ class Planning:
                 finally:
                     stage['collision_profile']=copy.deepcopy(getattr(self.collision,'last_stats',{}))
         name='';candidate_cost=0.
-        def validate(candidate, pregrasp_waypoints=None):
+        def validate(candidate, pregrasp_waypoints=None, return_waypoints=None, *, reverse=False, local_only=False):
             nonlocal name,candidate_cost
             candidate_cost=candidate.cost
             try:
@@ -950,6 +953,7 @@ class Planning:
                         ('approach',candidate.approach_joint_waypoints,motion['grasp_duration_s'],False),
                         ('retreat',candidate.retreat_joint_waypoints,motion['retreat_duration_s'],True)]
                 for name,waypoints,duration,has_payload in phases:
+                    if local_only and name=='pregrasp':continue
                     begin=start.copy() if name=='pregrasp' else np.r_[candidate.pregrasp_joints if name=='approach' else candidate.grasp_joints,start[6]]
                     approved[name]=check_candidate_path(self.samples(begin,waypoints,duration,object_motion=True),has_payload,open_reference=name in ('approach','retreat'))
                     approved[name]['operation']=name
@@ -958,9 +962,23 @@ class Planning:
                 closed=self.grasp['robot']['gripper']['rars01']['closed_position_rad']
                 approved['close']=check_candidate_path(self.samples(closure_start,[candidate.grasp_joints],motion['grasp_duration_s'],closed),False,'close')
                 approved['close']['points']=[closure_start.tolist(),closure_start.tolist()]
+                if local_only:return True
                 name='return_scan'
+                if reverse:
+                    # The first target connects withdrawal to the saved pregrasp.
+                    # Include the measured scan endpoint, not only path[1:].
+                    outbound=[start[:6],*(pregrasp_waypoints if pregrasp_waypoints is not None else [candidate.pregrasp_joints])]
+                    return_waypoints=list(reversed(outbound))
+                    if np.array_equal(candidate.retreat_joints,return_waypoints[0]):
+                        return_waypoints=return_waypoints[1:]
                 scan_return=check_candidate_path(self.samples(np.r_[candidate.retreat_joints,start[6]],
-                    [start[:6]],motion['retreat_duration_s']),True,open_reference=True)
+                    [start[:6]] if return_waypoints is None else return_waypoints,motion['retreat_duration_s']),True,open_reference=True)
+                if pregrasp_waypoints is not None:
+                    approved['pregrasp']['planner']='rrt_connect' if len(pregrasp_waypoints)>1 else 'checked_path'
+                    approved['pregrasp']['waypoints']=[start[:6].tolist(),*[np.asarray(q).tolist() for q in pregrasp_waypoints]]
+                if reverse or return_waypoints is not None:
+                    approved['retreat']['return_planner']='checked_reverse' if reverse else 'rrt_connect'
+                    approved['retreat']['return_waypoints']=[np.asarray(q).tolist() for q in return_waypoints]
                 # One approved retreat command: withdraw, then return to the
                 # measured scan pose. Completion confirms the final scan pose.
                 approved['retreat']['points']+=scan_return['points'][1:]
@@ -970,8 +988,8 @@ class Planning:
                 approved_candidates[id(candidate)]=approved
                 return True
             except CandidatePathRejected as error:
-                if name=='pregrasp' and pregrasp_waypoints is None:
-                    blocked_pregrasps.append(candidate)
+                if not local_only and pregrasp_waypoints is None and return_waypoints is None and name in ('pregrasp','return_scan'):
+                    blocked_paths.append((candidate,name))
                 rejected_paths.append(str(error))
                 self.compute_metrics.setdefault('collision_rejections',[]).append(dict(stage=name,detail=str(error)))
                 return False
@@ -997,13 +1015,12 @@ class Planning:
                 candidate=_select_executable_grasp(self.ik,GeometryOnly(),GraspGroup(result['grasps']),cam_to_arm,g['pregrasp_offset_m'],g.get('retreat_offset_m',g['pregrasp_offset_m']),g['insertion_depth_m'],robot['max_grasp_depth_m'],g['min_base_z_m'],g['min_jaw_z_m'],'rars01',True,False,np.array([g['position_compensation_base_m'][axis] for axis in 'xyz']),g['ik_candidate_limit'],g['cartesian_ik'],g['candidate_selection'],max_grasp_width_m=robot['max_grasp_width_m'],target_shape_camera=shape,target_center_base=center,ranking_robot=self.grasp['robot'],retreat_speed_scale=.25 if self.cfg.get('operator_trial') else 1.,path_validator=validate,rejection_diagnostics=rejections,local_height_filters_enabled=self.cfg.get('local_height_filters_enabled',True),cancel_check=self.collision.check_deadline,selection_metrics=self.compute_metrics['candidate_validation'],candidate_diagnostics=audit,verbose=not self.cfg['execution'].get('short_journal_enabled',False))
             # Exhaust the normal cost-ordered candidates before any tree search.
             rrt_cfg=self.cfg['compute'].get('rrt_connect',{})
-            if candidate is None and rrt_cfg.get('enabled',False) and blocked_pregrasps:
-                from .rrt_connect import fallback_pregrasp
+            if candidate is None and rrt_cfg.get('enabled',False) and blocked_paths:
+                from .rrt_connect import fallback_complete
                 with planning_stage(self.compute_metrics,'rrt_connect_fallback',trace,request,progress=progress):
-                    candidate=fallback_pregrasp(self,start,current,planning_reference_ns,
-                        blocked_pregrasps,validate,rrt_cfg,self.compute_metrics.setdefault('rrt_connect',[]))
+                    candidate=fallback_complete(self,start,current,planning_reference_ns,
+                        blocked_paths,validate,rrt_cfg,self.compute_metrics.setdefault('rrt_connect',[]),reference_gripper)
                 if candidate is not None:
-                    approved_candidates[id(candidate)]['pregrasp']['planner']='rrt_connect'
                     self.compute_metrics['candidate_validation'].update(
                         selected_cost=float(candidate.cost),selected_via='rrt_connect')
                     if audit is not None:
