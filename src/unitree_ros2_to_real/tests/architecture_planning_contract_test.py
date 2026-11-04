@@ -382,4 +382,92 @@ class PlanningContracts(unittest.TestCase):
         self.assertNotEqual(first['grasp_plan']['planning_scene_snapshot']['legs'],second['grasp_plan']['planning_scene_snapshot']['legs'])
 
 
+    def _fallback_scenario(self, mode):
+        p,sample=self.setup_planner();p.resume_camera=lambda:None;p.compute_metrics={}
+        p.eye=NS(chain=lambda *a:(np.eye(4),np.eye(4)));p.geometry=NS(motor_angle_for_width=lambda width:.9);p.ik=object()
+        at=copy.deepcopy(sample);at.update(capture_mono_ns=sample['body'].mono_ns,
+                    capture_ros_ns=sample['body'].ros_ns,odom_arm=np.eye(4),arm_camera=np.eye(4))
+        p.detect=lambda *a:(None,None,NS(conf=.9,bbox_xyxy=[0,0,1,1],mask=np.ones((1,1),bool),mask_source='segmentation',class_name='synthetic'),at,np.array([.1,.2,.3]))
+        def infer(*a,**k):
+            self.assertEqual(p.observation_verified['id'],12)
+            self.assertEqual(p.observation_verified['session_id'],'test')
+            self.assertEqual(k['mask_source'],'segmentation')
+            np.testing.assert_array_equal(k['target_mask'],np.ones((1,1),bool))
+            return dict(grasps=np.zeros((1,17)),elapsed_s=.1)
+        p.worker=NS(infer=infer);p.camera=NS(K=np.eye(3))
+        # This test isolates snapshot admission; membership has its own RGB-D tests.
+        p.cfg['target_binding']={'enabled':False}
+        p.grasp['graspnet']=dict(num_point=1,min_depth=.1,max_depth=2.,collision_thresh=.01,
+                                voxel_size=.01,target_margin_px=0,target_expand_ratio=1.,worker_timeout_s=1.)
+        p.grasp['robot']['rars01'].update(max_grasp_width_m=.1,max_grasp_depth_m=.1)
+        p.grasp['grasp_pipeline']={'grasp':dict(pregrasp_offset_m=.1,insertion_depth_m=0.,min_base_z_m=0.,
+                min_jaw_z_m=0.,position_compensation_base_m=dict(x=0,y=0,z=0),ik_candidate_limit=2,cartesian_ik={},candidate_selection={})}
+        p.cfg['compute']['grasp_generation_count']=1
+        p.cfg['compute']['rrt_connect']={'enabled':True}
+        p.samples=lambda start,targets,*a,**k:np.vstack([start,np.r_[targets[-1],start[6]]])
+        passes=[];reads=[];acquisitions=[]
+        def context(*a):
+            value=copy.deepcopy(sample);value['legs'][0]+=.001*len(reads)
+            value['scene_snapshot']['legs']=tuple(value['legs']);reads.append(value)
+            return value
+        def checked(points,scene,payload,kind='move',**options):
+            passes.append((copy.deepcopy(scene),options['reference_ns'],copy.deepcopy(options.get('gripper_reference'))))
+            return dict(points=np.asarray(points).tolist(),collision_points=np.asarray(points).tolist(),scene_snapshot=copy.deepcopy(scene['scene_snapshot']),
+                        collision_context=p.collision_scene(scene),collision_checked=True,payload_checked=False,kind=kind)
+        events=[]
+        original_checked=checked
+        def selective_checked(points,scene,payload,kind='move',**options):
+            if len(events) and events[-1].startswith('direct'):
+                if mode=='stale':raise ValueError('SCENE_STALE')
+                if mode!='direct_success' or events[-1]=='direct0':
+                    from mission.planning import CandidatePathRejected
+                    raise CandidatePathRejected('COLLISION:body')
+            return original_checked(points,scene,payload,kind,**options)
+        p.checked=selective_checked
+        p.collision.validated_scene=lambda scene,payload,**k:acquisitions.append(copy.deepcopy(scene))
+        candidates=[NS(pregrasp_joints=np.zeros(6),grasp_joints=np.zeros(6),retreat_joints=np.zeros(6),
+                       approach_joint_waypoints=[np.zeros(6)],retreat_joint_waypoints=[np.zeros(6)],
+                       pregrasp6d=[0.]*6,grasp6d=[0.]*6,retreat6d=[0.]*6,cost=i) for i in [1.,2.]]
+        selection=ModuleType('rars01_graspnet.real_grasp_selection')
+        def select(*a,**kw):
+            for i,candidate in enumerate(candidates):
+                events.append('direct'+str(i))
+                if kw['path_validator'](candidate):return candidate
+            return None
+        selection._select_executable_grasp=select
+        api=ModuleType('graspnetAPI')
+        class Group:
+            def __init__(self,value):self.grasp_group_array=np.asarray(value)
+            def sort_by_score(self):pass
+        api.GraspGroup=Group
+        utils=ModuleType('utils.graspnet_utils');utils.nms_grasp_group=lambda group:group
+        request=dict(id=12,session_id='test',operation='grasp_plan',owner={},owner_session_id='arm',navigation_session_id='nav',goal_revision=1)
+        def fallback(planner,start,current,reference,blocked,validate,config,records):
+            self.assertEqual(events,['direct0','direct1'])
+            self.assertEqual(blocked,candidates)
+            events.append('fallback')
+            self.assertTrue(validate(blocked[0],[blocked[0].pregrasp_joints]))
+            return blocked[0]
+        with patch.dict(sys.modules,{'graspnetAPI':api,'utils.graspnet_utils':utils,'rars01_graspnet.real_grasp_selection':selection}),patch('mission.planning.time.monotonic_ns',return_value=sample['body'].mono_ns),patch('mission.rrt_connect.fallback_pregrasp',side_effect=fallback) as reserve:
+            if mode=='stale':
+                with self.assertRaisesRegex(ValueError,'SCENE_STALE'):p.execute(request,context)
+                reserve.assert_not_called()
+                return
+            result=p.execute(request,context)
+            if mode=='direct_success':reserve.assert_not_called()
+            else:
+                reserve.assert_called_once()
+                self.assertEqual(result['grasp_plan']['approved_segments']['pregrasp']['planner'],'rrt_connect')
+                self.assertEqual(set(result['grasp_plan']['approved_segments']),{'pregrasp','approach','retreat','close'})
+
+    def test_rrt_waits_until_all_direct_candidates_rejected(self):
+        self._fallback_scenario('fallback')
+
+    def test_rrt_skipped_when_later_direct_candidate_passes(self):
+        self._fallback_scenario('direct_success')
+
+    def test_rrt_does_not_recover_stale_scene(self):
+        self._fallback_scenario('stale')
+
+
 if __name__=='__main__':unittest.main()

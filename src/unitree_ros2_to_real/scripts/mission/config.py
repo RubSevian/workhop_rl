@@ -76,6 +76,22 @@ def search_angles(search):
     return ([search['joint1_start_rad']-i*search['joint1_step_rad'] for i in range(entry)]
             +[search['joint1_min_rad']+i*search['joint1_step_rad'] for i in range(count)])
 
+def validate_rrt_config(cfg):
+    if not isinstance(cfg, dict) or type(cfg.get('enabled')) is not bool:
+        raise ValueError('rrt_connect.enabled must be boolean')
+    for key in ('range_rad',):
+        value = cfg.get(key)
+        if type(value) not in (int, float) or not math.isfinite(value) or value <= 0:
+            raise ValueError('invalid rrt_connect.' + key)
+    for key, minimum in (('max_extensions', 1), ('shortcut_checks', 0), ('seed', 0)):
+        value = cfg.get(key)
+        if type(value) is not int or value < minimum:
+            raise ValueError('invalid rrt_connect.' + key)
+    value = cfg.get('timeout_s')
+    if value is not None and (type(value) not in (int, float) or not math.isfinite(value) or value <= 0):
+        raise ValueError('invalid rrt_connect.timeout_s')
+
+
 def load(path, workspace):
     cfg = yaml.safe_load(Path(path).read_text())['go2_mission']
     cfg['target_binding']=validate_target_binding(cfg.get('target_binding',{}))
@@ -128,6 +144,8 @@ def load(path, workspace):
                 raise ValueError(f'invalid {group}.{key}')
             if key not in ('joint1_min_rad','joint1_start_rad') and value <= 0:
                 raise ValueError(f'nonpositive {group}.{key}')
+    if 'rrt_connect' in cfg['compute']:
+        validate_rrt_config(cfg['compute']['rrt_connect'])
     generations=cfg['compute'].get('grasp_generation_count',1)
     if type(generations) is not int or not 1<=generations<=3:
         raise ValueError('compute.grasp_generation_count must be an integer in [1,3]')

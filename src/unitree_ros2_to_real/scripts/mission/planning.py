@@ -926,7 +926,7 @@ class Planning:
         center=target_center(depth,self.camera.K,d.mask,cam_to_arm,g['candidate_selection'],
             mask_source=getattr(d,'mask_source','unknown'),min_depth=opts['min_depth'],max_depth=opts['max_depth']) if g['candidate_selection'].get('weight_center',0)>0 else dict(active=False,reason='DISABLED',frame='base_link')
         self.compute_metrics['target_center']=center
-        rejected_paths=[];approved_candidates={}
+        rejected_paths=[];approved_candidates={};blocked_pregrasps=[]
         reference_gripper=dict(model='open_gripper_approximation',opening_width_m=robot['max_grasp_width_m'],
             motor_angle_rad=float(self.geometry.motor_angle_for_width(robot['max_grasp_width_m'])))
         def check_candidate_path(points,has_payload,kind='move',open_reference=False):
@@ -941,12 +941,12 @@ class Planning:
                 finally:
                     stage['collision_profile']=copy.deepcopy(getattr(self.collision,'last_stats',{}))
         name='';candidate_cost=0.
-        def validate(candidate):
+        def validate(candidate, pregrasp_waypoints=None):
             nonlocal name,candidate_cost
             candidate_cost=candidate.cost
             try:
                 approved={}
-                phases=[('pregrasp',[candidate.pregrasp_joints],motion['pregrasp_duration_s'],False),
+                phases=[('pregrasp',[candidate.pregrasp_joints] if pregrasp_waypoints is None else pregrasp_waypoints,motion['pregrasp_duration_s'],False),
                         ('approach',candidate.approach_joint_waypoints,motion['grasp_duration_s'],False),
                         ('retreat',candidate.retreat_joint_waypoints,motion['retreat_duration_s'],True)]
                 for name,waypoints,duration,has_payload in phases:
@@ -970,6 +970,8 @@ class Planning:
                 approved_candidates[id(candidate)]=approved
                 return True
             except CandidatePathRejected as error:
+                if name=='pregrasp' and pregrasp_waypoints is None:
+                    blocked_pregrasps.append(candidate)
                 rejected_paths.append(str(error))
                 self.compute_metrics.setdefault('collision_rejections',[]).append(dict(stage=name,detail=str(error)))
                 return False
@@ -993,6 +995,20 @@ class Planning:
         try:
             with planning_stage(self.compute_metrics,'selection_including_collision',trace,request,progress=progress):
                 candidate=_select_executable_grasp(self.ik,GeometryOnly(),GraspGroup(result['grasps']),cam_to_arm,g['pregrasp_offset_m'],g.get('retreat_offset_m',g['pregrasp_offset_m']),g['insertion_depth_m'],robot['max_grasp_depth_m'],g['min_base_z_m'],g['min_jaw_z_m'],'rars01',True,False,np.array([g['position_compensation_base_m'][axis] for axis in 'xyz']),g['ik_candidate_limit'],g['cartesian_ik'],g['candidate_selection'],max_grasp_width_m=robot['max_grasp_width_m'],target_shape_camera=shape,target_center_base=center,ranking_robot=self.grasp['robot'],retreat_speed_scale=.25 if self.cfg.get('operator_trial') else 1.,path_validator=validate,rejection_diagnostics=rejections,local_height_filters_enabled=self.cfg.get('local_height_filters_enabled',True),cancel_check=self.collision.check_deadline,selection_metrics=self.compute_metrics['candidate_validation'],candidate_diagnostics=audit,verbose=not self.cfg['execution'].get('short_journal_enabled',False))
+            # Exhaust the normal cost-ordered candidates before any tree search.
+            rrt_cfg=self.cfg['compute'].get('rrt_connect',{})
+            if candidate is None and rrt_cfg.get('enabled',False) and blocked_pregrasps:
+                from .rrt_connect import fallback_pregrasp
+                with planning_stage(self.compute_metrics,'rrt_connect_fallback',trace,request,progress=progress):
+                    candidate=fallback_pregrasp(self,start,current,planning_reference_ns,
+                        blocked_pregrasps,validate,rrt_cfg,self.compute_metrics.setdefault('rrt_connect',[]))
+                if candidate is not None:
+                    approved_candidates[id(candidate)]['pregrasp']['planner']='rrt_connect'
+                    self.compute_metrics['candidate_validation'].update(
+                        selected_cost=float(candidate.cost),selected_via='rrt_connect')
+                    if audit is not None:
+                        audit['selected']=next((item['candidate'] for item in audit['orientations']
+                            if np.allclose(item['grasp_End_link_pose6d'],candidate.grasp6d,atol=1e-9,rtol=0)),None)
             selection_status='SELECTED_COLLISION_CHECKED' if candidate is not None else 'NO_EXECUTABLE_CANDIDATE'
         finally:
             publish_arm(selection_status)

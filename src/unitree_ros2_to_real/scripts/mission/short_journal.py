@@ -39,6 +39,7 @@ def compute_summary(metrics):
         frame_scene_rejections=metrics.get('frame_scene_rejections',{}),
         target_view=metrics.get('target_view',{}),refinement=metrics.get('refinement',{}),
         grasp_generations=metrics.get('grasp_generations',[]),
+        rrt_connect=metrics.get('rrt_connect',[]),
         refinement_path_attempts=metrics.get('refinement_path_attempts',[]),
         generation_novel_candidates=metrics.get('generation_novel_candidates'),
         last_scene_rejection=metrics.get('last_scene_rejection',{}),
