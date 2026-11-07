@@ -1,4 +1,5 @@
 """One launch; default is inspection only (no owners, sensors or motor commands)."""
+import os
 from pathlib import Path
 import time
 import importlib.util
@@ -60,7 +61,7 @@ def _launch(context):
         launch_arguments=dict(stage='far',rviz='false',observe_only='false',profile_path=cfg['paths']['navigation']).items()))
     actions.append(IncludeLaunchDescription(PythonLaunchDescriptionSource(str(share/'launch/go2_rars01_r3_commissioning.launch.py')),
         launch_arguments=dict(operation_profile='full_mission',config_path=cfg['paths']['deployment'],
-            model_path=str(Path(get('workspace'))/'weights/policy_3.pt'),network_interface=get('network_interface'),controlled_stop_lie_down_trial=LaunchConfiguration('controlled_stop_lie_down_trial',default='').perform(context)).items()))
+            model_path=os.environ.get('SIM2REAL_POLICY_FILE',str(Path(get('workspace'))/'weights/policy_3.pt')),network_interface=get('network_interface'),controlled_stop_lie_down_trial=LaunchConfiguration('controlled_stop_lie_down_trial',default='').perform(context)).items()))
     actions.append(Node(package='robot_state_publisher',executable='robot_state_publisher',name='rars01_state_publisher',
         parameters=[dict(robot_description=Path(cfg['paths']['arm_description']).read_text())],
         remappings=[('/joint_states','/rars01/joint_states')],output='screen'))
@@ -88,7 +89,7 @@ def _launch(context):
 
 def generate_launch_description():
     return LaunchDescription([
-        DeclareLaunchArgument('workspace',default_value=str(Path.home()/'go2_diploma/sim2real')),
+        DeclareLaunchArgument('workspace',default_value=os.environ.get('SIM2REAL_WORKSPACE',str(Path.home()/'go2_diploma/sim2real'))),
         DeclareLaunchArgument('mission_config_path',default_value=PathJoinSubstitution([LaunchConfiguration('workspace'),'repos/rars01_graspnet/config/jetson_orin_nano.yaml'])),
         DeclareLaunchArgument('physical',default_value='false'),
         DeclareLaunchArgument('test_mode',default_value='',description='full or ready_observe diagnostic; empty uses YAML'),
@@ -97,5 +98,5 @@ def generate_launch_description():
         DeclareLaunchArgument('architecture_monitor',default_value='false',description='Read-only transition events and complete received-status journal; disabled for timing tests'),
         DeclareLaunchArgument('monitor_jsonl',default_value='',description='Snapshot JSONL path; empty creates a session file under workspace/runtime/architecture_monitor'),
         DeclareLaunchArgument('start_arm_owner',default_value='true'),
-        DeclareLaunchArgument('network_interface',default_value='enP8p1s0'),
+        DeclareLaunchArgument('network_interface',default_value=os.environ.get('SIM2REAL_NETWORK_INTERFACE','enP8p1s0')),
         OpaqueFunction(function=_launch)])
