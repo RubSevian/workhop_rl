@@ -99,7 +99,7 @@ class ReturnNavigation:
             elif (nav.get('return_request_ns') == self.request_ns and nav.get('base_locked') is False):
                 if not self.goal_stamp_ns:
                     self.goal_stamp_ns = ros_now_ns
-                if goal.get('stamp_ns') == self.goal_stamp_ns and goal.get('state') in ('REQUESTED', 'ACTIVE', 'SUCCEEDED'):
+                if goal.get('stamp_ns') == self.goal_stamp_ns and goal.get('state') in ('REQUESTED', 'ACTIVE', 'REPLANNING', 'ARRIVAL_CONFIRMING', 'SUCCEEDED'):
                     self.goal_revision = goal['revision']
                     m.revision, m.goal_stamp = self.goal_revision, self.goal_stamp_ns
                     m.transition('RETURN_NAVIGATING', now)
@@ -131,7 +131,7 @@ class ReturnNavigation:
                         orientation_restored=False, external_ground_truth=False)
                     self.finished_ns = int(now*1e9)
                     m.transition('RETURNED_TO_START', now)
-            elif goal.get('state') not in ('REQUESTED', 'ACTIVE'):
+            elif goal.get('state') not in ('REQUESTED', 'ACTIVE', 'REPLANNING', 'ARRIVAL_CONFIRMING'):
                 m.cancel(now, 'RETURN_NAV_'+str(goal.get('state')), True)
             timeout = m.cfg['execution']['navigation_timeout_s']
             if timeout is not None and now-self.request_ns/1e9 > timeout:

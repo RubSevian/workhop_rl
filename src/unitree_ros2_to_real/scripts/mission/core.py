@@ -151,7 +151,7 @@ class Mission:
         # A nearby goal may complete before the first status reaches us.
         # Accept its new identity, then use the normal NAVIGATING -> BASE_SETTLE
         # path so post-goal zero acknowledgement and settling still apply.
-        if goal['revision']>self.last_revision and goal.get('stamp_ns',0)>self.armed_ros_ns and goal['state'] in ('REQUESTED','ACTIVE','SUCCEEDED'):
+        if goal['revision']>self.last_revision and goal.get('stamp_ns',0)>self.armed_ros_ns and goal['state'] in ('REQUESTED','ACTIVE','REPLANNING','ARRIVAL_CONFIRMING','SUCCEEDED'):
             self.confirmed_scan_q=None
             self.base_motion_window = dict(scan_started_ns=None, home_completed_ns=None)
             self.started=now;self.revision,self.goal_stamp=goal['revision'],goal['stamp_ns']
@@ -712,7 +712,7 @@ class Mission:
                 self.scene_anchor=None;self.base_anchor=None;self.leg_anchor=None
                 self.stability_reason='WAITING_FOR_STABLE_WINDOW'
                 self.transition('BASE_SETTLE', now)
-            elif goal_state not in ('REQUESTED','ACTIVE'):
+            elif goal_state not in ('REQUESTED','ACTIVE','REPLANNING','ARRIVAL_CONFIRMING'):
                 self.cancel(now, 'NAV_' + goal_state)
             elif (self.cfg['execution']['navigation_timeout_s'] is not None and now-self.entered > self.cfg['execution']['navigation_timeout_s']):
                 self.cancel(now, 'NAV_TIMEOUT', True)
