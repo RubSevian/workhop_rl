@@ -3,6 +3,8 @@
 import argparse
 import json
 import math
+import os
+import sys
 from pathlib import Path
 import re
 import time
@@ -53,17 +55,33 @@ def descent_record_allowed(r3):
             and r3.get('passive_sequence_complete') is True and not r3.get('fault_latched'))
 
 
+def trial_configuration(workspace, config_path=None):
+    """Use the deployment profile and evidence directory of the selected checkout."""
+    workspace = Path(workspace).resolve()
+    sys.path.insert(0, str(workspace))
+    try:
+        from tools.environment.deployment import load as deployment_settings, render
+    finally:
+        sys.path.pop(0)
+    settings = deployment_settings(workspace)
+    path = Path(config_path) if config_path else render(workspace, settings)
+    if not path.is_absolute():
+        path = workspace / path
+    return load(path, workspace), Path(settings['runtime_dir']) / 'operator_trials'
+
+
 def main():
     parser=argparse.ArgumentParser(description=__doc__)
     parser.add_argument('action',choices=('preflight','gripper','approve-retreat','record','record-descent'))
-    parser.add_argument('--workspace',type=Path,default=Path.home()/'go2_diploma/sim2real')
+    parser.add_argument('--workspace',type=Path,default=Path(os.environ.get('SIM2REAL_WORKSPACE', Path.cwd())))
+    parser.add_argument('--config',type=Path,help='Mission YAML; default: rendered deployment profile')
     parser.add_argument('--seconds',type=float,default=180.)
     parser.add_argument('--result',choices=('pass','fail'))
     parser.add_argument('--notes',default='')
     args=parser.parse_args()
     if not math.isfinite(args.seconds) or not 0<args.seconds<=600:parser.error('seconds must be in (0,600]')
     if args.action in ('record','record-descent') and (args.result is None or not args.notes.strip()):parser.error('record requires --result and nonempty --notes describing tested conditions')
-    cfg=load(args.workspace/'repos/rars01_graspnet/config/jetson_orin_nano.yaml',args.workspace)
+    cfg,evidence_directory=trial_configuration(args.workspace,args.config)
     import rclpy
     from std_msgs.msg import String
     from std_srvs.srv import Trigger
@@ -87,7 +105,7 @@ def main():
         raise RuntimeError('FRESH_UNIQUE_COMPONENT_STATUSES_REQUIRED: inspect architecture monitor; no authorization sent')
     def save(update):
         session=re.sub('[^A-Za-z0-9_-]','_',data['mission']['session_id'])
-        path=args.workspace/'runtime/operator_trials'/(session+'.json');path.parent.mkdir(parents=True,exist_ok=True)
+        path=evidence_directory/(session+'.json');path.parent.mkdir(parents=True,exist_ok=True)
         record=json.loads(path.read_text()) if path.exists() else {}
         record.update(update);record['qualification_flags_changed']=False
         temporary=path.with_suffix('.json.tmp');temporary.write_text(json.dumps(safe(record),ensure_ascii=False,indent=2)+'\n');temporary.replace(path)

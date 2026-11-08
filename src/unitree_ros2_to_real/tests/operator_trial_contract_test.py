@@ -1,5 +1,5 @@
 """Staged physical-trial software contracts only; no drives, ROS graph or SDK."""
-import copy,importlib.util,sys,tempfile,unittest
+import copy,importlib.util,os,sys,tempfile,unittest
 from pathlib import Path
 from deployment_test_config import mission_config_path
 from unittest.mock import patch
@@ -25,6 +25,21 @@ class TrialFixture(Fixture):
         raise AssertionError('did not stage retreat')
 
 class TrialTests(unittest.TestCase):
+    def test_operator_helper_uses_deployment_runtime_and_profile(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            deployment = Path(tmp) / 'deployment.yaml'
+            runtime = Path(tmp) / 'alternate-runtime'
+            deployment.write_text('runtime_dir: ' + str(runtime) + '\nserial_device: /dev/test-arm\n')
+            with patch.dict(os.environ, {'SIM2REAL_DEPLOYMENT': str(deployment)}):
+                cfg, evidence = helper.trial_configuration(ROOT)
+            self.assertEqual(evidence, runtime / 'operator_trials')
+            self.assertEqual(cfg['owner']['device_path'], '/dev/test-arm')
+            self.assertEqual(cfg['execution'], CFG['execution'])
+
+    def test_operator_helper_rejects_missing_explicit_profile(self):
+        with self.assertRaises(FileNotFoundError):
+            helper.trial_configuration(ROOT, 'missing-operator-profile.yaml')
+
     def test_default_admission_unchanged_and_trial_not_qualification(self):
         cfg=copy.deepcopy(CFG);cfg['execution']['automatic_retreat']=False;self.assertIn('physical_retreat_clearance_unqualified',blockers(cfg))
         before=copy.deepcopy(cfg['collision']);apply_operator_trial(cfg,True)
