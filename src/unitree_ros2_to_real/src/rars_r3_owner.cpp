@@ -118,8 +118,14 @@ class ArmOwner final:public rclcpp::Node {
    }
    // Normal finish must still have a measured HOME. The failed-arm PD path
    // retains its existing independent admission contract.
-   if(!r3_stopping_&&!home_->planned_disable_attempted()&&!home_->ReturnHome(now)){
-    response->success=false;response->message="WAIT_MEASURED_ARM_HOME";return;
+   if(!r3_stopping_&&!home_->planned_disable_attempted()){
+    // ReturnHome refreshes feedback and checks stream health; acceptance alone
+    // is not measured HOME. A mission may retain a closed gripper at six-axis HOME.
+    const bool healthy=home_->ReturnHome(now);
+    const bool measured_home=mission_?mission_->home6(home_->status(),home_->config().home_tolerance_rad):home_->status().arm_home_ready;
+    if(!healthy||!measured_home){
+     response->success=false;response->message="WAIT_MEASURED_ARM_HOME";return;
+    }
    }
    RevokeRetreatTrial("PLANNED_DISABLED");
    plan_cancelled_ns_=Ns(now);home_requested_=false;

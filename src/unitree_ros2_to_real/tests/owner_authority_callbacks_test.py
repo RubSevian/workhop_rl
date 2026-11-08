@@ -104,14 +104,17 @@ using ArmClock=std::chrono::steady_clock;
 using ArmTime=ArmClock::time_point;
 long long Ns(ArmTime t){return std::chrono::duration_cast<std::chrono::nanoseconds>(t.time_since_epoch()).count();}
 struct Response{bool success=false;std::string message;};
+struct Status{bool arm_home_ready=true;};
+struct Config{double home_tolerance_rad=.15;};
 struct Home{
- bool ready=true,attempted=false,send_ok=true;int disables=0;
+ bool ready=true,attempted=false,send_ok=true,pose_home=true;int disables=0;
  bool planned_disable_attempted(){return attempted;}
  bool ReturnHome(ArmTime){return ready;}
- int status(){return 0;}
+ Status status(){return {pose_home};}
+ Config config(){return {};}
  bool PlannedDisable(bool,ArmTime){++disables;attempted=true;return send_ok;}
 };
-struct Mission{void Cancel(int,const char*){}};
+struct Mission{void Cancel(Status,const char*){} bool home6(Status,double){return true;}};
 int main(){
  Home home;auto home_=&home;Mission* mission_=nullptr;
  auto response=std::make_shared<Response>();
@@ -128,7 +131,11 @@ int main(){
  r3_stamp_=ArmClock::now()+std::chrono::seconds(1);call();assert(!response->success&&home.disables==0);
  r3_stamp_=ArmClock::now();publishers=2;call();assert(!response->success&&home.disables==0);
  publishers=1;home.ready=false;call();assert(!response->success&&home.disables==0);
- home.ready=true;call();assert(response->success&&home.disables==1&&!home_requested_);
+ home.ready=true;home.pose_home=false;call();assert(!response->success&&home.disables==0);
+ home.pose_home=true;call();assert(response->success&&home.disables==1&&!home_requested_);
+ // Full mission can be at six-axis HOME while retaining an object in the gripper.
+ home={};home.pose_home=false;Mission mission;mission_=&mission;
+ call();assert(response->success&&home.disables==1);mission_=nullptr;
  // Failed-arm PD stop is deliberately allowed without measured HOME.
  home={};home.ready=false;r3_stopping_=true;call();assert(response->success&&home.disables==1);
  home={};home.send_ok=false;call();assert(!response->success&&home.disables==1);
