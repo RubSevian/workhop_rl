@@ -25,9 +25,10 @@ class MissionContinuationTests(unittest.TestCase):
         self.assertEqual(f.m.state,'BASE_SETTLE')
 
     def test_expired_continuation_has_explicit_reason(self):
-        f=self.outbound();f.nav['goal']['state']='CONTINUATION_NOT_FOUND';f.tick(False)
-        self.assertEqual(f.m.state,'CANCELLED')
-        self.assertEqual(f.m.reason,'NAV_CONTINUATION_NOT_FOUND')
+        for state in ('CONTINUATION_NOT_FOUND','ARRIVAL_NOT_CONFIRMED'):
+            f=self.outbound();f.nav['goal']['state']=state;f.tick(False)
+            self.assertEqual(f.m.state,'CANCELLED')
+            self.assertEqual(f.m.reason,'NAV_'+state)
 
     def test_replaced_goal_and_cancel_still_win(self):
         f=self.outbound();f.nav['goal']['revision']=2;f.tick(False)
