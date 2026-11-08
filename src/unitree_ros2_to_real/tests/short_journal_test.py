@@ -1,5 +1,7 @@
 """Short event journal without ROS, devices, image payloads or mission effects."""
 import json
+import os
+from unittest.mock import patch
 from pathlib import Path
 import sys
 import tempfile
@@ -10,6 +12,15 @@ from mission.short_journal import ShortJournal,compute_summary,make_short_journa
 
 
 class Tests(unittest.TestCase):
+    def test_factory_uses_configured_state_directory(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root=Path(directory)
+            with patch.dict(os.environ, SIM2REAL_RUNTIME_DIR=str(root/'state')):
+                journal=make_short_journal(dict(execution=dict(short_journal_enabled=True)),root/'workspace','test','session')
+                journal.close()
+            self.assertEqual(journal.path.parent,root/'state/short_journal')
+            self.assertFalse((root/'workspace/runtime').exists())
+
     def test_ten_thousand_unchanged_statuses_write_one_transition(self):
         with tempfile.TemporaryDirectory() as directory:
             journal=ShortJournal(directory,'mission','test')
@@ -62,7 +73,7 @@ class Tests(unittest.TestCase):
     def test_disabled_factory_creates_no_directory_and_bad_path_is_diagnostic(self):
         with tempfile.TemporaryDirectory() as directory:
             self.assertIsNone(make_short_journal(dict(execution=dict(short_journal_enabled=False)),directory,'test','session'))
-            self.assertFalse((Path(directory)/'runtime').exists())
+            self.assertFalse((Path(directory)/'.local').exists())
             blocker=Path(directory)/'file';blocker.write_text('not a directory')
             failed=ShortJournal(blocker,'test','session');failed.put('start');failed.close()
             self.assertTrue(failed.error)

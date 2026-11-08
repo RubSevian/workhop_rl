@@ -32,7 +32,7 @@ def _launch(context):
     monitor_enabled=LaunchConfiguration('architecture_monitor',default='false').perform(context)
     if monitor_enabled not in ('true','false'):raise ValueError('architecture_monitor must be true/false')
     monitor_path=LaunchConfiguration('monitor_jsonl',default='').perform(context)
-    if not monitor_path:monitor_path=str(Path(get('workspace'))/'runtime/architecture_monitor'/('snapshots_'+str(time.time_ns())+'.jsonl'))
+    if not monitor_path:monitor_path=str(Path(os.environ.get('SIM2REAL_RUNTIME_DIR',str(Path(get('workspace'))/'.local/state')))/'architecture_monitor'/('snapshots_'+str(time.time_ns())+'.jsonl'))
     monitors=[Node(package='unitree_legged_real',executable='architecture_monitor.py',
                    arguments=['--jsonl',monitor_path],output='screen')] if monitor_enabled=='true' else []
     params=dict(mission_config_path=get('mission_config_path'),workspace=get('workspace'),physical=physical,test_mode=mode,operator_trial=trial=='true',
@@ -96,7 +96,7 @@ def generate_launch_description():
         DeclareLaunchArgument('operator_trial',default_value='false',description='Commissioning retreat speed (25%); manual approval only when execution.automatic_retreat=false; no qualification flags changed'),
         DeclareLaunchArgument('controlled_stop_lie_down_trial',default_value='',description='Existing R3 commissioning descent override; empty uses profile, never validation'),
         DeclareLaunchArgument('architecture_monitor',default_value='false',description='Read-only transition events and complete received-status journal; disabled for timing tests'),
-        DeclareLaunchArgument('monitor_jsonl',default_value='',description='Snapshot JSONL path; empty creates a session file under workspace/runtime/architecture_monitor'),
+        DeclareLaunchArgument('monitor_jsonl',default_value='',description='Snapshot JSONL path; empty creates a session file under the configured state directory'),
         DeclareLaunchArgument('start_arm_owner',default_value='true'),
         DeclareLaunchArgument('network_interface',default_value=os.environ.get('SIM2REAL_NETWORK_INTERFACE','enP8p1s0')),
         OpaqueFunction(function=_launch)])

@@ -2,6 +2,7 @@
 """Read-only YOLO + GraspNet viewer. No ROS, camera or motor access."""
 import argparse
 import json
+import os
 from pathlib import Path
 import time
 import tkinter as tk
@@ -11,7 +12,7 @@ from PIL import Image, ImageTk
 
 def main():
     parser=argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--directory',type=Path,default=Path.home()/'go2_diploma/sim2real/runtime/detection_debug')
+    parser.add_argument('--directory',type=Path,default=Path(os.environ.get('SIM2REAL_RUNTIME_DIR',str(Path.cwd()/'.local/state')))/'detection_debug')
     parser.add_argument('--grasp-file',type=Path,help='Default: sibling grasp_debug/latest.npz')
     parser.add_argument('--max-grasps',type=int,default=80)
     args=parser.parse_args()

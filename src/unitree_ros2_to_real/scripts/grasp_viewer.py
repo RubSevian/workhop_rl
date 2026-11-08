@@ -2,6 +2,7 @@
 """Read-only GraspNet stage viewer. Reads one snapshot, never commands hardware."""
 import argparse
 import json
+import os
 from pathlib import Path
 import numpy as np
 
@@ -142,7 +143,7 @@ def main():
     import matplotlib.pyplot as plt
     from matplotlib.widgets import RadioButtons
     parser=argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--file',type=Path,default=Path.home()/'go2_diploma/sim2real/runtime/grasp_debug/latest.npz')
+    parser.add_argument('--file',type=Path,default=Path(os.environ.get('SIM2REAL_RUNTIME_DIR',str(Path.cwd()/'.local/state')))/'grasp_debug/latest.npz')
     parser.add_argument('--max-grasps',type=int,default=80)
     args=parser.parse_args()
     if args.max_grasps<1:parser.error('--max-grasps must be positive')

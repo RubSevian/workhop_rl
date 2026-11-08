@@ -4,6 +4,7 @@
 Model inference runs in child processes; ROS health remains in this process.
 """
 import json
+import os
 import faulthandler
 from pathlib import Path
 from mission.leg_plan_trace import LegPlanTrace
@@ -48,7 +49,7 @@ class Perception(Node):
         if mode:self.cfg['test_mode']=mode
         apply_operator_trial(self.cfg,self.declare_parameter('operator_trial',False).value)
         self.body_source=ROSBodySource(self,self.cfg);self.scene_buffer=SceneBuffer(self.cfg)
-        self.leg_plan_trace=(LegPlanTrace(Path(self.get_parameter('workspace').value)/'runtime/leg_plan_trace')
+        self.leg_plan_trace=(LegPlanTrace(Path(os.environ.get('SIM2REAL_RUNTIME_DIR',str(Path(self.get_parameter('workspace').value)/'.local/state')))/'leg_plan_trace')
                              if self.cfg['execution'].get('diagnostic_recording_enabled',True) else None)
         self.short_journal=make_short_journal(self.cfg,self.get_parameter('workspace').value,'perception',time.monotonic_ns())
         self.trace_owner={}
@@ -291,11 +292,11 @@ class Perception(Node):
             self.backend.collision.cancel_check=self.compute_cancel.check
             if self.cfg['execution'].get('detection_debug_enabled',False):
                 from mission.detection_debug import DetectionDebug
-                self.backend.detection_debug=DetectionDebug(Path(self.get_parameter('workspace').value)/'runtime/detection_debug',
+                self.backend.detection_debug=DetectionDebug(Path(os.environ.get('SIM2REAL_RUNTIME_DIR',str(Path(self.get_parameter('workspace').value)/'.local/state')))/'detection_debug',
                     archive=self.cfg['execution'].get('diagnostic_recording_enabled',True))
             if self.cfg['compute'].get('grasp_debug_enabled',False):
                 from mission.grasp_debug import GraspDebug
-                self.backend.grasp_debug=GraspDebug(Path(self.get_parameter('workspace').value)/'runtime/grasp_debug')
+                self.backend.grasp_debug=GraspDebug(Path(os.environ.get('SIM2REAL_RUNTIME_DIR',str(Path(self.get_parameter('workspace').value)/'.local/state')))/'grasp_debug')
             if self.stop_event.is_set():return
             if not verified(self.backend.startup_checks):raise RuntimeError('PRELOAD_CHECKS_INCOMPLETE')
             self.reason='READY'

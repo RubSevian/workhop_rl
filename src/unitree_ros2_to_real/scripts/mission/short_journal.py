@@ -1,5 +1,6 @@
 """Bounded event-only journal. No measurements, image arrays or control decisions."""
 import copy
+import os
 import math
 import json
 from pathlib import Path
@@ -152,6 +153,6 @@ class ShortJournal:
 def make_short_journal(cfg,workspace,component,session):
     import sys
     if not cfg['execution'].get('short_journal_enabled',False):return None
-    journal=ShortJournal(Path(workspace)/'runtime/short_journal',component,session,terminal=sys.stdout)
+    journal=ShortJournal(Path(os.environ.get('SIM2REAL_RUNTIME_DIR',str(Path(workspace)/'.local/state')))/'short_journal',component,session,terminal=sys.stdout)
     journal.put('start',camera_max_age_s=cfg['execution'].get('camera_max_age_s'),mode='events_only')
     return journal
