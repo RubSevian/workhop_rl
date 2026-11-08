@@ -1,6 +1,7 @@
 """Staged physical-trial software contracts only; no drives, ROS graph or SDK."""
 import copy,importlib.util,sys,tempfile,unittest
 from pathlib import Path
+from deployment_test_config import mission_config_path
 from unittest.mock import patch
 sys.path.insert(0,str(Path(__file__).parent))
 from first_grasp_mission_test import Fixture,CFG,ROOT,SCRIPTS
@@ -117,7 +118,7 @@ class TrialTests(unittest.TestCase):
         spec=importlib.util.spec_from_file_location('trial_launch',SCRIPTS.parent/'launch/go2_rars01_first_grasp.launch.py');module=importlib.util.module_from_spec(spec);spec.loader.exec_module(module)
         with tempfile.TemporaryDirectory() as tmp:
             launch.logging.launch_config.log_dir=tmp;p=Path(tmp);lib=p/'lib/unitree_legged_real';lib.mkdir(parents=True);(lib/'mission').symlink_to(SCRIPTS/'mission',target_is_directory=True)
-            c=LaunchContext();c.launch_configurations.update(workspace=str(ROOT),mission_config_path=str(ROOT/'repos/rars01_graspnet/config/jetson_orin_nano.yaml'),physical='true',test_mode='full',operator_trial='false',start_arm_owner='true',network_interface='',controlled_stop_lie_down_trial='true',architecture_monitor='true')
+            c=LaunchContext();c.launch_configurations.update(workspace=str(ROOT),mission_config_path=str(mission_config_path()),physical='true',test_mode='full',operator_trial='false',start_arm_owner='true',network_interface='',controlled_stop_lie_down_trial='true',architecture_monitor='true')
             with patch.object(module,'get_package_prefix',return_value=str(p)),patch.object(module,'get_package_share_directory',return_value=str(SCRIPTS.parent)):
                 self.assertEqual(len(module._launch(c)),3) # Explicit automatic cycle in working YAML
                 c.launch_configurations['operator_trial']='true';actions=module._launch(c)

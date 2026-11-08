@@ -18,10 +18,14 @@ class TargetBindingTests(unittest.TestCase):
         self.assertEqual(cfg['target_binding']['min_target_fraction'],.5)
 
     def test_saved_frames_reproduce_offline_decisions_and_flip(self):
+        frames = {'banana': 'docs/figures/banana_run_20261025_2020/frame.npz',
+                  'cup': 'docs/figures/grasp_filter_20261025_1752/frame.npz'}
         for name,expected in [('banana',[38,60,165]),('cup',[47,177])]:
             path=ROOT/'docs/figures/target_binding_20261025'
             report=json.loads((path/(name+'_report.json')).read_text())
-            z=np.load(report['mask']['source']);mask=np.load(path/(name+'_mask.npz'))['mask']
+            # The report records its historical absolute path; use this checkout.
+            self.assertTrue(report['mask']['source'].endswith('/'+frames[name]))
+            z=np.load(ROOT/frames[name]);mask=np.load(path/(name+'_mask.npz'))['mask']
             def run(gs):return filter_target_binding(gs,z['rgbd_depth_mm'],z['K'],mask,{'enabled':True},mask_source='segmentation',min_depth=.05,max_depth=1.)
             kept,stats=run(z['depth']);indices=[int(np.argmin(np.max(abs(z['decoded']-g),axis=1))) for g in kept]
             self.assertEqual(indices,expected)

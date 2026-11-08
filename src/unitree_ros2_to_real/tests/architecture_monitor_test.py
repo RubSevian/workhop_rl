@@ -8,6 +8,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from deployment_test_config import mission_config_path
 from unittest.mock import patch
 SCRIPTS=Path(__file__).resolve().parents[1]/'scripts'
 sys.path.insert(0,str(SCRIPTS))
@@ -131,7 +132,7 @@ class MonitorTests(unittest.TestCase):
             launch.logging.launch_config.log_dir=folder
             prefix=Path(folder);lib=prefix/'lib/unitree_legged_real';lib.mkdir(parents=True)
             (lib/'mission').symlink_to(SCRIPTS/'mission',target_is_directory=True)
-            c=LaunchContext();c.launch_configurations.update(workspace=str(root),physical='false',test_mode='full',start_arm_owner='true',network_interface='',mission_config_path=str(root/'repos/rars01_graspnet/config/jetson_orin_nano.yaml'))
+            c=LaunchContext();c.launch_configurations.update(workspace=str(root),physical='false',test_mode='full',start_arm_owner='true',network_interface='',mission_config_path=str(mission_config_path()))
             with patch.object(module,'get_package_prefix',return_value=str(prefix)),patch.object(module,'get_package_share_directory',return_value=str(SCRIPTS.parent)):
                 actions=module._launch(c)
                 is_monitor=lambda action:isinstance(action,Node) and 'architecture_monitor.py' in str(action.node_executable)

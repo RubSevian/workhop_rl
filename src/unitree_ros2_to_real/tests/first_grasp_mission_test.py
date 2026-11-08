@@ -21,7 +21,8 @@ from mission.scene import FrameChain, BodyPose, SceneSnapshot, BodyPoseProvider,
 from mission.scene import SceneBuffer
 from scipy.spatial.transform import Rotation
 
-CFG=load(ROOT/'repos/rars01_graspnet/config/jetson_orin_nano.yaml',ROOT)
+from deployment_test_config import mission_config_path
+CFG=load(mission_config_path(),ROOT)
 
 class Fixture:
     def __init__(self, branch='success'):

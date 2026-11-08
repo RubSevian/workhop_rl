@@ -2,6 +2,7 @@
 """Offline startup/cache/camera lifecycle regressions; no ROS or hardware."""
 import copy
 from pathlib import Path
+from deployment_test_config import mission_config_path
 import sys
 import tempfile
 import time
@@ -231,7 +232,7 @@ class StartupTests(unittest.TestCase):
         module=importlib.util.module_from_spec(spec);spec.loader.exec_module(module)
         context=LaunchContext()
         context.launch_configurations.update(workspace=str(root),physical='true',test_mode='ready_observe',start_arm_owner='true',
-            architecture_monitor='true',network_interface='enP8p1s0',mission_config_path=str(root/'repos/rars01_graspnet/config/jetson_orin_nano.yaml'))
+            architecture_monitor='true',network_interface='enP8p1s0',mission_config_path=str(mission_config_path()))
         # Test this checkout's launch/config pair, independently of the active
         # installed baseline. Actions are only constructed, never executed.
         prefix=Path(self.enterContext(tempfile.TemporaryDirectory()))
