@@ -92,6 +92,7 @@ class ArmOwner final:public rclcpp::Node {
   const auto mission_path=declare_parameter<std::string>("mission_config_path","");
   const auto workspace=declare_parameter<std::string>("workspace","");
   if(!mission_path.empty())ConfigureMission(mission_path,workspace,config,path,read_only);
+  ObserveController();
   cancel_=create_service<std_srvs::srv::Trigger>("/rars01/mission/cancel_manipulation",[this](std_srvs::srv::Trigger::Request::SharedPtr,std_srvs::srv::Trigger::Response::SharedPtr response){
    RevokeRetreatTrial("CANCELLED");
    plan_cancelled_ns_=Ns(ArmClock::now());
@@ -115,11 +116,16 @@ class ArmOwner final:public rclcpp::Node {
    if(!r3_planned_disable_ready_||age<0||age>mission_ttl_||count_publishers("/go2/locomotion_status")!=1){
     response->success=false;response->message="WAIT_R3_PD_HOLD_CONFIRMED_ARM_DISABLE";return;
    }
+   // Normal finish must still have a measured HOME. The failed-arm PD path
+   // retains its existing independent admission contract.
+   if(!r3_stopping_&&!home_->planned_disable_attempted()&&!home_->ReturnHome(now)){
+    response->success=false;response->message="WAIT_MEASURED_ARM_HOME";return;
+   }
    RevokeRetreatTrial("PLANNED_DISABLED");
    plan_cancelled_ns_=Ns(now);home_requested_=false;
    if(mission_)mission_->Cancel(home_->status(),"planned_disable");
    if(!mission_session_.empty())retired_session_=mission_session_;
-   response->success=home_->PlannedDisable(true);
+   response->success=home_->PlannedDisable(true,now);
    response->message=response->success?"planned disable sent; physical disable not asserted":"planned disable rejected or SDK send failed; stream remains stopped if attempted";
   });
   emergency_=create_service<std_srvs::srv::Trigger>("/rars01/control/emergency_disable",[this](std_srvs::srv::Trigger::Request::SharedPtr,std_srvs::srv::Trigger::Response::SharedPtr response){
@@ -131,6 +137,26 @@ class ArmOwner final:public rclcpp::Node {
   for(size_t i=0;i<7;++i)RCLCPP_INFO(get_logger(),"saved calibration motor%zu direction=%g offset=%g",i+1,config.motors[i].direction,config.motors[i].zero_offset);
  }
  private:
+ void ObserveController(){
+  r3_sub_=create_subscription<std_msgs::msg::String>("/go2/locomotion_status",1,[this](std_msgs::msg::String::SharedPtr msg){
+   try{auto v=YAML::Load(msg->data);const auto ns=v["observed_ns"].as<int64_t>();
+    if(ns<=Ns(r3_stamp_))return;r3_authority_=r3_planned_disable_ready_=false;r3_stamp_=ArmTime(std::chrono::nanoseconds(ns));
+    r3_nav_session_=v["navigation_session_id"].as<std::string>();
+    const auto session=v["controller_session_id"].as<std::string>();
+    if(!r3_session_.empty()&&r3_session_!=session){scan_home_reference_.Reset();if(mission_)mission_->Cancel(home_->status(),"controller_session_changed");retired_session_=mission_session_;}
+    r3_session_=session;r3_active_=v["state"].as<std::string>()=="ACTIVE"&&v["phase"].as<std::string>()=="RL_ZERO";
+    r3_stopping_=v["state"].as<std::string>()=="CONTROLLED_STOP";
+    r3_home_phase_allowed_=ControlledStopHomePhaseAllowed(v["phase"].as<std::string>());
+    r3_planned_disable_ready_=!v["fault_latched"].as<bool>()&&(
+     (r3_stopping_&&v["phase"].as<std::string>()=="ARM_DISABLE"&&v["pd_hold_confirmed"]&&v["pd_hold_confirmed"].as<bool>())||
+     (v["state"].as<std::string>()=="SYSTEM_HOLD"&&v["phase"].as<std::string>()=="LIE_DOWN_HOLD"&&
+      !v["output_enabled"].as<bool>()&&v["output_stop_confirmed"].as<bool>()&&
+      !v["lowcmd_lease_present"].as<bool>()&&v["passive_sequence_complete"].as<bool>()));
+    auto command=v["motion_command"].as<std::vector<double>>();bool zero=command.size()==3;for(double x:command)zero=zero&&std::isfinite(x)&&std::abs(x)<1e-6;
+    r3_authority_=v["operation_profile"].as<std::string>()=="full_mission"&&v["capabilities"]["arm_motion"].as<bool>()&&!v["fault_latched"].as<bool>()&&zero;
+   }catch(...){r3_authority_=r3_planned_disable_ready_=false;}
+  });
+ }
  bool Authority(ArmTime now,bool home_request=false,bool retain_completed_hold=false){
   const auto fresh=[&](ArmTime stamp){return stamp!=ArmTime{}&&std::chrono::duration<double>(now-stamp).count()>=0&&std::chrono::duration<double>(now-stamp).count()<=mission_ttl_;};
   return mission_&&home_->status().feedback_age_s>=0&&home_->status().feedback_age_s<=mission_feedback_ttl_&&fresh(r3_stamp_)&&fresh(nav_stamp_)&&fresh(health_stamp_)&&r3_authority_&&nav_ready_&&health_ready_&&
@@ -220,20 +246,6 @@ class ArmOwner final:public rclcpp::Node {
    auto command=mission_->Tick(now,status,authority);
    scan_home_reference_.Observe(mission_->state(),status.joints.position);
    return command;
-  });
-  r3_sub_=create_subscription<std_msgs::msg::String>("/go2/locomotion_status",1,[this](std_msgs::msg::String::SharedPtr msg){
-   try{auto v=YAML::Load(msg->data);const auto ns=v["observed_ns"].as<int64_t>();
-    if(ns<=Ns(r3_stamp_))return;r3_authority_=r3_planned_disable_ready_=false;r3_stamp_=ArmTime(std::chrono::nanoseconds(ns));
-    r3_nav_session_=v["navigation_session_id"].as<std::string>();
-    const auto session=v["controller_session_id"].as<std::string>();
-    if(!r3_session_.empty()&&r3_session_!=session){scan_home_reference_.Reset();mission_->Cancel(home_->status(),"controller_session_changed");retired_session_=mission_session_;}
-    r3_session_=session;r3_active_=v["state"].as<std::string>()=="ACTIVE"&&v["phase"].as<std::string>()=="RL_ZERO";
-    r3_stopping_=v["state"].as<std::string>()=="CONTROLLED_STOP";
-    r3_home_phase_allowed_=ControlledStopHomePhaseAllowed(v["phase"].as<std::string>());
-    r3_planned_disable_ready_=r3_stopping_&&v["phase"].as<std::string>()=="ARM_DISABLE"&&v["pd_hold_confirmed"]&&v["pd_hold_confirmed"].as<bool>()&&!v["fault_latched"].as<bool>();
-    auto command=v["motion_command"].as<std::vector<double>>();bool zero=command.size()==3;for(double x:command)zero=zero&&std::isfinite(x)&&std::abs(x)<1e-6;
-    r3_authority_=v["operation_profile"].as<std::string>()=="full_mission"&&v["capabilities"]["arm_motion"].as<bool>()&&!v["fault_latched"].as<bool>()&&zero;
-   }catch(...){r3_authority_=r3_planned_disable_ready_=false;}
   });
   nav_sub_=create_subscription<std_msgs::msg::String>("/go2/mission/readiness",1,[this](std_msgs::msg::String::SharedPtr msg){
    try{auto v=YAML::Load(msg->data);const auto ns=v["observed_ns"].as<int64_t>();if(ns<=Ns(nav_stamp_))return;nav_ready_=false;
@@ -483,7 +495,8 @@ class ArmOwner final:public rclcpp::Node {
    <<YAML::Key<<"retreat_physical_clearance_qualified"<<YAML::Value<<retreat_clearance_qualified_
    <<YAML::Key<<"planned_disable_attempted"<<YAML::Value<<home_->planned_disable_attempted()
    <<YAML::Key<<"planned_disable_sent"<<YAML::Value<<home_->planned_disable_accepted()
-   <<YAML::Key<<"planned_disable_physically_confirmed"<<YAML::Value<<false
+   <<YAML::Key<<"planned_disable_physically_confirmed"<<YAML::Value<<home_->planned_disable_physically_confirmed()
+   <<YAML::Key<<"controller_session_id"<<YAML::Value<<r3_session_
    <<YAML::Key<<"home_requested"<<YAML::Value<<home_requested_
    <<YAML::Key<<"grasp_assessment"<<YAML::Value<<(mission_?mission_->assessment().state():"UNKNOWN")
    <<YAML::Key<<"grasp_assessment_reason"<<YAML::Value<<(mission_?mission_->assessment().reason():"NO_MISSION")

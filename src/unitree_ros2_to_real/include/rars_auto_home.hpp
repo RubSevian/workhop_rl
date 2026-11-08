@@ -73,7 +73,8 @@ class AutoHomeController {
  void Fault(const std::string& reason);
  bool ReturnHome(ArmTime now);
  bool EmergencyDisable();
- bool PlannedDisable(bool pd_hold_authorized);
+ bool PlannedDisable(bool stop_authorized, ArmTime now=ArmClock::now());
+ bool planned_disable_physically_confirmed() const;
  bool planned_disable_attempted() const {return planned_disable_attempted_;}
  bool planned_disable_accepted() const {return planned_disable_accepted_;}
  // The existing owner remains the only sender. A mission provider may change
@@ -92,6 +93,7 @@ class AutoHomeController {
  ArmTime next_connect_{};
  bool have_usable_feedback_=false,emergency_disable_attempted_=false,emergency_disable_accepted_=false;
  bool planned_disable_attempted_=false,planned_disable_accepted_=false;
+ std::optional<ArmTime> planned_disable_at_;
  double age_at_read_s_=0;
  Provider provider_;
  rars_arm::RarsArm::MotorValues accepted_target_{};

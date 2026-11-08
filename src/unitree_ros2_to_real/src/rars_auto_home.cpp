@@ -55,8 +55,8 @@ bool AutoHomeController::ReturnHome(ArmTime now) {
  return config_.enabled&&status_.state==AutoHomeState::HOLD_HOME&&status_.communication.enabled&&
   UsableFeedback()&&status_.motors_enabled&&status_.target_fresh;
 }
-bool AutoHomeController::PlannedDisable(bool pd_hold_authorized) {
- if(!pd_hold_authorized||!config_.enabled||status_.state==AutoHomeState::FAULT_LATCHED)return false;
+bool AutoHomeController::PlannedDisable(bool stop_authorized,ArmTime now) {
+ if(!stop_authorized||!config_.enabled||status_.state==AutoHomeState::FAULT_LATCHED)return false;
  if(planned_disable_attempted_)return planned_disable_accepted_;
  const auto communication=transport_.Status();
  if(communication.watchdog_tripped||communication.stm32_watchdog_tripped){Fault("critical_watchdog_before_planned_disable");return false;}
@@ -64,7 +64,7 @@ bool AutoHomeController::PlannedDisable(bool pd_hold_authorized) {
   if((joints.motor_id[i]!=0&&joints.motor_id[i]!=i+1)||(joints.valid[i]&&
      (!std::isfinite(joints.position[i])||!std::isfinite(joints.velocity[i])||joints.error[i]>1))){Fault("motor_fault_before_planned_disable");return false;}
  }
- planned_disable_attempted_=true;
+ planned_disable_attempted_=true;planned_disable_at_=now;
  // Revoke all target streaming before the SDK call. No fake HOME or feedback.
  status_.state=AutoHomeState::PLANNED_DISABLE_FAILED;status_.arm_home_ready=status_.target_fresh=false;
  try{planned_disable_accepted_=transport_.Disable();}
@@ -72,6 +72,14 @@ bool AutoHomeController::PlannedDisable(bool pd_hold_authorized) {
  status_.state=planned_disable_accepted_?AutoHomeState::PLANNED_DISABLED:AutoHomeState::PLANNED_DISABLE_FAILED;
  status_.last_error=planned_disable_accepted_?"planned_disable_sent_not_physically_confirmed":"planned_disable_send_failed: "+transport_.Error();
  return planned_disable_accepted_;
+}
+bool AutoHomeController::planned_disable_physically_confirmed() const {
+ if(status_.state!=AutoHomeState::PLANNED_DISABLED||status_.communication.enabled||
+    !planned_disable_accepted_||!planned_disable_at_||!status_.feedback_ready||
+    !status_.feedback_stamp||*status_.feedback_stamp<=*planned_disable_at_)return false;
+ // motors_enabled=false alone means "not all enabled", not "all disabled".
+ for(auto code:status_.joints.error)if(code!=0)return false;
+ return true;
 }
 bool AutoHomeController::EmergencyDisable() {
  if(!config_.enabled||!config_.emergency_disable_enabled)return false;

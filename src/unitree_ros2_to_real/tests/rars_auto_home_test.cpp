@@ -211,4 +211,20 @@ void planned_disable(){
  Transport ro;Journal jro;AutoHomeConfig cfg;AutoHomeController read_only(cfg,ro,jro);assert(!read_only.PlannedDisable(true)&&ro.disables==0);
  auto emergency=config();emergency.emergency_disable_enabled=true;Transport b;Journal jb;AutoHomeController ctl(emergency,b,jb);start(ctl);assert(ctl.PlannedDisable(true));assert(ctl.EmergencyDisable());assert(ctl.status().state==AutoHomeState::FAULT_LATCHED&&jb.faults==1);
 }
-int main(){planned_disable();mission_startup_home();control_ports();startup();readiness();incomplete_startup_frame();external_timer_jitter();journal();std::cout<<"PASS AUTO HOME mock: delay/reconnect, enable once, seven zeros, continuous stream, measured readiness, stale/send/disabled/ID/NaN/watchdogs, per-session fault latch and restart without journal guard; no hardware\n";}
+void measured_disable(){
+ Transport tr;Journal j;AutoHomeController c(config(),tr,j);start(c);
+ assert(c.PlannedDisable(true,t(11)));
+ c.Tick(t(11.01));assert(!c.planned_disable_physically_confirmed());
+ tr.joints.error[0]=0;c.Tick(t(11.02));
+ assert(!c.status().motors_enabled&&!c.planned_disable_physically_confirmed());
+ tr.joints.error.fill(0);tr.comm.feedback_age=std::chrono::milliseconds(100);
+ c.Tick(t(11.03));assert(!c.planned_disable_physically_confirmed()); // old feedback
+ tr.comm.feedback_age=std::chrono::milliseconds(0);
+ c.Tick(t(11.04));assert(c.planned_disable_physically_confirmed());
+ tr.joints.valid[6]=false;c.Tick(t(11.05));assert(!c.planned_disable_physically_confirmed());
+ tr.joints.valid[6]=true;tr.joints.error[6]=8;c.Tick(t(11.06));assert(!c.planned_disable_physically_confirmed());
+ tr.joints.error[6]=0;c.Tick(t(11.07));assert(c.planned_disable_physically_confirmed());
+ tr.read_ok=false;c.Tick(t(12));assert(!c.planned_disable_physically_confirmed());
+ assert(tr.disables==1&&tr.enables==1);
+}
+int main(){measured_disable();planned_disable();mission_startup_home();control_ports();startup();readiness();incomplete_startup_frame();external_timer_jitter();journal();std::cout<<"PASS AUTO HOME mock: delay/reconnect, enable once, seven zeros, continuous stream, measured readiness, stale/send/disabled/ID/NaN/watchdogs, per-session fault latch and restart without journal guard; no hardware\n";}
