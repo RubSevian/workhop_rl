@@ -128,7 +128,7 @@ def classify(name,view):
     if name=='arm' and view.get('mission_state')=='FAILED':
         return 'BLOCKED',view.get('mission_error') or 'arm_operation_failed'
     goal=view.get('goal') or {}
-    if name=='nav' and goal.get('state') in ('FAILED','GOAL_UNREACHABLE','STOPPED_ADJUSTED','CONTINUATION_NOT_FOUND','ARRIVAL_NOT_CONFIRMED'):
+    if name=='nav' and goal.get('state') in ('FAILED','GOAL_UNREACHABLE','STOPPED_ADJUSTED','CONTINUATION_NOT_FOUND','ARRIVAL_NOT_CONFIRMED','REPEATED_ATTEMPT','PROGRESS_HISTORY_EXHAUSTED'):
         return 'BLOCKED',goal.get('far_reason') or goal.get('reason') or goal['state']
     if name=='nav' and view.get('navigation_ready') is False:
         return 'BLOCKED',view.get('tf_error') or 'navigation_unavailable'

@@ -25,7 +25,7 @@ class MissionContinuationTests(unittest.TestCase):
         self.assertEqual(f.m.state,'BASE_SETTLE')
 
     def test_expired_continuation_has_explicit_reason(self):
-        for state in ('CONTINUATION_NOT_FOUND','ARRIVAL_NOT_CONFIRMED'):
+        for state in ('CONTINUATION_NOT_FOUND','ARRIVAL_NOT_CONFIRMED','REPEATED_ATTEMPT','PROGRESS_HISTORY_EXHAUSTED'):
             f=self.outbound();f.nav['goal']['state']=state;f.tick(False)
             self.assertEqual(f.m.state,'CANCELLED')
             self.assertEqual(f.m.reason,'NAV_'+state)
@@ -50,5 +50,7 @@ class MissionContinuationTests(unittest.TestCase):
         for state in ('ARRIVAL_CONFIRMING','ACTIVE','REPLANNING'):
             f.nav['goal']['state']=state;f.tick(False)
             self.assertEqual(f.m.state,'RETURN_NAVIGATING')
+        f.nav['goal']['state']='REPEATED_ATTEMPT';f.tick(False)
+        self.assertEqual(f.m.reason,'RETURN_NAV_REPEATED_ATTEMPT')
 
 if __name__=='__main__':unittest.main()
