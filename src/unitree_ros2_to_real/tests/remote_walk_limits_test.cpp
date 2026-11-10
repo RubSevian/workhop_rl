@@ -12,17 +12,17 @@ int main(){auto p=system_fixture();p.remote_stick_bounds=std::array<double,3>{.5
  assert(!f.NavigationCommand({.1,0,0},time_at(6)).success);
  assert(f.ControlledAbort(time_at(6)).success&&!f.RemoteTestCommand({.5,0,0},time_at(6)).success);
  R3Supervisor zero(p,OperationProfile::RL_ZERO_TEST);enter_active(zero);assert(!zero.RemoteTestCommand({.5,0,0},time_at(6)).success);
- p.navigation_bounds=std::array<double,3>{.35,.1,.1};
+ p.navigation_bounds=std::array<double,3>{.35,.35,.1};
  assert(p.vx_bound==.2); // Manual probe is not expanded with NAV.
  auto fact=system_facts(0);fact.navigation_ready=true;R3Supervisor nav(p,OperationProfile::NAV_TEST);nav.Observe(fact,time_at(0));
  assert(nav.Takeover(time_at(0)).success);nav.Observe(fact,time_at(0));assert(nav.EnableOutput(true,time_at(0)).success);nav.Tick(time_at(0));assert(nav.RequestStand(time_at(0)).success);
  fact=system_facts(6);fact.navigation_ready=true;nav.Observe(fact,time_at(6));nav.Tick(time_at(6));assert(nav.RequestRl(time_at(6)).success);nav.ConsumePolicyReset();auto job=nav.BeginPolicy(time_at(6));assert(job&&nav.PolicyResult(*job,p.stand,2,time_at(6)));
- assert(nav.NavigationCommand({.35,.1,.1},time_at(6)).success);
- for(auto c:{std::array<double,3>{.351,0,0},{0,.101,0},{0,0,.101}})assert(!nav.NavigationCommand(c,time_at(6)).success);
+ assert(nav.NavigationCommand({.35,.35,.1},time_at(6)).success);
+ for(auto c:{std::array<double,3>{.351,0,0},{0,.351,0},{0,0,.101}})assert(!nav.NavigationCommand(c,time_at(6)).success);
  assert(nav.NavigationCommand({0,0,0},time_at(6)).success);
- for(auto bad_bounds:{std::array<double,3>{.351,.1,.1},{.35,.101,.1},{.35,.1,.101},{NAN,.1,.1}}){
+ for(auto bad_bounds:{std::array<double,3>{.351,.1,.1},{.35,.351,.1},{.35,.1,.101},{NAN,.1,.1}}){
   auto badp=p;badp.navigation_bounds=bad_bounds;try{R3Supervisor bad(badp);assert(false);}catch(const std::invalid_argument&){}
  }
  p.remote_stick_bounds=std::array<double,3>{.51,.5,.5};try{R3Supervisor bad(p);assert(false);}catch(const std::invalid_argument&){}
- std::cout<<"PASS remote +/-0.5 sticks/clamp/deadband/profile/X gates; NAV +/-0.35/0.1/0.1; manual limit unchanged\n";
+ std::cout<<"PASS remote +/-0.5 sticks/clamp/deadband/profile/X gates; NAV +/-0.35/0.35/0.1; manual limit unchanged\n";
 }

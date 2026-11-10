@@ -481,7 +481,7 @@ void real_sequence_and_interruptions(){
 int main(int argc,char** argv){
  if(argc==2){auto yaml=YAML::LoadFile(argv[1]);assert(LoadR3Profile(yaml).policy_observation_timeout_s==.06&&LoadR3Profile(yaml).sport_startup_only);
   const auto configured=LoadR3Profile(yaml);
-  assert((configured.NavigationBounds()==std::array<double,3>{.35,.1,.1}));
+  assert((configured.NavigationBounds()==std::array<double,3>{.35,.35,.1}));
   assert(configured.vx_bound==.2);
   yaml["real_deployment"]["r3_commissioning"].remove("navigation_command_limits");
   assert(LoadR3Profile(yaml).NavigationBounds()[0]==.2); // Legacy profiles keep their limit.

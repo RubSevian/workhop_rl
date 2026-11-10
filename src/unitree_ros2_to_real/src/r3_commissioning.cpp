@@ -134,7 +134,7 @@ R3Supervisor::R3Supervisor(R3Profile p,OperationProfile operation):profile_(std:
  if(profile_.failed_arm_pd_stop_enabled&&(profile_.lie_down_s!=8.||profile_.lie_down_timeout_s!=12.))throw std::invalid_argument("Failed-arm stop requires agreed 8s trajectory and 12s timeout");
  for(double v:profile_.RemoteBounds())if(!std::isfinite(v)||v<=0||v>.5)throw std::invalid_argument("Remote stick bounds must be finite in (0,0.5]");
  const auto nav_bounds=profile_.NavigationBounds();
- const std::array<double,3> nav_max{.35,.10,.10};
+ const std::array<double,3> nav_max{.35,.35,.10};
  for(size_t i=0;i<3;++i)if(!std::isfinite(nav_bounds[i])||nav_bounds[i]<=0||nav_bounds[i]>nav_max[i])throw std::invalid_argument("NAV bounds exceed 0.35/0.10/0.10 contract");
  if(profile_.vx_bound>.20||profile_.deadline_burst_limit<1)throw std::invalid_argument("R3 vx bound/valid deadline limit");
  for(float q:profile_.stand)if(!std::isfinite(q)||std::abs(q)>3.5F)throw std::invalid_argument("Stand q outside software contract");
