@@ -184,6 +184,7 @@ real_deployment:
       reached_tolerance_rad: 0.15
       settle_s: 0.2
       # Fixed gains remain actor fixed_kp/fixed_kd = 40/1.
+    navigation_command_limits: {max_vx: 0.35, max_vy: 0.10, max_wz: 0.10}
     manual:
       max_vx: 0.20
       max_vy: 0.10

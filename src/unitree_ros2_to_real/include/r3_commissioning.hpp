@@ -34,6 +34,8 @@ struct R3Profile {
  double lowcmd_discovery_timeout_s=20,lowcmd_clear_duration_s=.5;
  double vx_bound=.20,vy_bound=.10,wz_bound=.10,max_command_duration_s=1;
  std::optional<std::array<double,3>> remote_stick_bounds;
+ std::optional<std::array<double,3>> navigation_bounds;
+ std::array<double,3> NavigationBounds() const {return navigation_bounds.value_or(std::array<double,3>{vx_bound,vy_bound,wz_bound});}
  std::array<double,3> RemoteBounds() const {return remote_stick_bounds.value_or(std::array<double,3>{vx_bound,vy_bound,wz_bound});}
  double q_capture_tolerance=.01;
  double arm_home_timeout_s=10,arm_home_settle_s=.2,lie_down_timeout_s=12,lie_down_tolerance=.15,lie_down_settle_s=.2;

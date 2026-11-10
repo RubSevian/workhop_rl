@@ -164,7 +164,7 @@ class R3Node final:public rclcpp::Node {
    if(!std::isfinite(seconds)||seconds<=0||seconds>8||poll<1||poll>100)throw std::runtime_error("Invalid native RT admission timing");
    policy_rt_->registration_timeout_ns=uint64_t(seconds*1.e9);policy_rt_->registration_poll_ms=poll;
   }
-  navigation_gate_=std::make_unique<NavigationRequestGate>(std::array<double,3>{profile.vx_bound,profile.vy_bound,profile.wz_bound},profile.command_timeout_s);
+  navigation_gate_=std::make_unique<NavigationRequestGate>(profile.NavigationBounds(),profile.command_timeout_s);
   lowcmd_wait_=std::make_unique<LowCmdDiscoveryWait>(profile.lowcmd_discovery_timeout_s,profile.lowcmd_clear_duration_s);
   lowstate_=LowStateReader(profile.lowstate_timeout_s);
   remote_=std::make_unique<R3RemoteCommands>(r["remote"]["controlled_abort_chord"].as<std::vector<std::string>>(),r["remote"]["emergency_chord"].as<std::vector<std::string>>(),d["remote"]["takeover_hold_s"].as<double>(),profile.remote_timeout_s);
@@ -758,7 +758,7 @@ class R3Node final:public rclcpp::Node {
   snapshot.Add("stand_completion", "time");
   snapshot.Add("remote_test_mode", remote_test_mode_);
   snapshot.Add("remote_command_limits", remote_bounds);
-  snapshot.Add("navigation_command_limits", std::array<double,3>{supervisor_->profile().vx_bound,supervisor_->profile().vy_bound,supervisor_->profile().wz_bound});
+  snapshot.Add("navigation_command_limits", supervisor_->profile().NavigationBounds());
   snapshot.Add("remote_test_requested_command", remote_test_requested_);
   snapshot.Add("motion_command", supervisor_->command());
   snapshot.Add("arm_target_age_s", Age(now,inputs_.target_stamp));

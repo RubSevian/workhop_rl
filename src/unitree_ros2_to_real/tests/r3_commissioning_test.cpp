@@ -480,6 +480,11 @@ void real_sequence_and_interruptions(){
 }
 int main(int argc,char** argv){
  if(argc==2){auto yaml=YAML::LoadFile(argv[1]);assert(LoadR3Profile(yaml).policy_observation_timeout_s==.06&&LoadR3Profile(yaml).sport_startup_only);
+  const auto configured=LoadR3Profile(yaml);
+  assert((configured.NavigationBounds()==std::array<double,3>{.35,.1,.1}));
+  assert(configured.vx_bound==.2);
+  yaml["real_deployment"]["r3_commissioning"].remove("navigation_command_limits");
+  assert(LoadR3Profile(yaml).NavigationBounds()[0]==.2); // Legacy profiles keep their limit.
   yaml["real_deployment"]["r3_commissioning"].remove("policy_observation_timeout_s");
   bool missing=false;try{LoadR3Profile(yaml);}catch(const YAML::Exception&){missing=true;}assert(missing);}
  startup_sport_tests();configured_watchdog_tests();policy_observation_trial_tests();real_sequence_and_interruptions();state_tests();gates();remote_tests();lease();automatic_sequence_tests();home_readiness_gate_tests();discovery_wait_tests();policy_delay_tests();remote_test_motion_tests();std::cout<<"PASS R3 synthetic/mocks: measured first HOLD_CURRENT, continuity, RL reset, manual bounds/deadman, abort/lying/stop/stock ordering, critical faults and emergency priority/packet, exclusive output lease, bounded post-release DDS wait; no hardware\n";}

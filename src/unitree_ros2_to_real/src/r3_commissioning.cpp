@@ -45,6 +45,9 @@ R3Profile LoadR3Profile(const YAML::Node& yaml) {
  p.arm_timeout_s=d["rars01"]["feedback_timeout_s"].as<double>();
  if(d["rars01"]["require_home_ready_for_leg_takeover"])p.require_arm_home_ready=d["rars01"]["require_home_ready_for_leg_takeover"].as<bool>();
  p.vx_bound=r["manual"]["max_vx"].as<double>();p.vy_bound=r["manual"]["max_vy"].as<double>();p.wz_bound=r["manual"]["max_wz"].as<double>();
+ if(r["navigation_command_limits"]){const auto limits=r["navigation_command_limits"];
+  p.navigation_bounds=std::array<double,3>{limits["max_vx"].as<double>(),limits["max_vy"].as<double>(),limits["max_wz"].as<double>()};
+ }
  if(r["remote"]["command_limits"]){const auto limits=r["remote"]["command_limits"];
   p.remote_stick_bounds=std::array<double,3>{limits["max_vx"].as<double>(),limits["max_vy"].as<double>(),limits["max_wz"].as<double>()};
  }
@@ -130,6 +133,9 @@ R3Supervisor::R3Supervisor(R3Profile p,OperationProfile operation):profile_(std:
  if((profile_.lie_down_validated||profile_.controlled_stop_lie_down_trial)&&profile_.lie_down_timeout_s<profile_.lie_down_s)throw std::invalid_argument("Lie timeout before trajectory completes");
  if(profile_.failed_arm_pd_stop_enabled&&(profile_.lie_down_s!=8.||profile_.lie_down_timeout_s!=12.))throw std::invalid_argument("Failed-arm stop requires agreed 8s trajectory and 12s timeout");
  for(double v:profile_.RemoteBounds())if(!std::isfinite(v)||v<=0||v>.5)throw std::invalid_argument("Remote stick bounds must be finite in (0,0.5]");
+ const auto nav_bounds=profile_.NavigationBounds();
+ const std::array<double,3> nav_max{.35,.10,.10};
+ for(size_t i=0;i<3;++i)if(!std::isfinite(nav_bounds[i])||nav_bounds[i]<=0||nav_bounds[i]>nav_max[i])throw std::invalid_argument("NAV bounds exceed 0.35/0.10/0.10 contract");
  if(profile_.vx_bound>.20||profile_.deadline_burst_limit<1)throw std::invalid_argument("R3 vx bound/valid deadline limit");
  for(float q:profile_.stand)if(!std::isfinite(q)||std::abs(q)>3.5F)throw std::invalid_argument("Stand q outside software contract");
  if(profile_.lie_down)for(float q:*profile_.lie_down)if(!std::isfinite(q)||std::abs(q)>3.5F)throw std::invalid_argument("Invalid lie-down pose");
@@ -528,7 +534,7 @@ R3Reply R3Supervisor::VelocityCommand(const std::array<double,3>& cmd,SafetyTime
  if(!NeedsPolicy())return Fail("remote test requires RL_ZERO/RL_ACTIVE");
  const auto ready=Require(now);if(!ready.success)return ready;
  for(double v:cmd)if(!std::isfinite(v))return Fail("nonfinite remote test command");
- const auto bounds=navigation?std::array<double,3>{profile_.vx_bound,profile_.vy_bound,profile_.wz_bound}:profile_.RemoteBounds();
+ const auto bounds=navigation?profile_.NavigationBounds():profile_.RemoteBounds();
  if(std::abs(cmd[0])>bounds[0]||std::abs(cmd[1])>bounds[1]||std::abs(cmd[2])>bounds[2])
   return Fail("remote test bounds violated");
  const bool moving=cmd!=std::array<double,3>{};
