@@ -131,6 +131,9 @@ class R3Supervisor {
  bool passive_sequence_complete() const {return passive_sequence_complete_;}
  int last_commanded_leg_mode() const {return last_commanded_leg_mode_;}
  bool fault_latched() const {return fault_;}
+ int64_t stop_home_deadline_ns() const {
+  return stop_started_==SafetyTime{}?0:std::chrono::duration_cast<std::chrono::nanoseconds>(stop_started_.time_since_epoch()).count()+int64_t(profile_.arm_home_timeout_s*1e9);
+ }
  bool navigation_active() const {return navigation_active_;}
  bool NeedsPolicy() const {return state()==R3State::RL_ZERO||state()==R3State::RL_ACTIVE;}
  bool ConsumePolicyReset();

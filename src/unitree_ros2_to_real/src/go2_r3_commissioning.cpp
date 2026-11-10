@@ -772,6 +772,7 @@ class R3Node final:public rclcpp::Node {
   snapshot.Add("navigation_ready", inputs_.navigation_ready);
   snapshot.Add("perception_ready", inputs_.perception_ready);
   snapshot.Add("arm_emergency_validated", inputs_.arm_emergency_validated);
+  snapshot.Add("stop_home_deadline_ns", supervisor_->stop_home_deadline_ns());
   snapshot.Add("stop_blocker", supervisor_->stop_blocker());
   snapshot.Add("arm_home_port", home_port_status_);
   snapshot.Add("arm_emergency_port", emergency_port_status_);

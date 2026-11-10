@@ -10,7 +10,7 @@ from pathlib import Path
 from mission.leg_plan_trace import LegPlanTrace
 from mission.compute_cancel import ComputeCancellation
 from mission.camera_intent import camera_requested
-from mission.stop_home import geometry_home_ready
+from mission.stop_home import geometry_home_ready,home_result_fits
 import queue
 import threading
 import time
@@ -39,6 +39,7 @@ from mission.startup import MARKER,verified
 from mission.short_journal import make_short_journal
 
 class Perception(Node):
+    shutdown_budget_s=12. # Includes bounded model/camera worker teardown before DDS.
     def __init__(self):
         super().__init__('rars01_grasp_perception')
         self.last_leg_tick=None
@@ -324,12 +325,21 @@ class Perception(Node):
                 try:
                     budget={'detect':self.cfg['search']['timeout_s']}.get(request['operation'],self.cfg['execution']['state_timeout_s'])
                     self.backend.collision.work_deadline_ns=None if budget is None else request['observed_ns']+int(budget*1e9)
+                    deadline=request.get('compute_deadline_ns')
+                    if deadline is not None:
+                        if type(deadline) is not int or deadline<=0:raise ValueError('INVALID_COMPUTE_DEADLINE')
+                        existing=self.backend.collision.work_deadline_ns
+                        self.backend.collision.work_deadline_ns=min(existing,deadline) if existing is not None else deadline
+                    if getattr(self,'controlled_stop',False) and request['operation']=='home' and deadline is None:
+                        raise ValueError('HOME_DEADLINE_MISSING')
                     self.backend.collision.check_deadline()
                     result=self.backend.execute(request,self.sample_context)
                     validation_started_ns=time.monotonic_ns()
                     try:self.backend.validate_result(result,self.sample_context,request)
                     finally:self.backend.compute_metrics['live_validation_elapsed_s']=(time.monotonic_ns()-validation_started_ns)/1e9
                     self.backend.collision.check_deadline()
+                    if request.get('stop_home_deadline_ns') is not None and not home_result_fits(request,result.get('trajectory',{}),time.monotonic_ns()):
+                        raise ValueError('HOME_EXECUTION_DEADLINE_EXCEEDED')
                     out.update(result,ok=True)
                 except Exception as e:
                     out.update(ok=False,reason=str(e) or type(e).__name__)

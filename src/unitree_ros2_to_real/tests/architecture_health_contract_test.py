@@ -22,6 +22,10 @@ class HeartbeatContracts(unittest.TestCase):
     def setUp(self):
         self.cfg = load(CONFIG, ROOT)
 
+    def test_mission_lease_is_separate_from_other_heartbeat_limits(self):
+        self.assertEqual(self.cfg['execution']['heartbeat_ttl_s'],.25)
+        self.assertEqual(self.cfg['execution']['mission_health_ttl_s'],.5)
+
     def test_perception_timer_publishes_health_with_disabled_and_enabled_timeout(self):
         # Execute the real timer body without starting ROS, camera or motors.
         import ast,json,queue,threading

@@ -1,5 +1,23 @@
 """Controlled-stop HOME handshake. Does not grant actuator authority."""
 from .health_contract import CONTROLLED_HOME_PHASES
+import math
+
+
+def home_deadline(r3, now_ns):
+    """Controller-owned monotonic deadline; five seconds reserved for execution."""
+    deadline=r3.get('stop_home_deadline_ns')
+    if type(deadline) is not int or deadline <= now_ns + 5_000_000_000:
+        raise ValueError('HOME_DEADLINE_UNAVAILABLE_OR_EXHAUSTED')
+    return deadline
+
+
+def home_result_fits(request, trajectory, now_ns):
+    deadline=request.get('stop_home_deadline_ns')
+    rate=trajectory.get('collision_context',{}).get('command_rate_hz')
+    points=trajectory.get('points',[])
+    return (type(deadline) is int and type(rate) in (int,float) and math.isfinite(rate)
+            and rate>0 and len(points)>=2
+            and now_ns + int((len(points)/rate + .5)*1e9) < deadline)
 
 
 def geometry_home_ready(*, controlled_stop, phase, cancel_complete, backend_ready,

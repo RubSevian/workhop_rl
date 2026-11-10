@@ -3,9 +3,18 @@ import sys,unittest
 from pathlib import Path
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]/'scripts'))
 from mission.compute_cancel import ComputeCancellation
-from mission.collision import Collision,CollisionCancelled
+from mission.collision import Collision,CollisionCancelled,CollisionComputeTimeout
+from unittest.mock import patch
 
 class CancellationTests(unittest.TestCase):
+    def test_controller_deadline_stops_collision_work_at_boundary(self):
+        c=Collision.__new__(Collision)
+        c.cancel_check=None
+        c._check_deadline_ns=None
+        c.work_deadline_ns=100
+        with patch('mission.collision.time.monotonic_ns',return_value=99):c.check_deadline()
+        with patch('mission.collision.time.monotonic_ns',return_value=100):
+            with self.assertRaises(CollisionComputeTimeout):c.check_deadline()
     def setUp(self):
         self.g=ComputeCancellation()
         self.r=dict(id=3,session_id='a',observed_ns=100,operation='grasp_plan')

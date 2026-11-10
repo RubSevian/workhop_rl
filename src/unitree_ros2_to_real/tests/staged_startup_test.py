@@ -145,9 +145,10 @@ class StartupTests(unittest.TestCase):
             try:handlers[signal.SIGINT]()
             except KeyboardInterrupt:pass
             raise RuntimeError('interrupted take_message conversion')
-        with patch.object(ros_main.rclpy,'init'),patch.object(ros_main.rclpy,'try_shutdown'),patch.object(ros_main.signal,'signal',side_effect=install),patch.object(ros_main.rclpy,'spin',side_effect=interrupted_spin):
+        with patch.object(ros_main.rclpy,'init'),patch.object(ros_main.rclpy,'try_shutdown'),patch.object(ros_main.signal,'signal',side_effect=install),patch.object(ros_main.rclpy,'spin',side_effect=interrupted_spin),patch.object(ros_main.os,'_exit') as exit_process:
             ros_main.spin(lambda:SimpleNamespace(destroy_node=destroy))
         destroy.assert_called_once()
+        exit_process.assert_called_once_with(0)
         with patch.object(ros_main.rclpy,'init'),patch.object(ros_main.rclpy,'try_shutdown'),patch.object(ros_main.signal,'signal'),patch.object(ros_main.rclpy,'spin',side_effect=RuntimeError('real fault')):
             with self.assertRaisesRegex(RuntimeError,'real fault'):
                 ros_main.spin(lambda:SimpleNamespace(destroy_node=lambda:None))

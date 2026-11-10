@@ -30,7 +30,7 @@ from mission.config import apply_operator_trial, load, blockers, physical_retrea
 from mission.core import Mission, TERMINAL, ARM_PHASES
 from mission.health_contract import source_ttl,CONTROLLED_HOME_PHASES
 from mission.short_journal import make_short_journal
-from mission.stop_home import HomeDispatch,home_dispatch_blocker
+from mission.stop_home import HomeDispatch,home_dispatch_blocker,home_deadline,home_result_fits
 
 class Coordinator(Node):
     def __init__(self):
@@ -254,6 +254,8 @@ class Coordinator(Node):
                 self.stop_home_result='PLAN_READY' if data.get('ok') else 'PLAN_FAILED:'+str(data.get('reason','UNKNOWN'))
                 r3=self.engine.inputs.get('r3',{})
                 age=(time.monotonic_ns()-data.get('observed_ns',0))/1e9
+                if data.get('ok') and not home_result_fits(pending,data.get('trajectory',{}),time.monotonic_ns()):
+                    data=dict(data,ok=False,reason='HOME_EXECUTION_DEADLINE_EXCEEDED')
                 if data.get('ok') and r3.get('state')=='CONTROLLED_STOP' and r3.get('phase') in CONTROLLED_HOME_PHASES and not r3.get('fault_latched') and self.engine.fresh('r3',time.monotonic()) and data.get('observed_ns',0)>0 and age>=0:
                     trajectory=dict(data['trajectory'],**{k:pending[k] for k in ('id','session_id','navigation_session_id','owner_session_id','goal_revision')},observed_ns=time.monotonic_ns())
                     self.trajectory_pub.publish(String(data=encode_plan(trajectory)))
@@ -301,7 +303,6 @@ class Coordinator(Node):
         effects=e.step(now,self.get_clock().now().nanoseconds) if self.physical and not self.blockers else e.drain()
         timing.mark('engine_step')
         journal=getattr(self,'short_journal',None)
-        if journal is not None:journal.transition(e,now)
         if e.stale_input_diagnostic is not None and not self.stale_fault_reported:
             detail=e.stale_input_diagnostic
             detail['callbacks']=self.input_diagnostics.snapshot(now)
@@ -309,6 +310,7 @@ class Coordinator(Node):
             detail['session_id']=e.session
             self.get_logger().error('STALE_INPUT_DIAGNOSTIC '+json.dumps(detail,allow_nan=False))
             self.stale_fault_reported=True
+        now=time.monotonic() # Readiness uses current time after engine/diagnostics work.
         r3=e.inputs.get('r3',{})
         stop_phase=(e.fresh('r3',now) and r3.get('state')=='CONTROLLED_STOP'
                     and r3.get('phase') in CONTROLLED_HOME_PHASES and not r3.get('fault_latched'))
@@ -321,11 +323,11 @@ class Coordinator(Node):
                and e.inputs['owner'].get('target_valid') is True
                and self.cancel.service_is_ready() and self.home.service_is_ready()
                and all(self.count_publishers(topic)==1 for topic in self.topics.values()))
-        timing.mark('readiness_and_journal')
-        health=dict(observed_ns=time.monotonic_ns(),session_id=e.session,
+        timing.mark('readiness')
+        health=dict(observed_ns=int(now*1e9),session_id=e.session,
                     navigation_session_id=e.inputs.get('nav',{}).get('session_id',''),
                     goal_revision=e.revision,phase=e.state,ready=bool(ready),physical=bool(self.physical),base_locked=e.state in ARM_PHASES|TERMINAL,blockers=self.blockers,
-                    scene_error=self.scene_error,observation_recovery=e.status(now)['observation_recovery'],lowstate_decode=(self.native_leg_input.status() if getattr(self,'native_leg_input',None) else self.leg_reader.status()),tf_pair=dict(self.body_source.diagnostics),streams=self.scene_buffer.diagnostics(time.monotonic_ns()))
+                    scene_error=self.scene_error)
         health.update(return_request_ns=e.return_navigation.request_ns,
                       return_target=e.return_navigation.target(),
                       home_completed_ns=e.base_motion_window['home_completed_ns'],
@@ -335,6 +337,7 @@ class Coordinator(Node):
         timing.mark('health_encode')
         self.health_pub.publish(health_message)
         timing.mark('health_publish')
+        if journal is not None:journal.transition(e,now)
         # X uses checked HOME, or the measured confirmed-scan HOME policy.
         # Owner acknowledges the HOME request, while R3 still waits for measured
         # HOME. B/fault cannot use this path and always revokes execution.
@@ -353,10 +356,13 @@ class Coordinator(Node):
             cancel_ack=self.owner_cancel_ack,
             services_ready=self.cancel.service_is_ready() and self.home.service_is_ready(),
             unique_publishers=all(self.count_publishers(topic)==1 for topic in self.topics.values()))
+        if not blocker:
+            try:stop_deadline=home_deadline(r3,time.monotonic_ns())
+            except ValueError as error:blocker=str(error)
         if not blocker and not self.stop_home_attempted:
             self.stop_home_attempted=True
             e.request_id+=1
-            self.stop_home=dict(id=e.request_id,session_id=e.session,navigation_session_id=e.inputs['nav']['session_id'],owner_session_id=owner['owner_session_id'],goal_revision=e.revision,operation='home',owner=owner,grasp_plan=None,scan_index=0,observed_ns=time.monotonic_ns())
+            self.stop_home=dict(id=e.request_id,session_id=e.session,navigation_session_id=e.inputs['nav']['session_id'],owner_session_id=owner['owner_session_id'],goal_revision=e.revision,operation='home',owner=owner,grasp_plan=None,scan_index=0,observed_ns=time.monotonic_ns(),stop_home_deadline_ns=stop_deadline,compute_deadline_ns=stop_deadline-5_000_000_000)
             scan=e.scan_home_plan()
             if scan is not None:
                 self.stop_home.update(home_from_scan=True,grasp_plan=scan)
@@ -400,6 +406,7 @@ class Coordinator(Node):
             else:e.cancel(now,'MISSION_HEALTH_INVALID',True)
         timing.mark('effects_and_home')
         status=e.status(now)
+        status['localization_diagnostics']=dict(tf_pair=dict(self.body_source.diagnostics),streams=self.scene_buffer.diagnostics(time.monotonic_ns()))
         status['callback_timing']=dict(tick_gap_s=self.input_diagnostics.tick_gap_s,
             max_tick_gap_s=self.input_diagnostics.max_tick_gap_s,
             tick_before_status_s=time.monotonic()-tick_started)

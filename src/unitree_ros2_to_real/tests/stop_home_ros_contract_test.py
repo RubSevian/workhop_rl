@@ -25,7 +25,7 @@ class ContractTests(unittest.TestCase):
     def test_real_coordinator_tick_waits_then_dispatches_and_ack_stops_retry(self):
         def pub():return NS(values=[],publish=lambda msg:None)
         health=[];sent=[]
-        e=NS(inputs=dict(r3=dict(state='CONTROLLED_STOP',phase='ARM_RETURN_HOME',fault_latched=False),
+        e=NS(inputs=dict(r3=dict(state='CONTROLLED_STOP',phase='ARM_RETURN_HOME',fault_latched=False,stop_home_deadline_ns=time.monotonic_ns()+30_000_000_000),
             nav=dict(session_id='nav'),owner=dict(owner_session_id='arm',mission_capable=True,feedback_ready=True,target_valid=True,home_requested=True),
             perception=dict(ready=False,home_compute_ready=False,busy=False,reason='SHUTDOWN')),
             fresh=lambda name,now:True,step=lambda *args:[],stale_input_diagnostic=None,
@@ -56,7 +56,9 @@ class ContractTests(unittest.TestCase):
             e.inputs['perception'].update(home_compute_ready=True,ready=True)
             gm.Coordinator.tick(s)
             self.assertTrue(health[-1]['ready']);self.assertEqual(len(sent),1)
+            self.assertNotIn('streams',health[-1]);self.assertNotIn('tf_pair',health[-1])
             self.assertEqual(sent[0]['operation'],'home')
+            self.assertEqual(sent[0]['compute_deadline_ns'],sent[0]['stop_home_deadline_ns']-5_000_000_000)
             self.assertTrue(sent[0]['home_from_scan'])
             self.assertEqual(sent[0]['grasp_plan']['scan_q'],[0.,.5,0.,0.,0.,0.])
             # A dropped request is retried, retaining identity.
@@ -65,6 +67,7 @@ class ContractTests(unittest.TestCase):
             e.inputs['perception'].update(active_request_id=sent[0]['id'],active_request_session='m',busy=True)
             s.home_dispatch.sent_at-=1;gm.Coordinator.tick(s)
             self.assertEqual(len(sent),2);self.assertTrue(s.home_dispatch.accepted)
+            self.assertEqual(sent[0]['compute_deadline_ns'],sent[1]['compute_deadline_ns'])
             e.inputs['r3'].update(state='EMERGENCY_FAULT',fault_latched=True)
             gm.Coordinator.tick(s);self.assertEqual(len(sent),2)
 

@@ -6,6 +6,19 @@ sys.path.insert(0,str(Path(__file__).resolve().parents[1]/'scripts'))
 from mission.stop_home import HomeDispatch,home_dispatch_blocker,geometry_home_ready
 
 class StopHomeTests(unittest.TestCase):
+    def test_deadline_reserves_execution_and_rejects_late_or_long_results(self):
+        from mission.stop_home import home_deadline,home_result_fits
+        now=10_000_000_000
+        for value in (None,True,0,now+5_000_000_000):
+            with self.assertRaises(ValueError):home_deadline({'stop_home_deadline_ns':value},now)
+        deadline=home_deadline({'stop_home_deadline_ns':now+30_000_000_000},now)
+        request={'stop_home_deadline_ns':deadline}
+        trajectory={'points':[[0]*7]*501,'collision_context':{'command_rate_hz':100}}
+        self.assertTrue(home_result_fits(request,trajectory,now))
+        self.assertFalse(home_result_fits(request,trajectory,deadline-5_000_000_000))
+        self.assertFalse(home_result_fits({},trajectory,now))
+        self.assertFalse(home_result_fits(request,{},now))
+
     def setUp(self):
         self.e=NS(inputs=dict(r3=dict(state='CONTROLLED_STOP',phase='ARM_RETURN_HOME',fault_latched=False),
             owner=dict(home_requested=True,mission_capable=True,feedback_ready=True,target_valid=True),

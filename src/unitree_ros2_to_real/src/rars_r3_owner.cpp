@@ -1,6 +1,7 @@
 #include "rars_auto_home.hpp"
 #include "rars_mission_stream.hpp"
 #include "mission_plan_identity.hpp"
+#include "mission_health_freshness.hpp"
 #include "retreat_trial.hpp"
 #include "optional_yaml_scalar.hpp"
 #include <regex>
@@ -164,14 +165,17 @@ class ArmOwner final:public rclcpp::Node {
   });
  }
  bool Authority(ArmTime now,bool home_request=false,bool retain_completed_hold=false){
-  const auto fresh=[&](ArmTime stamp){return stamp!=ArmTime{}&&std::chrono::duration<double>(now-stamp).count()>=0&&std::chrono::duration<double>(now-stamp).count()<=mission_ttl_;};
-  return mission_&&home_->status().feedback_age_s>=0&&home_->status().feedback_age_s<=mission_feedback_ttl_&&fresh(r3_stamp_)&&fresh(nav_stamp_)&&fresh(health_stamp_)&&r3_authority_&&nav_ready_&&health_ready_&&
+  const auto age=[&](ArmTime stamp){return stamp==ArmTime{}?-1.:std::chrono::duration<double>(now-stamp).count();};
+  return mission_&&MissionSourcesFresh(age(r3_stamp_),age(nav_stamp_),age(health_stamp_),
+   home_->status().feedback_age_s,mission_ttl_,mission_health_ttl_,mission_feedback_ttl_)&&r3_authority_&&nav_ready_&&health_ready_&&
    !mission_session_.empty()&&(mission_session_!=retired_session_||(home_request&&r3_stopping_&&r3_home_phase_allowed_))&&nav_session_==health_nav_session_&&r3_nav_session_==nav_session_&&
    count_publishers("/go2/locomotion_status")==1&&count_publishers("/go2/mission/readiness")==1&&count_publishers("/go2/mission/health")==1&&
    (r3_active_&&health_goal_revision_>0&&(health_manipulating_||(retain_completed_hold&&mission_->CompletedHomeHoldAllowed(health_phase_)))||(home_request&&r3_stopping_&&r3_home_phase_allowed_));
  }
  void ConfigureMission(const std::string& path,const std::string& workspace,const rars_arm::ArmConfiguration& sdk_config,const std::string&,bool read_only){
   const auto y=YAML::LoadFile(path)["go2_mission"];mission_ttl_=y["execution"]["heartbeat_ttl_s"].as<double>();
+  mission_health_ttl_=y["execution"]["mission_health_ttl_s"]?y["execution"]["mission_health_ttl_s"].as<double>():mission_ttl_;
+  if(!std::isfinite(mission_health_ttl_)||mission_health_ttl_<mission_ttl_||mission_health_ttl_>.5)throw std::runtime_error("invalid mission_health_ttl_s");
   if(!y["physical_enabled"].as<bool>()||read_only){mission_blocker_="mission_physical_disabled";return;}
   auto absolute=[&](const std::string& name){return (std::filesystem::path(workspace)/y["paths"][name].as<std::string>()).string();};
   // Mission evidence is not an owner admission protocol. The owner enforces
@@ -245,8 +249,8 @@ class ArmOwner final:public rclcpp::Node {
      static_cast<long long>(Ns(health_stamp_)),static_cast<long long>(Ns(health_callback_stamp_)),health_callback_gap_s_,health_producer_gap_s_,health_age_at_callback_s_,health_decode_s_,
      health_callback_stamp_==ArmTime{}?-1.:std::chrono::duration<double>(now-health_callback_stamp_).count());
     const auto age=[&](ArmTime stamp){return stamp==ArmTime{}?-1.:std::chrono::duration<double>(now-stamp).count();};
-    RCLCPP_ERROR(get_logger(),"ARM_AUTHORITY_REVOKED plan=%llu heartbeat_ttl_s=%.3f feedback_ttl_s=%.3f r3_age_s=%.6f nav_age_s=%.6f health_age_s=%.6f feedback_age_s=%.6f r3_authority=%d nav_ready=%d health_ready=%d r3_active=%d manipulating=%d home_request=%d stopping=%d home_phase=%d completed_home_hold=%d mission_session_present=%d retired_session=%d nav_health_match=%d nav_r3_match=%d revision=%llu r3_publishers=%zu nav_publishers=%zu health_publishers=%zu phase=%s",
-     static_cast<unsigned long long>(mission_->id()),mission_ttl_,mission_feedback_ttl_,age(r3_stamp_),age(nav_stamp_),age(health_stamp_),status.feedback_age_s,
+    RCLCPP_ERROR(get_logger(),"ARM_AUTHORITY_REVOKED plan=%llu heartbeat_ttl_s=%.3f mission_health_ttl_s=%.3f feedback_ttl_s=%.3f r3_age_s=%.6f nav_age_s=%.6f health_age_s=%.6f feedback_age_s=%.6f r3_authority=%d nav_ready=%d health_ready=%d r3_active=%d manipulating=%d home_request=%d stopping=%d home_phase=%d completed_home_hold=%d mission_session_present=%d retired_session=%d nav_health_match=%d nav_r3_match=%d revision=%llu r3_publishers=%zu nav_publishers=%zu health_publishers=%zu phase=%s",
+     static_cast<unsigned long long>(mission_->id()),mission_ttl_,mission_health_ttl_,mission_feedback_ttl_,age(r3_stamp_),age(nav_stamp_),age(health_stamp_),status.feedback_age_s,
      int(r3_authority_),int(nav_ready_),int(health_ready_),int(r3_active_),int(health_manipulating_),int(home_requested_||active_home_),int(r3_stopping_),int(r3_home_phase_allowed_),int(mission_->CompletedHomeHoldAllowed(health_phase_)),int(!mission_session_.empty()),int(mission_session_==retired_session_),int(nav_session_==health_nav_session_),int(r3_nav_session_==nav_session_),static_cast<unsigned long long>(health_goal_revision_),count_publishers("/go2/locomotion_status"),count_publishers("/go2/mission/readiness"),count_publishers("/go2/mission/health"),health_phase_.c_str());
    }
    auto command=mission_->Tick(now,status,authority);
@@ -573,7 +577,7 @@ class ArmOwner final:public rclcpp::Node {
  std::unique_ptr<MissionStream> mission_;std::string owner_session_,mission_session_,retired_session_,nav_session_,health_nav_session_,r3_session_,r3_nav_session_,mission_blocker_,health_phase_;
  uint64_t health_goal_revision_=0;bool health_manipulating_=false;
  std::string grasp_verification_mode_="inactive";
- double mission_feedback_ttl_=.1,mission_ttl_=.25;bool r3_home_phase_allowed_=false,r3_planned_disable_ready_=false,payload_checks_enabled_=true,r3_authority_=false,r3_active_=false,r3_stopping_=false,nav_ready_=false,health_ready_=false,home_requested_=false,active_home_=false;
+ double mission_feedback_ttl_=.1,mission_ttl_=.25,mission_health_ttl_=.25;bool r3_home_phase_allowed_=false,r3_planned_disable_ready_=false,payload_checks_enabled_=true,r3_authority_=false,r3_active_=false,r3_stopping_=false,nav_ready_=false,health_ready_=false,home_requested_=false,active_home_=false;
  ArmTime r3_stamp_{},nav_stamp_{},health_stamp_{},health_callback_stamp_{};
  double health_callback_gap_s_=-1.,health_producer_gap_s_=-1.,health_age_at_callback_s_=-1.,health_decode_s_=-1.;
  rclcpp::Subscription<std_msgs::msg::String>::SharedPtr r3_sub_,nav_sub_,health_sub_,plan_sub_;
