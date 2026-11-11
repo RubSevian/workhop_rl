@@ -822,10 +822,19 @@ bool R3RemoteCommands::EdgeEvent(Edge& e,SafetyTime now) {
  if(e.holding&&!e.fired&&std::chrono::duration<double>(now-e.began).count()>=hold_s_){e.fired=true;e.holding=false;return true;}
  return false;
 }
+void R3RemoteCommands::ReceiveBuffered(std::span<const uint8_t> raw,SafetyTime received) {
+ Receive(raw,received);
+ const bool abort=EdgeEvent(abort_,received),emergency=EdgeEvent(emergency_,received);
+ if(emergency)buffered_stop_=R3RemoteEvent::EMERGENCY;
+ else if(abort&&buffered_stop_!=R3RemoteEvent::EMERGENCY)buffered_stop_=R3RemoteEvent::CONTROLLED_ABORT;
+}
 R3RemoteEvent R3RemoteCommands::Poll(SafetyTime now) {
  const bool takeover=remote_.Poll(now);
  const bool abort=EdgeEvent(abort_,now),emergency=EdgeEvent(emergency_,now);
+ const auto buffered=buffered_stop_;buffered_stop_=R3RemoteEvent::NONE;
  // Lower-priority simultaneous edges are consumed, never replayed later.
- return emergency?R3RemoteEvent::EMERGENCY:abort?R3RemoteEvent::CONTROLLED_ABORT:takeover?R3RemoteEvent::TAKEOVER:R3RemoteEvent::NONE;
+ return emergency||buffered==R3RemoteEvent::EMERGENCY?R3RemoteEvent::EMERGENCY:
+        abort||buffered==R3RemoteEvent::CONTROLLED_ABORT?R3RemoteEvent::CONTROLLED_ABORT:
+        takeover?R3RemoteEvent::TAKEOVER:R3RemoteEvent::NONE;
 }
 } // namespace sim2real
