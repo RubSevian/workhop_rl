@@ -11,6 +11,7 @@
 #include "arm_status_snapshot.hpp"
 #include "navigation_request_gate.hpp"
 #include "control_diagnostics.hpp"
+#include "transition_events.hpp"
 #include "control_executors.hpp"
 #include "ros_context_work.hpp"
 #include "policy_rt_registration.hpp"
@@ -293,6 +294,7 @@ class R3Node final:public rclcpp::Node {
   RCLCPP_INFO(get_logger(),"config=%s fixed_kp=%s fixed_kd=%s rl_kp=%s rl_kd=%s",config.c_str(),FloatList(profile.kp).c_str(),FloatList(profile.kd).c_str(),FloatList(profile.rl_kp).c_str(),FloatList(profile.rl_kd).c_str());
  }
  ~R3Node() override {
+  try{FlushTransitions();}catch(const std::exception& e){RCLCPP_ERROR(get_logger(),"Final transition log failed: %s",e.what());}
   if(!receiver_trace_path_.empty()) {
    std::ofstream f(receiver_trace_path_);f<<"sequence,callback_begin_ns,receive_ns\n";
    for(const auto& r:receiver_trace_)f<<r.sequence<<','<<r.callback<<','<<r.receive<<'\n';
@@ -353,33 +355,32 @@ class R3Node final:public rclcpp::Node {
   if(traced_state_&&*traced_state_==state&&traced_fault_==fault&&traced_latched_==supervisor_->fault_latched())return;
   traced_state_=state;traced_fault_=fault;traced_latched_=supervisor_->fault_latched();
   const auto errors=StandErrors();const auto worst=std::max_element(errors.begin(),errors.end());
-  YAML::Emitter e;e<<YAML::Flow<<YAML::BeginMap
-   <<YAML::Key<<"state"<<YAML::Value<<SystemStateName(supervisor_->system_state())
-   <<YAML::Key<<"phase"<<YAML::Value<<SystemPhaseName(state)
-   <<YAML::Key<<"legacy_state"<<YAML::Value<<R3StateName(supervisor_->state())
-   <<YAML::Key<<"fault"<<YAML::Value<<fault
-   <<YAML::Key<<"fault_latched"<<YAML::Value<<traced_latched_
-   <<YAML::Key<<"sent_packets"<<YAML::Value<<sent_
-   <<YAML::Key<<"stand_error_max_rad"<<YAML::Value<<*worst
-   <<YAML::Key<<"stand_error_motor_index"<<YAML::Value<<std::distance(errors.begin(),worst)
-   <<YAML::Key<<"policy_ms"<<YAML::Value<<last_policy_ms_
-   <<YAML::Key<<"policy_result_age_s"<<YAML::Value<<supervisor_->PolicyAgeSeconds(now)
-   <<YAML::Key<<"policy_zero_handoff_pending"<<YAML::Value<<supervisor_->zero_policy_handoff_pending()
-   <<YAML::Key<<"policy_inference_age_s"<<YAML::Value<<supervisor_->PolicyInferenceAgeSeconds(now)
-   <<YAML::Key<<"policy_observation_age_s"<<YAML::Value<<supervisor_->PolicyObservationAgeSeconds(now)
-   <<YAML::Key<<"policy_observation_timeout_s"<<YAML::Value<<supervisor_->profile().policy_observation_timeout_s
-   <<YAML::Key<<"lowstate_age_s"<<YAML::Value<<Age(now,inputs_.lowstate_stamp)
-   <<YAML::Key<<"arm_feedback_age_s"<<YAML::Value<<Age(now,inputs_.arm_stamp)
-   <<YAML::Key<<"arm_target_age_s"<<YAML::Value<<Age(now,inputs_.target_stamp)
-   <<YAML::Key<<"sport_age_s"<<YAML::Value<<Age(now,inputs_.sport_stamp)
-   <<YAML::Key<<"sport_state"<<YAML::Value<<SportModeName(inputs_.sport)
-   <<YAML::Key<<"sport_query_ok"<<YAML::Value<<sdk_last_ok_
-   <<YAML::Key<<"sport_rpc_ms"<<YAML::Value<<sdk_rpc_ms_
-   <<YAML::Key<<"sport_query_failures"<<YAML::Value<<sdk_failures_
-   <<YAML::Key<<"sport_query_detail"<<YAML::Value<<sdk_detail_
-   <<YAML::Key<<"blockers"<<YAML::Value<<supervisor_->Blockers(now)<<YAML::EndMap;
-  if(traced_latched_)RCLCPP_ERROR(get_logger(),"R3 transition %s",e.c_str());
-  else RCLCPP_INFO(get_logger(),"R3 transition %s",e.c_str());
+  TransitionEvent event;event.fault=traced_latched_;
+  event.data.Add("state",SystemStateName(supervisor_->system_state()));
+  event.data.Add("phase",SystemPhaseName(state));
+  event.data.Add("legacy_state",R3StateName(supervisor_->state()));
+  event.data.Add("fault",fault);
+  event.data.Add("fault_latched",traced_latched_);
+  event.data.Add("sent_packets",sent_);
+  event.data.Add("stand_error_max_rad",*worst);
+  event.data.Add("stand_error_motor_index",std::distance(errors.begin(),worst));
+  event.data.Add("policy_ms",last_policy_ms_);
+  event.data.Add("policy_result_age_s",supervisor_->PolicyAgeSeconds(now));
+  event.data.Add("policy_zero_handoff_pending",supervisor_->zero_policy_handoff_pending());
+  event.data.Add("policy_inference_age_s",supervisor_->PolicyInferenceAgeSeconds(now));
+  event.data.Add("policy_observation_age_s",supervisor_->PolicyObservationAgeSeconds(now));
+  event.data.Add("policy_observation_timeout_s",supervisor_->profile().policy_observation_timeout_s);
+  event.data.Add("lowstate_age_s",Age(now,inputs_.lowstate_stamp));
+  event.data.Add("arm_feedback_age_s",Age(now,inputs_.arm_stamp));
+  event.data.Add("arm_target_age_s",Age(now,inputs_.target_stamp));
+  event.data.Add("sport_age_s",Age(now,inputs_.sport_stamp));
+  event.data.Add("sport_state",SportModeName(inputs_.sport));
+  event.data.Add("sport_query_ok",sdk_last_ok_);
+  event.data.Add("sport_rpc_ms",sdk_rpc_ms_);
+  event.data.Add("sport_query_failures",sdk_failures_);
+  event.data.Add("sport_query_detail",sdk_detail_);
+  event.data.Add("blockers",supervisor_->Blockers(now));
+  transitions_.Push(std::move(event));
  }
  R3Reply SetOutput(bool enable,SafetyTime now) {
   if(enable&&policy_rt_&&!policy_rt_->Ready())return {false,"policy RT registration pending"};
@@ -732,6 +733,7 @@ class R3Node final:public rclcpp::Node {
   snapshot.Add("control_mutex", "PTHREAD_PRIO_INHERIT");
   snapshot.Add("policy_execution",direct_policy_?"monotonic_thread":"ros_executor");
   snapshot.Add("control_latency_enabled",control_latency_&&control_latency_->enabled());
+  snapshot.Add("transition_diagnostic_dropped",transitions_.dropped());
   snapshot.Add("control_latency_dropped",control_latency_?control_latency_->dropped():0);
   snapshot.Add("passive_timeout_s", supervisor_->profile().passive_timeout_s);
   snapshot.Add("passive_sequence_complete", supervisor_->passive_sequence_complete());
@@ -865,8 +867,29 @@ class R3Node final:public rclcpp::Node {
   }
   return snapshot;
  }
+ void FlushTransitions() {
+  auto emit=[this](const TransitionEvent& event){
+   const auto text=event.data.Serialize();
+   if(event.fault)RCLCPP_ERROR(get_logger(),"R3 transition %s",text.c_str());
+   else RCLCPP_INFO(get_logger(),"R3 transition %s",text.c_str());
+  };
+  for(size_t i=0;i<TransitionEvents<>::capacity;++i){
+   std::optional<TransitionEvent> event;
+   {ControlLock lock(mutex_,control_latency_.get(),__LINE__);event=transitions_.Pop();}
+   if(!event)break;
+   emit(*event);
+  }
+  std::optional<TransitionEvent> overflow;size_t dropped;
+  {ControlLock lock(mutex_,control_latency_.get(),__LINE__);overflow=transitions_.TakeOverflowFault();dropped=transitions_.dropped();}
+  if(dropped!=reported_transition_drops_){
+   RCLCPP_ERROR(get_logger(),"Transition diagnostic queue overflow: %zu events; latest fault retained",dropped);
+   reported_transition_drops_=dropped;
+  }
+  if(overflow)emit(*overflow);
+ }
  void StatusTick() {
   try {
+   FlushTransitions();
    ControlDiagnostics snapshot;
    {ControlLock lock(mutex_,control_latency_.get(),__LINE__);snapshot=CaptureStatus(SafetyClock::now());}
    std_msgs::msg::String status;status.data=snapshot.Serialize();status_->publish(status);
@@ -877,6 +900,7 @@ class R3Node final:public rclcpp::Node {
  std::unique_ptr<ControlLatency> control_latency_;
  PriorityMutex mutex_;RealControllerCore core_;LowStateReader lowstate_;
  std::unique_ptr<LowStateInbox<>> lowstate_inbox_;
+ TransitionEvents<> transitions_;size_t reported_transition_drops_=0;
  std::optional<SystemPhase> traced_state_;std::string traced_fault_;bool traced_latched_=false;
  std::unique_ptr<R3Supervisor> supervisor_;std::unique_ptr<R3RemoteCommands> remote_;R3Inputs inputs_;
  std::shared_ptr<ModeSessionProcess> sdk_session_;
