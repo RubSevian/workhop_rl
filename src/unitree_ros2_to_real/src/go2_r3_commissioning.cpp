@@ -12,6 +12,7 @@
 #include "navigation_request_gate.hpp"
 #include "control_diagnostics.hpp"
 #include "control_executors.hpp"
+#include "ros_context_work.hpp"
 #include "policy_rt_registration.hpp"
 #include "policy_thread.hpp"
 #include "policy_process.hpp"
@@ -223,7 +224,9 @@ class R3Node final:public rclcpp::Node {
   nav_cancel_client_=create_client<std_srvs::srv::Trigger>("/go2/mission/cancel_navigation");
   manipulation_cancel_client_=create_client<std_srvs::srv::Trigger>("/rars01/mission/cancel_manipulation");
   port_group_=create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
-  port_timer_=create_wall_timer(std::chrono::milliseconds(profile.port_period_ms),[this]{PortTick();},port_group_);
+  port_timer_=create_wall_timer(std::chrono::milliseconds(profile.port_period_ms),[this]{
+   WithRosContext(get_node_base_interface()->get_context(),[this]{PortTick();});
+  },port_group_);
   arm_sub_=create_subscription<std_msgs::msg::String>("/rars01/commissioning/state",rclcpp::QoS(1),[this](std_msgs::msg::String::ConstSharedPtr m){
    ControlScope callback(control_latency_.get(),4,__LINE__);
    auto parsed=ParseArmStatus(m->data,home_tolerance_,SafetyClock::now());
@@ -464,7 +467,7 @@ class R3Node final:public rclcpp::Node {
    nav_unique=count_publishers("/go2/mission/readiness")==1;
    nav_cancel=nav_cancel_client_->service_is_ready();
    manipulation_cancel=manipulation_cancel_client_->service_is_ready();
-  } catch(const rclcpp::exceptions::RCLError&) {
+  } catch(const std::exception&) {
    if(!rclcpp::ok())return;
    throw;
   }
