@@ -20,6 +20,7 @@
   <exec_depend>nav_msgs</exec_depend>
   <exec_depend>robot_state_publisher</exec_depend>
   <exec_depend>go2_navigation_bridge</exec_depend>
+  <depend>go2_navigation_interfaces</depend>
   <depend>geometry_msgs</depend>
   <depend>sensor_msgs</depend>
   <depend>unitree_go</depend>

@@ -9,6 +9,8 @@
 #include "control_latency.hpp"
 #include "lowstate_inbox.hpp"
 #include "arm_status_snapshot.hpp"
+#include "arm_fast_snapshot.hpp"
+#include <go2_navigation_interfaces/msg/navigation_readiness.hpp>
 #include "navigation_request_gate.hpp"
 #include "control_diagnostics.hpp"
 #include "transition_events.hpp"
@@ -197,7 +199,25 @@ class R3Node final:public rclcpp::Node {
    ControlLock lock(mutex_,control_latency_.get(),__LINE__);if(!network_interface_.empty())return;try{auto y=YAML::Load(m->data);inputs_.sport=ParseSportMode(y["state"].as<std::string>());inputs_.sport_stamp=TimeNs(y["observed_ns"].as<int64_t>());}
    catch(...){inputs_.sport=SportMode::ERROR;inputs_.sport_stamp=SafetyTime{};}
   });
-  mission_readiness_sub_=create_subscription<std_msgs::msg::String>("/go2/mission/readiness",rclcpp::QoS(1),[this](std_msgs::msg::String::ConstSharedPtr message){
+  const auto nav_transport=declare_parameter<std::string>("navigation_state_transport","json",immutable);
+  if(nav_transport!="json"&&nav_transport!="typed")throw std::runtime_error("invalid navigation_state_transport");
+  navigation_readiness_topic_=nav_transport=="typed"?"/go2/mission/readiness_typed":"/go2/mission/readiness";
+  if(nav_transport=="typed") {
+   typed_readiness_sub_=create_subscription<go2_navigation_interfaces::msg::NavigationReadiness>(navigation_readiness_topic_,rclcpp::QoS(1),[this](go2_navigation_interfaces::msg::NavigationReadiness::ConstSharedPtr m){
+    ControlLock lock(mutex_,control_latency_.get(),__LINE__);
+    try {
+     if(m->schema_version!=1||m->observed_ns>uint64_t(std::numeric_limits<int64_t>::max()))throw std::runtime_error("invalid navigation schema/time");
+     const auto stamp=TimeNs(int64_t(m->observed_ns));
+     if(!navigation_gate_->Observe(m->session_id,m->navigation_ready,m->command_enabled,stamp,SafetyClock::now())){
+      if(!navigation_gate_->Ready(SafetyClock::now()))mission_perception_ready_=false;
+      return;
+     }
+     mission_readiness_stamp_=stamp;mission_session_=m->session_id;mission_perception_ready_=m->perception_ready;
+     if(control_mode_=="autonomy"&&motion_commands_enabled_&&supervisor_->system_state()!=SystemState::CONTROLLED_STOP&&!supervisor_->fault_latched())
+      navigation_gate_->Accept(m->session_id,m->command,m->command_age_s,stamp,SafetyClock::now());
+    }catch(...){navigation_gate_->Invalidate();mission_readiness_stamp_={};mission_perception_ready_=false;}
+   },state_options);
+  } else mission_readiness_sub_=create_subscription<std_msgs::msg::String>("/go2/mission/readiness",rclcpp::QoS(1),[this](std_msgs::msg::String::ConstSharedPtr message){
    YAML::Node decoded;std::string decode_error;
    try{if(message->data.size()>4096)throw std::runtime_error("oversize navigation envelope");decoded=YAML::Load(message->data);}
    catch(const std::exception& e){decode_error=e.what();}
@@ -228,7 +248,16 @@ class R3Node final:public rclcpp::Node {
   port_timer_=create_wall_timer(std::chrono::milliseconds(profile.port_period_ms),[this]{
    WithRosContext(get_node_base_interface()->get_context(),[this]{PortTick();});
   },port_group_);
-  arm_sub_=create_subscription<std_msgs::msg::String>("/rars01/commissioning/state",rclcpp::QoS(1),[this](std_msgs::msg::String::ConstSharedPtr m){
+  const auto arm_transport=declare_parameter<std::string>("arm_state_transport","yaml",immutable);
+  if(arm_transport!="yaml"&&arm_transport!="typed")throw std::runtime_error("invalid arm_state_transport");
+  if(arm_transport=="typed") {
+   arm_fast_sub_=create_subscription<rars01_state_interfaces::msg::ArmFastState>("/rars01/commissioning/fast_state",rclcpp::QoS(1),[this](rars01_state_interfaces::msg::ArmFastState::ConstSharedPtr m){
+    ControlScope callback(control_latency_.get(),4,__LINE__);
+    auto parsed=ParseArmFastStatus(*m,home_tolerance_,SafetyClock::now());
+    ControlLock lock(mutex_,control_latency_.get(),__LINE__);
+    ApplyArmStatus(parsed,inputs_,arm_q_,arm_dq_,arm_target_);arm_error_.swap(parsed.error);
+   },state_options);
+  } else arm_sub_=create_subscription<std_msgs::msg::String>("/rars01/commissioning/state",rclcpp::QoS(1),[this](std_msgs::msg::String::ConstSharedPtr m){
    ControlScope callback(control_latency_.get(),4,__LINE__);
    auto parsed=ParseArmStatus(m->data,home_tolerance_,SafetyClock::now());
    {
@@ -465,7 +494,7 @@ class R3Node final:public rclcpp::Node {
   size_t publishers;bool nav_unique,nav_cancel,manipulation_cancel;
   try {
    publishers=count_publishers("/lowcmd");
-   nav_unique=count_publishers("/go2/mission/readiness")==1;
+   nav_unique=count_publishers(navigation_readiness_topic_)==1;
    nav_cancel=nav_cancel_client_->service_is_ready();
    manipulation_cancel=manipulation_cancel_client_->service_is_ready();
   } catch(const std::exception&) {
@@ -926,6 +955,9 @@ class R3Node final:public rclcpp::Node {
  size_t receiver_trace_dropped_=0,io_trace_dropped_=0;
  rclcpp::TimerBase::SharedPtr probe_stop_;
  std::unique_ptr<OutputLease> lease_;std::array<float,6> arm_q_{},arm_dq_{},arm_target_{};
+ std::string navigation_readiness_topic_="/go2/mission/readiness";
+ rclcpp::Subscription<go2_navigation_interfaces::msg::NavigationReadiness>::SharedPtr typed_readiness_sub_;
+ rclcpp::Subscription<rars01_state_interfaces::msg::ArmFastState>::SharedPtr arm_fast_sub_;
  bool nav_input_unique_=false;
  std::unique_ptr<NavigationRequestGate> navigation_gate_;double last_policy_ms_=0,home_tolerance_=.15;size_t sent_=0;
  SafetyTime last_deadman_{};R3RemoteEvent last_event_=R3RemoteEvent::NONE;

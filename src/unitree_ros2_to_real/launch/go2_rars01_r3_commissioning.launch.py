@@ -30,7 +30,7 @@ def _controller(context):
     if scheduler == 'other' and profile != 'read_only':
         raise ValueError('OTHER is available only for explicit read_only inspection')
     parameters = {name: get(name) for name in
-                  ('config_path', 'model_path', 'network_interface')}
+                  ('config_path', 'model_path', 'network_interface', 'arm_state_transport', 'navigation_state_transport')}
     parameters.update(operation_profile=profile, enable_actuator_output=False,
                       cooperative_policy_registration=scheduler == 'fifo20',
                       policy_worker_self_test_frames=int(get('policy_worker_self_test_frames')),
@@ -58,6 +58,8 @@ def _controller(context):
 
 def generate_launch_description():
     return LaunchDescription([
+        DeclareLaunchArgument('arm_state_transport', default_value='yaml'),
+        DeclareLaunchArgument('navigation_state_transport', default_value='json'),
         DeclareLaunchArgument('config_path', default_value=PathJoinSubstitution([
             FindPackageShare('unitree_legged_real'), 'config', 'go2_rars01_real.yaml'])),
         DeclareLaunchArgument('model_path'),

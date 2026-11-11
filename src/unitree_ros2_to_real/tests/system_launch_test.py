@@ -15,6 +15,7 @@ def context(profile=''):
     c.launch_configurations.update(config_path=str(p.parents[1]/'config/profiles/go2_rars01_commissioning.yaml'), model_path='/offline/policy',
         network_interface='', operation_profile=profile, remote_auto_sequence='true',
         policy_scheduler='fifo20', policy_worker_self_test_frames='0', io_diagnostics_path='',
+        arm_state_transport='yaml', navigation_state_transport='json',
         remote_test_mode='', control_mode='', motion_commands_enabled='', read_only='', controlled_stop_lie_down_trial='',
         motion_diagnostics_enabled='false', motion_diagnostics_duration_s='120.0', motion_diagnostics_path='/offline/trace')
     return c
@@ -40,6 +41,13 @@ m.Node = lambda **kwargs: captured.append(kwargs) or kwargs
 m._controller(context('rl_zero_test'))
 params = captured[-1]['parameters'][0]
 assert params['operation_profile'] == 'rl_zero_test'
+assert params['arm_state_transport'] == 'yaml'
+assert params['navigation_state_transport'] == 'json'
+c = context('read_only')
+c.launch_configurations.update(arm_state_transport='typed', navigation_state_transport='typed')
+m._controller(c)
+assert captured[-1]['parameters'][0]['arm_state_transport'] == 'typed'
+assert captured[-1]['parameters'][0]['navigation_state_transport'] == 'typed'
 assert not any(k in params for k in ('read_only', 'remote_test_mode', 'motion_commands_enabled', 'control_mode'))
 c=context();c.launch_configurations.update(read_only='false', remote_test_mode='true')
 m._controller(c)

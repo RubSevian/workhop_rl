@@ -28,6 +28,7 @@ struct Node {
  FakeLock mutex_;Trace control_latency_;Client nav{mutex_},manip{mutex_};
  Client* nav_cancel_client_=&nav;Client* manipulation_cancel_client_=&manip;
  SafetyTime last_infrastructure_poll_{},graph_stamp_{};int64_t policy_period_ns_=20000000;
+ const char* navigation_readiness_topic_="/go2/mission/readiness";
  size_t cached_publisher_count_=0;bool nav_input_unique_=false,nav_cancel_available_=false,manipulation_cancel_available_=false;
  double infrastructure_poll_s_=0;int queries=0,refreshes=0;bool fail=false;int delay_ms=0;
  size_t count_publishers(const char*) {assert(!mutex_.held);++queries;if(fail)throw rclcpp::exceptions::RCLError("discovery failed");SafetyClock::current+=std::chrono::milliseconds(delay_ms);return 1;}

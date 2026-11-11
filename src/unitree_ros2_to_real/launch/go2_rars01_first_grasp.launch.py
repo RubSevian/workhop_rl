@@ -61,6 +61,7 @@ def _launch(context):
         launch_arguments=dict(stage='far',rviz='false',observe_only='false',profile_path=cfg['paths']['navigation']).items()))
     actions.append(IncludeLaunchDescription(PythonLaunchDescriptionSource(str(share/'launch/go2_rars01_r3_commissioning.launch.py')),
         launch_arguments=dict(operation_profile='full_mission',config_path=cfg['paths']['deployment'],
+            arm_state_transport=cfg['execution'].get('arm_state_transport','yaml'),navigation_state_transport='typed',
             model_path=os.environ.get('SIM2REAL_POLICY_FILE',str(Path(get('workspace'))/'weights/policy_3.pt')),network_interface=get('network_interface'),controlled_stop_lie_down_trial=LaunchConfiguration('controlled_stop_lie_down_trial',default='').perform(context)).items()))
     actions.append(Node(package='robot_state_publisher',executable='robot_state_publisher',name='rars01_state_publisher',
         parameters=[dict(robot_description=Path(cfg['paths']['arm_description']).read_text())],
