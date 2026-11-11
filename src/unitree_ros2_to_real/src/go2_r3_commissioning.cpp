@@ -9,6 +9,7 @@
 #include "control_latency.hpp"
 #include "latest_lowstate_control.hpp"
 #include "lowstate_timing.hpp"
+#include "receiver_schedstat.hpp"
 #include "arm_status_snapshot.hpp"
 #include "arm_fast_snapshot.hpp"
 #include <go2_navigation_interfaces/msg/navigation_readiness.hpp>
@@ -189,18 +190,18 @@ class R3Node final:public rclcpp::Node {
   low_sub_=create_subscription<unitree_go::msg::LowState>("/lowstate",rclcpp::SensorDataQoS().keep_last(1),[this](unitree_go::msg::LowState::ConstSharedPtr m,const rclcpp::MessageInfo& info){
    ControlScope callback(control_latency_.get(),5,__LINE__);
    const auto callback_started=SafetyClock::now();
-   int64_t trace_real_ns=0,trace_clock_end_ns=0,trace_cpu_ns=-1;
+   int64_t trace_real_ns=0,trace_clock_end_ns=0,trace_cpu_ns=-1,trace_wait_ns=-1;
    if(!receiver_trace_path_.empty()) {
     trace_real_ns=std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
     trace_clock_end_ns=SafetyClock::now().time_since_epoch().count();
-    timespec cpu{};if(clock_gettime(CLOCK_THREAD_CPUTIME_ID,&cpu)==0)trace_cpu_ns=int64_t(cpu.tv_sec)*1000000000+cpu.tv_nsec;
+    trace_cpu_ns=ThreadCpuNs();trace_wait_ns=ReceiverRunnableWaitNs();
    }
    const auto now=callback_started; // Local callback receipt, never a robot measurement timestamp.
    lowstate_timing_.Receive(now);
    lowstate_inbox_->Receive(*m,now);
    if(policy_rt_)policy_rt_->Input();
    if(!receiver_trace_path_.empty()) {
-    if(receiver_trace_.size()<receiver_trace_.capacity())receiver_trace_.push_back({m->tick,callback_started.time_since_epoch().count(),now.time_since_epoch().count(),trace_real_ns,trace_clock_end_ns,info.get_rmw_message_info().source_timestamp,info.get_rmw_message_info().received_timestamp,trace_cpu_ns,SafetyClock::now().time_since_epoch().count()});
+    if(receiver_trace_.size()<receiver_trace_.capacity())receiver_trace_.push_back({m->tick,callback_started.time_since_epoch().count(),now.time_since_epoch().count(),trace_real_ns,trace_clock_end_ns,info.get_rmw_message_info().source_timestamp,info.get_rmw_message_info().received_timestamp,trace_cpu_ns,SafetyClock::now().time_since_epoch().count(),trace_wait_ns});
     else ++receiver_trace_dropped_;
    }
   },lowstate_options);
@@ -337,8 +338,8 @@ class R3Node final:public rclcpp::Node {
  ~R3Node() override {
   try{FlushTransitions();}catch(const std::exception& e){RCLCPP_ERROR(get_logger(),"Final transition log failed: %s",e.what());}
   if(!receiver_trace_path_.empty()) {
-   std::ofstream f(receiver_trace_path_);f<<"sequence,callback_begin_ns,receive_ns,callback_real_ns,clock_pair_end_ns,dds_source_ns,dds_receive_ns,thread_cpu_ns,callback_end_ns\n";
-   for(const auto& r:receiver_trace_)f<<r.sequence<<','<<r.callback<<','<<r.receive<<','<<r.real<<','<<r.clock_end<<','<<r.dds_source<<','<<r.dds_receive<<','<<r.cpu<<','<<r.end<<'\n';
+   std::ofstream f(receiver_trace_path_);f<<"sequence,callback_begin_ns,receive_ns,callback_real_ns,clock_pair_end_ns,dds_source_ns,dds_receive_ns,thread_cpu_ns,callback_end_ns,thread_runqueue_wait_ns\n";
+   for(const auto& r:receiver_trace_)f<<r.sequence<<','<<r.callback<<','<<r.receive<<','<<r.real<<','<<r.clock_end<<','<<r.dds_source<<','<<r.dds_receive<<','<<r.cpu<<','<<r.end<<','<<r.wait<<'\n';
    std::ofstream(receiver_trace_path_+".meta.json")<<"{\"dropped\":"<<receiver_trace_dropped_<<"}\n";
    if(!f)RCLCPP_ERROR(get_logger(),"Failed to export receiver diagnostics");
   }
@@ -974,7 +975,7 @@ class R3Node final:public rclcpp::Node {
  bool probe_reset_=true,probe_shared_executor_=false;std::string probe_error_;
  bool direct_policy_=true;int64_t policy_period_ns_=0;
  int worker_self_test_frames_=0,worker_self_test_done_=0;
- struct ReceiveTrace {uint32_t sequence;int64_t callback,receive,real,clock_end,dds_source,dds_receive,cpu,end;};
+ struct ReceiveTrace {uint32_t sequence;int64_t callback,receive,real,clock_end,dds_source,dds_receive,cpu,end,wait;};
  std::string receiver_trace_path_,io_trace_path_;
  std::vector<ReceiveTrace> receiver_trace_;std::vector<int64_t> io_trace_;
  size_t receiver_trace_dropped_=0,io_trace_dropped_=0;
