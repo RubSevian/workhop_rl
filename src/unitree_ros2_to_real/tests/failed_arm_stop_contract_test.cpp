@@ -47,4 +47,30 @@ void pd_lift_boundary(){
  step(f,110.006,facts(110.006,false));assert(f.phase()==SystemPhase::PD_HOLD_CONFIRMED);
  step(f,110.008,facts(110.008,false));assert(f.phase()==SystemPhase::ARM_DISABLE&&f.ConsumePortRequests().arm_planned_disable);
 }
-int main(){pd_lift_boundary();success();failures();watchdogs();priority();timeout_trigger();std::cout<<"PASS X failed-arm: ordered cancel/PD publish+feedback confirmation/planned-disable/8s descent/verify/passive; 12s timeout, qualification gate, stale/fault rejection, B priority; synthetic only\n";}
+void handoff_delay_boundaries(){
+ // Receipt before OR equal to publication cannot confirm the new PD packet.
+ for(double receipt:{106.001,106.002}) {
+  R3Supervisor f(profile());capture(f);
+  auto i=facts(106.010);i.lowstate_stamp=time_at(receipt);
+  step(f,106.010,i);assert(f.phase()==SystemPhase::PD_CAPTURE&&!f.pd_hold_confirmed());
+  step(f,106.0395,facts(106.0395)); // 37.5 ms after phase entry, fresh feedback.
+  assert(f.pd_hold_confirmed()&&!f.fault_latched());
+ }
+ // The confirmation deadline is measured from phase entry, independently of
+ // how fresh the most recent feedback is when the IO tick finally executes.
+ for(double pause:{.0375,.039999,.040001,.050}) {
+  R3Supervisor f(profile());capture(f);const double now=106.002+pause;
+  step(f,now,facts(now));
+  if(pause<.040)assert(f.pd_hold_confirmed()&&!f.fault_latched());
+  else {assert(f.last_fault()=="pd_hold_confirmation_timeout"&&!f.pd_hold_confirmed());
+   assert(!f.ConsumePortRequests().arm_planned_disable);}
+ }
+ // Delayed publication does not restart the phase's 40 ms deadline.
+ R3Supervisor late(profile());capture(late,false);
+ step(late,106.032,facts(106.032)); // Publish at entry +30 ms, still no confirmation.
+ assert(!late.pd_hold_confirmed());
+ step(late,106.043,facts(106.043)); // Feedback fresh, but entry +41 ms is too late.
+ assert(late.last_fault()=="pd_hold_confirmation_timeout"&&!late.pd_hold_confirmed());
+ std::cout<<"PASS PD handoff: pre/equal publication rejected; 37.5/39.999 ms accepted; 40.001/50 ms rejected; delayed publish does not renew phase deadline\n";
+}
+int main(){handoff_delay_boundaries();pd_lift_boundary();success();failures();watchdogs();priority();timeout_trigger();std::cout<<"PASS X failed-arm: ordered cancel/PD publish+feedback confirmation/planned-disable/8s descent/verify/passive; 12s timeout, qualification gate, stale/fault rejection, B priority; synthetic only\n";}

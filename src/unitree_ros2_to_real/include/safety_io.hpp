@@ -8,6 +8,7 @@
 #include <span>
 #include <string>
 #include <vector>
+#include <type_traits>
 #include <unitree_go/msg/low_cmd.hpp>
 #include <unitree_go/msg/low_state.hpp>
 
@@ -68,14 +69,19 @@ class SafetyFsm {
  bool sport_seen_=false, fault_=false;
  SafetyTime sport_stamp_{};
 };
+enum class LowStateRejection : uint8_t {
+ NONE, ARRAY_SIZE, NONFINITE_MOTOR, NONFINITE_QUATERNION, ZERO_QUATERNION, NONFINITE_GYRO
+};
+const char* LowStateRejectionName(LowStateRejection reason);
 struct LowStateSnapshot {
  std::array<float,12> motor_q{}, motor_dq{}, policy_q{}, policy_dq{};
  std::array<float,4> quaternion_xyzw{};
  std::array<float,3> gyro{};
  bool valid=false;
  SafetyTime received{};
- std::string rejection;
+ LowStateRejection rejection=LowStateRejection::NONE;
 };
+static_assert(std::is_trivially_copyable_v<LowStateSnapshot>);
 class LowStateReader {
  public:
  explicit LowStateReader(double timeout_s=0.5);

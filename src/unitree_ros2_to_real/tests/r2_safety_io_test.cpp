@@ -81,11 +81,15 @@ void lowstate_test() {
  assert(read.Diagnostic(t(.1)).find("motor[0] FR_hip")!=std::string::npos);
  for(float invalid:{std::numeric_limits<float>::quiet_NaN(),std::numeric_limits<float>::infinity()}) {
   auto bad=msg;bad.motor_state[0].q=invalid;assert(!read.Receive(bad,t(0)));assert(!read.Fresh(t(0)));
+  assert(read.snapshot().rejection==LowStateRejection::NONFINITE_MOTOR);
+  assert(read.Diagnostic(t(0)).find("rejection=nonfinite_motor")!=std::string::npos);
   bad=msg;bad.motor_state[19].dq=invalid;assert(!read.Receive(bad,t(0)));
   bad=msg;bad.imu_state.quaternion[1]=invalid;assert(!read.Receive(bad,t(0)));
   bad=msg;bad.imu_state.gyroscope[2]=invalid;assert(!read.Receive(bad,t(0)));
  }
  msg.imu_state.quaternion={0,0,0,0};assert(!read.Receive(msg,t(0)));
+ assert(read.snapshot().rejection==LowStateRejection::ZERO_QUATERNION);
+ assert(std::string(LowStateRejectionName(read.snapshot().rejection))=="zero_quaternion");
 }
 void lowcmd_test() {
  std::array<float,12> q{},kp{},kd{};

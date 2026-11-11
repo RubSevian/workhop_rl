@@ -446,6 +446,14 @@ R3Reply R3Supervisor::RequestLieDown(SafetyTime now) {
 R3Reply R3Supervisor::ControlledAbort(SafetyTime now) {
  CancelRemoteSequence();
  if(system_state_==SystemState::SYSTEM_HOLD&&!output_enabled_&&!fault_)return {true,"already in system hold"};
+ if(!output_enabled_&&output_stopped_&&!fault_&&
+    (state()==R3State::STOCK||state()==R3State::DISARMED||state()==R3State::TAKEOVER_REQUESTED||
+     state()==R3State::PRECHECK||state()==R3State::SPORT_RELEASE_REQUIRED||state()==R3State::SPORT_RELEASE_VERIFIED)) {
+  // X before output cancels the old takeover intent. Later fresh observations
+  // cannot re-arm it: a new explicit A/takeover is required, without a fault.
+  InvalidatePolicyWork();Zero();SetPhase(R3State::DISARMED);
+  return {true,"takeover cancelled before output; new explicit takeover required"};
+ }
  if(!IsActive()||fault_)return Fail("abort requires active custom mode; use emergency for fault");
  if(capabilities_.takeover_limit==TakeoverLimit::HOLD_CURRENT)return RequestHold(now);
  if(system_state_==SystemState::SYSTEM_HOLD)return {true,"already in persistent system hold"};

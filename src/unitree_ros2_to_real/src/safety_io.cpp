@@ -121,22 +121,32 @@ bool SafetyFsm::RequestRl(const SafetyReadiness& r,SafetyTime now) {
  if(state_!=SafetyState::HOLD_READY||!AllowsOutput(r,now)) return false;
  state_=SafetyState::RL_READY;return true;
 }
+const char* LowStateRejectionName(LowStateRejection reason) {
+ switch(reason) {
+ case LowStateRejection::NONE:return "";
+ case LowStateRejection::ARRAY_SIZE:return "array_size";
+ case LowStateRejection::NONFINITE_MOTOR:return "nonfinite_motor";
+ case LowStateRejection::NONFINITE_QUATERNION:return "nonfinite_quaternion";
+ case LowStateRejection::ZERO_QUATERNION:return "zero_quaternion";
+ case LowStateRejection::NONFINITE_GYRO:return "nonfinite_gyro";
+ } return "unknown";
+}
 LowStateReader::LowStateReader(double timeout):timeout_s_(timeout) { Positive(timeout); }
 bool LowStateReader::Receive(const unitree_go::msg::LowState& msg,SafetyTime now) {
  LowStateSnapshot next{};next.received=now;
- auto reject=[&](const char* reason){next.rejection=reason;snapshot_=next;return false;};
- if(msg.motor_state.size()!=20||msg.wireless_remote.size()!=40) return reject("array_size");
+ auto reject=[&](LowStateRejection reason){next.rejection=reason;snapshot_=next;return false;};
+ if(msg.motor_state.size()!=20||msg.wireless_remote.size()!=40) return reject(LowStateRejection::ARRAY_SIZE);
  for(size_t i=0;i<msg.motor_state.size();++i) {
-  if(!std::isfinite(msg.motor_state[i].q)||!std::isfinite(msg.motor_state[i].dq)) return reject("nonfinite_motor");
+  if(!std::isfinite(msg.motor_state[i].q)||!std::isfinite(msg.motor_state[i].dq)) return reject(LowStateRejection::NONFINITE_MOTOR);
   if(i<12) {
    next.motor_q[i]=msg.motor_state[i].q;next.motor_dq[i]=msg.motor_state[i].dq;
    next.policy_q[io_motor_to_policy[i]]=next.motor_q[i];next.policy_dq[io_motor_to_policy[i]]=next.motor_dq[i];
   }
  }
  double norm=0;
- for(float q:msg.imu_state.quaternion) { if(!std::isfinite(q)) return reject("nonfinite_quaternion");norm+=double(q)*q; }
- if(norm<1e-16) return reject("zero_quaternion");
- for(float v:msg.imu_state.gyroscope) if(!std::isfinite(v)) return reject("nonfinite_gyro");
+ for(float q:msg.imu_state.quaternion) { if(!std::isfinite(q)) return reject(LowStateRejection::NONFINITE_QUATERNION);norm+=double(q)*q; }
+ if(norm<1e-16) return reject(LowStateRejection::ZERO_QUATERNION);
+ for(float v:msg.imu_state.gyroscope) if(!std::isfinite(v)) return reject(LowStateRejection::NONFINITE_GYRO);
  const auto& q=msg.imu_state.quaternion;
  next.quaternion_xyzw={q[1],q[2],q[3],q[0]};next.gyro=msg.imu_state.gyroscope;
  next.valid=true;snapshot_=next;return true;
@@ -144,7 +154,7 @@ bool LowStateReader::Receive(const unitree_go::msg::LowState& msg,SafetyTime now
 bool LowStateReader::Fresh(SafetyTime now) const { return snapshot_.valid&&FreshAge(now,snapshot_.received,timeout_s_); }
 double LowStateReader::AgeMs(SafetyTime now) const { return snapshot_.valid?std::chrono::duration<double,std::milli>(now-snapshot_.received).count():-1; }
 std::string LowStateReader::Diagnostic(SafetyTime now) const {
- std::ostringstream o;o<<"lowstate_age_ms="<<AgeMs(now)<<" fresh="<<Fresh(now)<<" rejection="<<snapshot_.rejection;
+ std::ostringstream o;o<<"lowstate_age_ms="<<AgeMs(now)<<" fresh="<<Fresh(now)<<" rejection="<<LowStateRejectionName(snapshot_.rejection);
  if(!snapshot_.valid) return o.str();
  o<<" quaternion_xyzw=";for(float v:snapshot_.quaternion_xyzw)o<<v<<',';
  o<<" gyro=";for(float v:snapshot_.gyro)o<<v<<',';

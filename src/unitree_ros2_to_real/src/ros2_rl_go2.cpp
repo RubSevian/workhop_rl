@@ -30,7 +30,7 @@ InterfaceRos::InterfaceRos() : Node("rl_locomotion_disarmed") {
     try {
       const auto now=sim2real::SafetyClock::now();
       const bool remote_valid=remote_.Receive(msg->wireless_remote,now);
-      if(!lowstate_.Receive(*msg,now)) throw std::runtime_error(lowstate_.snapshot().rejection);
+      if(!lowstate_.Receive(*msg,now)) throw std::runtime_error(LowStateRejectionName(lowstate_.snapshot().rejection));
       const auto& state=lowstate_.snapshot();
       core_.SetMeasuredLegs(state.motor_q,state.motor_dq);
       core_.agent().obs.base_quat=torch::tensor(std::vector<float>(state.quaternion_xyzw.begin(),state.quaternion_xyzw.end()));

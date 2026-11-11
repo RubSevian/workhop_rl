@@ -14,9 +14,47 @@
 #include <ctime>
 #include <cerrno>
 #include <algorithm>
+#include <atomic>
+#include <exception>
+#include <sched.h>
+#include <sys/resource.h>
 using Ns=int64_t;
 static Ns now(){timespec t{};clock_gettime(CLOCK_MONOTONIC,&t);return Ns(t.tv_sec)*1000000000+t.tv_nsec;}
 static bool sleep_until(Ns deadline){timespec t{deadline/1000000000,deadline%1000000000};int rc;do{rc=clock_nanosleep(CLOCK_MONOTONIC,TIMER_ABSTIME,&t,nullptr);}while(rc==EINTR&&rclcpp::ok());if(rc&&rc!=EINTR)throw std::runtime_error("absolute sleep failed");return rclcpp::ok();}
+// Arm JSON/reliable publication must never execute on the 2 ms source thread.
+// Stop and join even when LowState publication throws during shutdown.
+struct ArmWorker {
+ std::atomic<bool> stop{false};
+ std::exception_ptr error;
+ std::thread thread;
+ ~ArmWorker(){stop.store(true);if(thread.joinable())thread.join();}
+};
+// Opt-in for the isolated synthetic source only. DDS and arm threads are
+// created BEFORE this scope; only the bounded 2 ms producer changes policy.
+struct SourceScheduling {
+ bool active=false;
+ int policy=0,priority=0;
+ explicit SourceScheduling(bool fifo) {
+  sched_param before{};
+  if(sched_getscheduler(0)!=SCHED_OTHER || sched_getparam(0,&before)!=0 || before.sched_priority!=0)
+   throw std::runtime_error("source must start as SCHED_OTHER/0");
+  if(fifo){sched_param p{};p.sched_priority=10;
+   if(sched_setscheduler(0,SCHED_FIFO,&p)!=0)throw std::runtime_error("source FIFO10 admission failed");
+   active=true;
+  }
+  sched_param current{};
+  policy=sched_getscheduler(0);
+  if(sched_getparam(0,&current)!=0){Restore();throw std::runtime_error("source scheduler observation failed");}
+  priority=current.sched_priority;
+ }
+ void Restore() {
+  if(active){sched_param p{};
+   if(sched_setscheduler(0,SCHED_OTHER,&p)!=0)throw std::runtime_error("source FIFO10 demotion failed");
+   active=false;
+  }
+ }
+ ~SourceScheduling(){if(active){sched_param p{};if(sched_setscheduler(0,SCHED_OTHER,&p)!=0)fprintf(stderr,"source demotion failed during unwind\n");}}
+};
 struct Frame {uint64_t recorded_ns;std::array<float,31> values;};
 struct Row {uint64_t sequence,frame,recorded_ns,skipped;Ns expected,begin,end;};
 static std::vector<Frame> read_frames(const char* path) {
@@ -34,7 +72,14 @@ static std::string arm_json(Ns stamp) {
 }
 int main(int argc,char** argv){try{
  sim2real::RequireIsolatedReplay();
- if(argc!=5)throw std::runtime_error("usage: read_only_lowstate_source frames.bin seconds start.ns NEW_OUTPUT_DIR");
+ if(argc!=5 && argc!=6)throw std::runtime_error("usage: read_only_lowstate_source frames.bin seconds start.ns NEW_OUTPUT_DIR [fifo10]");
+ const bool fifo=argc==6;
+ if(fifo){
+  if(std::string(argv[5])!="fifo10")throw std::runtime_error("only explicit fifo10 source scheduling is supported");
+  rlimit limit{};
+  if(getrlimit(RLIMIT_RTPRIO,&limit)!=0 || limit.rlim_cur<10)
+   throw std::runtime_error("source FIFO10 requires inherited RLIMIT_RTPRIO>=10");
+ }
  const double seconds=std::stod(argv[2]);if(!std::isfinite(seconds)||seconds<5||seconds>570)throw std::runtime_error("seconds must be 5..570");
  const auto frames=read_frames(argv[1]);const std::filesystem::path output=argv[4],start_file=argv[3];
  std::vector<Row> rows;rows.reserve(size_t(seconds*500)+2);std::vector<std::array<Ns,3>> arms;arms.reserve(size_t(seconds*100)+2);
@@ -45,9 +90,22 @@ int main(int argc,char** argv){try{
  const auto timeout=now()+30000000000LL;Ns begin=0;
  while(rclcpp::ok()&&now()<timeout){std::ifstream f(start_file);if(f>>begin)break;std::this_thread::sleep_for(std::chrono::milliseconds(10));}
  if(!begin)throw std::runtime_error("no replay start deadline");
- const Ns period=2000000,end=begin+Ns(std::llround(seconds*1e9));uint64_t index=0,skipped_total=0;Ns next_arm=begin;
- unitree_go::msg::LowState message;std_msgs::msg::String arm_message;uint64_t last_frame=UINT64_MAX;
- while(rclcpp::ok()) {
+ const Ns period=2000000,end=begin+Ns(std::llround(seconds*1e9));uint64_t index=0,skipped_total=0;
+ ArmWorker worker;
+ worker.thread=std::thread([&]{try{
+  Ns due=begin;std_msgs::msg::String arm_message;
+  while(!worker.stop.load() && due<end && sleep_until(due)){
+   const auto stamp=now();if(stamp>=end || worker.stop.load())break;
+   // Skip elapsed deadlines instead of generating a catch-up burst.
+   due=begin+((stamp-begin)/10000000)*10000000;
+   arm_message.data=arm_json(stamp);const auto a=now();
+   arm->publish(arm_message);arms.push_back({due,a,now()});
+   due+=10000000;
+  }
+ }catch(...){worker.error=std::current_exception();worker.stop.store(true);}});
+ SourceScheduling scheduling(fifo);
+ unitree_go::msg::LowState message;uint64_t last_frame=UINT64_MAX;
+ while(rclcpp::ok() && !worker.stop.load()) {
   Ns due=begin+Ns(index)*period;if(due>=end||!sleep_until(due))break;
   const auto woke=now();const uint64_t skipped=std::max<Ns>(0,(woke-due)/period);
   index+=skipped;skipped_total+=skipped;due=begin+Ns(index)*period;if(due>=end)break;
@@ -57,9 +115,14 @@ int main(int argc,char** argv){try{
    for(int i=0;i<3;++i)message.imu_state.gyroscope[i]=sample.values[28+i];last_frame=frame;}
   message.tick=uint32_t(index+1);const auto pub_begin=now();publisher->publish(message);const auto pub_end=now();
   rows.push_back({index+1,frame,sample.recorded_ns,skipped,due,pub_begin,pub_end});++index;
-  if(pub_end>=next_arm){const auto stamp=now();arm_message.data=arm_json(stamp);const auto a=now();arm->publish(arm_message);arms.push_back({next_arm,a,now()});next_arm=begin+((stamp-begin)/10000000+1)*10000000;}
  }
+ scheduling.Restore();
+ worker.stop.store(true);worker.thread.join();
+ if(worker.error)std::rethrow_exception(worker.error);
  const auto finished=now();
+ std::ofstream(output/"source_scheduler.json")<<"{\"requested_fifo10\":"<<(fifo?"true":"false")
+  <<",\"policy\":"<<scheduling.policy<<",\"priority\":"<<scheduling.priority
+  <<",\"terminal_policy\":"<<sched_getscheduler(0)<<"}\n";
  {std::ofstream f(output/"low_source.csv");f<<"sequence,frame_index,recorded_sample_ns,expected_send_ns,publish_begin_ns,publish_end_ns,publish_duration_ns,skipped_deadlines,source_lateness_ns,repeated_measurement\n";uint64_t previous=UINT64_MAX;
   for(auto& r:rows){f<<r.sequence<<','<<r.frame<<','<<r.recorded_ns<<','<<r.expected<<','<<r.begin<<','<<r.end<<','<<r.end-r.begin<<','<<r.skipped<<','<<r.begin-r.expected<<','<<(r.frame==previous)<<'\n';previous=r.frame;}}
  {std::ofstream f(output/"arm_source.csv");f<<"expected_send_ns,publish_begin_ns,publish_end_ns\n";for(auto& r:arms)f<<r[0]<<','<<r[1]<<','<<r[2]<<'\n';}

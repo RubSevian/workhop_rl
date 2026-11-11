@@ -8,6 +8,7 @@
 #include "motion_trace.hpp"
 #include "control_latency.hpp"
 #include "lowstate_inbox.hpp"
+#include "lowstate_timing.hpp"
 #include "arm_status_snapshot.hpp"
 #include "arm_fast_snapshot.hpp"
 #include <go2_navigation_interfaces/msg/navigation_readiness.hpp>
@@ -188,6 +189,7 @@ class R3Node final:public rclcpp::Node {
    ControlScope callback(control_latency_.get(),5,__LINE__);
    const auto callback_started=SafetyClock::now();
    const auto now=callback_started; // Local callback receipt, never a robot measurement timestamp.
+   lowstate_timing_.Receive(now);
    lowstate_inbox_->Receive(*m,now);
    if(policy_rt_)policy_rt_->Input();
    if(!receiver_trace_path_.empty()) {
@@ -290,6 +292,7 @@ class R3Node final:public rclcpp::Node {
     else ++io_trace_dropped_;
    }
    ControlLock lock(mutex_,control_latency_.get(),__LINE__);const auto now=SafetyClock::now();HandleRemote(now);
+   lowstate_timing_.Use(inputs_.lowstate_stamp,SafetyClock::now());
    if(compute_probe||(motion_trace_&&motion_trace_->enabled())) {
     if(last_io_tick_!=SafetyTime{})io_interval_max_ms_=std::max(io_interval_max_ms_,Age(now,last_io_tick_)*1000.);
     last_io_tick_=now;
@@ -747,6 +750,8 @@ class R3Node final:public rclcpp::Node {
   snapshot.Add("policy_rt_registered",policy_rt_&&policy_rt_->ready.load());
   snapshot.Add("policy_rt_ready",policy_rt_&&policy_rt_->Ready());
   snapshot.Add("observed_ns",std::chrono::duration_cast<std::chrono::nanoseconds>(now.time_since_epoch()).count());
+  snapshot.Add("lowstate_receive_gap_max_ms",lowstate_timing_.ReceiveGapMaxMs());
+  snapshot.Add("lowstate_age_at_io_max_ms",lowstate_timing_.IoAgeMaxMs());
   snapshot.Add("controller_session_id",controller_session_id_);
   snapshot.Add("state", SystemStateName(supervisor_->system_state()));
   snapshot.Add("phase", SystemPhaseName(supervisor_->phase()));
@@ -929,6 +934,7 @@ class R3Node final:public rclcpp::Node {
  std::unique_ptr<ControlLatency> control_latency_;
  PriorityMutex mutex_;RealControllerCore core_;LowStateReader lowstate_;
  std::unique_ptr<LowStateInbox<>> lowstate_inbox_;
+ LowStateTiming lowstate_timing_;
  TransitionEvents<> transitions_;size_t reported_transition_drops_=0;
  std::optional<SystemPhase> traced_state_;std::string traced_fault_;bool traced_latched_=false;
  std::unique_ptr<R3Supervisor> supervisor_;std::unique_ptr<R3RemoteCommands> remote_;R3Inputs inputs_;

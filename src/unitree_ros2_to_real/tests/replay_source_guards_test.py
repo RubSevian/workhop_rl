@@ -2,11 +2,19 @@
 import os
 import subprocess
 import sys
+import resource
 from pathlib import Path
 source,production=map(Path,sys.argv[1:3])
 dds='<CycloneDDS><Domain><General><Interfaces><NetworkInterface name="lo" /></Interfaces></General></Domain></CycloneDDS>'
 base=dict(os.environ,ROS_DOMAIN_ID='228',ROS_LOCALHOST_ONLY='1',CYCLONEDDS_URI=dds,RMW_IMPLEMENTATION='rmw_cyclonedds_cpp')
 base.pop('GO2_NETWORK_INTERFACE',None);base.pop('ROS_STATIC_PEERS',None)
+# FIFO is explicit, bounded to priority 10, and rejected before DDS/file IO
+# when the invoking process did not inherit the required permission.
+for option,expected in [('fifo20','only explicit fifo10'),('fifo10','requires inherited RLIMIT_RTPRIO')]:
+    run=subprocess.run([str(source),'/not-opened.bin','5','/not-opened.ns','/not-opened',option],
+        env=base,capture_output=True,text=True,timeout=10,
+        preexec_fn=lambda:resource.setrlimit(resource.RLIMIT_RTPRIO,(0,0)))
+    assert run.returncode==1 and expected in run.stderr,(option,run.stdout,run.stderr)
 for update in ({'ROS_DOMAIN_ID':'0'},{'ROS_LOCALHOST_ONLY':'0'},{'GO2_NETWORK_INTERFACE':'enP8p1s0'},{'ROS_STATIC_PEERS':'192.168.123.161'},{'CYCLONEDDS_URI':dds.replace('name="lo"','name="enP8p1s0"')}):
     env=base|update
     run=subprocess.run([str(source),'/not-opened.bin','5','/not-opened.ns','/not-opened'],env=env,capture_output=True,text=True,timeout=10)

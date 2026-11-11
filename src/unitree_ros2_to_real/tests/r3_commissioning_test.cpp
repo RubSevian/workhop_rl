@@ -478,7 +478,25 @@ void real_sequence_and_interruptions(){
  packet=lift.Tick(t(1.501));for(int i=0;i<12;++i)assert(packet->motor_cmd[i].q==stopped.measured_q[i]);
  std::cout<<"PASS real 6s linear/4s hold cycle, X during first inference/stand captures all12, late result rejected, B passive0/3 and no recovery\n";
 }
-int main(int argc,char** argv){
+void stop_before_output_tests() {
+ for(bool prior_takeover:{false,true}) {
+  R3Supervisor s(profile());s.Observe(input(1),t(1));
+  if(prior_takeover){assert(s.Takeover(t(1)).success);s.Observe(input(1),t(1));}
+  const std::array<SystemEvent,2> requests{SystemEvent::REQUEST_A,SystemEvent::REQUEST_X};
+  assert(s.DispatchEvents(requests,t(1)).success);
+  assert(!s.fault_latched()&&!s.output_enabled());
+  s.Observe(input(1.01),t(1.01));assert(!s.EnableOutput(true,t(1.01)).success);
+  assert(s.Takeover(t(1.01)).success);s.Observe(input(1.01),t(1.01));
+  assert(s.EnableOutput(true,t(1.01)).success);
+ }
+ R3Supervisor emergency(profile());emergency.Observe(input(1),t(1));
+ assert(emergency.Takeover(t(1)).success);emergency.Observe(input(1),t(1));
+ const std::array<SystemEvent,3> requests{SystemEvent::REQUEST_A,SystemEvent::REQUEST_X,SystemEvent::REQUEST_B};
+ assert(emergency.DispatchEvents(requests,t(1)).success);
+ assert(emergency.fault_latched()&&!emergency.output_enabled());
+ assert(!emergency.Takeover(t(1)).success&&!emergency.EnableOutput(true,t(1)).success);
+}
+int main(int argc,char** argv){stop_before_output_tests();
  if(argc==2){auto yaml=YAML::LoadFile(argv[1]);assert(LoadR3Profile(yaml).policy_observation_timeout_s==.06&&LoadR3Profile(yaml).sport_startup_only);
   const auto configured=LoadR3Profile(yaml);
   assert((configured.NavigationBounds()==std::array<double,3>{.35,.35,.1}));
