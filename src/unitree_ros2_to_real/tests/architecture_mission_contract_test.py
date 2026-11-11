@@ -14,6 +14,36 @@ from mission.scene import WorldObjectAnchor
 
 
 class ArchitectureMissionTests(unittest.TestCase):
+    def test_compute_result_cannot_renew_expired_phase_or_mission(self):
+        for state,operation in (('ARM_SEARCH','detect'),('PLAN_GRASP','grasp_plan'),('PREGRASP','pregrasp')):
+            for deadline in ('phase','mission','both'):
+                with self.subTest(state=state,deadline=deadline):
+                    f=Fixture();f.start();f.m.effects=[]
+                    f.m.transition(state,f.now-2);f.m.started=f.now-2
+                    f.m.cfg['execution']['mission_timeout_s']=1. if deadline in ('mission','both') else None
+                    f.m.cfg['execution']['state_timeout_s']=1. if deadline in ('phase','both') else None
+                    f.m.cfg['search']['timeout_s']=1. if deadline in ('phase','both') else None
+                    f.m.request(operation,f.now-2);request=f.m.drain()[0][1]
+                    self.assertFalse(f.m.result(f.compute(request),f.now))
+                    self.assertEqual(f.m.state,'BLOCKED')
+                    self.assertEqual(f.m.reason,'MISSION_TIMEOUT' if deadline in ('mission','both') else 'PHASE_TIMEOUT')
+                    self.assertIsNone(f.m.pending)
+                    self.assertEqual([kind for kind,_ in f.m.drain()],['cancel'])
+
+    def test_result_deadline_boundary_disabled_and_unrelated_identity(self):
+        for limit,elapsed,unrelated in ((1.,1.,False),(None,100.,False),(1.,2.,True)):
+            with self.subTest(limit=limit,elapsed=elapsed,unrelated=unrelated):
+                f=Fixture();f.start();f.m.effects=[]
+                f.m.transition('PLAN_GRASP',f.now-elapsed)
+                f.m.cfg['execution']['mission_timeout_s']=None
+                f.m.cfg['execution']['state_timeout_s']=limit
+                f.m.request('grasp_plan',f.now-elapsed);request=f.m.drain()[0][1]
+                result=f.compute(request)
+                if unrelated:result['id']+=1
+                self.assertEqual(f.m.result(result,f.now),not unrelated)
+                self.assertEqual(f.m.state,'PLAN_GRASP' if unrelated else 'PREGRASP')
+                self.assertFalse(any(kind=='cancel' for kind,_ in f.m.drain()))
+
     def test_periodic_status_excludes_trajectory_without_mutating_execution(self):
         f=Fixture()
         for kind in ('compute','motion'):

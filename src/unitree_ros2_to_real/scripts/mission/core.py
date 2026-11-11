@@ -522,6 +522,18 @@ class Mission:
             diagnostic.update(reason='INVALID_COMPUTE_TIMESTAMP',action='BLOCK')
             self.cancel(now,'INVALID_COMPUTE_TIMESTAMP',True)
             return False
+        # A fresh result cannot renew an already expired mission/phase by
+        # transitioning before the next timer tick checks its old deadline.
+        mission_timeout=self.cfg['execution']['mission_timeout_s']
+        phase_timeout=(self.cfg['search']['timeout_s'] if self.state=='ARM_SEARCH'
+                       else self.cfg['execution']['state_timeout_s'])
+        expired=('MISSION_TIMEOUT' if mission_timeout is not None and now-self.started>mission_timeout
+                 else 'PHASE_TIMEOUT' if self.state in ARM_PHASES and phase_timeout is not None
+                 and now-self.entered>phase_timeout else None)
+        if expired:
+            diagnostic.update(reason=expired,action='BLOCK')
+            self.cancel(now,expired,True)
+            return False
         # Successful grasp_plan carries all checked segments, often much larger
         # than a single trajectory. Delivery/JSON decoding is not heartbeat TTL.
         # PREGRASP still performs live scene/start checks before owner admission.

@@ -20,6 +20,7 @@ def test_replayed_status_preserves_lease_but_invalid_new_status_revokes():
 #include <cmath>
 #include <cassert>
 #include <memory>
+#include "mission_health_freshness.hpp"
 using ArmClock=std::chrono::steady_clock;
 using ArmTime=ArmClock::time_point;
 long long Ns(ArmTime t){return std::chrono::duration_cast<std::chrono::nanoseconds>(t.time_since_epoch()).count();}
@@ -37,7 +38,7 @@ ArmTime r3_stamp_{},nav_stamp_{},health_stamp_{},health_callback_stamp_{};
 double health_callback_gap_s_=0,health_producer_gap_s_=0,health_age_at_callback_s_=0,health_decode_s_=0;
 std::string r3_nav_session_,r3_session_,mission_session_,retired_session_,nav_session_,health_nav_session_,health_phase_;
 unsigned long long health_goal_revision_=0;
-'''+ '\n'.join(callbacks) + '\nauto count_publishers=[](const char*){return size_t(1);};\ndouble mission_ttl_=.25,mission_feedback_ttl_=.25;\nauto authority=[&](ArmTime now,bool home_request=false,bool retain_completed_hold=false){'+authority+'\n};' + r'''
+'''+ '\n'.join(callbacks) + '\nauto count_publishers=[](const char*){return size_t(1);};\ndouble mission_r3_ttl_=.25,mission_nav_ttl_=.25,mission_health_ttl_=.25,mission_feedback_ttl_=.25;\nauto authority=[&](ArmTime now,bool home_request=false,bool retain_completed_hold=false){'+authority+'\n};' + r'''
 auto send=[](auto& callback,const std::string& s){callback(std::make_shared<Message>(Message{s}));};
 const std::string r3_fields=R"(, navigation_session_id: n, controller_session_id: c, state: ACTIVE, phase: RL_ZERO, motion_command: [0,0,0], operation_profile: full_mission, capabilities: {arm_motion: true}, fault_latched: false})";
 const std::string nav_fields=R"(, session_id: n, navigation_ready: true})";
@@ -87,7 +88,7 @@ send(r3,YAML::Dump(pd));assert(!r3_planned_disable_ready_);
     with tempfile.TemporaryDirectory() as directory:
         cpp=Path(directory)/'callbacks.cpp';binary=Path(directory)/'callbacks'
         cpp.write_text(code)
-        subprocess.run(['g++','-std=c++17',str(cpp),'-lyaml-cpp','-o',str(binary)],check=True)
+        subprocess.run(['g++','-std=c++17','-I',str(Path(__file__).parents[1]/'include'),str(cpp),'-lyaml-cpp','-o',str(binary)],check=True)
         subprocess.run([str(binary)],check=True)
 
 
