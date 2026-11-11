@@ -4,9 +4,10 @@
 #include "first_pending_event.hpp"
 #include "r3_commissioning.hpp"
 #include <algorithm>
+#include <limits>
 
 namespace sim2real {
-// Transport candidate, deliberately not yet wired into the production node.
+// Latest state plus preserving decisions; no queue of stale input frames.
 // Receive belongs exclusively to the receiver thread. Read/TakeDecision/
 // TakeRejection belong exclusively to the serialized control thread.
 class LatestLowStateChannel {
@@ -16,7 +17,7 @@ class LatestLowStateChannel {
     std::array<uint8_t,40> remote{};
     std::uint64_t takeover_id=0;
     SafetyTime takeover_time{};
-    bool remote_valid=false, takeover_held=false;
+    bool remote_valid=false, takeover_held=false, hold_active=false, request_latched=false;
   };
   struct Rejection { LowStateRejection reason=LowStateRejection::NONE; SafetyTime first_time{}; };
   LatestLowStateChannel(double timeout, std::vector<std::string> abort,
@@ -24,7 +25,12 @@ class LatestLowStateChannel {
       :reader_(timeout),remote_(std::move(abort),std::move(emergency),hold,stale),stale_s_(stale) {}
   void Receive(const unitree_go::msg::LowState& message,SafetyTime received) {
     reader_.Receive(message,received);
-    if(!reader_.snapshot().valid)rejections_.Publish({reader_.snapshot().rejection,received});
+    if(!reader_.snapshot().valid) {
+      // Admission observes this barrier even if the snapshot/event publication
+      // is still in flight. A good frame must be strictly newer to unblock it.
+      latest_rejection_tick_.store(received.time_since_epoch().count(),std::memory_order_release);
+      rejections_.Publish({reader_.snapshot().rejection,received});
+    }
     remote_.ReceiveBuffered(message.wireless_remote,received);
     const auto decision=remote_.Poll(received);
     if(decision==R3RemoteEvent::EMERGENCY || decision==R3RemoteEvent::CONTROLLED_ABORT) {
@@ -34,15 +40,20 @@ class LatestLowStateChannel {
     }
     const auto& status=remote_.status();
     const bool held=status.remote_valid && (status.button_mask & 0x122)==0x122;
-    if(!held)pending_id_=0;
+    if(!held) {
+      cancelled_id_.store(next_id_,std::memory_order_release);
+      pending_id_=0;
+    }
     if(decision==R3RemoteEvent::TAKEOVER){pending_id_=++next_id_;request_time_=received;}
     Sample sample;
     sample.state=reader_.snapshot();
     std::copy(message.wireless_remote.begin(),message.wireless_remote.end(),sample.remote.begin());
     sample.takeover_id=pending_id_;sample.takeover_time=request_time_;
     sample.remote_valid=status.remote_valid;sample.takeover_held=held;
+    sample.hold_active=status.takeover_hold_active;sample.request_latched=status.takeover_request_latched;
     latest_.Publish(sample);
   }
+  std::int64_t LatestRejectionTick() const { return latest_rejection_tick_.load(std::memory_order_acquire); }
   bool Read(Sample& sample) { return latest_.Read(sample); }
   bool TakeRejection(Rejection& rejection) { return rejections_.Take(rejection); }
   // The sample must be the most recently read one. A stop consumes concurrent
@@ -66,6 +77,8 @@ class LatestLowStateChannel {
   R3RemoteCommands remote_;
   double stale_s_;
   std::uint64_t pending_id_=0,next_id_=0,consumed_id_=0;
+  std::atomic<std::int64_t> latest_rejection_tick_{std::numeric_limits<std::int64_t>::min()};
+  static_assert(std::atomic<std::int64_t>::is_always_lock_free);
   std::atomic<std::uint64_t> cancelled_id_{0};
   static_assert(std::atomic<std::uint64_t>::is_always_lock_free);
   SafetyTime request_time_{};

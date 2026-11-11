@@ -55,8 +55,31 @@ def main():
             spin_until(lambda:len(values)>receipt_status and values[-1].get('lowstate_age_s',-1)>.15,2)
             assert all(v['read_only'] and not v['output_enabled'] and v['sent_packets']==0 for v in values)
             assert all(not v.get('fault_latched',False) for v in values)
+            stopped_source_age=values[-1]['lowstate_age_s']
+            assert values[-1]['lowstate_transport']=='latest_state_with_preserved_decisions'
+            def publish_for(seconds):
+                until=time.monotonic()+seconds
+                while time.monotonic()<until:
+                    msg.tick+=2;pub.publish(msg)
+                    rclpy.spin_once(node,timeout_sec=.001);time.sleep(.001)
+                    assert child.poll() is None
+                    assert node.count_publishers('/lowcmd')==0
+                    assert node.count_publishers('/api/sport/request')==0
+            # Invalid measurements before arm must not create a permanent fault.
+            msg.motor_state[0].q=float('nan');publish_for(.3)
+            spin_until(lambda:bool(values[-1].get('lowstate_rejection')),2)
+            assert not values[-1].get('fault_latched',False)
+            msg.motor_state[0].q=.1;publish_for(.3)
+            assert not values[-1].get('fault_latched',False)
+            # L1+L2+B: a released emergency remains latched even with output off.
+            msg.wireless_remote[2]=0x22;msg.wireless_remote[3]=0x02
+            publish_for(1.1)
+            msg.wireless_remote[2]=0;msg.wireless_remote[3]=0;publish_for(.3)
+            spin_until(lambda:values[-1].get('fault_latched',False),2)
+            assert all(v['read_only'] and not v['output_enabled'] and v['sent_packets']==0 for v in values)
             result=dict(passed=True,synthetic_frames=sent,statuses=len(values),
-                        stopped_source_age_s=values[-1]['lowstate_age_s'],actuator_publishers=0,
+                        invalid_before_arm_without_fault=True,emergency_preserved_after_release=True,
+                        stopped_source_age_s=stopped_source_age,actuator_publishers=0,
                         note='Functional integration only; no real-robot latency or throughput claim')
             (args.output/'result.json').write_text(json.dumps(result,indent=2))
             print(json.dumps(result))

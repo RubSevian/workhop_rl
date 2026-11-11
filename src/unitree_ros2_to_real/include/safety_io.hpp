@@ -89,6 +89,8 @@ class LowStateReader {
  bool Fresh(SafetyTime now) const;
  double AgeMs(SafetyTime now) const;
  const LowStateSnapshot& snapshot() const { return snapshot_; }
+ // Adopt an already validated receiver snapshot without changing its age.
+ void AssignSnapshot(const LowStateSnapshot& snapshot) { snapshot_=snapshot; }
  std::string Diagnostic(SafetyTime now) const;
  private:
  double timeout_s_;

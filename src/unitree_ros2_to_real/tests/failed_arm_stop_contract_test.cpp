@@ -1,5 +1,6 @@
 // Approved X failed-arm sequence. Synthetic clock/packets only; no DDS or SDK IO.
 #include "system_fsm_fixture.hpp"
+#include "latest_lowstate_control.hpp"
 #include <iostream>
 #include <set>
 R3Profile profile(){auto p=system_fixture();p.failed_arm_pd_stop_enabled=true;p.lie_down_s=8;p.lie_down_timeout_s=12;p.arm_home_timeout_s=10;p.lie_down_settle_s=.2;return p;}
@@ -73,4 +74,19 @@ void handoff_delay_boundaries(){
  assert(late.last_fault()=="pd_hold_confirmation_timeout"&&!late.pd_hold_confirmed());
  std::cout<<"PASS PD handoff: pre/equal publication rejected; 37.5/39.999 ms accepted; 40.001/50 ms rejected; delayed publish does not renew phase deadline\n";
 }
-int main(){handoff_delay_boundaries();pd_lift_boundary();success();failures();watchdogs();priority();timeout_trigger();std::cout<<"PASS X failed-arm: ordered cancel/PD publish+feedback confirmation/planned-disable/8s descent/verify/passive; 12s timeout, qualification gate, stale/fault rejection, B priority; synthetic only\n";}
+void latest_channel_handoff() {
+ for(double receipt:{106.001,106.002,106.004}) {
+  R3Supervisor f(profile());capture(f);
+  sim2real::LatestLowStateChannel channel(.5,{"L1","L2","X"},{"L1","L2","B"});
+  sim2real::LatestLowStateControl control(.25);sim2real::LowStateReader reader(.5);
+  unitree_go::msg::LowState msg;msg.imu_state.quaternion[0]=1;
+  for(auto& motor:msg.motor_state)motor.q=.35F;
+  channel.Receive(msg,time_at(receipt));auto inputs=facts(106.010);
+  control.Apply(channel,reader,inputs,f,time_at(106.010));
+  assert(inputs.lowstate_stamp==time_at(receipt));
+  step(f,106.010,inputs);
+  assert(f.pd_hold_confirmed()==(receipt>106.002));
+  assert(!f.fault_latched());
+ }
+}
+int main(){latest_channel_handoff();handoff_delay_boundaries();pd_lift_boundary();success();failures();watchdogs();priority();timeout_trigger();std::cout<<"PASS X failed-arm: ordered cancel/PD publish+feedback confirmation/planned-disable/8s descent/verify/passive; 12s timeout, qualification gate, stale/fault rejection, B priority; synthetic only\n";}

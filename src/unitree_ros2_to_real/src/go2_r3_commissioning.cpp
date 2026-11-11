@@ -7,7 +7,7 @@
 #include "async_mode_worker.hpp"
 #include "motion_trace.hpp"
 #include "control_latency.hpp"
-#include "lowstate_inbox.hpp"
+#include "latest_lowstate_control.hpp"
 #include "lowstate_timing.hpp"
 #include "arm_status_snapshot.hpp"
 #include "arm_fast_snapshot.hpp"
@@ -173,8 +173,8 @@ class R3Node final:public rclcpp::Node {
   navigation_gate_=std::make_unique<NavigationRequestGate>(profile.NavigationBounds(),profile.command_timeout_s);
   lowcmd_wait_=std::make_unique<LowCmdDiscoveryWait>(profile.lowcmd_discovery_timeout_s,profile.lowcmd_clear_duration_s);
   lowstate_=LowStateReader(profile.lowstate_timeout_s);
-  lowstate_inbox_=std::make_unique<LowStateInbox<>>(profile.lowstate_timeout_s);
-  remote_=std::make_unique<R3RemoteCommands>(r["remote"]["controlled_abort_chord"].as<std::vector<std::string>>(),r["remote"]["emergency_chord"].as<std::vector<std::string>>(),d["remote"]["takeover_hold_s"].as<double>(),profile.remote_timeout_s);
+  lowstate_control_=std::make_unique<LatestLowStateControl>(profile.remote_timeout_s);
+  lowstate_inbox_=std::make_unique<LatestLowStateChannel>(profile.lowstate_timeout_s,r["remote"]["controlled_abort_chord"].as<std::vector<std::string>>(),r["remote"]["emergency_chord"].as<std::vector<std::string>>(),d["remote"]["takeover_hold_s"].as<double>(),profile.remote_timeout_s);
   output_lock_=r["output_lock"].as<std::string>();
   inputs_.ready.model_loaded=core_.loaded();inputs_.ready.config_valid=true;inputs_.ready.transport_ready=!read_only_;
   status_=create_publisher<std_msgs::msg::String>("/go2/locomotion_status",10);
@@ -269,7 +269,9 @@ class R3Node final:public rclcpp::Node {
    }
   },state_options);
   enable_=create_service<std_srvs::srv::SetBool>("/go2/commissioning/enable_output",[this](const std_srvs::srv::SetBool::Request::SharedPtr req,std_srvs::srv::SetBool::Response::SharedPtr res){
-   ControlLock lock(mutex_,control_latency_.get(),__LINE__);const auto now=SafetyClock::now();Refresh(now);
+   ControlLock lock(mutex_,control_latency_.get(),__LINE__);const auto now=SafetyClock::now();
+   const bool stopped=HandleRemote(now);
+   if(req->data&&stopped){res->success=false;res->message="operator stop takes priority over output enable";return;}
    supervisor_->CancelRemoteSequence();
    const auto result=SetOutput(req->data,now);res->success=result.success;res->message=result.message;
   });
@@ -354,11 +356,11 @@ class R3Node final:public rclcpp::Node {
  private:
  // The IO callback handles the remote even while Torch is computing.
  // mutex_ serializes cancellation with PolicyResult and packet publication.
- void HandleRemote(SafetyTime now) {
-  if constexpr(live_shadow) { Refresh(now); return; }
+ bool HandleRemote(SafetyTime now) {
+  if constexpr(live_shadow) { Refresh(now); return false; }
   ConsumeLowState(now);
-  const auto event=remote_->Poll(now);Refresh(now,false);
-  if(event==R3RemoteEvent::TAKEOVER&&policy_rt_&&!policy_rt_->Ready())return;
+  const auto event=lowstate_control_->TakeDecision(*lowstate_inbox_,now);Refresh(now,false);
+  if(event==R3RemoteEvent::TAKEOVER&&policy_rt_&&!policy_rt_->Ready())return false;
   switch(event) {
    case R3RemoteEvent::TAKEOVER: {
     if(supervisor_->system_state()==SystemState::SYSTEM_HOLD) {
@@ -374,6 +376,7 @@ class R3Node final:public rclcpp::Node {
    default:break;
   }
   if(event!=R3RemoteEvent::NONE)last_event_=event;
+  return event==R3RemoteEvent::CONTROLLED_ABORT||event==R3RemoteEvent::EMERGENCY;
  }
  bool NavigationFresh(SafetyTime now) const {return inputs_.navigation_ready&&navigation_gate_->FreshCommand(now);}
  std::array<float,12> StandErrors() const {
@@ -482,8 +485,13 @@ class R3Node final:public rclcpp::Node {
   if(!supervisor_->remote_sequence_active())lowcmd_wait_->Reset();
  }
  void Trigger(const std::string& name,std::function<R3Reply(SafetyTime)> request) {
-  services_.push_back(create_service<std_srvs::srv::Trigger>("/go2/commissioning/"+name,[this,request](std_srvs::srv::Trigger::Request::SharedPtr, std_srvs::srv::Trigger::Response::SharedPtr res){
-   ControlLock lock(mutex_,control_latency_.get(),__LINE__);auto now=SafetyClock::now();Refresh(now);auto r=request(now);res->success=r.success;res->message=r.message;
+  services_.push_back(create_service<std_srvs::srv::Trigger>("/go2/commissioning/"+name,[this,request,name](std_srvs::srv::Trigger::Request::SharedPtr, std_srvs::srv::Trigger::Response::SharedPtr res){
+   ControlLock lock(mutex_,control_latency_.get(),__LINE__);auto now=SafetyClock::now();
+   const bool stopped=HandleRemote(now);
+   if(stopped&&name!="controlled_abort"&&name!="emergency_damp") {
+    res->success=false;res->message="operator stop takes priority over control request";return;
+   }
+   auto r=request(now);res->success=r.success;res->message=r.message;
   }));
  }
  // DDS discovery and startup SDK orchestration belong to the existing
@@ -509,7 +517,7 @@ class R3Node final:public rclcpp::Node {
   nav_input_unique_=nav_unique;nav_cancel_available_=nav_cancel;
   manipulation_cancel_available_=manipulation_cancel;
   infrastructure_poll_s_=Age(now,started);
-  SdkTick(now);Refresh(now);SequenceTick(now);
+  SdkTick(now);HandleRemote(now);SequenceTick(now);
  }
  void PortTick() {
   PollInfrastructure();
@@ -574,13 +582,13 @@ class R3Node final:public rclcpp::Node {
  // Called only with mutex_ held. Bounded work; no producer lock, no freshening
  // of buffered observations. Intermediate errors/releases survive a later frame.
  void ConsumeLowState(SafetyTime now) {
-  ApplyLowStateInbox(*lowstate_inbox_,lowstate_,*remote_,inputs_,*supervisor_,now);
+  lowstate_control_->Apply(*lowstate_inbox_,lowstate_,inputs_,*supervisor_,now);
  }
  void Refresh(SafetyTime now,bool consume_lowstate=true) {
-  // HandleRemote already drained and polled: do not admit another frame
+  // HandleRemote already read the latest state and polled: do not admit another frame
   // between that stop decision and the IO packet derived from these inputs.
   if(consume_lowstate)ConsumeLowState(now);
-  inputs_.ready.lowstate_fresh=lowstate_.Fresh(now);inputs_.ready.remote_fresh=remote_->status().remote_valid;
+  inputs_.ready.lowstate_fresh=lowstate_.Fresh(now);inputs_.ready.remote_fresh=lowstate_control_->status().remote_valid;
   const bool mission_fresh=!mission_session_.empty()&&Age(now,mission_readiness_stamp_)>=0&&Age(now,mission_readiness_stamp_)<=supervisor_->profile().mission_timeout_s;
   const bool graph_fresh=graph_stamp_!=SafetyTime{}&&Age(now,graph_stamp_)>=0&&Age(now,graph_stamp_)<=supervisor_->profile().graph_timeout_s;
   inputs_.navigation_ready=graph_fresh&&navigation_gate_->Ready(now)&&nav_cancel_available_&&nav_input_unique_;
@@ -599,7 +607,7 @@ class R3Node final:public rclcpp::Node {
   sample.low_age_s=Age(now,inputs_.lowstate_stamp);sample.remote_age_s=Age(now,inputs_.remote_stamp);
   sample.arm_age_s=Age(now,inputs_.arm_stamp);sample.target_age_s=Age(now,inputs_.target_stamp);
   sample.result_age_s=supervisor_->PolicyAgeSeconds(now);
-  const auto& remote=remote_->status();sample.sticks={remote.ly,-remote.rx,-remote.lx};
+  const auto& remote=lowstate_control_->status();sample.sticks={remote.ly,-remote.rx,-remote.lx};
   sample.requested=control_mode_=="autonomy"?navigation_gate_->Get(now):remote_test_requested_;sample.command=supervisor_->command();
   const auto& low=lowstate_.snapshot();sample.q=low.motor_q;sample.dq=low.motor_dq;sample.quat=low.quaternion_xyzw;
   for(int i=0;i<3;++i)sample.gyro[i]=low.gyro[i];
@@ -651,7 +659,7 @@ class R3Node final:public rclcpp::Node {
     last_policy_start_=now;
    }
    Refresh(now);
-   remote_test_requested_=RemoteStickCommand(remote_->status(),supervisor_->profile());
+   remote_test_requested_=RemoteStickCommand(lowstate_control_->status(),supervisor_->profile());
    if(!read_only_&&supervisor_->system_state()==SystemState::ACTIVE&&supervisor_->NeedsPolicy()) {
     std::array<double,3> selected{};
     if(motion_commands_enabled_) {
@@ -678,7 +686,7 @@ class R3Node final:public rclcpp::Node {
     trace->callback_lock_wait_ms=Age(now,graph_observed)*1000.;
     trace_remote_stamp=inputs_.remote_stamp;
     trace->interval_s=last_trace_policy_==SafetyTime{}?0:Age(now,last_trace_policy_);last_trace_policy_=now;
-    const auto& remote=remote_->status();trace->sticks={remote.ly,-remote.rx,-remote.lx};
+    const auto& remote=lowstate_control_->status();trace->sticks={remote.ly,-remote.rx,-remote.lx};
     trace->requested=control_mode_=="autonomy"?navigation_gate_->Get(now):remote_test_requested_;trace->command=cmd;trace->q=low.motor_q;trace->dq=low.motor_dq;trace->quat=low.quaternion_xyzw;
     for(int i=0;i<3;++i)trace->gyro[i]=low.gyro[i];
     trace->callback_lock_hold_ms=Age(SafetyClock::now(),now)*1000.;
@@ -791,10 +799,14 @@ class R3Node final:public rclcpp::Node {
   snapshot.Add("sport_query_age_s", (sdk_worker_->busy()?Age(now,sdk_started_):-1));
   snapshot.Add("sport_query_detail", sdk_detail_);
   snapshot.Add("lowstate_age_s", lowstate_.AgeMs(now)/1000);
-  snapshot.Add("remote_age_s", remote_->status().remote_age_ms/1000);
-  snapshot.Add("remote_mask", remote_->status().button_mask);
-  snapshot.Add("remote_buttons", remote_->status().decoded_buttons);
+  snapshot.Add("remote_age_s", lowstate_control_->status().remote_age_ms/1000);
+  snapshot.Add("remote_mask", lowstate_control_->status().button_mask);
+  snapshot.Add("remote_buttons", lowstate_control_->status().decoded_buttons);
   snapshot.Add("remote_event", int(last_event_));
+  snapshot.Add("lowstate_transport", "latest_state_with_preserved_decisions");
+  const auto rejection=lowstate_control_->rejection();
+  snapshot.Add("lowstate_rejection", rejection?LowStateRejectionName(rejection->reason):"");
+  snapshot.Add("lowstate_rejection_first_ns", rejection?rejection->first_time.time_since_epoch().count():0);
   snapshot.Add("arm_feedback_age_s", Age(now,inputs_.arm_stamp));
   snapshot.Add("control_mode", control_mode_);
   snapshot.Add("motion_commands_enabled", motion_commands_enabled_);
@@ -933,11 +945,11 @@ class R3Node final:public rclcpp::Node {
  std::unique_ptr<PolicyRtRegistration> policy_rt_;
  std::unique_ptr<ControlLatency> control_latency_;
  PriorityMutex mutex_;RealControllerCore core_;LowStateReader lowstate_;
- std::unique_ptr<LowStateInbox<>> lowstate_inbox_;
+ std::unique_ptr<LatestLowStateChannel> lowstate_inbox_;
  LowStateTiming lowstate_timing_;
  TransitionEvents<> transitions_;size_t reported_transition_drops_=0;
  std::optional<SystemPhase> traced_state_;std::string traced_fault_;bool traced_latched_=false;
- std::unique_ptr<R3Supervisor> supervisor_;std::unique_ptr<R3RemoteCommands> remote_;R3Inputs inputs_;
+ std::unique_ptr<R3Supervisor> supervisor_;std::unique_ptr<LatestLowStateControl> lowstate_control_;R3Inputs inputs_;
  std::shared_ptr<ModeSessionProcess> sdk_session_;
  std::unique_ptr<AsyncModeWorker> sdk_worker_;
  bool sdk_last_ok_=false;double sdk_rpc_ms_=-1;size_t sdk_failures_=0;SafetyTime sdk_started_{};
