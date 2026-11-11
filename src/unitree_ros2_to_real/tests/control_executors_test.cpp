@@ -87,8 +87,8 @@ int main(int argc,char** argv) {
     auto block=[&]{++occupied;while(!release&&rclcpp::ok())std::this_thread::sleep_for(1ms);};
     auto a=node->create_wall_timer(50ms,block,arm);
     auto b=node->create_wall_timer(50ms,block,status);
-    auto input=node->create_wall_timer(2ms,[&]{++received;},observations);
-    auto output=node->create_wall_timer(2ms,[&]{++outputs;},io);
+    auto input=node->create_wall_timer(2ms,[&]{if(isolated){char name[16]{};prctl(PR_GET_NAME,name,0,0,0);assert(std::string(name)=="r3_lowstate");}++received;},observations);
+    auto output=node->create_wall_timer(2ms,[&]{char name[16]{};prctl(PR_GET_NAME,name,0,0,0);assert(std::string(name)=="r3_io");++outputs;},io);
     bool verified=false;
     std::jthread observer([&]{
       auto deadline=std::chrono::steady_clock::now()+3s;

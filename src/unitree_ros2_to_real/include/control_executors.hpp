@@ -5,6 +5,7 @@
 #include <mutex>
 #include <thread>
 #include <functional>
+#include <sys/prctl.h>
 #include "periodic_policy_loop.hpp"
 
 namespace sim2real {
@@ -47,11 +48,11 @@ inline void SpinControlExecutors(const rclcpp::Node::SharedPtr& node,
     }
   };
   // jthread joins on every exit path, including failure to create a worker.
-  std::jthread io_thread([&] { run(io_executor); });
+  std::jthread io_thread([&] { prctl(PR_SET_NAME,"r3_io",0,0,0); run(io_executor); });
   std::jthread policy_thread;
   std::jthread observation_thread;
   try {
-    if(observations)observation_thread=std::jthread([&]{run(observation_executor);});
+    if(observations)observation_thread=std::jthread([&]{prctl(PR_SET_NAME,"r3_lowstate",0,0,0);run(observation_executor);});
     policy_thread = std::jthread([&] { run(policy_executor,true); });
     run(inputs);
   } catch (...) {
