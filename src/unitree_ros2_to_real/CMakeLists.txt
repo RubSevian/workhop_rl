@@ -125,6 +125,7 @@ install(DIRECTORY scripts/mission DESTINATION lib/${PROJECT_NAME} FILES_MATCHING
 install(PROGRAMS scripts/arm_plan_viewer.py scripts/grasp_viewer.py scripts/detection_viewer.py scripts/grasp_mission.py scripts/grasp_perception.py scripts/architecture_monitor.py scripts/physical_trial.py scripts/r3_status.py scripts/r3_manual_cmd.py scripts/r3_sport_monitor.py scripts/r3_rt_guardian.py DESTINATION lib/${PROJECT_NAME})
 install(FILES scripts/r3_manual_lib.py DESTINATION lib/${PROJECT_NAME})
 if(BUILD_TESTING)
+  add_test(NAME scene_selection_parity_test COMMAND python3 ${CMAKE_CURRENT_SOURCE_DIR}/tests/scene_selection_parity_test.py)
   add_executable(arm_fast_snapshot_test tests/arm_fast_snapshot_test.cpp)
   target_link_libraries(arm_fast_snapshot_test real_r3_commissioning)
   ament_target_dependencies(arm_fast_snapshot_test rars01_state_interfaces)

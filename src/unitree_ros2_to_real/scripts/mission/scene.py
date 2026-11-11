@@ -162,6 +162,11 @@ class SceneBuffer:
                 raise ValueError('SCENE_SNAPSHOT_STALE:live_'+name)
         candidates=(b for b in reversed(self.bodies) if b.mono_ns<=capture_ns)
         newest=None;last_error='BODY_SNAPSHOT_MISSING';skipped=0
+        # Bodies are selected newest first. Walk each joint history backwards
+        # once instead of restarting its search for every candidate body.
+        arm_iter,leg_iter=iter(reversed(self.arms)),iter(reversed(self.legs))
+        arm,leg=next(arm_iter,None),next(leg_iter,None)
+        previous_target=None
         for body in candidates:
             if newest is None:newest=body
             if (body.navigation_session_id!=newest.navigation_session_id
@@ -174,8 +179,14 @@ class SceneBuffer:
             # than rejecting every tuple when the newest body lands in a joint
             # receipt gap. Camera requests keep their fixed exposure target.
             target=capture_ns if historical else body.mono_ns
-            arm=next((a for a in reversed(self.arms) if a[0]<=target),None)
-            leg=next((q for q in reversed(self.legs) if q[0]<=target),None)
+            # Preserve behavior even for an externally supplied non-monotonic
+            # body history; validated production histories take the linear path.
+            if previous_target is not None and target>previous_target:
+                arm_iter,leg_iter=iter(reversed(self.arms)),iter(reversed(self.legs))
+                arm,leg=next(arm_iter,None),next(leg_iter,None)
+            while arm is not None and arm[0]>target:arm=next(arm_iter,None)
+            while leg is not None and leg[0]>target:leg=next(leg_iter,None)
+            previous_target=target
             if arm is None or leg is None:
                 last_error='COHERENT_JOINT_SNAPSHOT_MISSING'
             else:
