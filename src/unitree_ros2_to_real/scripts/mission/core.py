@@ -527,9 +527,11 @@ class Mission:
         mission_timeout=self.cfg['execution']['mission_timeout_s']
         phase_timeout=(self.cfg['search']['timeout_s'] if self.state=='ARM_SEARCH'
                        else self.cfg['execution']['state_timeout_s'])
-        expired=('MISSION_TIMEOUT' if mission_timeout is not None and now-self.started>mission_timeout
-                 else 'PHASE_TIMEOUT' if self.state in ARM_PHASES and phase_timeout is not None
-                 and now-self.entered>phase_timeout else None)
+        expired=None
+        if mission_timeout is not None and now-self.started>mission_timeout:
+            expired='MISSION_TIMEOUT'
+        elif self.state in ARM_PHASES and phase_timeout is not None and now-self.entered>phase_timeout:
+            expired='PHASE_TIMEOUT'
         if expired:
             diagnostic.update(reason=expired,action='BLOCK')
             self.cancel(now,expired,True)
@@ -719,15 +721,15 @@ class Mission:
             pass
         elif self.state == 'NAVIGATING':
             goal_state = nav['goal']['state']
-            if goal_state == 'SUCCEEDED':
+            if goal_state not in ('REQUESTED','ACTIVE','REPLANNING','ARRIVAL_CONFIRMING','SUCCEEDED'):
+                self.cancel(now, 'NAV_' + goal_state)
+            elif (self.cfg['execution']['navigation_timeout_s'] is not None and now-self.entered > self.cfg['execution']['navigation_timeout_s']):
+                self.cancel(now, 'NAV_TIMEOUT', True)
+            elif goal_state == 'SUCCEEDED':
                 self.goal_reached=now;self.stable_since=None;self.window_pose=None
                 self.scene_anchor=None;self.base_anchor=None;self.leg_anchor=None
                 self.stability_reason='WAITING_FOR_STABLE_WINDOW'
                 self.transition('BASE_SETTLE', now)
-            elif goal_state not in ('REQUESTED','ACTIVE','REPLANNING','ARRIVAL_CONFIRMING'):
-                self.cancel(now, 'NAV_' + goal_state)
-            elif (self.cfg['execution']['navigation_timeout_s'] is not None and now-self.entered > self.cfg['execution']['navigation_timeout_s']):
-                self.cancel(now, 'NAV_TIMEOUT', True)
         elif self.state in ARM_PHASES:
             timeout=(self.cfg['search']['timeout_s'] if self.state=='ARM_SEARCH'
                      else self.cfg['execution']['state_timeout_s'])
