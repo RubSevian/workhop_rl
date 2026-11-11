@@ -22,6 +22,19 @@ int main(){auto p=system_fixture();
  auto i=system_facts(6.002);i.measured_q.fill(.43F);handoff.Observe(i,time_at(6.002));auto work=handoff.BeginPolicy(time_at(6.002));assert(work);
  auto captured=handoff.Tick(time_at(6.002));assert(captured&&handoff.phase()==SystemPhase::PD_CAPTURE&&!handoff.NeedsPolicy());
  assert(captured->motor_cmd[0].q==.43F&&!handoff.PolicyResult(*work,p.stand,8,time_at(6.010)));
+ // LowState age at the normal RL-to-PD capture has its own 40 ms gate.
+ for(double age:{.027,.045}) {
+  auto handoff_profile=p;handoff_profile.policy_observation_timeout_s=.060; // Working profile.
+  R3Supervisor stop(handoff_profile);enter_active(stop);assert(stop.ControlledAbort(time_at(6)).success);
+  stop.ArmHomeRequestAccepted(true,time_at(6));auto input=system_facts(6.002);
+  input.lowstate_stamp=time_at(6.002-age);auto packet=run_tick(stop,6.002,input);assert(packet);
+  if(age<.040)assert(stop.phase()==SystemPhase::PD_CAPTURE&&!stop.fault_latched());
+  else {
+   assert(stop.last_fault()=="pd_handoff_lowstate_stale");
+   assert(!stop.ConsumePortRequests().arm_planned_disable);
+   for(int j=0;j<12;++j)assert(packet->motor_cmd[j].kp==0&&packet->motor_cmd[j].kd==3);
+  }
+ }
  // Critical policy failure while HOME is outstanding remains explicit emergency.
  R3Supervisor failed(p);enter_active(failed);failed.ControlledAbort(time_at(6));failed.Observe(system_facts(6.002,false),time_at(6.002));work=failed.BeginPolicy(time_at(6.002));assert(work);
  assert(failed.PolicyFailed(*work,"stop_policy_exception",time_at(6.003))&&failed.system_state()==SystemState::EMERGENCY_FAULT);

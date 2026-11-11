@@ -176,7 +176,7 @@ class R3Node final:public rclcpp::Node {
   lowcmd_wait_=std::make_unique<LowCmdDiscoveryWait>(profile.lowcmd_discovery_timeout_s,profile.lowcmd_clear_duration_s);
   lowstate_=LowStateReader(profile.lowstate_timeout_s);
   lowstate_control_=std::make_unique<LatestLowStateControl>(profile.remote_timeout_s);
-  lowstate_inbox_=std::make_unique<LatestLowStateChannel>(profile.lowstate_timeout_s,r["remote"]["controlled_abort_chord"].as<std::vector<std::string>>(),r["remote"]["emergency_chord"].as<std::vector<std::string>>(),d["remote"]["takeover_hold_s"].as<double>(),profile.remote_timeout_s);
+  lowstate_channel_=std::make_unique<LatestLowStateChannel>(profile.lowstate_timeout_s,r["remote"]["controlled_abort_chord"].as<std::vector<std::string>>(),r["remote"]["emergency_chord"].as<std::vector<std::string>>(),d["remote"]["takeover_hold_s"].as<double>(),profile.remote_timeout_s);
   output_lock_=r["output_lock"].as<std::string>();
   inputs_.ready.model_loaded=core_.loaded();inputs_.ready.config_valid=true;inputs_.ready.transport_ready=!read_only_;
   status_=create_publisher<std_msgs::msg::String>("/go2/locomotion_status",10);
@@ -198,7 +198,7 @@ class R3Node final:public rclcpp::Node {
    }
    const auto now=callback_started; // Local callback receipt, never a robot measurement timestamp.
    lowstate_timing_.Receive(now);
-   lowstate_inbox_->Receive(*m,now);
+   lowstate_channel_->Receive(*m,now);
    if(policy_rt_)policy_rt_->Input();
    if(!receiver_trace_path_.empty()) {
     if(receiver_trace_.size()<receiver_trace_.capacity())receiver_trace_.push_back({m->tick,callback_started.time_since_epoch().count(),now.time_since_epoch().count(),trace_real_ns,trace_clock_end_ns,info.get_rmw_message_info().source_timestamp,info.get_rmw_message_info().received_timestamp,trace_cpu_ns,SafetyClock::now().time_since_epoch().count(),trace_wait_ns});
@@ -367,7 +367,7 @@ class R3Node final:public rclcpp::Node {
  bool HandleRemote(SafetyTime now) {
   if constexpr(live_shadow) { Refresh(now); return false; }
   ConsumeLowState(now);
-  const auto event=lowstate_control_->TakeDecision(*lowstate_inbox_,now);Refresh(now,false);
+  const auto event=lowstate_control_->TakeDecision(*lowstate_channel_,now);Refresh(now,false);
   if(event==R3RemoteEvent::TAKEOVER&&policy_rt_&&!policy_rt_->Ready())return false;
   switch(event) {
    case R3RemoteEvent::TAKEOVER: {
@@ -590,7 +590,7 @@ class R3Node final:public rclcpp::Node {
  // Called only with mutex_ held. Bounded work; no producer lock, no freshening
  // of buffered observations. Intermediate errors/releases survive a later frame.
  void ConsumeLowState(SafetyTime now) {
-  lowstate_control_->Apply(*lowstate_inbox_,lowstate_,inputs_,*supervisor_,now);
+  lowstate_control_->Apply(*lowstate_channel_,lowstate_,inputs_,*supervisor_,now);
  }
  void Refresh(SafetyTime now,bool consume_lowstate=true) {
   // HandleRemote already read the latest state and polled: do not admit another frame
@@ -953,7 +953,7 @@ class R3Node final:public rclcpp::Node {
  std::unique_ptr<PolicyRtRegistration> policy_rt_;
  std::unique_ptr<ControlLatency> control_latency_;
  PriorityMutex mutex_;RealControllerCore core_;LowStateReader lowstate_;
- std::unique_ptr<LatestLowStateChannel> lowstate_inbox_;
+ std::unique_ptr<LatestLowStateChannel> lowstate_channel_;
  LowStateTiming lowstate_timing_;
  TransitionEvents<> transitions_;size_t reported_transition_drops_=0;
  std::optional<SystemPhase> traced_state_;std::string traced_fault_;bool traced_latched_=false;

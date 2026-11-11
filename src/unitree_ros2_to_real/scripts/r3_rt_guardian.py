@@ -47,112 +47,6 @@ def sha(path):
         return hashlib.file_digest(stream, 'sha256').hexdigest()
 
 
-def input_rt_requested(value, compute_probe, live_shadow):
-    if not value:
-        return False
-    if value != '15' or not compute_probe or live_shadow:
-        raise RuntimeError('Input FIFO15 is restricted to the isolated no-output compute probe')
-    return True
-
-
-class ProbeInputRt:
-    """Experimental loopback-only input group; never enabled by a robot profile."""
-    names = frozenset(('r3_lowstate', 'r3_io', 'recv', 'recvUC'))
-
-    def __init__(self, proc, pid_start, executable_sha):
-        self.proc, self.pid_start, self.executable_sha = proc, pid_start, executable_sha
-        self.entries = {}
-        self.window = None
-        self.demoted = False
-
-    def _tasks(self):
-        return [int(p.name) for p in Path('/proc',str(self.proc.pid),'task').iterdir()]
-
-    def _main(self):
-        main = identity(self.proc.pid)
-        if (self.proc.poll() is not None or main['start'] != self.pid_start
-                or main['parent'] != os.getpid()
-                or sha(f'/proc/{self.proc.pid}/exe') != self.executable_sha):
-            raise RuntimeError('Input RT process identity changed')
-
-    def discover(self):
-        self._main()
-        found = {}
-        for tid in self._tasks():
-            value = identity(self.proc.pid,tid)
-            if value['comm'] not in self.names:
-                continue
-            if value['comm'] in found:
-                raise RuntimeError('Ambiguous input RT thread name')
-            if os.sched_getaffinity(tid) != {1}:
-                return False  # Explicit experiment coordinator must pin first.
-            if (value['policy'],value['priority']) != (os.SCHED_OTHER,0):
-                raise RuntimeError('Unexpected initial input scheduler')
-            found[value['comm']] = value
-        if set(found) != self.names:
-            return False
-        self.entries = {v['tid']:v for v in found.values()}
-        return True
-
-    def _same(self, tid):
-        current = identity(self.proc.pid,tid)
-        expected = self.entries[tid]
-        if current['start'] != expected['start'] or current['comm'] != expected['comm']:
-            raise RuntimeError('Input RT thread identity changed')
-        return current
-
-    def promote(self):
-        if len(self.entries) != len(self.names):
-            raise RuntimeError('Input RT registration incomplete')
-        self._main()
-        try:
-            for tid in self.entries:
-                current = self._same(tid)
-                if (current['policy'],current['priority']) != (os.SCHED_OTHER,0) or os.sched_getaffinity(tid) != {1}:
-                    raise RuntimeError('Input RT initial state changed')
-                os.sched_setscheduler(tid,os.SCHED_FIFO,os.sched_param(15))
-                current = self._same(tid)
-                if (current['policy'],current['priority']) != (os.SCHED_FIFO,15):
-                    raise RuntimeError('Input RT readback failed')
-            self.entries = {tid:self._same(tid) for tid in self.entries}
-        except BaseException:
-            self.demote()
-            raise
-
-    def audit(self, now, window_s, max_fraction):
-        total = 0
-        for tid in self.entries:
-            current = self._same(tid)
-            expected = (os.SCHED_OTHER,0) if self.demoted else (os.SCHED_FIFO,15)
-            if (current['policy'],current['priority']) != expected or os.sched_getaffinity(tid) != {1}:
-                raise RuntimeError('Input RT scheduler/affinity changed')
-            total += current['cpu_ns']
-        if self.window is not None and now-self.window[0] > round(window_s*1e9):
-            if total-self.window[1] > (now-self.window[0])*max_fraction:
-                raise RuntimeError('Input RT group CPU runaway')
-            self.window = None
-        if self.window is None:self.window = now,total
-
-    def demote(self):
-        if self.proc.poll() is not None:
-            self.demoted = True
-            return
-        errors = []
-        for tid in self.entries:
-            try:
-                current = self._same(tid)
-                if (current['policy'],current['priority']) != (os.SCHED_OTHER,0):
-                    os.sched_setscheduler(tid,os.SCHED_OTHER,os.sched_param(0))
-                current = self._same(tid)
-                if (current['policy'],current['priority']) != (os.SCHED_OTHER,0):
-                    raise RuntimeError('Input RT demotion readback failed')
-            except (FileNotFoundError,ProcessLookupError):
-                pass  # An exited thread no longer has a scheduler to restore.
-            except Exception as exc:errors.append(str(exc))
-        if errors:raise RuntimeError('Input RT demotion incomplete: '+'; '.join(errors))
-        self.demoted = True
-
-
 def change_scheduler(proc, ready, lease, executable_sha, priority):
     """Same lease serialization and identity/readback contract as tested setter."""
     fcntl.flock(lease, fcntl.LOCK_EX)
@@ -204,7 +98,8 @@ def main():
     command = sys.argv[1:]
     live_shadow = command[:1] == ['--live-compute-probe']
     compute_probe = live_shadow or command[:1] == ['--compute-probe']
-    want_input_rt = input_rt_requested(os.environ.get('R3_PROBE_INPUT_FIFO'),compute_probe,live_shadow)
+    if os.environ.get('R3_PROBE_INPUT_FIFO'):
+        raise RuntimeError('Input FIFO experiment removed; IO/inputs/DDS must remain OTHER0')
     if compute_probe:
         command = command[1:]
         # Diagnostic-only admission uses the same registration/lease/rollback
@@ -294,7 +189,6 @@ def main():
                             start_new_session=True, preexec_fn=child_setup)
     pfd = os.pidfd_open(proc.pid)
     ready = None;lease = None;armed = False;demoted = False;failure = None;buffer = b'';terminal = None
-    input_rt = None
     def pump():
         nonlocal ready, buffer
         for _ in range(5):
@@ -329,18 +223,9 @@ def main():
         event(admission=change_scheduler(proc, ready, lease, executable_sha, config["priority"]), argv=command, exe_sha256=executable_sha)
         # Guard readiness separately: after this write native A/output may run.
         armed = True
-        if want_input_rt:
-            input_rt = ProbeInputRt(proc,ready['pid_start'],executable_sha)
-            deadline = time.monotonic()+2
-            while not input_rt.discover():
-                if time.monotonic()>deadline or stop:raise RuntimeError('Input RT registration/pinning timeout')
-                pump();time.sleep(config['poll_period_s'])
-            input_rt.promote()
-            event(input_rt_admission=input_rt.entries)
-            (out/'input_rt_ready.json').write_text(json.dumps(dict(pid=proc.pid,priority=15,entries=input_rt.entries,mono_ns=time.monotonic_ns()))+'\n')
         os.pwrite(lease, struct.pack('<Q', 1), 8)
         began = time.monotonic();cpu_window = None;last_save = 0
-        print('R3 policy FIFO20 confirmed; '+('isolated probe input group FIFO15.' if input_rt else 'IO/inputs/DDS remain OTHER0.')+' Startup disarmed.', flush=True)
+        print('R3 policy FIFO20 confirmed; IO/inputs/DDS remain OTHER0. Startup disarmed.', flush=True)
         while proc.poll() is None:
             pump();now = time.monotonic_ns()
             terminal = struct.unpack('<8s11Q', os.pread(lease, 96, 0))
@@ -364,9 +249,8 @@ def main():
                     raise RuntimeError('Native status stale/missing')
                 if status and not status.get('read_only') and now-terminal[4] > round(config["lowstate_timeout_s"]*1e9):
                     raise RuntimeError('LowState receipt stale')
-                if input_rt:input_rt.audit(now,config['cpu_window_s'],config['cpu_max_fraction'])
                 for task in Path('/proc', str(proc.pid), 'task').iterdir():
-                    if int(task.name) == ready['tid'] or (input_rt and int(task.name) in input_rt.entries):
+                    if int(task.name) == ready['tid']:
                         continue
                     try:
                         if os.sched_getscheduler(int(task.name)) != os.SCHED_OTHER or os.sched_getparam(int(task.name)).sched_priority:
@@ -388,7 +272,6 @@ def main():
             if failure or stop:
                 # A terminal interrupt requests shutdown; keep policy scheduled
                 # while the operator performs the native stop sequence.
-                if failure and input_rt and not input_rt.demoted:input_rt.demote()
                 if failure and not demoted:
                     event(demotion=change_scheduler(proc, ready, lease, executable_sha, 0));demoted = True
                 if safe_exit(status, (now-status_ns)/1e9, stable, config):
@@ -401,9 +284,6 @@ def main():
     except BaseException as exc:
         failure = failure or repr(exc);event(exception=repr(exc))
     finally:
-        if input_rt:
-            try:input_rt.demote();event(input_rt_demoted=True)
-            except Exception as exc:failure=failure or repr(exc);event(input_rt_demotion_error=repr(exc))
         if lease is not None:
             terminal = struct.unpack('<8s11Q', os.pread(lease, 96, 0))
         if failure and armed and not demoted and proc.poll() is None and terminal[1] != 2:
@@ -441,8 +321,7 @@ def main():
             terminal = struct.unpack('<8s11Q', os.pread(lease, 96, 0));os.close(lease)
         proof = terminal is not None and (terminal[1], terminal[8], terminal[9], terminal[10]) == (2, 0, 0, 0)
         result = dict(failure=failure, terminal_demoted=proof, returncode=proc.returncode,
-                      own_actuator_commands=0, independent_physical_stop_confirmed=False,
-                      input_rt_requested=want_input_rt,input_rt_demoted=input_rt.demoted if input_rt else None)
+                      own_actuator_commands=0, independent_physical_stop_confirmed=False)
         (out / 'result.json').write_text(json.dumps(result, indent=2)+'\n')
         event(result=result);print('R3 RT result: '+json.dumps(result), flush=True)
         tail.close();log.close();events.close()

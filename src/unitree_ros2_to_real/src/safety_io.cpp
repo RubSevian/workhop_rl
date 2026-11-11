@@ -40,7 +40,7 @@ bool RemoteSafety::Receive(std::span<const uint8_t> raw,SafetyTime now) {
     if(!status_.decoded_buttons.empty()) status_.decoded_buttons+='+';
     status_.decoded_buttons+=buttons[i];
    }
-   chord_=r.btn.components.L1 && r.btn.components.L2 && r.btn.components.A;
+   chord_=(r.btn.value & takeover_button_mask)==takeover_button_mask;
    if(!chord_) { holding_=false; fired_=false; }
    else if(!holding_ && !fired_) { holding_=true; hold_start_=now; }
   }

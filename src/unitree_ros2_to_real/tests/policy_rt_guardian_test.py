@@ -99,73 +99,12 @@ class ComputeProbeAdmissionTests(unittest.TestCase):
                 g.main()
 
 
-class ProbeInputRtTests(unittest.TestCase):
-    def setUp(self):
-        self.states={tid:dict(pid=123,tid=tid,start=tid+100,comm=name,
-                     policy=os.SCHED_OTHER,priority=0,cpu_ns=0)
-                     for tid,name in enumerate(sorted(g.ProbeInputRt.names),200)}
-        self.proc=unittest.mock.Mock(pid=123)
-        self.proc.poll.return_value=None
-        def identify(pid,tid=None):
-            if tid is None:return dict(start=10,parent=os.getpid())
-            return dict(self.states[tid])
-        def schedule(tid,policy,param):
-            self.states[tid].update(policy=policy,priority=param.sched_priority)
-        self.patches=[patch.object(g,'identity',side_effect=identify),patch.object(g,'sha',return_value='hash'),
-                      patch.object(os,'sched_getaffinity',return_value={1}),
-                      patch.object(os,'sched_setscheduler',side_effect=schedule)]
-        self.mocks=[p.start() for p in self.patches]
-        self.addCleanup(lambda:[p.stop() for p in reversed(self.patches)])
-        self.group=g.ProbeInputRt(self.proc,10,'hash')
-        self.group._tasks=lambda:list(self.states)
-
-    def test_physical_live_and_wrong_priority_are_refused(self):
-        for compute,live,value in ((False,False,'15'),(True,True,'15'),(True,False,'20')):
-            with self.assertRaises(RuntimeError):g.input_rt_requested(value,compute,live)
-        self.assertTrue(g.input_rt_requested('15',True,False))
-        self.assertFalse(g.input_rt_requested(None,False,False))
-
-    def test_promotion_audit_and_demotion(self):
-        self.assertTrue(self.group.discover());self.group.promote()
-        self.group.audit(1,.5,.8)
-        self.assertTrue(all(v['priority']==15 for v in self.states.values()))
-        self.group.demote()
-        self.assertTrue(all(v['priority']==0 for v in self.states.values()))
-        self.assertTrue(self.group.demoted)
-
-    def test_wrong_identity_does_not_change_schedulers(self):
-        self.group.pid_start=11
-        with self.assertRaises(RuntimeError):self.group.discover()
-        self.mocks[-1].assert_not_called()
-
-    def test_missing_or_unpinned_threads_do_not_promote(self):
-        tid=next(iter(self.states));self.states.pop(tid)
-        self.assertFalse(self.group.discover())
-        self.mocks[-1].assert_not_called()
-
-    def test_partial_failure_rolls_back(self):
-        self.assertTrue(self.group.discover())
-        original=self.mocks[-1].side_effect
-        bad=sorted(self.states)[1]
-        def fail(tid,policy,param):
-            if tid==bad and policy==os.SCHED_FIFO:raise OSError('simulated admission failure')
-            original(tid,policy,param)
-        self.mocks[-1].side_effect=fail
-        with self.assertRaises(OSError):self.group.promote()
-        self.assertTrue(all(v['priority']==0 for v in self.states.values()))
-
-    def test_reused_tid_is_not_demoted_but_others_are(self):
-        self.assertTrue(self.group.discover());self.group.promote()
-        bad=next(iter(self.states));self.states[bad]['start']+=1
-        self.mocks[-1].reset_mock()
-        with self.assertRaises(RuntimeError):self.group.demote()
-        self.assertFalse(any(call.args[0]==bad for call in self.mocks[-1].call_args_list))
-        self.assertTrue(all(v['priority']==0 for tid,v in self.states.items() if tid!=bad))
-
-    def test_group_cpu_runaway_is_detected(self):
-        self.assertTrue(self.group.discover());self.group.promote();self.group.audit(1,.5,.8)
-        for v in self.states.values():v['cpu_ns']=300_000_000
-        with self.assertRaisesRegex(RuntimeError,'CPU runaway'):self.group.audit(1_000_000_001,.5,.8)
+class RemovedExperimentTests(unittest.TestCase):
+    def test_old_input_fifo_request_refuses_before_child_creation(self):
+        for mode in ('--compute-probe', '--live-compute-probe', '--'):
+            with self.subTest(mode=mode), patch.dict(os.environ, {'R3_PROBE_INPUT_FIFO':'15'}, clear=True), patch.object(sys, 'argv', ['guardian', mode, '/tmp/r3_runtime_timing']), patch.object(subprocess, 'Popen', side_effect=AssertionError('unexpected child')):
+                with self.assertRaisesRegex(RuntimeError, 'experiment removed'):
+                    g.main()
 
 
 if __name__ == '__main__':unittest.main()

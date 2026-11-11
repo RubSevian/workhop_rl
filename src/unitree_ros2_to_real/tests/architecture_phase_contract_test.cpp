@@ -2,6 +2,7 @@
 #include "r3_commissioning.hpp"
 #include <cassert>
 #include <algorithm>
+#include <cmath>
 #include <iostream>
 using namespace sim2real;
 SafetyTime time_at(double s){return SafetyTime{}+std::chrono::duration_cast<SafetyClock::duration>(std::chrono::duration<double>(s));}
@@ -36,6 +37,24 @@ void pd_phase_contract(const R3Profile& p){
  assert(std::find(s.fault_blockers().begin(),s.fault_blockers().end(),"arm_feedback_ready")!=s.fault_blockers().end());
  auto first=s.last_fault();s.Fault("consequence",time_at(111));assert(s.last_fault()==first);
 }
+void stand_delay_contract(const R3Profile& p){
+ // A callback/IO pause of 45 ms is not the PD_CAPTURE confirmation deadline.
+ // Stand uses its ordinary LowState watchdog and time-based interpolation.
+ for(double pause:{.027,.045,.501}) {
+  R3Supervisor s(p,OperationProfile::FULL_MISSION);start(s);
+  auto in=healthy(101);s.Observe(in,time_at(101));assert(s.Tick(time_at(101)));
+  const double now=101+pause;in=healthy(now);in.lowstate_stamp=time_at(101);
+  s.Observe(in,time_at(now));auto packet=s.Tick(time_at(now));assert(packet);
+  if(pause<=p.lowstate_timeout_s) {
+   assert(!s.fault_latched()&&s.state()==R3State::STAND_TRANSITION);
+   const float u=float((now-100)/p.stand_s);
+   for(int j=0;j<12;++j)assert(std::abs(packet->motor_cmd[j].q-(.3F*(1-u)+p.stand[j]*u))<1e-5);
+  } else {
+   assert(s.fault_latched());
+   for(int j=0;j<12;++j)assert(packet->motor_cmd[j].kp==0&&packet->motor_cmd[j].kd==3);
+  }
+ }
+}
 void critical_sources(const R3Profile& p){
  for(bool arm_fault:{false,true}){
   R3Supervisor s(p,OperationProfile::FULL_MISSION);start(s);auto in=healthy(101);
@@ -66,6 +85,6 @@ int main(int argc,char**argv){
  assert(argc==2);auto p=LoadR3Profile(YAML::LoadFile(argv[1]));
  assert(p.lowstate_timeout_s==.5&&p.arm_timeout_s==.25&&p.policy_observation_timeout_s==.06);
  assert(p.policy_inference_timeout_s==.04&&p.policy_result_timeout_s==.04);
- pd_phase_contract(p);critical_sources(p);emergency_priority(p);
+ pd_phase_contract(p);stand_delay_contract(p);critical_sources(p);emergency_priority(p);
  std::cout<<"PASS v4 phase contracts, critical input separation, fresh RL boundary, first cause, B priority; no hardware\n";
 }

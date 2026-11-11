@@ -31,7 +31,7 @@ class LatestLowStateChannel {
       latest_rejection_tick_.store(received.time_since_epoch().count(),std::memory_order_release);
       rejections_.Publish({reader_.snapshot().rejection,received});
     }
-    remote_.ReceiveBuffered(message.wireless_remote,received);
+    remote_.Receive(message.wireless_remote,received);
     const auto decision=remote_.Poll(received);
     if(decision==R3RemoteEvent::EMERGENCY || decision==R3RemoteEvent::CONTROLLED_ABORT) {
       cancelled_id_.store(next_id_,std::memory_order_release);
@@ -39,7 +39,7 @@ class LatestLowStateChannel {
       stops_.Publish(decision==R3RemoteEvent::EMERGENCY?PendingStop::EMERGENCY:PendingStop::ABORT);
     }
     const auto& status=remote_.status();
-    const bool held=status.remote_valid && (status.button_mask & 0x122)==0x122;
+    const bool held=status.remote_valid && (status.button_mask & takeover_button_mask)==takeover_button_mask;
     if(!held) {
       cancelled_id_.store(next_id_,std::memory_order_release);
       pending_id_=0;

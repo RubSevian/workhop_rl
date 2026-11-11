@@ -38,15 +38,26 @@ void watchdogs(){
 void priority(){for(auto phase:{SystemPhase::CANCEL_TASKS,SystemPhase::PD_CAPTURE,SystemPhase::PD_HOLD_CONFIRMED,SystemPhase::ARM_DISABLE,SystemPhase::ARM_DISABLE_BLOCKED,SystemPhase::LIE_DOWN_BLOCKED,SystemPhase::LIE_DOWN,SystemPhase::LIE_DOWN_VERIFY,SystemPhase::LIE_DOWN_PASSIVE}){R3Supervisor f(profile());disable(f);f.Dispatch(SystemEvent::ADVANCE_PHASE,time_at(106.006),phase);const std::array<SystemEvent,3> events{SystemEvent::REQUEST_X,SystemEvent::REQUEST_A,SystemEvent::REQUEST_B};assert(f.DispatchEvents(events,time_at(106.006)).success);assert(f.fault_latched()&&f.system_state()==SystemState::EMERGENCY_FAULT);auto ports=f.ConsumePortRequests();assert(ports.arm_emergency&&!ports.arm_planned_disable&&!ports.arm_return_home);f.ArmPlannedDisableResult(true,time_at(106.008));assert(f.fault_latched());auto packet=f.Tick(time_at(106.008));assert(packet);for(int j=0;j<12;++j)assert(packet->motor_cmd[j].kp==0&&packet->motor_cmd[j].kd==3);}}
 void timeout_trigger(){R3Supervisor f(profile());active(f);f.ControlledAbort(time_at(106));for(int n=1;n<=1001;++n){double t=106+n*.01;step(f,t,facts(t));if(f.phase()==SystemPhase::CANCEL_TASKS)break;}assert(f.phase()==SystemPhase::CANCEL_TASKS);}
 void pd_lift_boundary(){
- R3Supervisor f(profile());auto i=facts(100);i.arm_home_ready=i.arm_static_hold=true;f.Observe(i,time_at(100));assert(f.StartRemoteSequence(time_at(100)).success);
- // SDK release is represented only by an offline supervisor observation.
- f.Observe(i,time_at(100));assert(f.EnableOutput(true,time_at(100)).success);f.Tick(time_at(100));assert(f.RequestStand(time_at(100)).success);
- i=facts(106,false);f.Observe(i,time_at(106));assert(f.Tick(time_at(106)));assert(f.state()==R3State::HOLDING&&!f.fault_latched());
- assert(f.RemoteSequenceNext(time_at(106))==R3SequenceAction::NONE);
- i=facts(110.002,false);f.Observe(i,time_at(110.002));assert(f.RemoteSequenceNext(time_at(110.002))==R3SequenceAction::NONE);assert(f.phase()==SystemPhase::CANCEL_TASKS&&!f.NeedsPolicy()&&!f.fault_latched());
- step(f,110.004,facts(110.004,false));assert(f.phase()==SystemPhase::PD_CAPTURE);
- step(f,110.006,facts(110.006,false));assert(f.phase()==SystemPhase::PD_HOLD_CONFIRMED);
- step(f,110.008,facts(110.008,false));assert(f.phase()==SystemPhase::ARM_DISABLE&&f.ConsumePortRequests().arm_planned_disable);
+ for(double pause:{.002,.027,.045}) {
+  R3Supervisor f(profile());auto i=facts(100);i.arm_home_ready=i.arm_static_hold=true;f.Observe(i,time_at(100));assert(f.StartRemoteSequence(time_at(100)).success);
+  // SDK release is represented only by an offline supervisor observation.
+  f.Observe(i,time_at(100));assert(f.EnableOutput(true,time_at(100)).success);f.Tick(time_at(100));assert(f.RequestStand(time_at(100)).success);
+  i=facts(106,false);f.Observe(i,time_at(106));assert(f.Tick(time_at(106)));assert(f.state()==R3State::HOLDING&&!f.fault_latched());
+  assert(f.RemoteSequenceNext(time_at(106))==R3SequenceAction::NONE);
+  i=facts(110.002,false);f.Observe(i,time_at(110.002));assert(f.RemoteSequenceNext(time_at(110.002))==R3SequenceAction::NONE);assert(f.phase()==SystemPhase::CANCEL_TASKS&&!f.NeedsPolicy()&&!f.fault_latched());
+  step(f,110.004,facts(110.004,false));assert(f.phase()==SystemPhase::PD_CAPTURE);
+  const double now=110.004+pause;auto packet=step(f,now,facts(now,false));assert(packet);
+  if(pause<.040) {
+   assert(f.phase()==SystemPhase::PD_HOLD_CONFIRMED&&!f.fault_latched());
+   step(f,now+.002,facts(now+.002,false));assert(f.phase()==SystemPhase::ARM_DISABLE&&f.ConsumePortRequests().arm_planned_disable);
+  } else {
+   assert(f.last_fault()=="pd_hold_confirmation_timeout"&&!f.pd_hold_confirmed());
+   assert(!f.ConsumePortRequests().arm_planned_disable);
+   for(int j=0;j<12;++j)assert(packet->motor_cmd[j].kp==0&&packet->motor_cmd[j].kd==3);
+   step(f,now+.002,facts(now+.002,false)); // Fresh feedback cannot silently restart it.
+   assert(f.fault_latched()&&!f.pd_hold_confirmed()&&!f.ConsumePortRequests().arm_planned_disable);
+  }
+ }
 }
 void handoff_delay_boundaries(){
  // Receipt before OR equal to publication cannot confirm the new PD packet.
@@ -59,7 +70,7 @@ void handoff_delay_boundaries(){
  }
  // The confirmation deadline is measured from phase entry, independently of
  // how fresh the most recent feedback is when the IO tick finally executes.
- for(double pause:{.0375,.039999,.040001,.050}) {
+ for(double pause:{.027,.0375,.039999,.040001,.045,.050}) {
   R3Supervisor f(profile());capture(f);const double now=106.002+pause;
   step(f,now,facts(now));
   if(pause<.040)assert(f.pd_hold_confirmed()&&!f.fault_latched());
@@ -72,7 +83,7 @@ void handoff_delay_boundaries(){
  assert(!late.pd_hold_confirmed());
  step(late,106.043,facts(106.043)); // Feedback fresh, but entry +41 ms is too late.
  assert(late.last_fault()=="pd_hold_confirmation_timeout"&&!late.pd_hold_confirmed());
- std::cout<<"PASS PD handoff: pre/equal publication rejected; 37.5/39.999 ms accepted; 40.001/50 ms rejected; delayed publish does not renew phase deadline\n";
+ std::cout<<"PASS PD handoff: pre/equal publication rejected; 27/37.5/39.999 ms accepted; 40.001/45/50 ms rejected; delayed publish does not renew phase deadline\n";
 }
 void latest_channel_handoff() {
  for(double receipt:{106.001,106.002,106.004}) {

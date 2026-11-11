@@ -218,9 +218,7 @@ class R3RemoteCommands {
  R3RemoteCommands(std::vector<std::string> abort_chord,std::vector<std::string> emergency_chord,
                   double hold_s=.75,double stale_s=.25);
  void Receive(std::span<const uint8_t> raw,SafetyTime now);
- // Replay buffered frames without losing a completed stop chord on release.
- // TAKEOVER is evaluated only by Poll against the current, fresh handset state.
- void ReceiveBuffered(std::span<const uint8_t> raw,SafetyTime received);
+ // Call Poll after each received frame; the channel preserves accepted stops.
  R3RemoteEvent Poll(SafetyTime now);
  const RemoteStatus& status() const {return remote_.status();}
  private:
@@ -228,6 +226,5 @@ class R3RemoteCommands {
  bool EdgeEvent(Edge& edge,SafetyTime now);
  RemoteSafety remote_;double hold_s_,stale_s_;bool seen_=false;SafetyTime received_{};
  Edge abort_,emergency_; // TAKEOVER uses SDK named-field decoder in RemoteSafety.
- R3RemoteEvent buffered_stop_=R3RemoteEvent::NONE;
 };
 } // namespace sim2real
