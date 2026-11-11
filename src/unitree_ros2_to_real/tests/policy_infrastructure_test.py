@@ -34,6 +34,8 @@ struct Node {
  size_t count_publishers(const char*) {assert(!mutex_.held);++queries;if(fail)throw rclcpp::exceptions::RCLError("discovery failed");SafetyClock::current+=std::chrono::milliseconds(delay_ms);return 1;}
  void SdkTick(SafetyTime){assert(mutex_.held);}
  void Refresh(SafetyTime){assert(mutex_.held);++refreshes;}
+ // Polling consumes remote decisions through HandleRemote, which refreshes inputs.
+ bool HandleRemote(SafetyTime now){Refresh(now);return false;}
  void SequenceTick(SafetyTime){assert(mutex_.held);}
  void PollInfrastructure(){
 '''+poll+r'''
