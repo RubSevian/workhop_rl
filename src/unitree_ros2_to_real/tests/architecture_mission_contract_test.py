@@ -14,6 +14,24 @@ from mission.scene import WorldObjectAnchor
 
 
 class ArchitectureMissionTests(unittest.TestCase):
+    def test_completed_motion_cannot_renew_expired_phase(self):
+        f=Fixture();f.start()
+        for _ in range(1000):
+            f.tick()
+            if f.m.pending and f.m.pending['kind']=='motion' and f.m.pending['operation']=='pregrasp':
+                break
+        else:self.fail('No pending pregrasp in normal synthetic mission')
+        effects=f.m.drain()
+        self.assertEqual([kind for kind,_ in effects],['trajectory'])
+        f.effect(*effects[0])
+        self.assertEqual(f.owner['mission_state'],'SUCCEEDED')
+        f.m.cfg['execution']['state_timeout_s']=1.
+        f.m.entered=f.now-2
+        effects=f.tick(False)
+        self.assertEqual((f.m.state,f.m.reason),('BLOCKED','PHASE_TIMEOUT'))
+        self.assertIsNone(f.m.pending)
+        self.assertEqual([kind for kind,_ in effects],['cancel'])
+
     def test_compute_result_cannot_renew_expired_phase_or_mission(self):
         for state,operation in (('ARM_SEARCH','detect'),('PLAN_GRASP','grasp_plan'),('PREGRASP','pregrasp')):
             for deadline in ('phase','mission','both'):

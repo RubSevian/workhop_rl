@@ -729,6 +729,8 @@ class Mission:
             elif (self.cfg['execution']['navigation_timeout_s'] is not None and now-self.entered > self.cfg['execution']['navigation_timeout_s']):
                 self.cancel(now, 'NAV_TIMEOUT', True)
         elif self.state in ARM_PHASES:
+            timeout=(self.cfg['search']['timeout_s'] if self.state=='ARM_SEARCH'
+                     else self.cfg['execution']['state_timeout_s'])
             command = r3.get('motion_command', [])
             command_valid=len(command)==3 and all(math.isfinite(v) for v in command)
             zero=(command_valid and r3.get('phase')=='RL_ZERO' and all(abs(v)<=1e-6 for v in command))
@@ -742,6 +744,8 @@ class Mission:
                 self.cancel(now,'COHERENT_SCENE_STALE',True)
             elif self.scene_error(now):
                 self.cancel(now,self.scene_error(now),True)
+            elif timeout is not None and now-self.entered > timeout:
+                self.cancel(now, 'PHASE_TIMEOUT', True)
             elif self.state == 'BASE_SETTLE':
                 base = self.inputs['base'];scene=self.inputs['scene']
                 pose = matrix_pose(scene['body']['map_body'])
@@ -822,9 +826,6 @@ class Mission:
                         self.request('observe_grasp' if self.ready_observe else 'detect', now)
                     elif self.state == 'PLAN_GRASP':
                         self.request('grasp_plan', now)
-            timeout={'ARM_SEARCH':self.cfg['search']['timeout_s'],'VIEW_REFINEMENT':self.cfg['execution']['state_timeout_s']}.get(self.state,self.cfg['execution']['state_timeout_s'])
-            if self.state not in TERMINAL and timeout is not None and now-self.entered > timeout:
-                self.cancel(now, 'PHASE_TIMEOUT', True)
         return self.drain()
 
     def drain(self):
