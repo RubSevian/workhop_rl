@@ -1,7 +1,7 @@
 """Source wiring contract; gate/session/lifecycle behavior has numeric C++ tests."""
 from pathlib import Path
 s=(Path(__file__).resolve().parents[1]/'src/go2_r3_commissioning.cpp').read_text()
-a=s.index('  mission_readiness_sub_=');b=s.index('  arm_home_client_=',a)
+a=s.index('mission_readiness_sub_=create_subscription');b=s.index('  arm_home_client_=',a)
 body=s[a:b]
 for required in ('rclcpp::QoS(1)', 'size()>4096', 'navigation_gate_->Observe', 'navigation_gate_->Accept(session', 'command_age_s', 'c.size()!=3', 'SystemState::CONTROLLED_STOP'):
     assert required in body,required

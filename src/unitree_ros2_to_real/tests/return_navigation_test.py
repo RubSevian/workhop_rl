@@ -69,6 +69,29 @@ class ReturnNavigationTests(unittest.TestCase):
         self.request();f=self.f;f.nav['goal']['revision']=3;f.tick(False)
         self.assertEqual(f.m.reason,'RETURN_GOAL_REPLACED')
 
+    def test_expired_return_never_records_completion(self):
+        self.request();f=self.f;r=f.m.return_navigation
+        f.nav['goal'].update(state='SUCCEEDED',error_xy_m=.01)
+        r.reached_at=r.zero_since=f.now-10
+        f.m.cfg['execution']['navigation_timeout_s']=.001
+        effects=f.tick(False)
+        self.assertEqual((f.m.state,f.m.reason),('BLOCKED','RETURN_NAV_TIMEOUT'))
+        self.assertIsNone(r.finished_ns);self.assertIsNone(r.closure)
+        self.assertFalse(any(e['state']=='RETURNED_TO_START' for e in f.m.events))
+        self.assertEqual([kind for kind,_ in effects],['cancel'])
+
+    def test_return_at_deadline_or_with_disabled_timeout_can_finish(self):
+        for enabled in (True,False):
+            with self.subTest(enabled=enabled):
+                self.setUp();self.request();f=self.f;r=f.m.return_navigation
+                f.nav['goal'].update(state='SUCCEEDED',error_xy_m=.01)
+                r.reached_at=r.zero_since=f.now-10
+                f.feed()
+                f.m.cfg['execution']['navigation_timeout_s']=f.now-r.request_ns/1e9 if enabled else None
+                f.m.step(f.now,int(f.now*1e9))
+                self.assertEqual(f.m.state,'RETURNED_TO_START')
+                self.assertIsNotNone(r.finished_ns);self.assertIsNotNone(r.closure)
+
     def test_abort_window_never_claims_completed_home(self):
         f=Fixture();f.start()
         for _ in range(300):

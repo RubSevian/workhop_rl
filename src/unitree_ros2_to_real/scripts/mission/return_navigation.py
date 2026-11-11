@@ -107,6 +107,10 @@ class ReturnNavigation:
                     self.last_send = now
                     m.effects.append(('return_navigation_goal', dict(target=self.target(), stamp_ns=self.goal_stamp_ns)))
         else:
+            timeout = m.cfg['execution']['navigation_timeout_s']
+            if timeout is not None and now-self.request_ns/1e9 > timeout:
+                m.cancel(now, 'RETURN_NAV_TIMEOUT', True)
+                return m.drain()
             if goal.get('stamp_ns') != self.goal_stamp_ns or goal.get('revision') != self.goal_revision:
                 m.cancel(now, 'RETURN_GOAL_REPLACED', True)
             elif goal.get('state') == 'SUCCEEDED':
@@ -133,9 +137,6 @@ class ReturnNavigation:
                     m.transition('RETURNED_TO_START', now)
             elif goal.get('state') not in ('REQUESTED', 'ACTIVE', 'REPLANNING', 'ARRIVAL_CONFIRMING'):
                 m.cancel(now, 'RETURN_NAV_'+str(goal.get('state')), True)
-            timeout = m.cfg['execution']['navigation_timeout_s']
-            if timeout is not None and now-self.request_ns/1e9 > timeout:
-                m.cancel(now, 'RETURN_NAV_TIMEOUT', True)
         return m.drain()
 
     def status(self):
